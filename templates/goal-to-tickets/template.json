@@ -1,0 +1,59 @@
+{
+  "version": 1,
+  "name": "goal-to-tickets",
+  "summary": "Plan a goal as 1 to 12 linked tickets, check the plan for a dependency cycle, review it, post the tickets in dependency order with the real blocker numbers and choose what happens next. The first option at every point is the default.",
+  "points": [
+    {
+      "id": "review",
+      "question": "Who checks the plan before the post?",
+      "options": [
+        {
+          "id": "turn",
+          "label": "A review turn corrects the plan",
+          "summary": "One turn compares the drafts with the code and corrects cloving-goal-plan.md. The workflow checks the corrected plan for a cycle again.",
+          "change": "Keep reviewByTurn as checkPlan from goal-to-tickets/review.ts in goal-to-tickets.ts. Keep selection.review as turn in goal-to-tickets/scenarios.ts.",
+          "requires": {},
+          "needs": ["default-harness"]
+        },
+        {
+          "id": "person",
+          "label": "I read the plan",
+          "summary": "One approval decision shows all titles and dependencies and then the full plan. A denial or an expired decision posts nothing.",
+          "change": "In goal-to-tickets.ts replace reviewByTurn as checkPlan from \"./goal-to-tickets/review.ts\" with reviewByPerson as checkPlan from \"./goal-to-tickets/person.ts\". Set selection.review to person in goal-to-tickets/scenarios.ts.",
+          "requires": {},
+          "needs": []
+        }
+      ]
+    },
+    {
+      "id": "next",
+      "question": "What happens to the posted tickets?",
+      "options": [
+        {
+          "id": "queue",
+          "label": "Put the ready tickets in the queue",
+          "summary": "Add cloving: ready to each posted ticket. The queue starts a ticket only when each issue in its Needs lines is closed, so the tickets start in dependency order.",
+          "change": "Keep queueReady as nextTickets from goal-to-tickets/queue.ts in goal-to-tickets.ts. Keep selection.next as queue in goal-to-tickets/scenarios.ts.",
+          "requires": {},
+          "needs": ["gh-login", "github-origin", "private-texts"]
+        },
+        {
+          "id": "develop",
+          "label": "Hand the first ready ticket to develop",
+          "summary": "Start the repository-declared develop workflow on the first posted ticket that has no blocker. If the handoff fails, add cloving: ready to that ticket.",
+          "change": "In goal-to-tickets.ts replace queueReady as nextTickets from \"./goal-to-tickets/queue.ts\" with handoffFirst as nextTickets from \"./goal-to-tickets/develop.ts\". Set workflow.handoffs in goal-to-tickets.declaration.json to [\"develop\"], or to the ID in targetWorkflow of goal-to-tickets/develop.ts. Set selection.next to develop in goal-to-tickets/scenarios.ts.",
+          "requires": {},
+          "needs": ["gh-login", "github-origin", "private-texts"]
+        },
+        {
+          "id": "nothing",
+          "label": "Do nothing",
+          "summary": "Leave the posted tickets for a person.",
+          "change": "In goal-to-tickets.ts replace queueReady as nextTickets from \"./goal-to-tickets/queue.ts\" with leaveTickets as nextTickets from \"./goal-to-tickets/leave.ts\". Remove label from methods.github in goal-to-tickets.declaration.json. Set selection.next to nothing in goal-to-tickets/scenarios.ts.",
+          "requires": {},
+          "needs": ["gh-login", "github-origin", "private-texts"]
+        }
+      ]
+    }
+  ]
+}

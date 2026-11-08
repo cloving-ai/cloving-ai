@@ -23,6 +23,7 @@ import { stopping } from "./stop-turn.ts";
 export interface OperationView extends OperationRow {
   readonly leaseGeneration: number | null;
   readonly waitCause: string | null;
+  readonly waitingSince: string | null;
 }
 
 export type StoredDisposition = Omit<Evidence, "sequence">;
@@ -118,7 +119,10 @@ const viewColumns = operationColumns
 const waitCause =
   "CASE WHEN o.status != 'waiting' THEN NULL WHEN r.status != 'running' THEN 'run-not-running' WHEN EXISTS (SELECT 1 FROM leases h WHERE h.resource_key = o.lease_key AND h.state != 'released') THEN 'resource' ELSE 'ready' END";
 
-const viewSelection = `SELECT ${viewColumns}, l.generation AS lease_generation, ${waitCause} AS wait_cause`;
+const waitingSince =
+  "CASE WHEN o.status = 'waiting' THEN (SELECT w.recorded_at FROM events w WHERE w.sequence = o.wait_sequence) END";
+
+const viewSelection = `SELECT ${viewColumns}, l.generation AS lease_generation, ${waitCause} AS wait_cause, ${waitingSince} AS waiting_since`;
 const viewJoins =
   "JOIN runs r ON r.run_id = o.run_id LEFT JOIN leases l ON l.resource_key = o.lease_key AND l.operation_id = o.operation_id AND l.state != 'released'";
 const viewed = `${viewSelection} FROM operations o ${viewJoins}`;
@@ -128,6 +132,7 @@ function operationView(row: unknown): OperationView {
     ...operationRow(row),
     leaseGeneration: optionalInteger(row, "lease_generation"),
     waitCause: optionalText(row, "wait_cause"),
+    waitingSince: optionalText(row, "waiting_since"),
   };
 }
 

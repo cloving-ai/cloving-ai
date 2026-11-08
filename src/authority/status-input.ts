@@ -19,6 +19,7 @@ export interface EffectSummary {
   readonly leaseGeneration: number | null;
   readonly attempts: number;
   readonly limit: number;
+  readonly waitingSince: string | null;
 }
 
 export interface BudgetSummary {

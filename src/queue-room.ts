@@ -17,6 +17,34 @@ export interface QueueLimits {
   readonly lanes: number;
   readonly workingLanes: number;
   readonly room?: RoomLimits;
+  readonly reserved?: number;
+}
+
+export const defaultReserved = 2;
+
+export function isReserve(value: unknown): value is number {
+  return (
+    Number.isSafeInteger(value) && Number(value) >= 0 && Number(value) <= 8
+  );
+}
+
+export interface EffectLeaseLimits {
+  readonly capacity: number;
+  readonly queueLimit: number;
+  readonly reserved: number;
+}
+
+export interface EffectLeaseSource {
+  readonly current: () => EffectLeaseLimits;
+}
+
+export function effectLeaseLimits(limits: QueueLimits): EffectLeaseLimits {
+  const reserved = limits.reserved ?? defaultReserved;
+  return {
+    capacity: limits.lanes + reserved,
+    queueLimit: limits.lanes,
+    reserved,
+  };
 }
 
 export const defaultRoom: RoomLimits = {
@@ -44,15 +72,28 @@ function roomOf(value: unknown): RoomLimits | undefined {
     : undefined;
 }
 
+function reserveOf(value: object): { readonly reserved?: number } | undefined {
+  const reserved: unknown = Reflect.get(value, "reserved");
+  if (reserved === undefined) return {};
+  return isReserve(reserved) ? { reserved } : undefined;
+}
+
 export function queueLimitsOf(value: unknown): QueueLimits | undefined {
   if (value === null || typeof value !== "object") return undefined;
   const lanes: unknown = Reflect.get(value, "lanes");
   const workingLanes: unknown = Reflect.get(value, "workingLanes");
   const given: unknown = Reflect.get(value, "room");
+  const reserve = reserveOf(value);
   if (!wholeIn(lanes, 16) || !wholeIn(workingLanes, lanes)) return undefined;
+  if (reserve === undefined) return undefined;
   const room = roomOf(given);
   if (given !== undefined && room === undefined) return undefined;
-  return { lanes, workingLanes, ...(room === undefined ? {} : { room }) };
+  return {
+    lanes,
+    workingLanes,
+    ...(room === undefined ? {} : { room }),
+    ...reserve,
+  };
 }
 
 export function cpuShare(cores: number, working: number): number {

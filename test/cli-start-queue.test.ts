@@ -66,6 +66,14 @@ await test("CLV-309 queue lanes require a queue and a whole number from one to s
   );
 });
 
+await test("CLV-322 an effect reserve outside 0 to 8 stops the start", async () => {
+  for (const value of ["9", "-1"])
+    assert.match(
+      await refused({ CLOVING_EFFECT_RESERVED: value }),
+      /The daemon did not start: invalid-effect-settings/,
+    );
+});
+
 await test("CLV-277 valid queue lanes and a daily spend limit start the daemon with a queue interval", () =>
   withoutChildren(async () => {
     const fixture = await scene();

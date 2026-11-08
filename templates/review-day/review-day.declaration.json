@@ -3,14 +3,14 @@
     "workflowId": "review-day",
     "effectLimit": 10,
     "capabilities": ["command", "claude", "github"],
-    "commands": ["report", "reviews", "improvements"],
+    "commands": ["report"],
     "schedule": { "everySeconds": 86400, "input": {} },
     "handoffs": ["idea-to-issue"],
     "input": { "maximumBytes": 65536, "fields": {} }
   },
   "methods": {
-    "command": ["run:report", "run:reviews", "run:improvements"],
+    "command": ["run:report"],
     "claude": ["run-turn"],
-    "github": ["create-issue", "label", "discard"]
+    "github": ["issues", "create-issue", "label", "discard"]
   }
 }

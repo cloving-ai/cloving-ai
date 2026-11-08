@@ -6,12 +6,14 @@ import { handoffProposal } from "./review-day/next.ts";
 import {
   completed,
   effects,
+  improvementIssue,
   input,
   report,
   selection,
   methods,
   proposal,
   proposalEffects,
+  reviewIssue,
 } from "./review-day/scenarios.ts";
 
 await test("CLV-200 failed facts block the review before a report or issue", async () => {
@@ -48,8 +50,8 @@ await test("CLV-200 approval of proposal two waits for idea-to-issue then labels
   assert.equal(outcome.kind, "handoff_requested");
   const prefix = [
     "run:report",
-    "run:reviews",
-    "run:improvements",
+    "issues",
+    "issues",
     "run-turn",
     "run-turn",
     "discard",
@@ -209,9 +211,10 @@ await test("CLV-200 critique removes unsupported and already-improving loops eve
   using bridge = fakeStepBridge({
     effects: {
       ...effects(),
-      "command run:improvements": [
+      "github issues": [
+        completed([]),
         completed([
-          { number: 8, loop: "develop", body: "Existing improvement." },
+          { number: 8, body: "Loop: develop\n\nExisting improvement." },
         ]),
       ],
       "claude run-turn": [
@@ -266,8 +269,8 @@ await test("CLV-200 analyzes and critiques facts before posting and opens no dec
   assert.equal(outcome.kind, "handoff_requested");
   assert.deepEqual(methods(bridge.requests), [
     "run:report",
-    "run:reviews",
-    "run:improvements",
+    "issues",
+    "issues",
     "run-turn",
     "run-turn",
     "discard",
@@ -301,44 +304,74 @@ await test("CLV-200 analyzes and critiques facts before posting and opens no dec
   );
 });
 
-await test("CLV-200 every failed or invalid JSON command blocks before analysis", async () => {
-  for (const name of ["report", "reviews", "improvements"]) {
+await test("CLV-323 review-day reads the review and improvement lists with github issues and runs no list command", async () => {
+  using bridge = fakeStepBridge({
+    effects: {
+      ...effects(),
+      "github issues": [
+        completed([reviewIssue]),
+        completed([improvementIssue]),
+      ],
+    },
+  });
+  assert.equal((await reviewDay(input)).kind, "handoff_requested");
+  const reads = bridge.requests.flatMap((request) =>
+    request[0] === "effect" && request[1].method === "issues"
+      ? [[request[1].capability, request[1].target, request[1].payload]]
+      : [],
+  );
+  assert.deepEqual(reads, [
+    [
+      "github",
+      input.cycleId,
+      JSON.stringify({ labels: ["cloving: review"], state: "all", limit: 7 }),
+    ],
+    [
+      "github",
+      input.cycleId,
+      JSON.stringify({
+        labels: ["cloving: improvement"],
+        state: "open",
+        limit: 100,
+      }),
+    ],
+  ]);
+  const commands = bridge.requests.flatMap((request) =>
+    request[0] === "effect" && request[1].capability === "command"
+      ? [request[1].method]
+      : [],
+  );
+  assert.deepEqual(commands, ["run:report"]);
+  const turn = bridge.requests.find(
+    (request) => request[0] === "effect" && request[1].method === "run-turn",
+  );
+  assert.ok(turn?.[0] === "effect");
+  const facts = {
+    report: { metrics: { mergeMinutes: { value: 30, mark: "outside" } } },
+    reviews: [reviewIssue],
+    improvements: [Object.assign({}, improvementIssue, { loop: "merge" })],
+  };
+  assert.ok(turn[1].payload.includes(JSON.stringify(facts)));
+});
+
+await test("CLV-200 every failed or invalid JSON fact blocks before analysis", async () => {
+  const valid = (text: string) => ({
+    kind: "completed" as const,
+    operationId: "r",
+    receipt: null,
+    result: text,
+  });
+  for (const index of [0, 1, 2]) {
     for (const result of [
-      {
-        kind: "completed" as const,
-        operationId: name,
-        receipt: null,
-        result: "{",
-      },
-      { kind: "failed" as const, operationId: name, reason: "command-exit" },
+      valid("{"),
+      { kind: "failed" as const, operationId: "r", reason: "command-exit" },
     ]) {
+      const reply = (position: number) =>
+        position === index ? result : valid(position === 0 ? "{}" : "[]");
       using bridge = fakeStepBridge({
         effects: {
-          "command run:report": [
-            {
-              kind: "completed",
-              operationId: "r",
-              receipt: null,
-              result: "{}",
-            },
-          ],
-          "command run:reviews": [
-            {
-              kind: "completed",
-              operationId: "r",
-              receipt: null,
-              result: "[]",
-            },
-          ],
-          "command run:improvements": [
-            {
-              kind: "completed",
-              operationId: "r",
-              receipt: null,
-              result: "[]",
-            },
-          ],
-          [`command run:${name}`]: [result],
+          "command run:report": [reply(0)],
+          "github issues": [reply(1), reply(2)],
         },
       });
       const outcome = await reviewDay({ cycleId: "review-1", input: {} });
@@ -348,14 +381,8 @@ await test("CLV-200 every failed or invalid JSON command blocks before analysis"
         result.kind === "failed" ? "command-exit" : "invalid-review-facts",
       );
       assert.deepEqual(
-        bridge.requests.map((request) => {
-          assert.equal(request[0], "effect");
-          return request[1].method;
-        }),
-        ["run:report", "run:reviews", "run:improvements"].slice(
-          0,
-          ["report", "reviews", "improvements"].indexOf(name) + 1,
-        ),
+        methods(bridge.requests),
+        ["run:report", "issues", "issues"].slice(0, index + 1),
       );
     }
   }

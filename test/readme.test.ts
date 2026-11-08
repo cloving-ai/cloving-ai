@@ -365,9 +365,9 @@ await test("CLV-251 the README section after the service settings explains clovi
   assert.match(section, /cannot select a different repository/);
 });
 
-await test("CLV-253 the help of config and reload and the README name the settings that cloving reload applies", () => {
+await test("CLV-253 CLV-322 the help of config and reload and the README name the settings that cloving reload applies", () => {
   const fields =
-    /`?profiles`?, `?fallbackModels`?, `?tokenPrices`?, `?workflows\.folder`?, `?queue\.lanes`?, `?queue\.workingLanes`?, `?queue\.maxLoadPerCore`? and `?queue\.maxMemoryPressure`?/;
+    /`?profiles`?, `?fallbackModels`?, `?tokenPrices`?, `?workflows\.folder`?, `?queue\.lanes`?, `?queue\.workingLanes`?, `?queue\.maxLoadPerCore`?, `?queue\.maxMemoryPressure`? and `?effects\.reserved`?/;
   for (const text of [configUsage, String(commandUsage["reload"]), readme])
     assert.match(text, fields);
   assert.match(configUsage, /cloving reload/);

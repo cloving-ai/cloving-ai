@@ -27,6 +27,7 @@ const operation: OperationView = {
   settledSequence: null,
   leaseGeneration: 1,
   waitCause: null,
+  waitingSince: null,
 };
 
 function recovery() {

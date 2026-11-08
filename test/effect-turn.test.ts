@@ -183,10 +183,12 @@ await test("CLV-049 the promotion uses the capacity setting: at the bound 1 the 
   await authority.close();
 });
 
-await test("CLV-049 an effect capacity outside 1 to 8 or a lease duration that is not positive refuses the opening", async () => {
+await test("CLV-049 CLV-322 an effect capacity outside 1 to 24, a queue limit above the capacity or a lease duration that is not positive refuses the opening", async () => {
   for (const effects of [
     { capacity: 0 },
-    { capacity: 9 },
+    { capacity: 25 },
+    { capacity: 6, queueLimit: 7 },
+    { queueLimit: 0 },
     { capacity: 1.5 },
     { leaseMilliseconds: testMilliseconds(0) },
     { stopLimit: 0 },

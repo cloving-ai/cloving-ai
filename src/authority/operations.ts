@@ -61,6 +61,8 @@ export interface EffectState {
   readonly operations: Readonly<Record<string, Operation>>;
   readonly leases: Readonly<Record<string, Lease>>;
   readonly holding: number;
+  readonly queueLeases: readonly string[];
+  readonly queueRuns: readonly string[];
   readonly stops: Readonly<Record<string, StoppedOperation>>;
 }
 
@@ -69,6 +71,8 @@ export const emptyEffects: EffectState = {
   operations: {},
   leases: {},
   holding: 0,
+  queueLeases: [],
+  queueRuns: [],
   stops: {},
 };
 

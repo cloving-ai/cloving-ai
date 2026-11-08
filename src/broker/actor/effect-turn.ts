@@ -43,17 +43,19 @@ const candidateColumns = operationColumns
 const oldestElsewhere =
   "p.status = 'waiting' AND r.status = 'running' AND p.run_id != ? AND NOT EXISTS (SELECT 1 FROM operations q JOIN runs s ON s.run_id = q.run_id WHERE q.lease_key = p.lease_key AND q.status = 'waiting' AND s.status = 'running' AND q.run_id != ? AND q.wait_sequence < p.wait_sequence)";
 
+const queueFlag = "json_extract(d.manifest, '$.queue')";
+const queueManifest = `${queueFlag} = 1`;
+
 async function candidates(
   connection: SqlConnection,
   scope: EffectScope,
 ): Promise<readonly unknown[]> {
   const { runId, capacity } = scope;
   const source = `SELECT ${candidateColumns} FROM operations p JOIN runs r ON r.run_id = p.run_id WHERE ${oldestElsewhere}`;
+  const free = `${source} AND NOT EXISTS (SELECT 1 FROM leases l WHERE l.resource_key = p.lease_key AND l.state != 'released') AND coalesce((SELECT ${queueFlag} FROM definitions d WHERE d.pin = r.workflow), 0) = ? ORDER BY p.wait_sequence LIMIT ?`;
   return [
-    ...(await connection.all(
-      `${source} AND NOT EXISTS (SELECT 1 FROM leases l WHERE l.resource_key = p.lease_key AND l.state != 'released') ORDER BY p.wait_sequence LIMIT ?`,
-      [runId, runId, capacity],
-    )),
+    ...(await connection.all(free, [runId, runId, 0, capacity])),
+    ...(await connection.all(free, [runId, runId, 1, capacity])),
     ...(await connection.all(
       `${source} AND p.lease_key IN (SELECT l.resource_key FROM leases l JOIN operations o ON o.operation_id = l.operation_id WHERE o.run_id = ? AND l.state != 'released') ORDER BY p.wait_sequence`,
       [runId, runId, runId],
@@ -104,13 +106,37 @@ async function leases(
   return rows.map(leaseRow);
 }
 
+const holdingStatuses =
+  "('dispatch-pending', 'running', 'recovering', 'blocked')";
+
+async function queueParts(
+  connection: SqlConnection,
+  runIds: readonly string[],
+): Promise<{
+  readonly queueLeases: readonly string[];
+  readonly queueRuns: readonly string[];
+}> {
+  const leases = await connection.all(
+    `SELECT p.operation_id FROM operations p JOIN runs r ON r.run_id = p.run_id JOIN definitions d ON d.pin = r.workflow WHERE p.status IN ${holdingStatuses} AND ${queueManifest} ORDER BY p.operation_id`,
+  );
+  const runs = await connection.all(
+    `SELECT r.run_id FROM runs r JOIN definitions d ON d.pin = r.workflow WHERE r.run_id IN (SELECT value FROM json_each(?)) AND ${queueManifest} ORDER BY r.run_id`,
+    [JSON.stringify(runIds)],
+  );
+  return {
+    queueLeases: leases.map((row) => text(row, "operation_id")),
+    queueRuns: runs.map((row) => text(row, "run_id")),
+  };
+}
+
 export async function effectTurn(
   connection: SqlConnection,
   scope: EffectScope,
 ): Promise<EffectState> {
   const loaded = await operations(connection, scope);
+  const runIds = [...new Set([scope.runId, ...loaded.map((row) => row.runId)])];
   const budgets: unknown[] = [];
-  for (const runId of new Set([scope.runId, ...loaded.map((row) => row.runId)]))
+  for (const runId of runIds)
     budgets.push(
       ...(await connection.all(
         `SELECT ${budgetColumns} FROM run_budgets WHERE run_id = ?`,
@@ -127,10 +153,11 @@ export async function effectTurn(
     stops: [],
     holding: integer(
       await connection.get(
-        "SELECT count(*) AS holding FROM operations WHERE status IN ('dispatch-pending', 'running', 'recovering', 'blocked')",
+        `SELECT count(*) AS holding FROM operations WHERE status IN ${holdingStatuses}`,
       ),
       "holding",
     ),
+    ...(await queueParts(connection, runIds)),
   });
 }
 

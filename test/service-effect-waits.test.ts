@@ -9,6 +9,7 @@ import {
   type Scene,
 } from "./service-effect-fixture.ts";
 import { call, field, withHarness } from "./service-fixture.ts";
+import { view } from "./service-views.ts";
 
 async function shown(scene: Scene): Promise<readonly unknown[]> {
   return (await shownEffects(scene)).map((effect) => [
@@ -93,4 +94,32 @@ await test("CLV-049 status gives the present cause of a wait: in a paused run, a
     ]);
     await command(scene, "resume");
     await untilStates(scene, ["completed", "running"]);
+  }));
+
+await test("CLV-322 a run whose next effect waits for a lease shows waiting-for-lease with the time of the request until the lease is granted", () =>
+  withHarness(async (harness) => {
+    const scene = await effectScene(harness, {
+      effectLimit: 8,
+      effectLeases: {
+        current: () => ({ capacity: 1, queueLimit: 1, reserved: 0 }),
+      },
+    });
+    const owner = await requested(scene, {
+      commandId: "c-request-1",
+      round: 1,
+    });
+    await untilStates(scene, ["running"]);
+    await requested(scene, { commandId: "c-request-2", round: 2 });
+    const waiting = await view(harness, scene.runId);
+    assert.equal(field(waiting, "condition"), "waiting-for-lease");
+    assert.match(
+      String(field(field(waiting, "reason"), "detail")),
+      /^The next effect waits for a free effect lease since \d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z\.$/,
+    );
+    await completed(scene, owner);
+    await untilStates(scene, ["completed", "running"]);
+    assert.notEqual(
+      field(await view(harness, scene.runId), "condition"),
+      "waiting-for-lease",
+    );
   }));

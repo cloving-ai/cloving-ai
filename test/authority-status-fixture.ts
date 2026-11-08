@@ -92,6 +92,7 @@ export function effect(fields: Partial<EffectSummary>): EffectSummary {
     leaseGeneration: 1,
     attempts: 1,
     limit: 3,
+    waitingSince: null,
     ...fields,
   };
 }

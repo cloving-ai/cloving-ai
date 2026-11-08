@@ -139,6 +139,13 @@
         "chain": { "type": "integer", "minimum": 2, "maximum": 50 }
       },
       "additionalProperties": false
+    },
+    "effects": {
+      "type": "object",
+      "properties": {
+        "reserved": { "type": "integer", "minimum": 0, "maximum": 8 }
+      },
+      "additionalProperties": false
     }
   },
   "additionalProperties": false,

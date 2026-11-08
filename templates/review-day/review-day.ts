@@ -10,7 +10,7 @@ import { handoffProposal as nextProposal } from "./review-day/next.ts";
 export async function reviewDay(input: ReviewInput): Promise<CycleOutcome> {
   "use workflow";
   try {
-    const facts = await reviewFacts();
+    const facts = await reviewFacts(input);
     const { draft, critique } = await reviewTurns(input, facts);
     const report = enforceCritique(draft, { critique, facts });
     const text = renderReport(report);

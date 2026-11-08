@@ -106,7 +106,6 @@ function effectDraft(
       operations: changedEntries(effects.operations, before.effects.operations),
       leases: changedEntries(effects.leases, before.effects.leases),
       stops: changedEntries(effects.stops, before.effects.stops),
-      holding: effects.holding,
     },
     result.events.flatMap((event) => evidenceOf(event, result.disposition)),
   );
