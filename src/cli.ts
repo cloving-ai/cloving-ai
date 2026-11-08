@@ -2,7 +2,7 @@
 import { createProbeRunner } from "./cli/probe-command.ts";
 import { terminateHarness } from "./cli/harness-processes.ts";
 import { settingsEnvironment } from "./cli/project-settings.ts";
-import { constants as systemConstants } from "node:os";
+import { constants as systemConstants, homedir } from "node:os";
 import type { HarnessStartRequest } from "./harness-start.ts";
 import { addAbortListener } from "node:events";
 import {
@@ -11,8 +11,7 @@ import {
   spawn,
   type ChildProcess,
 } from "node:child_process";
-import { existsSync, realpathSync } from "node:fs";
-import { parseArgs } from "node:util";
+import { realpathSync } from "node:fs";
 import { delimiter, dirname, extname, join, resolve } from "node:path";
 import { main } from "./cli/main.ts";
 import { parseInvocation } from "./cli/arguments.ts";
@@ -21,13 +20,16 @@ import type {
   WatchCommandOutput,
   WatchCommandRunner,
 } from "./cli/watch-pr-command.ts";
+import { runtimeDirectory } from "./cli/runtime-directory.ts";
 import {
-  adoptionRecordPath,
-  clientCommand,
-  legacyRuntimeDirectory,
-  runtimeDirectory,
-} from "./cli/runtime-directory.ts";
+  currentRuntime,
+  startArguments,
+  startSelection,
+  type StartRequest,
+} from "./cli/start-arguments.ts";
 import { commandUsage } from "./cli/usage.ts";
+import { workspaceStart, type WorkspaceHost } from "./cli/workspace-start.ts";
+import { liveWorkspace, memberDirectory } from "./cli/workspace-record.ts";
 import {
   clearedSettingsNote,
   restartEnvironment,
@@ -150,64 +152,26 @@ function startHarness(request: HarnessStartRequest): Promise<number | null> {
   });
 }
 
-interface StartRequest {
-  readonly runtime: string;
+type ToolInput = {
+  readonly environment?: NodeJS.ProcessEnv;
   readonly argumentsList: readonly string[];
-  readonly repository: string | undefined;
-  readonly environment: NodeJS.ProcessEnv;
-}
+  readonly signal?: AbortSignal | undefined;
+} & (
+  | { readonly tool: string; readonly executable?: never }
+  | { readonly tool?: never; readonly executable: string }
+);
 
-function startArguments(input: StartRequest): readonly string[] {
-  const { runtime, repository, argumentsList } = input;
-  const located = [
-    "--runtime",
-    runtimeDirectory(process.env, repository) ?? runtime,
-    "--repository",
-    repository ?? process.cwd(),
-    "--client",
-    clientCommand(process.env, repository),
+function toolArguments(input: ToolInput): string[] {
+  if (input.tool === undefined) return [...input.argumentsList];
+  const extension = extname(import.meta.filename);
+  return [
+    join(import.meta.dirname, "..", "tools", `${input.tool}${extension}`),
+    ...input.argumentsList,
   ];
-  const record =
-    repository === undefined
-      ? undefined
-      : adoptionRecordPath(process.env, repository);
-  const legacy = legacyRuntimeDirectory(process.env);
-  if (
-    !process.env["CLOVING_RUNTIME_DIR"] &&
-    record !== undefined &&
-    !existsSync(record) &&
-    legacy !== undefined
-  )
-    located.push(
-      "--legacy-runtime",
-      resolve(legacy),
-      "--adoption-record",
-      resolve(record),
-    );
-  return [...located, ...argumentsList];
 }
 
-function toolProcess(
-  input: {
-    readonly environment?: NodeJS.ProcessEnv;
-    readonly argumentsList: readonly string[];
-  } & (
-    | { readonly tool: string; readonly executable?: never }
-    | { readonly tool?: never; readonly executable: string }
-  ),
-): Promise<number> {
-  const argumentsList =
-    input.tool === undefined
-      ? [...input.argumentsList]
-      : [
-          join(
-            import.meta.dirname,
-            "..",
-            "tools",
-            `${input.tool}${extname(import.meta.filename)}`,
-          ),
-          ...input.argumentsList,
-        ];
+function toolProcess(input: ToolInput): Promise<number> {
+  const argumentsList = toolArguments(input);
   let stopping = false;
   const interrupt = (): void => {
     stopping = true;
@@ -235,8 +199,13 @@ function toolProcess(
       `tool-unavailable: Install the cloving-zapier integration package (${input.executable ?? input.tool}).\n`,
     );
   });
+  const aborted =
+    input.signal === undefined
+      ? undefined
+      : addAbortListener(input.signal, terminate);
   return new Promise((settle) => {
     child.once("close", (status) => {
+      aborted?.[Symbol.dispose]();
       setImmediate(() => {
         setImmediate(() => {
           process.off("SIGINT", interrupt);
@@ -248,49 +217,90 @@ function toolProcess(
   });
 }
 
-function currentRuntime(start: {
-  readonly repository: string | undefined;
-  readonly runtime: string;
-}): string {
-  return runtimeDirectory(process.env, start.repository) ?? start.runtime;
-}
-
-function started(input: StartRequest): Promise<number> {
+function started(
+  input: StartRequest & { readonly signal?: AbortSignal | undefined },
+): Promise<number> {
   return toolProcess({
     tool: "self-host",
     argumentsList: startArguments(input),
     environment: input.environment,
+    signal: input.signal,
   });
 }
 
+async function hosted(
+  request: Omit<WorkspaceHost, "signal" | "repository" | "overrides"> & {
+    readonly repository: string | undefined;
+    readonly overrides?: NodeJS.ProcessEnv;
+    readonly signal?: AbortSignal;
+  },
+): Promise<number> {
+  const { runtime, repository, options: argumentsList, signal } = request;
+  await clearedSettingsNote(dirname(runtime));
+  let environment = { ...request.environment, ...request.overrides };
+  let status = await started({
+    runtime,
+    argumentsList,
+    repository,
+    environment,
+    signal,
+  });
+  const restarting = argumentsList.filter(
+    (option) => option !== "--reset-queue",
+  );
+  while (status === 75 && signal?.aborted !== true) {
+    environment = {
+      ...(await restartEnvironment(
+        dirname(currentRuntime({ repository, runtime })),
+        environment,
+      )),
+      ...request.overrides,
+    };
+    status = await started({
+      runtime,
+      argumentsList: restarting,
+      repository,
+      environment,
+      signal,
+    });
+  }
+  return status;
+}
+
 async function start(): Promise<number> {
-  if (options.includes("--help")) {
+  const selection = startSelection(options);
+  if (selection.kind === "usage") {
     process.stdout.write(String(commandUsage["start"]));
     return 0;
   }
-  const parsed = parseArgs({
-    args: options,
-    options: { repository: { type: "string" } },
-    strict: false,
-    allowPositionals: true,
-  });
-  const selected = parsed.values["repository"];
-  if (
-    Object.hasOwn(parsed.values, "repository") &&
-    (typeof selected !== "string" || selected === "")
-  ) {
-    process.stderr.write("missing-value: --repository needs a directory.\n");
+  if (selection.kind === "refused") {
+    process.stderr.write(selection.text);
     return 1;
   }
-  if (parsed.positionals.length > 0) {
-    process.stderr.write(
-      "unexpected-argument: run cloving start --help for usage.\n",
-    );
-    return 1;
-  }
-  const repository = repositoryDirectory(
-    typeof selected === "string" ? selected : process.cwd(),
-  );
+  if (selection.kind === "workspace")
+    return workspaceStart({
+      options: selection.options,
+      environment: process.env,
+      home: homedir(),
+      processId: process.pid,
+      repositoryDirectory,
+      hosted,
+      watched: ({ port, signal }) =>
+        toolProcess({
+          executable: process.execPath,
+          argumentsList: [
+            import.meta.filename,
+            "watch",
+            "--workspace",
+            "--port",
+            port,
+          ],
+          signal,
+        }),
+      print: (text) => process.stdout.write(text),
+      refuse: (text) => process.stderr.write(text),
+    });
+  const repository = repositoryDirectory(selection.directory ?? process.cwd());
   const runtime = runtimeDirectory(process.env, repository);
   if (runtime === undefined) {
     process.stderr.write(
@@ -298,27 +308,12 @@ async function start(): Promise<number> {
     );
     return 1;
   }
-  await clearedSettingsNote(dirname(runtime));
-  let environment = process.env;
-  let status = await started({
+  const status = await hosted({
     runtime,
-    argumentsList: options,
     repository,
-    environment,
+    options,
+    environment: process.env,
   });
-  const restarting = options.filter((option) => option !== "--reset-queue");
-  while (status === 75) {
-    environment = await restartEnvironment(
-      dirname(currentRuntime({ repository, runtime })),
-      environment,
-    );
-    status = await started({
-      runtime,
-      argumentsList: restarting,
-      repository,
-      environment,
-    });
-  }
   return status === 0 ? 0 : 1;
 }
 
@@ -364,10 +359,9 @@ else if (
   });
 } else {
   const invocation = parseInvocation(process.argv.slice(2));
+  const workspace = liveWorkspace(process.env);
   const repository = repositoryDirectory(
-    "repository" in invocation
-      ? (invocation.repository ?? process.cwd())
-      : process.cwd(),
+    memberDirectory(workspace, invocation.repository) ?? process.cwd(),
   );
   const settingsRepository =
     process.env["CLOVING_WATCH_REPOSITORY"] ?? repository;
@@ -377,6 +371,7 @@ else if (
       : process.env;
   await main(process.argv.slice(2), {
     repository,
+    workspace,
     environment,
     startHarness,
     doctorProbe: createProbeRunner({
