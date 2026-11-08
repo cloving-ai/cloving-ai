@@ -37,6 +37,7 @@ import { scheduledDeclarations } from "./workflow-schedules.ts";
 import { queueConnection } from "./queue-control.ts";
 import { scheduleConnection } from "./schedule-control.ts";
 import { queueLimitsSource, type QueueLimitsSource } from "./queue-limits.ts";
+import { effectLeaseLimits } from "../queue-room.ts";
 import { restartMarks } from "./restart-marks.ts";
 import type { RestartPort } from "../restart-request.ts";
 import { daemonLoops } from "./daemon-loops.ts";
@@ -184,6 +185,9 @@ function controlPorts(controls: ReturnType<typeof controlConnections>) {
     queue: controls.queues.port,
     threadPool: controls.pool.latest,
     restart: controls.restart,
+    effectLeases: {
+      current: () => effectLeaseLimits(controls.queueLimitSource.current()),
+    },
   };
 }
 

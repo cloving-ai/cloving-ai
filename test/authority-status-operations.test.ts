@@ -91,7 +91,7 @@ const cases: readonly (readonly [
         effect({ status: "completed" }),
       ],
     }),
-    ["working", "in-progress", null, false],
+    ["waiting-for-lease", "waiting-for-lease", null, false],
   ],
 ];
 

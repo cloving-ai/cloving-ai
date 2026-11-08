@@ -12,6 +12,7 @@ import {
   sent,
   start,
   unknown,
+  effect,
 } from "./authority-status-fixture.ts";
 
 const later = { ...sent, operationId: continuation, releasedSequence: 8 };
@@ -199,4 +200,72 @@ await test("CLV-049 the unresolved effects of a dropped run are the operations t
     } as const,
   };
   assert.deepEqual(unresolvedEffects(given), ["operation-9"]);
+});
+
+await test("CLV-322 a running run whose next effect waits for a lease shows waiting-for-lease with the time of the request, and a granted lease clears it", () => {
+  const since = "2026-11-07T14:05:00.000Z";
+  const waiting = runView(
+    input({
+      status: "running",
+      effects: [
+        effect({
+          status: "waiting",
+          reason: "ready",
+          leaseGeneration: null,
+          attempts: 0,
+          waitingSince: since,
+        }),
+      ],
+    }),
+  );
+  assert.deepEqual(reason(waiting), [
+    "waiting-for-lease",
+    "waiting-for-lease",
+    null,
+  ]);
+  assert.equal(
+    waiting.reason.detail,
+    `The next effect waits for a free effect lease since ${since}.`,
+  );
+  assert.equal(waiting.humanInputCanHelp, false);
+  const granted = runView(
+    input({
+      status: "running",
+      effects: [effect({ status: "dispatch-pending", waitingSince: null })],
+    }),
+  );
+  assert.equal(granted.condition, "working");
+});
+
+await test("CLV-322 a workflow conflict of a running run stays visible while its next effect waits for a lease", () => {
+  const waiting = effect({
+    status: "waiting",
+    reason: "ready",
+    leaseGeneration: null,
+    attempts: 0,
+    waitingSince: "2026-11-07T14:05:00.000Z",
+  });
+  const expected = {
+    "world-run-conflict": [
+      "infrastructure-failure",
+      "world-run-conflict",
+      null,
+    ],
+    "pinned-workflow-unavailable": [
+      "infrastructure-failure",
+      "pinned-workflow-unavailable",
+      "restore-pinned-workflow",
+    ],
+  };
+  for (const [code, shown] of Object.entries(expected)) {
+    const view = runView(
+      input({
+        status: "running",
+        observed: { condition: "infrastructure-failure", reason: code },
+        effects: [waiting],
+      }),
+    );
+    assert.deepEqual(reason(view), shown, code);
+    assert.equal(view.humanInputCanHelp, true, code);
+  }
 });

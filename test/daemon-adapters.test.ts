@@ -40,6 +40,7 @@ const operation: OperationView = {
   waitSequence: null,
   settledSequence: null,
   waitCause: null,
+  waitingSince: null,
 };
 
 const saved = { ...kept, operationId: "operation-saved" };

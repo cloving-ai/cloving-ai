@@ -39,6 +39,9 @@ function leaseGrant(
       Date.parse(recordedAt) + effects.leaseMilliseconds,
     ).toISOString(),
     capacity: effects.capacity,
+    ...(state.effects.queueRuns.includes(operation.runId)
+      ? { queueLimit: effects.queueLimit }
+      : {}),
   };
 }
 
@@ -67,7 +70,7 @@ export function promoted(
 ): readonly Step[] {
   if (!isInstant(promotion.recordedAt)) return [];
   const steps: Step[] = [];
-  for (const operation of promotions(state, promotion.effects.capacity))
+  for (const operation of promotions(state, promotion.effects))
     steps.push(
       ...granted(steps.at(-1)?.result.state ?? state, {
         ...promotion,

@@ -10,6 +10,7 @@ import { harnessDefaults, nativeHarness } from "./harness-defaults.ts";
 import { builtInPriceTable, parseTokenPrices } from "./token-prices.ts";
 import type { TurnProfiles } from "./turn-profile.ts";
 import { defaultWorkflowLimits } from "./workflow-limits.ts";
+import { defaultReserved } from "./queue-room.ts";
 
 type Source = "environment" | "private" | "project" | "default";
 type DisplayValue = SettingValue | JsonValue;
@@ -31,6 +32,7 @@ const defaults: Readonly<Record<string, SettingValue>> = {
   "limits.effects": defaultWorkflowLimits.effects,
   "limits.chain": defaultWorkflowLimits.chain,
   "spend.scope": "queue",
+  "effects.reserved": defaultReserved,
   "harness.name": "claude",
   "harness.output": "text",
   tokenPrices: builtInPriceTable.prices,

@@ -14,6 +14,7 @@ import type { CommandEffects } from "../command-settings.ts";
 import type { RunTurns, TurnDetails } from "../record-retention.ts";
 import type { ThreadPoolCheck } from "../thread-pool-check.ts";
 import { serviceIdentity, type ServiceIdentity } from "./service-identity.ts";
+import type { EffectLeaseSource } from "../queue-room.ts";
 
 export interface GithubReader {
   readonly read: (path: string) => Promise<unknown>;
@@ -25,6 +26,7 @@ export interface ServiceReads {
   readonly retentionExpired?: (runId: string) => Promise<boolean>;
   readonly githubRead?: GithubReader;
   readonly threadPool?: () => ThreadPoolCheck | undefined;
+  readonly effectLeases?: EffectLeaseSource;
 }
 
 export interface ServiceContext extends ServiceReads, ServiceIdentity {
@@ -79,6 +81,7 @@ export function queryMetadata(
   | "retentionExpired"
   | "githubRead"
   | "threadPool"
+  | "effectLeases"
   | "commandEffects"
   | "queueDailySpendLimitUsd"
   | "spendScope"
@@ -107,7 +110,15 @@ export function queryMetadata(
     ...(options.threadPool === undefined
       ? {}
       : { threadPool: options.threadPool }),
+    ...(options.effectLeases === undefined
+      ? {}
+      : { effectLeases: options.effectLeases }),
   };
+}
+
+export function effectLeaseField(context: ServiceReads): Fields {
+  const limits = context.effectLeases?.current();
+  return limits === undefined ? {} : { effectLeases: { ...limits } };
 }
 
 export function threadPoolField(context: ServiceReads): Fields {

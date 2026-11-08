@@ -214,7 +214,9 @@ await test("CLV-049 the promotion selects, below the capacity bound, the oldest 
     foreign,
   ]).state;
   const ids = (bound: number): readonly string[] =>
-    promotions(state, bound).map((operation) => operation.operationId);
+    promotions(state, { capacity: bound, queueLimit: bound }).map(
+      (operation) => operation.operationId,
+    );
   assert.deepEqual(ids(8), [
     operationOf(1),
     operationOf(3),
@@ -225,13 +227,110 @@ await test("CLV-049 the promotion selects, below the capacity bound, the oldest 
   assert.deepEqual(ids(0), []);
   const granted = applied([grant({ round: 1, generation: 1 })], state).state;
   assert.deepEqual(
-    promotions(granted, 3).map((operation) => operation.operationId),
+    promotions(granted, { capacity: 3, queueLimit: 3 }).map(
+      (operation) => operation.operationId,
+    ),
     [operationOf(3), operationOf(4)],
   );
   const pause = { kind: "pause-run", commandId: "c-pause", runId: "run-1" };
   const paused = applied([{ ...pause, expectedRevision: 2 }], granted).state;
   assert.deepEqual(
-    promotions(paused, 8).map((operation) => operation.operationId),
+    promotions(paused, { capacity: 8, queueLimit: 8 }).map(
+      (operation) => operation.operationId,
+    ),
     [operationOf(9, "run-2")],
+  );
+});
+
+function queueSteps(
+  runId: string,
+  extra: { readonly queueLimit?: number } = {},
+): readonly Readonly<Record<string, unknown>>[] {
+  const operationId = operationOf(1, runId);
+  return [
+    { ...admission, commandId: `c-admit-${runId}`, runId },
+    { ...started, commandId: `c-start-${runId}`, runId },
+    request(1, { runId, commandId: `c-request-${runId}`, operationId }),
+    grant(
+      { round: 1, generation: 1 },
+      {
+        runId,
+        commandId: `c-grant-${runId}`,
+        operationId,
+        capacity: 6,
+        ...extra,
+      },
+    ),
+  ];
+}
+
+await test("CLV-322 four held queue leases with 4 lanes and a reserve of 2 refuse a fifth queue lease and grant a lease to a scheduled run", () => {
+  const queue = { queueLimit: 4 };
+  const held = applied(
+    ["q-1", "q-2", "q-3", "q-4"].flatMap((runId) => queueSteps(runId, queue)),
+  ).state;
+  assert.deepEqual(
+    [held.effects.holding, held.effects.queueLeases.length],
+    [4, 4],
+  );
+  const fifth = queueSteps("q-5", queue);
+  const waiting = applied(fifth.slice(0, 3), held).state;
+  assert.equal(rejection(waiting, fifth[3] ?? {}), "queue-capacity-exceeded");
+  const scheduled = queueSteps("s-1");
+  const granted = applied(scheduled, waiting).state;
+  assert.deepEqual(
+    [granted.effects.holding, granted.effects.queueLeases.length],
+    [5, 4],
+  );
+  const own = { runId: "q-1", operationId: operationOf(1, "q-1") };
+  const released = applied(
+    [
+      { ...accepted(1), ...own, commandId: "c-accepted-q-1" },
+      report(1, { ...own, commandId: "c-report-q-1" }),
+    ],
+    granted,
+  ).state;
+  assert.equal(released.effects.queueLeases.length, 3);
+  const admitted = applied([fifth[3] ?? {}], released).state;
+  assert.deepEqual(
+    [admitted.effects.holding, admitted.effects.queueLeases.length],
+    [5, 4],
+  );
+});
+
+await test("CLV-322 the promotion skips queue operations at the queue limit and still selects the oldest operations of other runs", () => {
+  const waiting = applied([
+    ...queueSteps("q-0", { queueLimit: 2 }),
+    ...["q-1", "q-2", "s-1"].flatMap((runId) => queueSteps(runId).slice(0, 3)),
+  ]).state;
+  const state = {
+    ...waiting,
+    effects: { ...waiting.effects, queueRuns: ["q-0", "q-1", "q-2"] },
+  };
+  const ids = (limits: {
+    readonly capacity: number;
+    readonly queueLimit: number;
+  }): readonly string[] =>
+    promotions(state, limits).map((operation) => operation.runId);
+  assert.deepEqual(ids({ capacity: 4, queueLimit: 2 }), ["q-1", "s-1"]);
+  assert.deepEqual(ids({ capacity: 4, queueLimit: 1 }), ["s-1"]);
+  assert.deepEqual(ids({ capacity: 6, queueLimit: 3 }), ["q-1", "q-2", "s-1"]);
+  assert.deepEqual(ids({ capacity: 2, queueLimit: 3 }), ["q-1"]);
+});
+
+await test("CLV-322 after a lane reduction below the held queue leases, the promotion still selects an operation of another run for a free lease", () => {
+  const waiting = applied([
+    ...["q-0", "q-1"].flatMap((runId) => queueSteps(runId, { queueLimit: 2 })),
+    ...["q-2", "s-1"].flatMap((runId) => queueSteps(runId).slice(0, 3)),
+  ]).state;
+  const state = {
+    ...waiting,
+    effects: { ...waiting.effects, queueRuns: ["q-0", "q-1", "q-2"] },
+  };
+  assert.deepEqual(
+    promotions(state, { capacity: 3, queueLimit: 1 }).map(
+      (operation) => operation.runId,
+    ),
+    ["s-1"],
   );
 });

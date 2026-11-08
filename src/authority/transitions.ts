@@ -122,6 +122,7 @@ export const numberFields = [
   "leaseGeneration",
   "sourceGeneration",
   "capacity",
+  "queueLimit",
   "slot",
   "maximumWaitSeconds",
   "pollEverySeconds",

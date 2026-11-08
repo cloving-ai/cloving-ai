@@ -38,6 +38,7 @@ export async function effectScene(
     readonly workflowId?: string;
     readonly lostReplies?: number;
     readonly effects?: Partial<EffectSettings>;
+    readonly effectLeases?: ServiceOptions["effectLeases"];
     readonly reconcile?: Delivery["reconcile"];
     readonly limits?: ServiceLimits;
     readonly capabilities?: readonly string[];
@@ -72,6 +73,9 @@ export async function effectScene(
     },
     clock: () => clock.now,
     ...(setup.effects === undefined ? {} : { effects: setup.effects }),
+    ...(setup.effectLeases === undefined
+      ? {}
+      : { effectLeases: setup.effectLeases }),
     ...(setup.limits === undefined ? {} : { limits: setup.limits }),
   };
   const service = await harness.start(options);

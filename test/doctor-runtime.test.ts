@@ -185,6 +185,26 @@ await test("CLV-309 the service check names the reason of a queue hold", () =>
     ),
   ));
 
+await test("CLV-322 the service check names the effect capacity and the reserve", () =>
+  withDoctor((scene) =>
+    withServiceSocket(
+      {
+        scene,
+        answer: {
+          runs: [],
+          effectLeases: { capacity: 6, queueLimit: 4, reserved: 2 },
+        },
+      },
+      async (path) => {
+        const output = await scene.report({ CLOVING_RUNTIME_DIR: path });
+        assert.equal(
+          check(output, "service")["detail"],
+          "Service answers from its generated project folder. Effect leases: capacity 6, 4 for queue runs, 2 reserved for other runs",
+        );
+      },
+    ),
+  ));
+
 await test("CLV-207 a socket that does not answer fails after five seconds", () =>
   withDoctor((scene) =>
     withServiceSocket({ scene, answer: "silent" }, async (path) => {
