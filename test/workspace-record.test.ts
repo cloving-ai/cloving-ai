@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { parseInvocation } from "../src/cli/arguments.ts";
 import {
@@ -137,12 +137,44 @@ await test("CLV-312 of two supervisors that claim the record at the same time, o
   });
 });
 
-await test("CLV-312 a supervisor claims the record of a supervisor that ended, and refuses the record of a running one", async () => {
+await test("CLV-312 a running supervisor keeps its claim when its record file is gone, so a second supervisor cannot take the workspace", async () => {
   await withState(async (environment, path) => {
-    await writeWorkspaceRecord(path, { processId: endedProcessId(), members });
     assert.deepEqual(
       await claimWorkspaceRecord(path, { processId: process.pid, members }),
       { kind: "claimed" },
+    );
+    await rm(path);
+    assert.deepEqual(
+      await claimWorkspaceRecord(path, { processId: process.ppid, members }),
+      { kind: "running", processId: process.pid },
+    );
+    assert.equal(existsSync(path), false);
+    await removeWorkspaceRecord(path, process.pid);
+    assert.deepEqual(
+      await claimWorkspaceRecord(path, { processId: process.ppid, members }),
+      { kind: "claimed" },
+    );
+    assert.equal(liveWorkspace(environment)?.processId, process.ppid);
+  });
+});
+
+await test("CLV-312 a supervisor claims the workspace of a supervisor that ended, and refuses the workspace of a running one", async () => {
+  await withState(async (environment, path) => {
+    const claims = join(dirname(path), "claims");
+    assert.deepEqual(
+      await claimWorkspaceRecord(path, {
+        processId: endedProcessId(),
+        members,
+      }),
+      { kind: "claimed" },
+    );
+    assert.deepEqual(
+      await claimWorkspaceRecord(path, { processId: process.pid, members }),
+      { kind: "claimed" },
+    );
+    assert.deepEqual(
+      (await readdir(claims)).map((name) => name.split(".")[0]),
+      [String(process.pid)],
     );
     assert.equal(liveWorkspace(environment)?.processId, process.pid);
     assert.deepEqual(
@@ -150,6 +182,12 @@ await test("CLV-312 a supervisor claims the record of a supervisor that ended, a
       { kind: "running", processId: process.pid },
     );
     await writeFile(path, "{");
+    assert.deepEqual(
+      await claimWorkspaceRecord(path, { processId: process.ppid, members }),
+      { kind: "running", processId: process.pid },
+    );
+    await removeWorkspaceRecord(path, process.pid);
+    assert.deepEqual(await readdir(claims), []);
     assert.deepEqual(
       await claimWorkspaceRecord(path, { processId: process.ppid, members }),
       { kind: "claimed" },
