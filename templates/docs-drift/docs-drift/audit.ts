@@ -65,18 +65,34 @@ function driftOf(value: unknown, docs: Set<string>): Drift {
 
 const resultCharacters = 15000;
 
-export function driftOfResult(result: string, scan: Scan): readonly Drift[] {
+function leftOf(value: unknown, docs: Set<string>): readonly string[] {
+  if (value === undefined) return [];
+  return list(value, { reason: bad, maximum: 15 }).map((doc) => {
+    if (typeof doc !== "string" || !docs.has(doc)) failure(bad);
+    docs.delete(doc);
+    return doc;
+  });
+}
+
+export function driftOfResult(
+  result: string,
+  scan: Scan,
+): Omit<Audit, "commit"> {
   const summary = record(jsonValue(result, bad), bad)["summary"];
   if (typeof summary !== "string") failure(bad);
   if (summary.length > resultCharacters) failure("drift-result-too-large");
   const docs = new Set(scan.candidates.map((item) => item.doc));
-  const found = list(record(jsonValue(summary, bad), bad)["docs"], {
+  const parsed = record(jsonValue(summary, bad), bad);
+  const found = list(parsed["docs"], {
     reason: bad,
     maximum: 15,
   }).map((value) => driftOf(value, docs));
-  return found
-    .filter((drift) => drift.rows.length > 0)
-    .sort((left, right) => right.rows.length - left.rows.length);
+  return {
+    drifts: found
+      .filter((drift) => drift.rows.length > 0)
+      .sort((left, right) => right.rows.length - left.rows.length),
+    left: leftOf(parsed["left"], docs),
+  };
 }
 
 export function auditPrompt(scan: Scan): string {
@@ -87,8 +103,8 @@ export function auditPrompt(scan: Scan): string {
     "For each statement that does not match the code, write one row: the line number in the doc, what the doc says, what the code does, the evidence as a relative path:line in the work tree, the commit that changed that line (from git log or git blame), and the change of the doc that makes the row match the code.",
     "Give evidence only from the code that you read. When you cannot name a path:line, leave the row out. Do not guess.",
     "Put the docs with the most rows first. Leave out each doc that matches the code. Do not write local paths, email addresses or mentions.",
-    'Return only a JSON object in your final summary: {"docs": [{"doc": doc path, "rows": [{"line": number, "says": text, "code": text, "evidence": "path:line", "commit": commit ID, "fix": text}]}]}.',
-    `Return at most ${String(resultCharacters)} characters of serialized JSON. When the rows do not fit, keep the docs with the most rows and leave out the others. Do not add prose or fences.`,
+    'Return only a JSON object in your final summary: {"docs": [{"doc": doc path, "rows": [{"line": number, "says": text, "code": text, "evidence": "path:line", "commit": commit ID, "fix": text}]}], "left": [doc path]}.',
+    `Return at most ${String(resultCharacters)} characters of serialized JSON. When the rows do not fit, keep the docs with the most rows, and put the path of each other drifted doc in \`left\`. Do not add prose or fences.`,
     JSON.stringify(scan),
   ].join("\n\n");
 }
@@ -96,6 +112,7 @@ export function auditPrompt(scan: Scan): string {
 export interface Audit {
   readonly commit: string;
   readonly drifts: readonly Drift[];
+  readonly left: readonly string[];
 }
 
 function auditedCommit(prepared: string, scan: Scan): string {
@@ -131,10 +148,8 @@ export async function auditDocs(request: {
       units: 1,
       payload: auditPrompt(request.scan),
     });
-    return {
-      commit: commit,
-      drifts: driftOfResult(completedText(result, bad), request.scan),
-    };
+    const audited = driftOfResult(completedText(result, bad), request.scan);
+    return { commit: commit, drifts: audited.drifts, left: audited.left };
   } finally {
     completedText(
       await protectedEffect({

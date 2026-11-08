@@ -151,6 +151,12 @@ const turnRefusals: readonly (readonly [unknown, string])[] = [
   [completed({ summary: "not json" }), "invalid-drift-result"],
   [completed({ summary: "x".repeat(15001) }), "drift-result-too-large"],
   [turn({ docs: {} }), "invalid-drift-result"],
+  [turn({ docs: [], left: "README.md" }), "invalid-drift-result"],
+  [turn({ docs: [], left: ["OTHER.md"] }), "invalid-drift-result"],
+  [
+    turn({ docs: [{ doc: "README.md", rows: [row()] }], left: ["README.md"] }),
+    "invalid-drift-result",
+  ],
   [
     turn({ docs: [{ doc: "OTHER.md", rows: [row()] }] }),
     "invalid-drift-result",

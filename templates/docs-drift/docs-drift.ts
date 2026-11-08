@@ -49,7 +49,7 @@ export async function docsDrift(input: DriftInput): Promise<CycleOutcome> {
       commit: audit.commit,
       docs: scan.candidates
         .map((item) => item.doc)
-        .filter((doc) => !drifted.includes(doc)),
+        .filter((doc) => !drifted.includes(doc) && !audit.left.includes(doc)),
     });
     return {
       kind: "handoff_requested",
@@ -58,7 +58,7 @@ export async function docsDrift(input: DriftInput): Promise<CycleOutcome> {
       report: driftReport(scan, {
         commit: audit.commit,
         filed: filed,
-        left: drifted.slice(filed.length),
+        left: drifted.slice(filed.length).concat(audit.left),
       }),
     };
   } catch (error) {

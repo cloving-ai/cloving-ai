@@ -176,8 +176,11 @@ that does not match the code, it writes one row:
 
 The turn returns JSON of at most 15000 characters in its final summary, because
 the Claude worker keeps only 16000 characters of a summary. When the rows do not
-fit, the turn keeps the docs with the most rows. After the turn, also after a
-failure, the `discard` method removes the work tree.
+fit, the turn keeps the docs with the most rows and names each other drifted
+doc in the list `left`. A doc in `left` keeps its earlier record, so the next
+audit checks it again, and the report counts it under "Left for a later audit".
+After the turn, also after a failure, the `discard` method removes the work
+tree.
 
 Before the turn, the workflow compares the branch of the work tree with the
 `branch` of the candidates. The `prepare` method uses the local `origin/HEAD`.

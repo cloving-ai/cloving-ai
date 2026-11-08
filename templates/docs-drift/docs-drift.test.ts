@@ -62,6 +62,29 @@ await test("CLV-317 a doc that says 30 where the code has 60 gives one ticket wi
   });
 });
 
+await test("CLV-317 a drifted doc that the turn left out of a full result keeps its earlier record and waits for a later audit", async () => {
+  using bridge = fakeStepBridge({
+    effects: effects(
+      scan([
+        candidate("README.md"),
+        candidate("AGENTS.md"),
+        candidate("CONTRIBUTING.md"),
+      ]),
+      { docs: [{ doc: "README.md", rows: [row()] }], left: ["AGENTS.md"] },
+    ),
+    effectLimit: 10,
+  });
+  const outcome = await docsDrift(input);
+  assert.deepEqual(
+    JSON.parse(payloadOf(bridge.requests, "run:docs-drift-record")),
+    { commit, docs: ["CONTRIBUTING.md"] },
+  );
+  assert.equal(
+    outcome.kind === "handoff_requested" ? outcome.report : "",
+    "Docs audited: 3 at 0123456789ab. Ticket runs requested: 1 (README.md). Left for a later audit: AGENTS.md.",
+  );
+});
+
 await test("CLV-317 when main moved after the scan, the ticket, the record and the report name the commit of the audited tree", async () => {
   const moved = "fedcba9876543210fedcba9876543210fedcba98";
   using bridge = fakeStepBridge({
@@ -283,6 +306,7 @@ await test("CLV-317 the turn gets the candidates as data and the rules of the au
     "most rows first",
     "15000 characters",
     "keep the docs with the most rows",
+    "`left`",
     "code comments",
     JSON.stringify(candidates),
   ])
