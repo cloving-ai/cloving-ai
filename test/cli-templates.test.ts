@@ -71,6 +71,7 @@ await test("CLV-223 templates list gives each template with its summary and poin
         summary: template?.["summary"],
         points: points.length,
       },
+      { name: "docs-drift", summary: summaryOf("docs-drift"), points: 0 },
       {
         name: "goal-to-tickets",
         summary: summaryOf("goal-to-tickets"),
@@ -85,7 +86,7 @@ await test("CLV-223 templates list gives each template with its summary and poin
     const human = templates(root, ["list"]);
     assert.match(
       human.stdout,
-      /^answer-review: .+ \(1 decision points\)\ndependency-audit: .+ \(0 decision points\)\ndependency-ticket: .+ \(0 decision points\)\ndevelop: .+ \(9 decision points\)\ngoal-to-tickets: .+ \(2 decision points\)\nidea-to-issue: .+ \(3 decision points\)\npatrol: .+ \(1 decision points\)\nrescue-pr: .+ \(2 decision points\)\nreview-day: .+ \(2 decision points\)\ntriage-issue: .+ \(1 decision points\)\n$/,
+      /^answer-review: .+ \(1 decision points\)\ndependency-audit: .+ \(0 decision points\)\ndependency-ticket: .+ \(0 decision points\)\ndevelop: .+ \(9 decision points\)\ndocs-drift: .+ \(0 decision points\)\ngoal-to-tickets: .+ \(2 decision points\)\nidea-to-issue: .+ \(3 decision points\)\npatrol: .+ \(1 decision points\)\nrescue-pr: .+ \(2 decision points\)\nreview-day: .+ \(2 decision points\)\ntriage-issue: .+ \(1 decision points\)\n$/,
     );
   }));
 

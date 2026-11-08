@@ -1,0 +1,24 @@
+{
+  "workflow": {
+    "workflowId": "docs-drift",
+    "effectLimit": 12,
+    "capabilities": ["command", "claude", "github"],
+    "commands": ["docs-candidates", "docs-drift-record"],
+    "schedule": {
+      "at": "07:00",
+      "timeZone": "UTC",
+      "weekdays": ["monday"],
+      "input": {}
+    },
+    "handoffs": ["docs-drift"],
+    "input": {
+      "maximumBytes": 65536,
+      "fields": { "text": { "type": "string", "optional": true } }
+    }
+  },
+  "methods": {
+    "command": ["run:docs-candidates", "run:docs-drift-record"],
+    "claude": ["run-turn"],
+    "github": ["prepare", "discard", "create-issue", "label"]
+  }
+}
