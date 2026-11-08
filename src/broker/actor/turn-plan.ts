@@ -60,8 +60,6 @@ export function planCommand(given: CommandPlanning): TurnPlan {
     return answer({ ...result, intents: turn.created });
   if (result.kind === "rejected") return answer(result);
   const later = laterSteps(result, planning);
-  if (later === undefined)
-    return answer({ kind: "rejected", reason: "note-not-recorded" });
   return {
     kind: "commit",
     receipt: {
@@ -97,9 +95,8 @@ export function planCommand(given: CommandPlanning): TurnPlan {
 function laterSteps(
   result: Accepted,
   planning: CommandPlanning,
-): readonly Step[] | undefined {
+): readonly Step[] {
   const noted = notedSteps(result, planning.request);
-  if (noted === undefined) return undefined;
   return [
     ...noted,
     ...followUps(noted.at(-1)?.result.state ?? result.state, {
@@ -110,10 +107,7 @@ function laterSteps(
   ];
 }
 
-function notedSteps(
-  result: Accepted,
-  request: TurnRequest,
-): readonly Step[] | undefined {
+function notedSteps(result: Accepted, request: TurnRequest): readonly Step[] {
   const command = parseCommand(request.command);
   if (command?.kind !== "admit-run" || command.note === undefined) return [];
   const noteId = `note-${operationDigest(command.commandId).slice(0, 32)}`;
@@ -128,7 +122,8 @@ function notedSteps(
     },
     recordedAt: request.recordedAt,
   });
-  if (noted.kind !== "accepted") return undefined;
+  if (noted.kind !== "accepted")
+    throw new Error(`note-not-recorded: ${noted.kind}`);
   return [{ result: noted, before: result.state }];
 }
 

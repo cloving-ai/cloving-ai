@@ -30,8 +30,10 @@ export async function runNotes(
 
 export async function notesOf(
   context: Pick<ServiceContext, "authority" | "noteReceipts">,
-  runId: string,
+  run: { readonly runId: string; readonly continuedFrom?: string },
 ): Promise<Fields> {
+  if (run.continuedFrom === undefined) return {};
+  const { runId } = run;
   const notes = await runNotes(context, runId);
   if (notes.length === 0) return {};
   const operations = await context.authority.effects.operations(runId);

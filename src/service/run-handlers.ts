@@ -307,7 +307,7 @@ export async function status(
       ...full({ ...view, ...totals }),
       spendLimitUsd: (await pinnedSpendLimit(context, view.runId)) ?? null,
       ...(await turnDetailsOf(context, { runId: view.runId, totals })),
-      ...(await notesOf(context, view.runId)),
+      ...(await notesOf(context, view)),
       ...(await commandFields(context, view.commandOperations)),
       outcome: await outcomeOf(context, view),
       decisions: await decidedOf(context, {

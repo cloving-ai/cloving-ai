@@ -1,13 +1,14 @@
-import type { HarnessSettings } from "../harness-defaults.ts";
-import type { turnHarness } from "../harness-defaults.ts";
-import type { ProtectedIntent } from "../broker/actor/delivery-intents.ts";
+import type { HarnessSettings, turnHarness } from "../harness-defaults.ts";
+import type {
+  AdapterOutcome,
+  ProtectedIntent,
+} from "../broker/actor/delivery-intents.ts";
 import type { TurnSettings } from "../project-settings.ts";
 import type { RunningTurn } from "./claude-turn.ts";
 import type { Located, WorkerReport } from "./operation-journal.ts";
 import type { RetrySettings } from "./retrying-turn.ts";
 import type { NoteDesk, NotePort } from "./turn-notes.ts";
 import type { WorkTree } from "./work-tree.ts";
-import type { AdapterOutcome } from "../broker/actor/delivery-intents.ts";
 
 export interface ClaudeWorkerSettings
   extends Pick<RetrySettings, "retryDelay" | "log">, HarnessSettings {
@@ -54,12 +55,4 @@ export interface Started extends Located {
   readonly tree: WorkTree;
   readonly turnSettings: TurnSettings;
   readonly noteIds: readonly string[];
-}
-
-export async function halted(parts: Parts, active: Active): Promise<void> {
-  active.stopping.requested = true;
-  active.stopping.controller.abort();
-  const turn = await active.turn.catch(() => undefined);
-  turn?.stop(parts.settings.stopMilliseconds ?? claudeLimits.stopMilliseconds);
-  await active.concluded;
 }

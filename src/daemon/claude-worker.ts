@@ -35,7 +35,6 @@ import { checkedProfiles, selectedProfile } from "./worker-profile.ts";
 import { noteDesk, noteMetadata } from "./turn-notes.ts";
 import {
   claudeLimits,
-  halted,
   type Active,
   type ClaudeWorkerSettings,
   type Parts,
@@ -257,6 +256,14 @@ async function delivered(
     throw error;
   });
   return { receipt: place.key, worker };
+}
+
+async function halted(parts: Parts, active: Active): Promise<void> {
+  active.stopping.requested = true;
+  active.stopping.controller.abort();
+  const turn = await active.turn.catch(() => undefined);
+  turn?.stop(parts.settings.stopMilliseconds ?? claudeLimits.stopMilliseconds);
+  await active.concluded;
 }
 
 async function stopped(
