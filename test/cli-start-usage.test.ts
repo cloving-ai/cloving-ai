@@ -220,3 +220,23 @@ await test("CLV-286 start help says that CLOVING_WATCH_ACTIONS=off also removes 
     /run form, the queue control and their write endpoints/,
   );
 });
+
+await test("CLV-312 start help and the README describe a workspace start of several repositories", () => {
+  const help = String(commandUsage["start"]);
+  assert.match(
+    help,
+    /^Usage: cloving start \[--repository <directory> \| --workspace\] \[--reset-queue\]$/m,
+  );
+  assert.match(
+    help.replaceAll("\n", " "),
+    /--workspace.*<config>\/cloving\/workspace\.json.*"version": 1.*"repositories".*absolute path.*name.*last part of the path.*own daemon, runtime directory and settings.*no watch page.*Control-C stops all repositories.*stops the other repositories/,
+  );
+  const readme = readFileSync(new URL("../README.md", import.meta.url), "utf8");
+  const workspace = readme
+    .split("\n")
+    .find((line) => line.startsWith("`cloving start --workspace`"));
+  assert.match(
+    workspace ?? "",
+    /<config>\/cloving\/workspace\.json.*own daemon, runtime directory and settings.*no watch page.*Control-C stops all repositories.*stops the other repositories/,
+  );
+});

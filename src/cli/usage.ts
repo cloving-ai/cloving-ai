@@ -181,12 +181,21 @@ Serves a page on http://127.0.0.1:<port>/ that shows the runs live: the state,
 the events, the work of the worker and each pending decision.
 The default port is 3663. The page is read only. Stop it with Control-C.
 `,
-  start: `Usage: cloving start [--repository <directory>] [--reset-queue]
+  start: `Usage: cloving start [--repository <directory> | --workspace] [--reset-queue]
 
 Starts the Cloving service for one git repository, with the workflow host,
 the worker and the watch page. The default repository is the current
 directory.
 Stop it with Control-C.
+
+With --workspace, one start serves each repository of the workspace file
+<config>/cloving/workspace.json, for example
+{"version": 1, "repositories": [{"path": "/work/app", "name": "app"}]}.
+Each repository needs an absolute path. The optional name has 1 to 64
+letters, digits, dots, dashes or underscores; the default is the last part of
+the path. Each repository gets its own daemon, runtime directory and settings,
+as with one start, and no watch page. Control-C stops all repositories. When
+one repository stops with an error, Cloving stops the other repositories.
 
 The queue continues after unsuccessful runs and stops after three runs in a row
 without a successful handoff. A successful handoff resets the count; ordinary restarts preserve the count.
