@@ -45,6 +45,7 @@ import { clearedTreeClaims } from "./tree-claims.ts";
 import { authorityRuns } from "./record-sweep.ts";
 import { currentBundle, type CurrentBundle } from "./bundle-sweep.ts";
 import { retentionExpiry, turnDetailsPlace } from "./turn-details.ts";
+import { transcriptFiles } from "./transcript-files.ts";
 import { githubReader } from "./github-read.ts";
 import { defaultRetention } from "../record-retention.ts";
 import { threadPoolWatch, type ThreadPoolWatch } from "../cli/thread-pool.ts";
@@ -201,6 +202,10 @@ function retentionReads(settings: DaemonSettings, ports: Promise<HostPorts>) {
   };
   return {
     turnDetails: turnDetailsPlace(place),
+    turnTranscript: {
+      read: transcriptFiles(settings.directory),
+      privateTexts: settings.privateTexts ?? [],
+    },
     retentionExpired: retentionExpiry(place),
     githubRead: githubReader(settings),
   };
