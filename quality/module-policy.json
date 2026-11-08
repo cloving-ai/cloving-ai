@@ -2065,7 +2065,6 @@
     "test/workspace-hold.test.ts": "test",
     "test/workspace-permits.test.ts": "test",
     "test/workspace-record.test.ts": "test",
-    "test/workspace-restart-supervisor.test.ts": "test",
     "test/workspace-restart.test.ts": "test",
     "test/workspace-start-harness.ts": "test",
     "test/workspace-start-permits.test.ts": "test",
