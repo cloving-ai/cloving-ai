@@ -1,0 +1,24 @@
+{
+  "workflow": {
+    "workflowId": "review-checks",
+    "effectLimit": 12,
+    "capabilities": ["command", "claude", "github"],
+    "commands": ["review-comments", "review-checks-record"],
+    "schedule": {
+      "at": "07:00",
+      "timeZone": "UTC",
+      "weekdays": ["monday"],
+      "input": {}
+    },
+    "handoffs": ["review-checks"],
+    "input": {
+      "maximumBytes": 65536,
+      "fields": { "text": { "type": "string", "optional": true } }
+    }
+  },
+  "methods": {
+    "command": ["run:review-comments", "run:review-checks-record"],
+    "claude": ["run-turn"],
+    "github": ["prepare", "discard", "create-issue", "label"]
+  }
+}

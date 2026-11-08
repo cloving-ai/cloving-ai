@@ -10,6 +10,22 @@ import { withFiles } from "./quality/files-fixture.ts";
 import { packedCommand } from "./packed-install-fixture.ts";
 
 export const packedReviewSources = [
+  "templates/review-checks/review-checks.test.ts",
+  "templates/review-checks/review-checks.ts",
+  "templates/review-checks/review-checks/decision.ts",
+  "templates/review-checks/review-checks/facts.ts",
+  "templates/review-checks/review-checks/input.ts",
+  "templates/review-checks/review-checks/issue.ts",
+  "templates/review-checks/review-checks/pass.ts",
+  "templates/review-checks/review-checks/record.ts",
+  "templates/review-checks/review-checks/review-checks-record.mts",
+  "templates/review-checks/review-checks/review-comments.mts",
+  "templates/review-checks/review-checks/review-facts.mts",
+  "templates/review-checks/review-checks/review-record.mts",
+  "templates/review-checks/review-checks/scenarios.ts",
+  "templates/review-checks/review-checks/suggestions.ts",
+  "templates/review-checks/review-checks/tickets.ts",
+  "templates/review-checks/review-checks/turn.ts",
   "templates/review-day/review-day.test.ts",
   "templates/review-day/review-day.ts",
   "templates/review-day/review-day/critique.ts",

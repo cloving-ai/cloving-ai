@@ -26,6 +26,7 @@ interface Renaming {
   readonly id: string;
   readonly from: string;
   readonly to: string;
+  readonly timeZone: string;
 }
 
 export async function copyTemplate(input: {
@@ -34,6 +35,7 @@ export async function copyTemplate(input: {
   readonly id: string;
   readonly folder: string;
   readonly takenNames: ReadonlySet<string>;
+  readonly timeZone: string;
 }): Promise<{
   readonly template: Template;
   readonly files: readonly string[];
@@ -78,6 +80,7 @@ function functionRenaming(
     readonly name: string;
     readonly id: string;
     readonly takenNames: ReadonlySet<string>;
+    readonly timeZone: string;
   },
 ): Renaming {
   const from = camelName(input.name);
@@ -89,7 +92,13 @@ function functionRenaming(
   for (const name of input.takenNames) names.add(name);
   let to = camelName(input.id);
   while (to !== from && (names.has(to) || reservedWord(to))) to += "Workflow";
-  return { template: input.name, id: input.id, from, to };
+  return {
+    template: input.name,
+    id: input.id,
+    from,
+    to,
+    timeZone: input.timeZone,
+  };
 }
 
 function reservedWord(name: string): boolean {
@@ -114,6 +123,15 @@ function copiedContent(
   return renamedSource(source, renaming);
 }
 
+function zoned(
+  workflow: Readonly<Record<string, unknown>>,
+  timeZone: string,
+): Readonly<Record<string, unknown>> {
+  const schedule = record(workflow["schedule"]);
+  if (typeof schedule?.["timeZone"] !== "string") return workflow;
+  return { ...workflow, schedule: { ...schedule, timeZone } };
+}
+
 function copiedDeclaration(text: string, renaming: Renaming): string {
   const declaration = record(JSON.parse(text));
   const workflow = record(declaration?.["workflow"]);
@@ -125,7 +143,7 @@ function copiedDeclaration(text: string, renaming: Renaming): string {
         template: renaming.template,
         ...declaration,
         workflow: {
-          ...workflow,
+          ...zoned(workflow, renaming.timeZone),
           workflowId: renaming.id,
           ...copiedHandoffs(workflow["handoffs"], renaming),
         },
