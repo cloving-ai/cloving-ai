@@ -62,6 +62,7 @@ const options = {
   since: { type: "string" },
   from: { type: "string" },
   bundle: { type: "string" },
+  note: { type: "string" },
   repository: { type: "string" },
   harness: { type: "string" },
   at: { type: "string" },
@@ -80,7 +81,7 @@ type Parsed = ReturnType<
   }>
 >;
 
-const textOptions = ["--prompt", "--text"];
+const textOptions = ["--prompt", "--text", "--note"];
 
 function knownFlag(token: string): boolean {
   if (token.startsWith("--")) return Object.hasOwn(options, token.slice(2));

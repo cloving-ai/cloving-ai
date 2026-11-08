@@ -228,10 +228,15 @@ const bundle: Argument = {
   valid: (value) => value === "retained" || value === "current",
 };
 
+const note: Argument = {
+  schema: { type: "string" },
+  valid: (value) => typeof value === "string",
+};
+
 const continueTool: Tool = {
   name: "cloving_continue",
-  description: `Continue a failed run, or a run that completed blocked, in a new run on the same branch and pull request. The new run reuses the completed effects before the failed step, or before the step in from. ${repeat}`,
-  arguments: { runId: key, from: step, bundle, commandId: key },
+  description: `Continue a failed run, or a run that completed blocked, in a new run on the same branch and pull request. The new run reuses the completed effects before the failed step, or before the step in from. The first agent turn that the new run starts gets the note under Notes from the operator. ${repeat}`,
+  arguments: { runId: key, from: step, bundle, note, commandId: key },
   required: ["runId", "commandId"],
   annotations: mutation,
   call: (values) =>
@@ -243,6 +248,7 @@ const continueTool: Tool = {
           from: typeof values["from"] === "string" ? values["from"] : null,
           bundle: values["bundle"] === "current" ? "current" : "retained",
           commandId,
+          note: typeof values["note"] === "string" ? values["note"] : null,
           json: true,
         },
         commandId,

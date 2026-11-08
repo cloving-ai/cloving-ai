@@ -1,3 +1,4 @@
+import type { WatchNote } from "./watch-notes-view.ts";
 import type { ShownSchedule, ShownSchedules } from "./schedule-render.ts";
 import type { CommandWaitView } from "../authority/command-wait-view.ts";
 import type { CommandEffect } from "../command-settings.ts";
@@ -187,6 +188,7 @@ export interface WatchRun {
   readonly continuedFrom?: string;
   readonly continuedBy?: string;
   readonly continuedCostUsd?: number | null;
+  readonly notes?: readonly WatchNote[];
   readonly mergeProof?: PrIdentity | null;
   readonly issueIdentity?: PrIdentity | null;
   readonly issueUpdate?: "failed";

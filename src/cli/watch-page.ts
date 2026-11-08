@@ -17,6 +17,7 @@ import {
   cardSubmitKey,
 } from "./watch-card-view.ts";
 import { watchClient } from "./watch-client.ts";
+import { RunNotes } from "./watch-notes-view.ts";
 import { watchPhoneClient } from "./watch-phone-client.ts";
 import {
   PhoneAsk,
@@ -66,6 +67,7 @@ import {
 import { Demo, Shelf, Tile } from "./watch-shelf-view.ts";
 import {
   ContinueAction,
+  ContinueForm,
   DismissAction,
   Need,
   NeedMessage,
@@ -218,6 +220,7 @@ const functions = [
   CardReview,
   Card,
   HandoffLinks,
+  RunNotes,
   Column,
   columnCollapsed,
   Board,
@@ -242,6 +245,7 @@ const functions = [
   needsOf,
   needMeta,
   ContinueAction,
+  ContinueForm,
   DismissAction,
   NeedMessage,
   Need,

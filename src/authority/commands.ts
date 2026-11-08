@@ -1,6 +1,13 @@
 import { isTicketStatus } from "../ticket-status.ts";
 import { operationScope } from "../operation-identity.ts";
 import { isInstant } from "./instants.ts";
+import {
+  effectShapes,
+  reportedOutcomes,
+  type Fields,
+  type Shape,
+} from "./command-shapes.ts";
+import { isNoteId, isNoteText } from "./notes.ts";
 import { isBlockedReason, isPromotionId } from "../workflow-contracts.ts";
 import {
   commandEvents,
@@ -14,16 +21,6 @@ import {
 const identifier = /^[A-Za-z0-9._:/-]{1,128}$/;
 const digest = /^sha256:[0-9a-f]{64}$/;
 const operation = /^[\x20-\x7e]{1,512}$/;
-
-type Fields = Readonly<Record<string, unknown>>;
-
-interface Shape {
-  readonly required: readonly string[];
-  readonly optional?: readonly string[];
-  readonly groups?: readonly (readonly string[])[];
-  readonly consistent?: (fields: Fields) => boolean;
-  readonly validators?: Readonly<Record<string, (value: unknown) => boolean>>;
-}
 
 const revised: Shape = { required: ["expectedRevision"] };
 
@@ -61,6 +58,7 @@ const shapes: Readonly<Record<string, Shape>> = {
       "continuedFrom",
       "reuseBefore",
       "continueRequest",
+      "note",
     ],
     groups: [
       ["parentRunId", "chainId"],
@@ -68,6 +66,12 @@ const shapes: Readonly<Record<string, Shape>> = {
       ["effectLimit", "capabilities"],
       ["continuedFrom", "reuseBefore", "continueRequest"],
     ],
+    consistent: (fields) =>
+      fields["note"] === undefined || fields["continuedFrom"] !== undefined,
+  },
+  "note-run": {
+    required: ["noteId", "note", "source"],
+    validators: { source: (value) => value === "continue" },
   },
   "mark-started": revised,
   "open-gate": {
@@ -138,66 +142,9 @@ const shapes: Readonly<Record<string, Shape>> = {
     groups: [["attempt", "limit"]],
   },
   "record-dispatch": { required: ["operationId", "receipt"] },
-  "request-effect": {
-    required: [
-      "operationId",
-      "capability",
-      "method",
-      "target",
-      "payload",
-      "inputDigest",
-      "units",
-      "recoveryLimit",
-    ],
-    optional: [
-      "resource",
-      "transport",
-      "source",
-      "sourceGeneration",
-      "spendLimitUsd",
-      "recordedCostUsd",
-    ],
-    groups: [
-      ["source", "sourceGeneration"],
-      ["spendLimitUsd", "recordedCostUsd"],
-    ],
-  },
-  "grant-lease": {
-    required: ["operationId", "leaseGeneration", "expiresAt", "capacity"],
-    optional: ["queueLimit"],
-  },
-  "expire-lease": { required: ["operationId", "leaseGeneration"] },
-  "report-effect": {
-    required: [
-      "operationId",
-      "inputDigest",
-      "leaseGeneration",
-      "worker",
-      "outcome",
-    ],
-    optional: ["result", "reason", "evidence", "commandOutput"],
-    consistent: (fields) =>
-      reportedOutcomes.includes(String(fields["outcome"])) &&
-      (fields["outcome"] === "failed" ||
-        (fields["result"] !== undefined) ===
-          (fields["outcome"] === "completed")) &&
-      (fields["reason"] !== undefined) === (fields["outcome"] === "failed"),
-  },
-  "record-outcome": {
-    required: ["operationId", "outcome"],
-    optional: [
-      "leaseGeneration",
-      "receipt",
-      "worker",
-      "result",
-      "reason",
-      "evidence",
-      "commandOutput",
-    ],
-  },
+  ...effectShapes,
 };
 
-const reportedOutcomes = ["completed", "failed", "stopped"];
 const outcomes = [...reportedOutcomes, "accepted", "not-started", "unknown"];
 
 const conditions = [
@@ -346,6 +293,8 @@ const validators: Readonly<Record<string, (value: unknown) => boolean>> = {
   reuseBefore: positive,
   continuedFrom: isRecordKey,
   continueRequest: isDigest,
+  note: isNoteText,
+  noteId: isNoteId,
   units: whole,
   recoveryLimit: (value) => positive(value) && atMost(value, recoveryBound),
   leaseGeneration: positive,

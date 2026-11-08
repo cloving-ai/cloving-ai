@@ -1,15 +1,14 @@
-import { turnHarness, type HarnessSettings } from "../harness-defaults.ts";
+import { turnHarness } from "../harness-defaults.ts";
 import { turnStartEnvironment } from "./turn-variables.ts";
 import { profileCommand, type TurnProfile } from "../turn-profile.ts";
 import type {
   AdapterOutcome,
   Delivery,
   DeliveryIntent,
-  ProtectedIntent,
 } from "../broker/actor/delivery-intents.ts";
 import { type RunningTurn } from "./claude-turn.ts";
 import { turnOutcome } from "./turn-report.ts";
-import { startRetriedTurn, type RetrySettings } from "./retrying-turn.ts";
+import { startRetriedTurn } from "./retrying-turn.ts";
 import {
   located,
   readRecord as read,
@@ -18,14 +17,8 @@ import {
   writeRecord as written,
   type Located,
   type Recorded,
-  type WorkerReport,
 } from "./operation-journal.ts";
-import {
-  firstTurn,
-  treeFailure,
-  workTree,
-  type WorkTree,
-} from "./work-tree.ts";
+import { firstTurn, treeFailure, workTree } from "./work-tree.ts";
 import {
   recordedHarness,
   interruptedReply,
@@ -39,20 +32,19 @@ import {
   turnIntent,
 } from "./claude-recovery.ts";
 import { checkedProfiles, selectedProfile } from "./worker-profile.ts";
-import type { TurnSettings } from "../project-settings.ts";
+import { noteDesk, noteMetadata } from "./turn-notes.ts";
+import {
+  claudeLimits,
+  type Active,
+  type ClaudeWorkerSettings,
+  type Parts,
+  type Started,
+} from "./claude-worker-parts.ts";
 
-export interface ClaudeWorkerSettings
-  extends Pick<RetrySettings, "retryDelay" | "log">, HarnessSettings {
-  readonly turnSettings: () => TurnSettings;
-  readonly workflowId?: (runId: string) => Promise<string | undefined>;
-  readonly repository: string;
-  readonly worktrees: string;
-  readonly journal: string;
-  readonly command: readonly string[];
-  readonly document: (digest: string) => Promise<string | undefined>;
-  readonly report: (report: WorkerReport) => Promise<unknown>;
-  readonly stopMilliseconds?: number;
-}
+export {
+  claudeLimits,
+  type ClaudeWorkerSettings,
+} from "./claude-worker-parts.ts";
 
 export interface ClaudeWorker extends Delivery {
   readonly recover: (intent: DeliveryIntent) => Promise<void>;
@@ -61,38 +53,7 @@ export interface ClaudeWorker extends Delivery {
   readonly close: () => Promise<void>;
 }
 
-export const claudeLimits = {
-  summaryCharacters: 16_000,
-  resultBytes: 48_000,
-  stopMilliseconds: 15_000,
-};
-
 const worker = "claude";
-
-interface Active {
-  readonly worker: string;
-  readonly turn: Promise<RunningTurn>;
-  readonly concluded: Promise<void>;
-  readonly stopping: {
-    requested: boolean;
-    stoppedBy?: "daemon-shutdown";
-    readonly controller: AbortController;
-  };
-}
-
-interface Parts {
-  readonly reconciling: Map<string, Promise<AdapterOutcome>>;
-  readonly settings: ClaudeWorkerSettings;
-  readonly active: Map<string, Active>;
-  readonly stopping: AbortController;
-}
-
-interface Started extends Located {
-  readonly harness: ReturnType<typeof turnHarness>;
-  readonly intent: ProtectedIntent;
-  readonly tree: WorkTree;
-  readonly turnSettings: TurnSettings;
-}
 
 function reconciled(
   parts: Parts,
@@ -155,13 +116,14 @@ async function resumed(
   if (aborted()) return failure("claude-start-aborted");
   if (prompt === undefined)
     return interruptedReply(request, "claude-turn-interrupted");
+  const noted = await parts.notes.recorded({ ...intent, prompt, started });
   await begun(parts, {
     key,
     folder,
     intent,
     ...plan,
     signal,
-    prompt,
+    ...noted,
     turnSettings: current,
   });
   return { kind: "accepted", receipt: key, worker };
@@ -220,6 +182,7 @@ async function begun(
       ...(start.resume === undefined ? {} : { resume: start.resume }),
       stopping: stopping.controller,
       metadata: {
+        ...noteMetadata(start),
         harness: harness.worker,
         operationId: intent.operationId,
         target: intent.target,
@@ -278,16 +241,17 @@ async function delivered(
   const place = located(settings.journal, intent.operationId);
   const first = await firstTurn(settings, { tree, intent });
   if (aborted()) return failure("claude-start-aborted");
+  const noted = await parts.notes.claim({ ...intent, prompt });
   await begun(parts, {
     ...place,
     intent,
     tree: first,
-    prompt,
+    ...noted,
     profile,
     harness: turnHarness(settings, profile),
     signal,
     turnSettings: current,
-  });
+  }).finally(() => parts.notes.settle({ ...noted, folder: place.folder }));
   return { receipt: place.key, worker };
 }
 
@@ -357,6 +321,7 @@ export function claudeWorker(settings: ClaudeWorkerSettings): ClaudeWorker {
     active: new Map(),
     reconciling: new Map(),
     stopping: new AbortController(),
+    notes: noteDesk(settings),
   };
   const guarded = <T>(intent: DeliveryIntent, run: () => Promise<T>) =>
     intent.method === "run-turn:analyze-chats"

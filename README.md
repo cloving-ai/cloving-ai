@@ -1113,6 +1113,7 @@ A run can stop on a problem that a person can fix, for example a rejected push. 
 cloving run continue <run-id>
 cloving run continue <run-id> --from pull-request/github-open-pr
 cloving run continue <run-id> --from implement/claude-turn/2 --bundle current
+cloving run continue <run-id> --from implement/claude-turn --note "Merge the branch of the first run first."
 ```
 
 The command admits a new run of the same workflow with the same input. The new run keeps the cycle of the old run, so it uses the same branch, work tree and pull request. An effect of the new run whose scope (phase, operation, round and key) is the same as a completed effect of the old run gets the old result with the disposition `existing`. The worker does not do that effect again. The failed effect and all effects after it run again. GitHub label effects always run again, so the ticket labels follow the new run. With `--from <phase>/<operation>[/<round>]`, the first visit of that step and all steps after it run again.
@@ -1129,11 +1130,12 @@ The service also refuses these continuations:
 - A run of a queue workflow gets `queue-spend-limit` while the queue holds for its daily spend limit. The spend of the old run counts in that daily total.
 - A run whose ticket issue is closed gets `continuation-ticket-closed`, and a run whose pull request is merged gets `continuation-pull-request-merged`. The service reads the issue of the `GitHub issue:` line of the ticket and the pull request that the run opened with the GitHub command of the service. When a read fails, the service does not refuse. The watch page shows no **Continue** button for such a run, because **Needs you** leaves it out.
 - A run of a queue workflow gets `continuation-lanes-full` when all lanes of the queue are busy, because the new run takes a lane. The reply has `busy` and `lanes`, for example `4 of 4 lanes are busy`.
-- A request with a known command ID and a different run, `--from` or `--bundle` gets `conflicting-command`. The same request gets the stored receipt again.
+- A request with a known command ID and a different run, `--from`, `--bundle` or `--note` gets `conflicting-command`. The same request gets the stored receipt again.
+- A blank note, or a note of more than 4000 characters, gets `invalid-note`.
 
 A workflow can continue a run of its own handoff chain with the step `continueRun`. The authority admits only one continuation of a run, also when two requests come at the same time. The service checks the lanes and admits a continuation of a queue run one request at a time, together with the queue admissions of the same workflow. So two requests at the same time cannot both take the last free lane. When a continuation of a run in the queue failure streak completes with `handoff_requested`, the queue clears the failure streak, as it does for each queue run that hands off.
 
-On the watch page, **Needs you** also lists each failed or blocked run that no run continues yet. With watch actions on, the item has a **Continue** button. The button continues the run from the failed step with the kept bundle, and the reply of the service shows under the run. A blocked run needs `cloving run continue <run-id> --from <step>`.
+On the watch page, **Needs you** also lists each failed or blocked run that no run continues yet. With watch actions on, the item has a **Continue** button. The button opens a small form with a note field, which can stay empty. **Continue** in the form or Enter sends the same request as `cloving run continue <run-id> --note <text>`, from the failed step with the kept bundle. Esc closes the form. The reply of the service shows under the run. The run detail shows each note with its time and the turn that got it, or `waiting`. A blocked run needs `cloving run continue <run-id> --from <step>`.
 
 To remove a stopped run from **Needs you** with no continuation, dismiss it:
 
@@ -1142,6 +1144,18 @@ cloving dismiss <run-id>
 ```
 
 The **Dismiss** button of the item sends the same command. The MCP tool `cloving_dismiss` does the same. `cloving events <run-id>` shows the dismissal as `run.dismissed`.
+
+#### Give the next turn a note
+
+When you know the cause of the stop, tell the next turn what to do differently with `--note <text>`. The MCP tool `cloving_continue` takes the same text in `note`. The service removes the spaces at the start and end of the note. Then the note must have 1 to 4000 characters.
+
+The service records the note on the new run as the event `run.noted`, in the same commit as the new run. The event has the note ID, the text, the time and the source `continue`. The note is part of the continuation request.
+
+The first agent turn that the new run starts gets the note before its turn text, in a section `Notes from the operator:`. A reused effect does not start a turn, so it does not get the note. The worker adds the section, so a workflow needs no change. The worker records the note IDs of a turn in the turn journal. A turn gets the note only when its agent process starts. When the turn stops before that, for example because the daemon stopped, the next turn of the run gets the note. When the daemon restarts during that turn, the resumed turn keeps the same notes, and no other turn gets them.
+
+`cloving status <run-id>` shows each note with its time and the step of the turn that got it, for example `Note at 2026-11-08T10:00:00.000Z, got by implement/claude-turn/1: Merge the branch of the first run first.`. Before a turn gets the note, the line shows `waiting`. In the status JSON, each item of `notes` has `noteId`, `text`, `source`, `recordedAt` and `receivedBy`, which is the operation ID of the turn or `null`.
+
+The status reads the turn that got a note from the turn journal. When the retention rule moves the turn records to the archive, the status reads them in the `journal` folder of the archive. When the retention rule deletes the turn records, the status cannot find the turn that got the note. Then the line shows `receipt deleted by the retention rule`, and the JSON item adds `"receipt": "deleted"`.
 
 ### Rescue stuck pull requests
 

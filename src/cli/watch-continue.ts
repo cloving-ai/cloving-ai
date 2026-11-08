@@ -17,11 +17,22 @@ type RunAction = (
 function runAction(operation: "continue-run" | "dismiss-run"): RunAction {
   return async (actions, request) => {
     if (!actionAllowed(actions, request)) return null;
-    const runId = record(await actionBody(request))?.["runId"];
+    const body = record(await actionBody(request));
+    const runId = body?.["runId"];
+    const note = body?.["note"];
     if (!isRecordKey(runId)) return null;
+    if (
+      note !== undefined &&
+      (operation !== "continue-run" || typeof note !== "string")
+    )
+      return null;
     const reply = await send(actions.runtimeDirectory, {
       operation,
-      parameters: { runId, commandId: randomUUID() },
+      parameters: {
+        runId,
+        commandId: randomUUID(),
+        ...(note === undefined ? {} : { note }),
+      },
     });
     return JSON.stringify(
       reply.kind === "result" ? reply.result : { error: reply.error },
