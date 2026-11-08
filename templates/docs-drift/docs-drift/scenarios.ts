@@ -1,10 +1,27 @@
 import type { ScenarioRequest } from "cloving/workflows/testing";
 
+export type JsonValue =
+  | string
+  | number
+  | null
+  | readonly JsonValue[]
+  | { readonly [key: string]: JsonValue };
+
+type JsonFields = Readonly<Record<string, JsonValue>>;
+
+function isJsonValue(value: unknown): value is JsonValue {
+  if (value === null) return true;
+  if (["string", "number"].includes(typeof value)) return true;
+  if (Array.isArray(value)) return value.every((item) => isJsonValue(item));
+  if (typeof value !== "object") return false;
+  return Object.values(value).every((item) => isJsonValue(item));
+}
+
 export const input = { cycleId: "drift-1", input: {} };
 
 export const commit = "0123456789abcdef0123456789abcdef01234567";
 
-export function completed(value: unknown) {
+export function completed(value: JsonValue) {
   return {
     kind: "completed" as const,
     operationId: "operation",
@@ -13,10 +30,7 @@ export function completed(value: unknown) {
   };
 }
 
-export function candidate(
-  doc: string,
-  fields: Readonly<Record<string, unknown>> = {},
-) {
+export function candidate(doc: string, fields: JsonFields = {}) {
   return {
     doc,
     since: null,
@@ -27,13 +41,13 @@ export function candidate(
 }
 
 export function scan(
-  candidates: readonly unknown[],
-  fields: Readonly<Record<string, unknown>> = {},
+  candidates: readonly JsonValue[],
+  fields: JsonFields = {},
 ) {
   return { commit, branch: "main", candidates, more: 0, ...fields };
 }
 
-export function row(fields: Readonly<Record<string, unknown>> = {}) {
+export function row(fields: JsonFields = {}) {
   return {
     line: 42,
     says: "The default of `queue.seconds` is 30.",
@@ -45,13 +59,13 @@ export function row(fields: Readonly<Record<string, unknown>> = {}) {
   };
 }
 
-export function turn(result: unknown) {
+export function turn(result: JsonValue) {
   return completed({ summary: JSON.stringify(result) });
 }
 
 export function effects(
-  candidates: unknown,
-  result: Readonly<Record<string, unknown>> = { docs: [] },
+  candidates: JsonValue,
+  result: JsonFields = { docs: [] },
 ) {
   return {
     "command run:docs-candidates": [completed(candidates)],
@@ -83,12 +97,15 @@ export function created(number: number) {
   };
 }
 
-export function payloads(requests: readonly ScenarioRequest[]): unknown[] {
-  return requests.flatMap((request) =>
-    request[0] === "effect"
-      ? [[request[1].method, JSON.parse(request[1].payload)]]
-      : [],
-  );
+export function payloads(
+  requests: readonly ScenarioRequest[],
+): (readonly [string, JsonValue])[] {
+  return requests.flatMap((request): (readonly [string, JsonValue])[] => {
+    if (request[0] !== "effect") return [];
+    const parsed: unknown = JSON.parse(request[1].payload);
+    if (!isJsonValue(parsed)) throw new Error("invalid-payload");
+    return [[request[1].method, parsed]];
+  });
 }
 
 export function methods(requests: readonly ScenarioRequest[]) {
