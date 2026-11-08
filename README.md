@@ -1151,9 +1151,11 @@ When you know the cause of the stop, tell the next turn what to do differently w
 
 The service records the note on the new run as the event `run.noted`, in the same commit as the new run. The event has the note ID, the text, the time and the source `continue`. The note is part of the continuation request.
 
-The first agent turn that the new run starts gets the note before its turn text, in a section `Notes from the operator:`. A reused effect does not start a turn, so it does not get the note. The worker adds the section, so a workflow needs no change. The worker records the note IDs of a turn in the turn journal. When the daemon restarts during that turn, the resumed turn keeps the same notes, and no other turn gets them.
+The first agent turn that the new run starts gets the note before its turn text, in a section `Notes from the operator:`. A reused effect does not start a turn, so it does not get the note. The worker adds the section, so a workflow needs no change. The worker records the note IDs of a turn in the turn journal. A turn gets the note only when its agent process starts. When the turn stops before that, for example because the daemon stopped, the next turn of the run gets the note. When the daemon restarts during that turn, the resumed turn keeps the same notes, and no other turn gets them.
 
 `cloving status <run-id>` shows each note with its time and the step of the turn that got it, for example `Note at 2026-11-08T10:00:00.000Z, got by implement/claude-turn/1: Merge the branch of the first run first.`. Before a turn gets the note, the line shows `waiting`. In the status JSON, each item of `notes` has `noteId`, `text`, `source`, `recordedAt` and `receivedBy`, which is the operation ID of the turn or `null`.
+
+The status reads the turn that got a note from the turn journal. When the retention rule moves the turn records to the archive, the status reads them in the `journal` folder of the archive. When the retention rule deletes the turn records, the status cannot find the turn that got the note. Then the line shows `receipt deleted by the retention rule`, and the JSON item adds `"receipt": "deleted"`.
 
 ### Rescue stuck pull requests
 

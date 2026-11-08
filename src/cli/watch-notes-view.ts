@@ -1,4 +1,4 @@
-import { operationStep } from "../operation-identity.ts";
+import { noteReceipt } from "./note-render.ts";
 import { part } from "./run-command-render.ts";
 import { element, type Shown } from "./watch-element.ts";
 
@@ -6,14 +6,7 @@ export interface WatchNote {
   readonly noteId: string;
   readonly text: string;
   readonly recordedAt: string;
-  readonly turn: string | null;
-}
-
-function turnOf(value: unknown): string | null {
-  if (typeof value !== "string") return null;
-  const step = operationStep(value);
-  if (step === null) return value;
-  return `${step.phase}/${step.operation}/${String(step.round)}`;
+  readonly receipt: string;
 }
 
 export function notesOf(value: unknown): {
@@ -25,7 +18,7 @@ export function notesOf(value: unknown): {
       noteId: String(part(note, "noteId")),
       text: String(part(note, "text")),
       recordedAt: String(part(note, "recordedAt")),
-      turn: turnOf(part(note, "receivedBy")),
+      receipt: noteReceipt(note),
     })),
   };
 }
@@ -48,7 +41,7 @@ export function RunNotes(props: {
               element("p", { class: "note-text", children: note.text }),
               element("p", {
                 class: "meta",
-                children: `${note.recordedAt} · ${note.turn === null ? "waiting" : `got by ${note.turn}`}`,
+                children: `${note.recordedAt} · ${note.receipt}`,
               }),
             ],
           }),

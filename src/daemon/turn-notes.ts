@@ -26,13 +26,24 @@ export interface NoteDesk {
   readonly recorded: (
     request: NoteRequest & { readonly started: unknown },
   ) => Promise<Noted>;
-  readonly release: (noted: Noted) => void;
+  readonly settle: (
+    noted: Noted & { readonly folder: string },
+  ) => Promise<void>;
 }
 
 export function recordedNotes(started: unknown): readonly string[] {
   const notes = recordedField(started, "notes");
   if (!Array.isArray(notes)) return [];
   return notes.filter((note): note is string => typeof note === "string");
+}
+
+function agentStarted(started: unknown): boolean {
+  if (typeof recordedField(started, "processId") === "number") return true;
+  const attempt = recordedField(started, "attempt");
+  return (
+    recordedField(started, "phase") === "waiting" ||
+    (typeof attempt === "number" && attempt > 1)
+  );
 }
 
 export async function receivedNotes(
@@ -43,7 +54,8 @@ export async function receivedNotes(
   for (const operationId of operationIds) {
     const { folder } = located(journal, operationId);
     const started = await readRecord(folder, "started.json");
-    for (const noteId of recordedNotes(started)) received[noteId] = operationId;
+    const noteIds = agentStarted(started) ? recordedNotes(started) : [];
+    for (const noteId of noteIds) received[noteId] = operationId;
   }
   return received;
 }
@@ -97,8 +109,10 @@ export function noteDesk(settings: {
         notes.filter((note) => noteIds.includes(note.noteId)),
       );
     },
-    release: (noted) => {
-      for (const noteId of noted.noteIds) claimed.delete(noteId);
+    settle: async ({ noteIds, folder }) => {
+      if (noteIds.length === 0) return;
+      if (agentStarted(await readRecord(folder, "started.json"))) return;
+      for (const noteId of noteIds) claimed.delete(noteId);
     },
   };
 }

@@ -159,3 +159,31 @@ await service.close();
       ],
     });
   }));
+
+await test("CLV-326 status says that the receipt of a note was deleted when the retention rule deleted the turn details", () =>
+  withConsumer(workflows, async (consumer) => {
+    const result = await consumer.run(`${scene}
+const reply = await asked("continue-run", { runId, commandId: "c-note", from: "implement/claude-turn", note: "Merge the branch of the first run first." });
+await finalState(reply.runId);
+await service.close();
+let details = { state: "deleted" };
+let receipts = {};
+const reopened = await hosted({ destination: failing, turnDetails: async () => details, noteReceipts: { read: async () => receipts } });
+const shown = async () => (await asked("status", { runId: reply.runId })).run.notes.map(({ receivedBy, receipt }) => ({ receivedBy, receipt }));
+const deleted = await shown();
+details = { state: "archived", folder: "/records/archive/journal" };
+const archived = await shown();
+const { noteId } = (await asked("status", { runId: reply.runId })).run.notes[0];
+details = { state: "deleted" };
+receipts = { [noteId]: "operation-1" };
+const received = await shown();
+print({ deleted, archived, received });
+await reopened.close();
+`);
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(result.lines[0], {
+      deleted: [{ receivedBy: null, receipt: "deleted" }],
+      archived: [{ receivedBy: null }],
+      received: [{ receivedBy: "operation-1" }],
+    });
+  }));

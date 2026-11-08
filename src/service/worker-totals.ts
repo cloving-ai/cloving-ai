@@ -1,4 +1,3 @@
-import type { Fields } from "../protocol.ts";
 import {
   priceOf,
   reportFields,
@@ -10,6 +9,7 @@ import {
 } from "../worker-usage.ts";
 import type { OperationView } from "../broker/actor/effect-queries.ts";
 import type { ServiceContext } from "./replies.ts";
+import type { TurnDetails } from "../record-retention.ts";
 
 function deliveryKey(operation: OperationView): string {
   return JSON.stringify([operation.receipt, operation.result]);
@@ -72,7 +72,7 @@ export async function usageTotals(
 export async function turnDetailsOf(
   context: ServiceContext,
   run: { readonly runId: string; readonly totals: WorkerTotals },
-): Promise<Fields> {
+): Promise<{ readonly turnDetails?: TurnDetails }> {
   const details = await context.turnDetails?.({
     runId: run.runId,
     operationIds: run.totals.workerTurns.map((turn) => turn.operationId),

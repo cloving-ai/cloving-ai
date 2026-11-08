@@ -1,5 +1,8 @@
 import type { Fields } from "../protocol.ts";
+import type { TurnDetails } from "../record-retention.ts";
+import type { WorkerTotals } from "../worker-usage.ts";
 import type { ServiceContext } from "./replies.ts";
+import { turnDetailsOf } from "./worker-totals.ts";
 
 export interface RunNote {
   readonly noteId: string;
@@ -28,9 +31,26 @@ export async function runNotes(
   }));
 }
 
-export async function notesOf(
-  context: Pick<ServiceContext, "authority" | "noteReceipts">,
-  run: { readonly runId: string; readonly continuedFrom?: string },
+function noteReceipt(
+  note: RunNote,
+  found: {
+    readonly receipts: Readonly<Record<string, string>>;
+    readonly details: TurnDetails | undefined;
+  },
+): Fields {
+  const receivedBy = found.receipts[note.noteId] ?? null;
+  if (receivedBy !== null || found.details?.state !== "deleted")
+    return { ...note, receivedBy };
+  return { ...note, receivedBy, receipt: "deleted" };
+}
+
+async function notesOf(
+  context: ServiceContext,
+  run: {
+    readonly runId: string;
+    readonly continuedFrom?: string;
+    readonly turnDetails?: TurnDetails;
+  },
 ): Promise<Fields> {
   if (run.continuedFrom === undefined) return {};
   const { runId } = run;
@@ -44,9 +64,20 @@ export async function notesOf(
         .map((operation) => operation.operationId),
     )) ?? {};
   return {
-    notes: notes.map((note) => ({
-      ...note,
-      receivedBy: receipts[note.noteId] ?? null,
-    })),
+    notes: notes.map((note) =>
+      noteReceipt(note, { receipts, details: run.turnDetails }),
+    ),
   };
+}
+
+export async function turnRecordsOf(
+  context: ServiceContext,
+  run: {
+    readonly runId: string;
+    readonly continuedFrom?: string;
+    readonly totals: WorkerTotals;
+  },
+): Promise<Fields> {
+  const details = await turnDetailsOf(context, run);
+  return { ...details, ...(await notesOf(context, { ...run, ...details })) };
 }

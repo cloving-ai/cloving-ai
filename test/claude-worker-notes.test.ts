@@ -142,3 +142,95 @@ await test("CLV-326 a turn that does not start gives its notes back, so the next
       [`${section}prompt of sha256:prompt`],
     );
   }));
+
+function startedRecord(
+  scene: { readonly journal: string },
+  entry: { readonly operationId: string; readonly value: object },
+): void {
+  const folder = join(scene.journal, journalKey(entry.operationId));
+  mkdirSync(folder, { recursive: true });
+  writeFileSync(join(folder, "started.json"), JSON.stringify(entry.value));
+}
+
+await test("CLV-326 a note counts as received only when the journal shows that the agent of the turn started", () =>
+  withScene(async (scene) => {
+    const records = [
+      ["planned", { phase: "starting", attempt: 1, processId: null }],
+      ["no-process", { phase: "running", attempt: 1, processId: null }],
+      ["running", { phase: "running", attempt: 1, processId: 4321 }],
+      ["waiting", { phase: "waiting", attempt: 1, processId: null }],
+      ["second", { phase: "starting", attempt: 2, processId: null }],
+    ] as const;
+    for (const [operationId, value] of records)
+      startedRecord(scene, {
+        operationId,
+        value: { ...value, notes: [`note-${operationId}`] },
+      });
+    assert.deepEqual(
+      await receivedNotes(
+        scene.journal,
+        records.map(([operationId]) => operationId),
+      ),
+      {
+        "note-running": "running",
+        "note-waiting": "waiting",
+        "note-second": "second",
+      },
+    );
+  }));
+
+await test("CLV-326 a turn that the daemon stopped before its agent started does not keep the note, so the next turn of the run gets it", () =>
+  withScene(async (scene) => {
+    startedRecord(scene, {
+      operationId: "operation-1",
+      value: {
+        phase: "starting",
+        attempt: 1,
+        processId: null,
+        harness: "claude",
+        startedAt: "2026-11-08T10:00:00.000Z",
+        notes: ["note-a"],
+      },
+    });
+    const worker = scene.worker(
+      "complete",
+      notePort(["operation-1", "operation-2"]),
+    );
+    assert.equal((await worker.reconcile(intent(), signal)).kind, "failed");
+    await worker.deliver(intent({ operationId: "operation-2" }), signal);
+    await until(() => scene.reports.length === 1);
+    assert.deepEqual(
+      scene.turns().map((turn) => turn.prompt),
+      [`${section}prompt of sha256:prompt`],
+    );
+    assert.deepEqual(
+      await receivedNotes(scene.journal, ["operation-1", "operation-2"]),
+      { "note-a": "operation-2" },
+    );
+  }));
+
+await test("CLV-326 a turn that stops before its agent starts gives the note back, so the next turn in the same daemon gets it", () =>
+  withScene(async (scene) => {
+    const stopping = new AbortController();
+    const worker = scene.worker("complete", {
+      notes: {
+        read: () => Promise.resolve([{ noteId: "note-a", text }]),
+        operations: () => {
+          stopping.abort();
+          return Promise.resolve(["operation-1", "operation-2"]);
+        },
+      },
+    });
+    await worker.deliver(intent(), stopping.signal);
+    await until(() => scene.reports.length === 1);
+    assert.equal(
+      field(record(scene, "operation-1/started.json"), "phase"),
+      "starting",
+    );
+    await worker.deliver(intent({ operationId: "operation-2" }), signal);
+    await until(() => scene.reports.length === 2);
+    assert.deepEqual(
+      scene.turns().map((turn) => turn.prompt),
+      [`${section}prompt of sha256:prompt`],
+    );
+  }));

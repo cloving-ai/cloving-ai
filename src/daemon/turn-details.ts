@@ -2,6 +2,7 @@ import { stat } from "node:fs/promises";
 import { join } from "node:path";
 import { located } from "./operation-journal.ts";
 import { archiveFolder, type SweepSettings } from "./record-sweep.ts";
+import { receivedNotes } from "./turn-notes.ts";
 import {
   retentionExpired,
   turnDetails,
@@ -70,5 +71,24 @@ export function retentionExpiry(
       Object.hasOwn(runs, runId) ? runs[runId] : undefined,
       { retention: settings.retention, now: settings.now() },
     );
+  };
+}
+
+export function noteReceiptsPlace(
+  settings: Pick<TurnDetailsSettings, "directory" | "retention">,
+) {
+  return {
+    read: async (
+      operationIds: readonly string[],
+    ): Promise<Readonly<Record<string, string>>> => ({
+      ...(await receivedNotes(
+        join(archiveFolder(settings), "journal"),
+        operationIds,
+      )),
+      ...(await receivedNotes(
+        join(settings.directory, "journal"),
+        operationIds,
+      )),
+    }),
   };
 }

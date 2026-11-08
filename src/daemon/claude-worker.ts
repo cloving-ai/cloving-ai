@@ -251,10 +251,7 @@ async function delivered(
     harness: turnHarness(settings, profile),
     signal,
     turnSettings: current,
-  }).catch((error: unknown) => {
-    parts.notes.release(noted);
-    throw error;
-  });
+  }).finally(() => parts.notes.settle({ ...noted, folder: place.folder }));
   return { receipt: place.key, worker };
 }
 
