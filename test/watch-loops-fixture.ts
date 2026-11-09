@@ -1,4 +1,6 @@
 import type { Fields, Reply, ServiceRequest } from "../src/protocol.ts";
+import type { WatchModel } from "../src/cli/watch-render.ts";
+import { floorModel } from "./watch-floor-fixture.ts";
 import { watchReplies } from "./watch-service-fixture.ts";
 
 const now = Date.now();
@@ -115,4 +117,44 @@ export function loopReplies(
     return { kind: "result", result: { ...reply.result, schedules } };
   };
   return { ...replies, answer };
+}
+
+export const loopNow = "2026-11-16T13:00:00.000Z";
+export const loopNextAt = Date.parse("2026-11-16T15:00:00.000Z");
+export const loopEndedAt = "2026-11-16T12:30:00.000Z";
+
+export function loopModel(): WatchModel {
+  return floorModel([], {
+    schedules: [
+      {
+        workflowId: "review-day",
+        everySeconds: 1800,
+        state: "active",
+        failuresInRow: 0,
+        nextAt: loopNextAt,
+        stoppedAt: null,
+      },
+      {
+        workflowId: "docs-drift",
+        at: "07:00",
+        timeZone: "America/Los_Angeles",
+        weekdays: ["monday"],
+        nextLocal: null,
+        state: "stopped",
+        failuresInRow: 3,
+        nextAt: null,
+        stoppedAt: Date.parse(loopEndedAt),
+      },
+    ],
+    loopRuns: [
+      {
+        runId: "review-new",
+        workflowId: "review-day",
+        state: "completed",
+        latestAt: loopEndedAt,
+        scheduled: { slot: 4 },
+        outcome: { kind: "handoff_requested" },
+      },
+    ],
+  });
 }

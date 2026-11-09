@@ -412,13 +412,23 @@ The watch reads the state of an issue and of a pull request with the GitHub comm
 
 The **Today** panel at the side of the floor shows the numbers of the day: the runs completed, the cost, the cost per completed run and the stopped runs. A stopped run is a run that ended as failed, cancelled or blocked. Under the completed runs and the cost, the panel shows the values of yesterday. A bar chart shows the completed runs of each of the last 7 days, today last. A table shows the completed runs and the cost of today for each workflow. The last line shows the queue state, with one mark for each lane, busy or free.
 
+The **Loops** panel at the side of the floor shows one row for each schedule of the service. A row shows the workflow, the rule (for example `every 30 min` or `Mondays at 07:00 America/Los_Angeles`) and the state: `active`, `paused` or `stopped`. It shows the next run in the local time of the browser and as a relative time, for example `in 2 h`. A paused or stopped loop has no next run. The row also shows the last run of the loop, with its state, its outcome and its end time, and the failures in a row. The last run is the latest scheduled run or `manual from loop` run of the workflow. The panel refreshes on each poll of the page. With no schedule, the floor has no Loops panel.
+
+With watch actions on, each row has a switch and a **Run now** button:
+
+- The switch of an active loop sends the same command as `cloving schedule pause <workflowId>`.
+- The switch of a paused or stopped loop sends the same command as `cloving schedule resume <workflowId>`. A resume also sets the failures in a row to 0.
+- **Run now** sends the same command as `cloving schedule run <workflowId>`. The service admits one manual run with the input of the schedule. The run shows `manual from loop` in status, on its card and in the run detail. The next run of the schedule does not change.
+
+When a run of the workflow is active, the service refuses **Run now** with `run-active`. The row shows the reply of the service. Each click has its own random command ID. When the reply is lost, the next click of the same control sends the same command ID again, so the service does not admit a second run.
+
 A day starts at local midnight of the computer that runs the service. The panel counts a run on the day that the run ends. It uses the same events, outcomes and run costs as `cloving report`. The cost is the sum of the known run costs. When the cost of a run is not known, the cost shows as "at least $129.93", and a line under it shows the count, for example "4 runs with no cost". The rows of the table show their cost in the same way. The cost per completed run is the known cost of the day divided by the count of completed runs with a known cost.
 
 Below the floor, the **Completed today** shelf shows the count of runs that completed today, and one tile for each run, the newest first. The shelf uses the same day as the Today panel. A blocked run has no tile. A tile shows the ticket number, the pull request number, the title in at most two lines, the workflow, the time from start to end and the cost. The left edge of a tile has the color of the line of its workflow. When the run attached a video (`.mp4` or `.webm`) with the GitHub method `attach-asset`, the tile also shows **Play demo** with a small frame of the video. Select it to play the video in a player on the page. Press Esc or click outside the player to close it. The shelf scrolls sideways when the tiles do not fit. With no completed run, the shelf shows "No run completed today."
 
 Each workflow board with supported inputs has **+ Add a card** at the bottom of its first column, including an empty board. The form uses the string and ticket fields of the workflow's registered declaration. Ticket fields are labeled **Ticket ID**; other fields use their declared names, and optional fields can be left out. Unsupported inputs have no control. Select **Add card** or press Enter in a field to send. **Cancel** and Esc close the form. The service reply shows the admitted run ID or a refusal code; admitted cards arrive through the existing live stream.
 
-The form sends the same run request as the CLI and retains its random command ID for retries, including a lost reply. Retry the same form to avoid duplicate runs. The write endpoint accepts at most 16 KiB of JSON, requires the page's random token, matching Origin and a loopback/localhost Host with the bound port, and allows no cross-origin preflight. `CLOVING_WATCH_ACTIONS=off` removes the form control, the queue control and their endpoints; actions are enabled by default. Decisions and other run actions still use their displayed CLI commands.
+The form sends the same run request as the CLI and retains its random command ID for retries, including a lost reply. Retry the same form to avoid duplicate runs. The write endpoint accepts at most 16 KiB of JSON, requires the page's random token, matching Origin and a loopback/localhost Host with the bound port, and allows no cross-origin preflight. The switches and the **Run now** buttons of the Loops panel use the same write rules. `CLOVING_WATCH_ACTIONS=off` removes the form control, the queue control, the loop controls and their endpoints; actions are enabled by default. The Loops panel stays. Decisions and other run actions still use their displayed CLI commands.
 
 `cloving start` reads its settings from the environment. `cloving start --help` gives the form and the default of each setting:
 
@@ -431,7 +441,7 @@ The form sends the same run request as the CLI and retains its random command ID
 - `CLOVING_PROFILES`: a JSON file of named turn profiles. The service reads it at the start and at each `cloving reload`.
 - `CLOVING_COMMANDS`: a JSON object mapping command names to argument arrays, such as `{"review-requests":["/opt/cloving/scan-reviews.mjs"]}`. Names contain 1–64 ASCII letters, digits or hyphens; the first argument must be an absolute executable path. Unset means no commands. Invalid values stop startup with `invalid-commands`. A command gets no GitHub login; use the methods of the `github` capability to read or change GitHub.
 - `CLOVING_COMMAND_SECONDS`: a whole number from 1 to 3600, default 60. Invalid values stop startup with `invalid-command-seconds`. A command exceeding the deadline fails with `command-timeout`.
-- `CLOVING_WATCH_ACTIONS`: `off` disables starting runs from the board and the queue control; default `on`.
+- `CLOVING_WATCH_ACTIONS`: `off` disables starting runs from the board, the queue control and the loop controls; default `on`.
 - `CLOVING_WATCH_PORT`: the port of the watch page, or `off`.
 - `CLOVING_WATCH_REPOSITORY`: repository context for a separate watch process. `start` sets this from its service repository. The watch process uses its local origin and has no current-directory default.
 - `CLOVING_OWNERSHIP_LEASE_SECONDS` and `CLOVING_HOST_BOUND`: limits of the workflow host.
@@ -465,6 +475,7 @@ The watch page has a read API at `http://127.0.0.1:3663/api/v1`. Its OpenAPI 3.1
 - `GET /api/v1/openapi.json` gives the OpenAPI document.
 - `GET /api/v1/service` tells if the Cloving service answers.
 - `GET /api/v1/workflows` gives the workflows with their counts and card fields.
+- `GET /api/v1/schedules` gives the loops, the rows of the Loops panel: the workflow, the rule, the state, the next run, the failures in a row and the last run.
 - `GET /api/v1/runs` gives one page of runs, newest first. The query parameters `workflowId`, `state`, `limit` (1 to 200, default 50) and `cursor` select the runs. The `nextCursor` of a page gives the next page.
 - `GET /api/v1/runs/{runId}` gives one run with its phases, open decisions, reviews and agent turns.
 - `GET /api/v1/runs/{runId}/events` gives the events of one run, the lowest sequence first. The query parameter `after` (default 0) gives only the events with a higher sequence.
@@ -477,6 +488,7 @@ curl http://127.0.0.1:3663/api/v1/
 curl http://127.0.0.1:3663/api/v1/openapi.json
 curl http://127.0.0.1:3663/api/v1/service
 curl http://127.0.0.1:3663/api/v1/workflows
+curl http://127.0.0.1:3663/api/v1/schedules
 curl 'http://127.0.0.1:3663/api/v1/runs?workflowId=develop&state=waiting_gate&limit=20'
 curl 'http://127.0.0.1:3663/api/v1/runs/<run-id>'
 curl 'http://127.0.0.1:3663/api/v1/runs/<run-id>/events?after=40'
@@ -681,7 +693,7 @@ command = "cloving"
 args = ["mcp", "--repository", "<directory>"]
 ```
 
-The server has twelve tools:
+The server has sixteen tools:
 
 - `cloving_status`, `cloving_questions` and `cloving_events` read the runs, the pending decisions and the events, as `cloving status`, `cloving questions` and `cloving events` do.
 - `cloving_run` submits a run, as `cloving run` does. Give exactly one source: `prompt`, `ticket` (a ticket ID or `next`) or `input` (a JSON object, not a file path).
@@ -689,8 +701,9 @@ The server has twelve tools:
 - `cloving_pause`, `cloving_resume` and `cloving_drop` send a run command with the `expectedRevision` of the run.
 - `cloving_continue` continues a failed or blocked run, as `cloving run continue` does. The arguments `from` and `bundle` are optional.
 - `cloving_dismiss` dismisses a failed or blocked run, as `cloving dismiss` does.
+- `cloving_schedules`, `cloving_schedule_pause`, `cloving_schedule_resume` and `cloving_schedule_run` list, pause, resume and run the loops, as `cloving schedule`, `cloving schedule pause`, `cloving schedule resume` and `cloving schedule run` do. They take the `workflowId` of the schedule.
 
-Each of the nine tools that change state requires a `commandId`. The server never makes a command ID. After a lost reply (`outcome-unknown`), send the same request with the same `commandId` again. The service then gives the stored receipt, also when the first request came from the CLI. A tool gives the same JSON object as the CLI command with `--json`. A refusal of the service gives `isError: true`, and an argument that is not valid gives the JSON-RPC error `-32602`. A cancel of a tool call stops the wait for the reply, but it does not cancel a command that the service admitted.
+Each of the ten tools that admit a command requires a `commandId`. `cloving_schedule_pause` and `cloving_schedule_resume` need no command ID, because a second pause or resume changes nothing. The server never makes a command ID. After a lost reply (`outcome-unknown`), send the same request with the same `commandId` again. The service then gives the stored receipt, also when the first request came from the CLI. A tool gives the same JSON object as the CLI command with `--json`. A refusal of the service gives `isError: true`, and an argument that is not valid gives the JSON-RPC error `-32602`. A cancel of a tool call stops the wait for the reply, but it does not cancel a command that the service admitted.
 
 A tool call cannot start the service and cannot select a different repository. The server binds to one repository when it starts.
 
@@ -1961,13 +1974,15 @@ An earlier scheduled run blocks later scheduled slots while queued, running, wai
 
 Use `cloving schedule [--json]` to list workflow IDs, intervals or calendar times, state, failure counts, slots, next run times and active runs. `cloving schedule pause <workflowId> [--json]` stops new scheduled runs without interrupting an active run or recording skips. `cloving schedule resume <workflowId> [--json]` clears the failure count and starts the next run one interval later, or at the next calendar slot, retaining increasing slot numbers. Repeating pause or resume leaves the current state and timing unchanged. Paused and stopped schedules survive restarts and interval changes.
 
+`cloving schedule run <workflowId> [--command-id <id>] [--json]` admits one manual run of the workflow with the input of the schedule. The admission command ID is `loop:<workflowId>:<id>`. With no `--command-id`, the CLI makes a random command ID and shows it. Send the command again with the same `--command-id` after a lost reply; the service then gives the same run. While a run of the workflow is active, the service refuses the command with `run-active`. A run now does not change the next run, the slot or the failures in a row of the schedule. The **Run now** button of the Loops panel on the watch page sends the same command.
+
 `cloving status` shows each schedule after the queue lines, for example `Schedule review-queue: every 300 s, active, next run at 2026-10-14T12:05:00.000Z, 0 failures in a row`. Paused schedules show `paused` without a next run time; stopped schedules show `stopped`, the stop time and the failure count. The watch board shows the same information on the workflow's board and refreshes it on the next poll. Status times use ISO timestamps; watch times use the browser's local date and time.
 
 A calendar schedule shows its days, its time and its time zone. The next run shows the local time of that time zone with its offset, in status, in `cloving schedule` and on the watch board. For example, `cloving status` shows `Schedule review: Mondays at 07:00 America/Los_Angeles, active, next run at 2026-11-16T07:00:00-08:00, 0 failures in a row`. A schedule with no `weekdays` shows `each day`, for example `each day at 07:00 UTC`.
 
 Status JSON includes `schedules` entries with `workflowId`, `everySeconds`, `state`, `failuresInRow`, `nextAt` and `stoppedAt`. Times are epoch milliseconds or `null`; paused and stopped schedules have `nextAt: null`. A calendar entry has `at`, `timeZone` and, when set, `weekdays` in place of `everySeconds`. It also has `nextLocal`, the next run as a local ISO time with its offset, or `null` when `nextAt` is `null`. The field is absent when no schedules are configured. A scheduler that is not running yet is shown as `schedules: { "status": "unavailable" }` and `Schedules: unavailable` in status and watch.
 
-Runs admitted by a schedule show `scheduled 12` for slot 12 on the status run line, in run status, on the watch card and in the watch run detail. Their JSON summary and detail include `scheduled: { "slot": 12 }`. Manual runs have no scheduled mark.
+Runs admitted by a schedule show `scheduled 12` for slot 12 on the status run line, in run status, on the watch card and in the watch run detail. Their JSON summary and detail include `scheduled: { "slot": 12 }`. A run of `cloving schedule run` shows `manual from loop` in the same places, and its JSON has `manualFromLoop: true`. Other manual runs have no mark.
 
 Three consecutive failed scheduled runs stop a schedule. A completed run with outcome `blocked` counts as a failure; cancellation leaves the count unchanged, and any other completion clears it. With `CLOVING_NOTIFY_COMMAND` configured, each stop sends a `schedule-stopped` notification with the three failed run IDs and the resume command; its `runId` names the third failed run.
 

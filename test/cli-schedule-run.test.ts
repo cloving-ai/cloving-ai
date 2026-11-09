@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import { test } from "node:test";
 import { parseInvocation } from "../src/cli/arguments.ts";
 import { commandUsage } from "../src/cli/usage.ts";
@@ -117,4 +118,28 @@ await test("CLV-328 schedule run arguments refuse a missing workflow, a bad comm
       "usage-error",
       JSON.stringify(args),
     );
+});
+
+await test("CLV-328 the README describes the Loops panel, its controls, cloving schedule run, the MCP tools and the schedules route", async () => {
+  const readme = await readFile(
+    new URL("../README.md", import.meta.url),
+    "utf8",
+  );
+  assert.match(readme, /The \*\*Loops\*\* panel at the side of the floor/);
+  assert.match(readme, /\*\*Run now\*\*.*`cloving schedule run <workflowId>`/);
+  assert.match(readme, /`cloving schedule pause <workflowId>`.*switch/s);
+  assert.match(
+    readme,
+    /`cloving schedule run <workflowId> \[--command-id <id>\] \[--json\]`/,
+  );
+  assert.match(
+    readme,
+    /`cloving_schedules`, `cloving_schedule_pause`, `cloving_schedule_resume` and `cloving_schedule_run`/,
+  );
+  assert.match(readme, /^- `GET \/api\/v1\/schedules` gives the loops/m);
+  assert.match(
+    readme,
+    /the queue control, the loop controls and their endpoints/,
+  );
+  assert.match(readme, /`manual from loop`/);
 });

@@ -1,5 +1,5 @@
 import { notesOf } from "./watch-notes-view.ts";
-import { shownScheduled, type ShownSchedules } from "./schedule-render.ts";
+import { shownLoopMarks, type ShownSchedules } from "./schedule-render.ts";
 import { loopRows } from "./watch-loops.ts";
 import { shownCommandWaits } from "./command-waits.ts";
 import { operationalDecision } from "../decision-visibility.ts";
@@ -307,7 +307,7 @@ function runOf(inputs: WatchInputs, value: unknown): WatchRun {
   return {
     runId,
     workflowId,
-    ...shownScheduled(status["scheduled"]),
+    ...shownLoopMarks(status),
     ...runLinksOf(status),
     ...notesOf(status["notes"]),
     commandWaits: shownCommandWaits(status["commandWaits"]),

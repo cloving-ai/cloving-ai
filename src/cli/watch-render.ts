@@ -86,6 +86,7 @@ export interface WatchStep {
 
 export interface WatchCard {
   readonly scheduled?: { readonly slot: number };
+  readonly manualFromLoop?: true;
   readonly commandWaits?: readonly CommandWaitView[];
   readonly spent?: number | null;
   readonly limit?: number | null;
@@ -179,6 +180,7 @@ export interface WatchRun {
   readonly linked?: true;
   readonly demo?: string;
   readonly scheduled?: { readonly slot: number };
+  readonly manualFromLoop?: true;
   readonly commandWaits?: readonly CommandWaitView[];
   readonly awaitedRunId?: string | null;
   readonly commandEffects?: readonly CommandEffect[];

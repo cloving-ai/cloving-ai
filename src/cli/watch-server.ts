@@ -8,6 +8,7 @@ import { watchApiChange, watchApiReply } from "./watch-api.ts";
 import { isPhoneAction, phoneAction, phoneRead } from "./watch-phone.ts";
 import { queueAction } from "./watch-queue.ts";
 import { continueAction, dismissAction } from "./watch-continue.ts";
+import { scheduleAction } from "./watch-loops-action.ts";
 import type { WatchPrSettings } from "./watch-pr-settings.ts";
 import { readFile } from "node:fs/promises";
 import {
@@ -109,6 +110,7 @@ function routedAction(path: string): typeof watchAction | null {
   if (path === "/actions/queue") return queueAction;
   if (path === "/actions/continue") return continueAction;
   if (path === "/actions/dismiss") return dismissAction;
+  if (path === "/actions/schedule") return scheduleAction;
   return path === "/actions/run" ? watchAction : null;
 }
 

@@ -1,5 +1,5 @@
 export const watchClient = `
-const state = { model: null, receivedAt: 0, stale: false, copied: "", label: "", run: "", loading: false, again: false, columns: {}, cards: {}, hovered: null, focused: null, phonePairing: null, phoneBusy: false, phoneMessage: "", phone: null, phoneLoadedAt: 0, phoneAccepted: null, phoneSequence: 0, phoneApplied: 0, queueBusy: false, queueMessage: "", continueBusy: [], continueMessages: {}, continueOpen: null, continueNote: "", themeChoice: null };
+const state = { model: null, receivedAt: 0, stale: false, copied: "", label: "", run: "", loading: false, again: false, columns: {}, cards: {}, hovered: null, focused: null, phonePairing: null, phoneBusy: false, phoneMessage: "", phone: null, phoneLoadedAt: 0, phoneAccepted: null, phoneSequence: 0, phoneApplied: 0, queueBusy: false, queueMessage: "", continueBusy: [], continueMessages: {}, continueOpen: null, continueNote: "", loopBusy: [], loopMessages: {}, loopCommands: {}, themeChoice: null };
 function readPreference(key) {
   try { return JSON.parse(localStorage.getItem(key)); }
   catch { return null; }
@@ -157,7 +157,8 @@ function draw() {
   const queue = queueControls();
   const continuing = continueControls();
   const theme = themeControls();
-  const page = component(Page, { model, selected, now, observationNow, stale, copying, columns, cards, phone, queue, continuing, theme });
+  const loops = loopControls();
+  const page = component(Page, { model, selected, now, observationNow, stale, copying, columns, cards, phone, queue, continuing, loops, theme });
   render(page, document.getElementById("app"));
   if (model === null) return;
   document.title = watchTitle(model, selected);

@@ -1,5 +1,5 @@
 import { RunNotes } from "./watch-notes-view.ts";
-import { scheduledText } from "./schedule-render.ts";
+import { loopText } from "./schedule-render.ts";
 import { CommandWaits, effectBudgetText } from "./command-waits.ts";
 import type { CardControls } from "./watch-card-view.ts";
 import type { PhoneControls } from "./watch-phone-view.ts";
@@ -38,6 +38,7 @@ import { Shelf } from "./watch-shelf-view.ts";
 import { NeedsYou, type ContinueControls } from "./watch-needs-view.ts";
 export type { ContinueControls } from "./watch-needs-view.ts";
 import { Today } from "./watch-today-view.ts";
+import { LoopsPanel, type LoopControls } from "./watch-loops-view.ts";
 import type { ThemeControls } from "./watch-theme-view.ts";
 import { Decision, Events, Turn, PullRequest } from "./watch-turn.ts";
 import { Commands } from "./command-effects.ts";
@@ -182,9 +183,9 @@ export function Run(props: Timed & { readonly copying: Copying }): Shown {
   ];
   return [
     component(Banner, { run, now }),
-    run.scheduled === undefined
+    loopText(run) === ""
       ? null
-      : element("p", { class: "meta", children: scheduledText(run.scheduled) }),
+      : element("p", { class: "meta", children: loopText(run) }),
     component(HandoffLinks, { run }),
     component(RunNotes, { notes: run.notes }),
     component(CommandWaits, { waits: run.commandWaits ?? [] }),
@@ -219,6 +220,7 @@ export interface PageProps {
   readonly phone?: PhoneControls | undefined;
   readonly queue?: QueueControls | undefined;
   readonly continuing?: ContinueControls | undefined;
+  readonly loops?: LoopControls | undefined;
   readonly theme?: ThemeControls | undefined;
 }
 
@@ -330,6 +332,11 @@ export function FloorPage(
             class: "side-panels",
             children: [
               component(Today, { model, words }),
+              component(LoopsPanel, {
+                loops: model.loops ?? [],
+                now,
+                controls: props.loops,
+              }),
               component(Queue, { model, words }),
               component(RefusedWorkflows, { model }),
             ],
