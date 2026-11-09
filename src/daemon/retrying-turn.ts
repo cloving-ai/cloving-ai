@@ -21,6 +21,8 @@ import {
 import {
   queued,
   steer,
+  steeredPrompt,
+  steeringOf,
   steerPrompt,
   type SteerNote,
   type SteerOutcome,
@@ -82,14 +84,15 @@ function controlled(attempts: Attempts, start: TurnStart): RunningTurn {
 
 async function promptOf(attempts: Attempts): Promise<string> {
   const { start, ends, stopping, turnStartCommit } = attempts;
-  if (ends.length === 0) return start.prompt;
+  const prompt = steeredPrompt(start.prompt, attempts.steering);
+  if (ends.length === 0) return prompt;
   if (!ends.some((end) => kindOf(attempts, end) === "network"))
-    return continuation + start.prompt;
+    return continuation + prompt;
   const evidence = await retryEvidence(
     { directory: start.directory, signal: stopping.signal },
     turnStartCommit,
   );
-  return `${networkContinuation}\n\nCommits since the start of this turn:\n${evidence}\n\n${start.prompt}`;
+  return `${networkContinuation}\n\nCommits since the start of this turn:\n${evidence}\n\n${prompt}`;
 }
 
 interface Launch {
@@ -142,6 +145,8 @@ async function launched(
     prompt: launchPrompt(launch, prompt),
   });
   steering.child = { turn, sessionId: null };
+  if (steered !== undefined && turn.processId !== null)
+    steering.delivered.push(...steered.notes);
   try {
     await journal.running(turn.processId);
     return {
@@ -334,7 +339,7 @@ export async function startRetriedTurn(
     stopping,
     ends: [...(options.resume?.ends ?? [])],
     grace: { milliseconds: options.stopMilliseconds ?? 15_000 },
-    steering: { accepted: [] },
+    steering: steeringOf(options.resume),
   };
   const turn = await launched(attempts);
   if (turn === undefined)

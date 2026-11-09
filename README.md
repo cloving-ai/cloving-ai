@@ -1174,7 +1174,9 @@ The note reaches the run in one of two forms:
 - **Next turn.** Without `--now`, the next agent turn that the run starts gets the note in its section `Notes from the operator:`, as a note of `cloving run continue --note` does. The turn in work goes on with no change. The reply says `queued`.
 - **Now.** With `--now`, the worker looks for the open Claude Code or Codex turn of the run. When that turn recorded a session, the worker stops the turn as a daemon restart does. Then it resumes the same session with the next message `A person sent this note while you worked:` and the note. The resumed turn is the same turn: it keeps its round, its work tree and its budget. Its attempt record has `resumedAfter: steer`. The reply says `now` and has the operation ID of the turn.
 
-A turn takes at most three notes with `--now`. In these cases the note waits for the next turn, and the reply says `queued` with the reason:
+The turn gets a note sent now when the resumed agent starts. If the daemon stops before that start, the restarted daemon resumes the session as before the note, and the note waits for the next turn. When the resumed agent stops because the model is at capacity or the network is not available, the next attempt starts a new session. Its prompt has the task and, after the task, the notes that the turn got.
+
+A turn takes at most three notes with `--now`. A daemon restart does not reset this count. In these cases the note waits for the next turn, and the reply says `queued` with the reason:
 
 - `no-open-turn`: the run has no open agent turn, for example because it runs a command or waits for CI or a review.
 - `no-session`: the open turn recorded no session.

@@ -24,6 +24,14 @@ export interface Steering {
   child?: { readonly turn: RunningTurn; sessionId: string | null };
   pending?: { readonly sessionId: string; readonly notes: SteerNote[] };
   readonly accepted: SteerNote[];
+  readonly delivered: SteerNote[];
+  readonly earlier: readonly string[];
+}
+
+export function steeringOf(
+  resume: { readonly steerNotes: readonly string[] } | undefined,
+): Steering {
+  return { accepted: [], delivered: [], earlier: resume?.steerNotes ?? [] };
 }
 
 export function queued(reason: string): {
@@ -38,17 +46,22 @@ export function steerPrompt(notes: readonly SteerNote[]): string {
   return `A person sent this note while you worked:\n\n${texts}`;
 }
 
+export function steeredPrompt(prompt: string, steering: Steering): string {
+  if (steering.delivered.length === 0) return prompt;
+  return `${prompt}\n\n${steerPrompt(steering.delivered)}`;
+}
+
 export function steeredMetadata(
   metadata: Readonly<Record<string, unknown>>,
   steering: Steering,
 ): Readonly<Record<string, unknown>> {
-  if (steering.accepted.length === 0) return metadata;
+  const delivered = steering.delivered.map((note) => note.noteId);
+  const steerNotes = [...steering.earlier, ...delivered];
+  if (steerNotes.length === 0) return metadata;
   return {
     ...metadata,
-    notes: [
-      ...recordedNotes(metadata),
-      ...steering.accepted.map((note) => note.noteId),
-    ],
+    notes: [...new Set([...recordedNotes(metadata), ...steerNotes])],
+    steerNotes,
   };
 }
 
@@ -59,7 +72,8 @@ export function steer(
   const { child } = steering;
   if (child === undefined) return queued("no-open-turn");
   if (child.sessionId === null) return queued("no-session");
-  if (steering.accepted.length >= steerLimit) return queued("note-limit");
+  if (steering.earlier.length + steering.accepted.length >= steerLimit)
+    return queued("note-limit");
   steering.accepted.push(request.note);
   const pending = steering.pending ?? {
     sessionId: child.sessionId,

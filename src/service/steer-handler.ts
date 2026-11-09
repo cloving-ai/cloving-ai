@@ -96,6 +96,27 @@ async function delivery(
   };
 }
 
+async function notedReply(
+  context: ServiceContext,
+  noted: SteerRequest & {
+    readonly noteId: string;
+    readonly duplicate: boolean;
+  },
+): Promise<Reply> {
+  const { runId, commandId, noteId, duplicate } = noted;
+  const stored = await context.authority.queries.receipt(commandId);
+  if (stored === undefined)
+    return failed("authority-unavailable", { commandId, runId });
+  return result("run-noted", {
+    runId,
+    commandId,
+    noteId,
+    ...(duplicate ? {} : await delivery(context, noted)),
+    replayed: duplicate,
+    receipt: publicReceipt(stored),
+  });
+}
+
 export async function steerRun(
   context: ServiceContext,
   parameters: Fields,
@@ -131,15 +152,9 @@ export async function steerRun(
     },
   });
   if (!committed(receipt)) return rejection(receipt, { commandId, runId });
-  const stored = await context.authority.queries.receipt(commandId);
-  if (stored === undefined)
-    return failed("authority-unavailable", { commandId, runId });
-  return result("run-noted", {
-    runId,
-    commandId,
+  return notedReply(context, {
+    ...request,
     noteId,
-    ...(await delivery(context, { ...request, noteId })),
-    replayed: receipt.kind === "duplicate",
-    receipt: publicReceipt(stored),
+    duplicate: receipt.kind === "duplicate",
   });
 }

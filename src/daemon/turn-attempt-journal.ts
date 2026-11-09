@@ -108,6 +108,7 @@ export function attemptJournal(
   const save = () => {
     const value = {
       ...entry,
+      ...attemptMetadata(attempts),
       phase: "running",
       processId,
       ...progressFields(attempts, progress),
@@ -131,6 +132,7 @@ export function attemptJournal(
         name: "started.json",
         value: {
           ...entry,
+          ...attemptMetadata(attempts),
           startedAt: attempts.startedAt,
           phase: "running",
           processId,

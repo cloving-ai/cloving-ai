@@ -1,5 +1,18 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { after, test } from "node:test";
+import { commandGateway } from "../src/service/gateway.ts";
+import type { Fields, Reply } from "../src/protocol.ts";
+import type { ServiceContext } from "../src/service/replies.ts";
+import { steerRun } from "../src/service/steer-handler.ts";
+import {
+  executeStored,
+  opened,
+  removeTemporaryDirectories,
+  storedGate,
+  temporaryDirectory,
+} from "./authority-store-fixture.ts";
+import { field } from "./service-fixture.ts";
+import { statusContext } from "./service-views.ts";
 import { servicePrelude, withConsumer } from "./world-host-fixture.ts";
 
 const workflows = `
@@ -183,3 +196,68 @@ await service.close();
       { queued: ["queued", "no-open-turn"], invalid: "invalid-request" },
     ]);
   }));
+
+after(removeTemporaryDirectories);
+
+function racedContext(context: ServiceContext, request: Fields) {
+  const answers: Reply[] = [];
+  const { authority } = context;
+  const queries = {
+    ...authority.queries,
+    run: async (runId: string) => {
+      if (answers.length === 0) answers.push(await steerRun(context, request));
+      return authority.queries.run(runId);
+    },
+  };
+  return {
+    answers,
+    context: { ...context, authority: { ...authority, queries } },
+  };
+}
+
+await test("CLV-327 a request that finds its note recorded by an equal request after its replay check answers replayed and does not give the note to the turn again", async () => {
+  const { store } = await opened(await temporaryDirectory());
+  try {
+    for (const command of storedGate.slice(0, 2))
+      await executeStored(store, command);
+    const steered: unknown[] = [];
+    const base = statusContext(store);
+    const context: ServiceContext = {
+      ...base,
+      gateway: commandGateway({ ...base, authority: store }),
+      turnSteering: {
+        steer: (note) => {
+          steered.push(note);
+          return Promise.resolve({
+            delivery: "now",
+            operationId: "operation-1",
+          });
+        },
+      },
+    };
+    const request = {
+      runId: "run-1",
+      commandId: "s-1",
+      note: "Change only src/cli.ts.",
+      now: true,
+    };
+    const raced = racedContext(context, request);
+    const later = field(await steerRun(raced.context, request), "result");
+    const earlier = field(raced.answers[0], "result");
+    assert.deepEqual(
+      [earlier, later].map((answer) => [
+        field(answer, "kind"),
+        field(answer, "replayed"),
+        field(answer, "delivery") ?? null,
+      ]),
+      [
+        ["run-noted", false, "now"],
+        ["run-noted", true, null],
+      ],
+    );
+    assert.equal(field(later, "noteId"), field(earlier, "noteId"));
+    assert.equal(steered.length, 1);
+  } finally {
+    await store.close();
+  }
+});

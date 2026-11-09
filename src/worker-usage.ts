@@ -158,6 +158,14 @@ function retryKindField(value: unknown): {
     : {};
 }
 
+export function resumeReasonField(value: unknown): {
+  readonly resumedAfter?: ResumeReason;
+} {
+  return value === "daemon-restart" || value === "steer"
+    ? { resumedAfter: value }
+    : {};
+}
+
 export function attemptsOf(
   value: unknown,
 ): readonly WorkerAttemptUsage[] | undefined {
@@ -177,9 +185,7 @@ export function attemptsOf(
     return [
       {
         ...retryKindField(field("retryKind")),
-        ...(field("resumedAfter") === "daemon-restart"
-          ? { resumedAfter: "daemon-restart" as const }
-          : {}),
+        ...resumeReasonField(field("resumedAfter")),
         attempt,
         model,
         ...(models === undefined ? {} : { models }),
