@@ -6,6 +6,7 @@ import { readdir, readFile, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { watchReader, type WatchReader } from "./watch-reads.ts";
+import { loopRunsOf } from "./watch-loops.ts";
 import { ciRerunNotices } from "./github-ci-progress.ts";
 import {
   turnActivity,
@@ -137,6 +138,7 @@ async function snapshot(
   ]);
   const model = watchModel({
     ...read,
+    loopRuns: await loopRunsOf(watch.settings.runtimeDirectory, read),
     repository: watch.observer.repository ?? null,
     home: homedir(),
     client: watch.settings.client,

@@ -139,6 +139,7 @@ export const watchApiDocument = {
     { name: "api", description: "The index and the contract of the API." },
     { name: "service", description: "The state of the Cloving service." },
     { name: "workflows", description: "The workflows of the service." },
+    { name: "schedules", description: "The loops of the service." },
     { name: "runs", description: "The runs of the watch page." },
     { name: "stream", description: "The change signals of the runs." },
   ],
@@ -185,6 +186,22 @@ export const watchApiDocument = {
           "200": json(
             "The workflows of the service.",
             closed({ workflows: listOf(reference("Workflow")) }),
+          ),
+          "400": invalidQuery,
+          "503": serviceUnavailable,
+        },
+      },
+    },
+    "/schedules": {
+      get: {
+        operationId: "listSchedules",
+        tags: ["schedules"],
+        summary:
+          "Give the loops: each schedule with its rule, state, next run, last run and failures in a row.",
+        responses: {
+          "200": json(
+            "The loops of the service.",
+            closed({ schedules: listOf(reference("Schedule")) }),
           ),
           "400": invalidQuery,
           "503": serviceUnavailable,
@@ -263,6 +280,20 @@ export const watchApiDocument = {
         waitingCount: integer,
         latestAt: nullableText,
         inputs: listOf(reference("CardField")),
+      }),
+      Schedule: closed({
+        workflowId: text,
+        rule: text,
+        state: { type: "string", enum: ["active", "paused", "stopped"] },
+        nextAt: nullableText,
+        failuresInRow: integer,
+        lastRun: { oneOf: [reference("LoopRun"), { type: "null" }] },
+      }),
+      LoopRun: closed({
+        runId: text,
+        state: text,
+        outcome: nullableText,
+        endedAt: nullableText,
       }),
       CardField: closed({
         name: text,

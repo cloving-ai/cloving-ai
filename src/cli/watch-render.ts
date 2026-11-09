@@ -1,5 +1,6 @@
 import type { WatchNote } from "./watch-notes-view.ts";
 import type { ShownSchedule, ShownSchedules } from "./schedule-render.ts";
+import type { WatchLoop } from "./watch-loops.ts";
 import type { CommandWaitView } from "../authority/command-wait-view.ts";
 import type { CommandEffect } from "../command-settings.ts";
 import type { CardForm } from "./watch-run-input.ts";
@@ -234,6 +235,7 @@ export interface WatchModel {
   readonly serviceVersion?: string;
   readonly restart?: Fields;
   readonly schedules?: ShownSchedules;
+  readonly loops?: readonly WatchLoop[];
   readonly queue?: Fields;
   readonly workflowRefusals?: readonly WorkflowRefusal[];
   readonly cardForms?: readonly CardForm[];
