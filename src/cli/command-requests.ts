@@ -85,6 +85,23 @@ export function runCommandRequest(request: {
   };
 }
 
+export function steerRequest(request: {
+  readonly runId: string;
+  readonly text: string;
+  readonly now: boolean;
+  readonly commandId: string;
+}): ServiceRequest {
+  return {
+    operation: "steer-run",
+    parameters: {
+      runId: request.runId,
+      commandId: request.commandId,
+      note: request.text,
+      now: request.now,
+    },
+  };
+}
+
 export function dismissRequest(request: {
   readonly runId: string;
   readonly commandId: string;

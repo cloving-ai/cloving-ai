@@ -47,7 +47,7 @@ const session = process.argv.includes("--resume") ? process.argv[process.argv.in
 const result = (fields) => print({ type: "result", subtype: "success", is_error: false, result: "Done: " + prompt, total_cost_usd: 0.25, usage: { input_tokens: 1500, cache_read_input_tokens: 800, output_tokens: 150 }, session_id: session, num_turns: 3, ...fields });
 const git = (...parts) => execFileSync("git", parts, { stdio: "ignore" });
 const held = () => new Promise(() => { setInterval(() => undefined, 1000); });
-print({ type: "system", subtype: "init", session_id: session });
+if (mode !== "sessionless" && !(mode === "quiet-resume" && turn > 1)) print({ type: "system", subtype: "init", session_id: session });
 print({ type: "assistant", text: "the word \\"result\\" is in this line" });
 process.stdout.write("this line is no JSON text and has the word \\"result\\"\\n");
 const modes = {
@@ -73,6 +73,11 @@ const modes = {
   "resume-once": () => { if (turn === 1) { result({ total_cost_usd: 1.2 }); return held(); } result({ total_cost_usd: 2, result: "Ticket status: complete" }); },
   "resume-graceful": () => modes["resume-once"](),
   "crash-once": () => turn === 1 ? held() : result({ result: "Ticket status: complete" }),
+  "steer-capacity": () => {
+    if (turn === 1) return held();
+    if (turn === 2) return result({ is_error: true, result: "Selected model is at capacity. Please try a different model." });
+    return result({ result: "Ticket status: complete" });
+  },
   "fallback-resume": () => {
     if (turn <= 2) return result({ is_error: true, result: "Selected model is at capacity. Please try a different model." });
     return turn === 3 ? held() : result({ result: "Ticket status: complete" });
@@ -103,6 +108,9 @@ const modes = {
   wreck: () => { rmSync(".git"); result({}); },
   unterminated: () => process.stdout.write(JSON.stringify({ type: "result", is_error: false, result: "no line end" })),
   hold: held,
+  sessionless: held,
+  "quiet-resume": held,
+  "codex-session": () => { print({ type: "thread.started", thread_id: "thread-1" }); return held(); },
   "ignore-term": held,
 };
 function capacityTurn() {

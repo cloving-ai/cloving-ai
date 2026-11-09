@@ -34,6 +34,11 @@ import {
 import { checkedProfiles, selectedProfile } from "./worker-profile.ts";
 import { noteDesk, noteMetadata } from "./turn-notes.ts";
 import {
+  queued,
+  type SteerAnswer,
+  type SteerRequest,
+} from "./turn-steering.ts";
+import {
   claudeLimits,
   type Active,
   type ClaudeWorkerSettings,
@@ -50,6 +55,7 @@ export interface ClaudeWorker extends Delivery {
   readonly recover: (intent: DeliveryIntent) => Promise<void>;
   readonly harness: (operationId: string) => Promise<string | undefined>;
   readonly stop: NonNullable<Delivery["stop"]>;
+  readonly steer: (request: SteerRequest) => Promise<SteerAnswer>;
   readonly close: () => Promise<void>;
 }
 
@@ -194,6 +200,7 @@ async function begun(
   );
   parts.active.set(key, {
     worker: harness.worker,
+    intent,
     turn,
     stopping,
     concluded: turn
@@ -297,6 +304,20 @@ async function stopped(
   return replied({ receipt: key, worker }, recorded);
 }
 
+async function steered(
+  parts: Parts,
+  request: SteerRequest,
+): Promise<SteerAnswer> {
+  const active = [...parts.active.values()].find(
+    (candidate) => candidate.intent.runId === request.runId,
+  );
+  if (active === undefined) return queued("no-open-turn");
+  const turn = await active.turn;
+  const outcome = turn.steer(request);
+  if (outcome.delivery === "queued") return outcome;
+  return { delivery: "now", operationId: active.intent.operationId };
+}
+
 function stoppingOperation(
   parts: Parts,
   intent: DeliveryIntent,
@@ -351,6 +372,7 @@ export function claudeWorker(settings: ClaudeWorkerSettings): ClaudeWorker {
         }),
       ),
     stop: (intent) => guarded(intent, () => stoppingOperation(parts, intent)),
+    steer: (request) => steered(parts, request),
     close: async () => {
       parts.stopping.abort();
       await Promise.all(

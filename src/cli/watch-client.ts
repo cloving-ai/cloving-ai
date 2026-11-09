@@ -1,5 +1,5 @@
 export const watchClient = `
-const state = { model: null, receivedAt: 0, stale: false, copied: "", label: "", run: "", loading: false, again: false, columns: {}, cards: {}, hovered: null, focused: null, phonePairing: null, phoneBusy: false, phoneMessage: "", phone: null, phoneLoadedAt: 0, phoneAccepted: null, phoneSequence: 0, phoneApplied: 0, queueBusy: false, queueMessage: "", continueBusy: [], continueMessages: {}, continueOpen: null, continueNote: "", loopBusy: [], loopMessages: {}, loopCommands: {}, themeChoice: null };
+const state = { model: null, receivedAt: 0, stale: false, copied: "", label: "", run: "", loading: false, again: false, columns: {}, cards: {}, hovered: null, focused: null, phonePairing: null, phoneBusy: false, phoneMessage: "", phone: null, phoneLoadedAt: 0, phoneAccepted: null, phoneSequence: 0, phoneApplied: 0, queueBusy: false, queueMessage: "", continueBusy: [], continueMessages: {}, continueOpen: null, continueNote: "", steerOpen: null, steerNote: "", steerNow: false, steerBusy: [], steerMessages: {}, themeChoice: null, loopBusy: [], loopMessages: {}, loopCommands: {} };
 function readPreference(key) {
   try { return JSON.parse(localStorage.getItem(key)); }
   catch { return null; }
@@ -127,6 +127,51 @@ function continueControls() {
   if (actionToken === null) return undefined;
   return { busy: state.continueBusy, messages: state.continueMessages, open: state.continueOpen, note: state.continueNote, onOpen: continueOpen, onClose: continueClose, onNote: continueNote, onContinue: continuePost, onDismiss: dismissPost };
 }
+function steerMessage(reply) {
+  if (reply.error) return reply.error.code + ": " + reply.error.detail;
+  if (reply.delivery === "now") return "The turn in work got the note.";
+  if (reply.reason !== undefined) return "The note waits for the next turn (queued: " + reply.reason + ").";
+  return "The note waits for the next turn (queued).";
+}
+function steerOpen(runId) {
+  state.steerOpen = runId;
+  state.steerNote = "";
+  state.steerNow = false;
+  draw();
+  document.querySelector(".steer-form textarea")?.focus();
+}
+function steerClose() {
+  state.steerOpen = null;
+  draw();
+  document.querySelector(".steer-open")?.focus();
+}
+function steerNote(text) {
+  state.steerNote = text;
+}
+function steerNow(choice) {
+  state.steerNow = choice.now;
+}
+async function steerPost(runId) {
+  if (state.steerBusy.includes(runId)) return;
+  const body = JSON.stringify({ runId, note: state.steerNote, now: state.steerNow });
+  state.steerOpen = null;
+  state.steerBusy = [...state.steerBusy, runId];
+  draw();
+  let message = refusedRequest;
+  try {
+    const response = await fetch("actions/steer", { method: "POST", headers: { "content-type": "application/json", "x-cloving-token": actionToken }, body });
+    if (response.ok) message = steerMessage(await response.json());
+  } catch {
+    message = refusedRequest;
+  }
+  state.steerBusy = state.steerBusy.filter((busy) => busy !== runId);
+  state.steerMessages = { ...state.steerMessages, [runId]: message };
+  await load();
+}
+function steerControls() {
+  if (actionToken === null) return undefined;
+  return { open: state.steerOpen, note: state.steerNote, now: state.steerNow, busy: state.steerBusy, messages: state.steerMessages, onOpen: steerOpen, onClose: steerClose, onNote: steerNote, onNow: steerNow, onSend: steerPost };
+}
 function moved(next, followed) {
   const arrived = next === "waiting_gate" && next !== state.run;
   state.run = next;
@@ -156,10 +201,11 @@ function draw() {
   const phone = model === null ? undefined : phoneControls(now);
   const queue = queueControls();
   const continuing = continueControls();
+  const steering = steerControls();
   const theme = themeControls();
   const loops = loopControls();
   const transcripts = transcriptControls();
-  const page = component(Page, { model, selected, now, observationNow, stale, copying, columns, cards, phone, queue, continuing, loops, theme, transcripts });
+  const page = component(Page, { model, selected, now, observationNow, stale, copying, columns, cards, phone, queue, continuing, steering, loops, theme, transcripts });
   render(page, document.getElementById("app"));
   if (model === null) return;
   transcriptsFollowed(selected);

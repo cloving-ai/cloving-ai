@@ -67,6 +67,13 @@ function dismissed(state: AuthorityState, recorded: Recorded): Reduction {
   return applied(state, recorded);
 }
 
+function noted(state: AuthorityState, recorded: Recorded): Reduction {
+  const { status } = recorded.run;
+  if (status === "cancelled") return invalid("run-cancelled");
+  if (terminal.includes(status)) return invalid("run-not-active");
+  return applied(state, recorded);
+}
+
 function observation(state: AuthorityState, recorded: Recorded): Reduction {
   const expected = recorded.event.payload["expectedObservation"];
   if (
@@ -163,7 +170,7 @@ const handlers: Readonly<Record<string, Handler>> = {
   "run.cancelled": closed("run.cancelled"),
   "run.failed": closed("run.failed"),
   "run.dismissed": dismissed,
-  "run.noted": applied,
+  "run.noted": noted,
   "run.observed": observation,
   "gate.opened": opened,
   "gate.wait-registered": registered,

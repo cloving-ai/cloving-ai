@@ -19,6 +19,7 @@ const lostDetails: ReadonlyMap<string, string> = new Map([
   ["run-command", resend],
   ["continue-run", resend],
   ["dismiss-run", resend],
+  ["steer-run", resend],
   ["queue-command", resend],
   [
     "restart",

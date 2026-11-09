@@ -1,4 +1,4 @@
-import { recordedField } from "./claude-recovery.ts";
+import { recordedField, recordedTexts } from "./claude-recovery.ts";
 import { located, readRecord } from "./operation-journal.ts";
 
 export interface OperatorNote {
@@ -32,9 +32,7 @@ export interface NoteDesk {
 }
 
 export function recordedNotes(started: unknown): readonly string[] {
-  const notes = recordedField(started, "notes");
-  if (!Array.isArray(notes)) return [];
-  return notes.filter((note): note is string => typeof note === "string");
+  return recordedTexts(started, "notes");
 }
 
 function agentStarted(started: unknown): boolean {

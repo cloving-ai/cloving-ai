@@ -78,6 +78,11 @@ const listed = [
     ["runId", "commandId"],
   ],
   ["cloving_dismiss", ["runId", "commandId"], ["runId", "commandId"]],
+  [
+    "cloving_steer",
+    ["runId", "text", "now", "commandId"],
+    ["runId", "text", "commandId"],
+  ],
   ["cloving_schedules", [], undefined],
   ["cloving_schedule_pause", ["workflowId"], ["workflowId"]],
   ["cloving_schedule_resume", ["workflowId"], ["workflowId"]],

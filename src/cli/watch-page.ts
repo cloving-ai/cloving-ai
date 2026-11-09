@@ -43,6 +43,7 @@ import {
   waitingText,
 } from "./watch-transcript-view.ts";
 import { RunNotes } from "./watch-notes-view.ts";
+import { steerFunctions } from "./watch-steer-view.ts";
 import { watchPhoneClient } from "./watch-phone-client.ts";
 import {
   PhoneAsk,
@@ -168,7 +169,6 @@ import {
 } from "./watch-turn.ts";
 import {
   Banner,
-  BackLink,
   BannerDetail,
   BoardPage,
   FloorPage,
@@ -180,6 +180,7 @@ import {
   RunTurns,
 } from "./watch-view.ts";
 import {
+  BackLink,
   Brand,
   clove,
   Header,
@@ -262,6 +263,7 @@ const functions = [
   Card,
   HandoffLinks,
   RunNotes,
+  ...steerFunctions,
   Column,
   columnCollapsed,
   Board,

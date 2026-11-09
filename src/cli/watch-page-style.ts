@@ -147,6 +147,14 @@ h2, h3 { font-family: var(--font-heading); font-weight: 700; }
 .need-note label { display: grid; gap: 4px; min-width: 240px; font-size: 12px; color: var(--color-muted); }
 .need-note input { padding: 6px 8px; border: var(--shape-border) solid var(--color-line); border-radius: calc(var(--shape-radius) / 2); background: var(--color-surface); color: var(--color-ink); font: inherit; }
 .run-notes h3 { margin: 12px 0 4px; font-size: 14px; }
+.note-mark { width: fit-content; font: 600 12px/1.6 var(--font-ui); color: var(--color-warn); }
+.steer { display: grid; gap: 4px; margin: 6px 0; }
+.steer-open { width: fit-content; }
+.steer-form { display: grid; gap: 6px; }
+.steer-form label { display: grid; gap: 4px; font-size: 12px; color: var(--color-muted); }
+.steer-form label:has(input) { display: flex; align-items: center; gap: 6px; }
+.steer-form textarea { padding: 6px 8px; border: var(--shape-border) solid var(--color-line); border-radius: calc(var(--shape-radius) / 2); background: var(--color-surface); color: var(--color-ink); font: inherit; }
+.steer-message { margin: 0; font-size: 12px; }
 .run-notes ul { margin: 0; padding: 0; list-style: none; }
 .note-text { margin: 4px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
 .need-action { flex-shrink: 0; padding: 8px 18px; border: 0; cursor: pointer; background: var(--color-panel); color: var(--color-ink); font: 600 14px/1.4 var(--font-ui); text-decoration: none; white-space: nowrap; clip-path: var(--angled); }

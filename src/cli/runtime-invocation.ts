@@ -25,6 +25,14 @@ export type RuntimeInvocation =
       readonly commandId: string | null;
       readonly json: boolean;
     }
+  | {
+      readonly kind: "steer";
+      readonly runId: string;
+      readonly text: string;
+      readonly now: boolean;
+      readonly commandId: string | null;
+      readonly json: boolean;
+    }
   | { readonly kind: "command-help"; readonly command: string }
   | {
       readonly kind: "run";

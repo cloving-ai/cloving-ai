@@ -1,4 +1,4 @@
-import { usageOf, priceOf } from "../worker-usage.ts";
+import { usageOf, priceOf, resumeReasonField } from "../worker-usage.ts";
 import type { TurnEnd } from "./claude-turn.ts";
 import {
   located,
@@ -26,6 +26,7 @@ export interface TurnResume {
   readonly turnStartCommit: string | null;
   readonly sessionId: string;
   readonly ends: readonly TurnEnd[];
+  readonly steerNotes: readonly string[];
 }
 
 export const resumePrompt =
@@ -82,6 +83,12 @@ function codexResume(
 export function recordedField(value: unknown, name: string): unknown {
   if (typeof value !== "object" || value === null) return undefined;
   return Reflect.get(value, name);
+}
+
+export function recordedTexts(value: unknown, name: string): readonly string[] {
+  const texts = recordedField(value, name);
+  if (!Array.isArray(texts)) return [];
+  return texts.filter((text): text is string => typeof text === "string");
 }
 
 export function processAlive(processId: unknown): boolean {
@@ -161,9 +168,7 @@ function priorEnd(record: unknown): TurnEnd {
     retryKind === null
       ? { retryKind }
       : {}),
-    ...(field("resumedAfter") === "daemon-restart"
-      ? { resumedAfter: "daemon-restart" as const }
-      : {}),
+    ...resumeReasonField(field("resumedAfter")),
     exitCode: null,
     result: {
       sessionId: typeof sessionId === "string" ? sessionId : null,
@@ -185,6 +190,13 @@ function recordedSessionCost(record: unknown): number | null {
   return priceOf(Reflect.get(fields, name));
 }
 
+function unlaunched(started: unknown): boolean {
+  return (
+    recordedField(started, "phase") === "starting" &&
+    recordedField(started, "resumedAfter") === "steer"
+  );
+}
+
 function resumeHeader(started: unknown) {
   if (recordedField(started, "phase") === "waiting") return undefined;
   const attempt = recordedField(started, "attempt");
@@ -194,15 +206,23 @@ function resumeHeader(started: unknown) {
     typeof attempt !== "number" ||
     !Number.isSafeInteger(attempt) ||
     attempt < 1 ||
-    attempt > 5 ||
+    attempt > 8 ||
     typeof startedAt !== "string"
   )
     return undefined;
   return {
-    attempt,
+    attempt: unlaunched(started) ? attempt - 1 : attempt,
     startedAt,
     turnStartCommit: typeof head === "string" ? head : null,
   };
+}
+
+function recordedSession(records: readonly unknown[]): unknown {
+  const last = records.at(-1);
+  const sessionId = recordedField(last, "sessionId");
+  if (sessionId !== null || recordedField(last, "resumedAfter") === undefined)
+    return sessionId;
+  return recordedSession(records.slice(0, -1));
 }
 
 export async function readResume(
@@ -214,7 +234,7 @@ export async function readResume(
   const records: unknown[] = [];
   for (let number = 1; number <= header.attempt; number += 1)
     records.push(await readRecord(folder, `attempt-${String(number)}.json`));
-  const sessionId = recordedField(records.at(-1), "sessionId");
+  const sessionId = recordedSession(records);
   if (
     typeof sessionId !== "string" ||
     sessionId === "" ||
@@ -228,6 +248,7 @@ export async function readResume(
     ends: records.map(priorEnd),
     startedAt: header.startedAt,
     turnStartCommit: header.turnStartCommit,
+    steerNotes: recordedTexts(started, "steerNotes"),
   };
 }
 
