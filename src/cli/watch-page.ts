@@ -26,6 +26,7 @@ import {
   TranscriptButton,
   TranscriptLine,
   jumpLabel,
+  transcriptWanted,
   waitingText,
 } from "./watch-transcript-view.ts";
 import { RunNotes } from "./watch-notes-view.ts";
@@ -307,6 +308,7 @@ const functions = [
   TranscriptButton,
   jumpLabel,
   TranscriptBody,
+  transcriptWanted,
   Transcript,
   BannerDetail,
   Banner,

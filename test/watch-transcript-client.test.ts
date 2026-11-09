@@ -250,3 +250,51 @@ console.log(JSON.stringify({ hidden, shown: button("Hide") !== undefined }));
   );
   assert.deepEqual(result, { hidden: true, shown: true });
 });
+
+const polled = (turns: string) => `
+replies.push(model, { run: { ...archived, turns: ${turns} } });
+await load();
+await settled();
+`;
+const hidden = `app.all("button").filter((node) => node.inner === "Hide").length`;
+
+await test("CLV-332 a reader closes the open transcript of the last turn, and it stays closed after the next poll", () => {
+  const result = transcriptPlayed(
+    { outcome: "completed" },
+    `
+const opened = ${hidden};
+button("Hide")?.dispatch("click");
+await later();
+${polled("archived.turns")}
+console.log(JSON.stringify({ opened, shown: ${hidden}, closed: button("Show") !== undefined }));
+`,
+  );
+  assert.deepEqual(result, { opened: 1, shown: 0, closed: true });
+});
+
+await test("CLV-332 the transcript of a turn that ends stays open when no other turn starts", () => {
+  const result = transcriptPlayed(
+    { outcome: "in work" },
+    `
+const opened = ${hidden};
+${polled('[{ ...archived.turns[0], outcome: "completed" }]')}
+console.log(JSON.stringify({ opened, shown: ${hidden}, streams: streams.length }));
+`,
+  );
+  assert.deepEqual(result, { opened: 1, shown: 1, streams: 1 });
+});
+
+await test("CLV-332 a transcript that the reader opened by hand stays open when a new turn becomes the last turn", () => {
+  const result = transcriptPlayed(
+    { outcome: "completed" },
+    `
+button("Hide")?.dispatch("click");
+button("Show")?.dispatch("click");
+await later();
+${polled('[archived.turns[0], { ...archived.turns[0], key: "k2", operationId: "operation-2", startedAt: "2026-10-13T21:40:00.000Z" }]')}
+const sections = app.all("section").filter((node) => node.getAttribute("data-turn") !== null).length;
+console.log(JSON.stringify({ shown: ${hidden}, sections }));
+`,
+  );
+  assert.deepEqual(result, { shown: 2, sections: 2 });
+});

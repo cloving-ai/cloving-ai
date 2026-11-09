@@ -491,7 +491,9 @@ The run list has the active runs and the runs of the last 7 days. The run detail
 
 #### Transcript of an agent turn
 
-Each agent turn in the run detail has a **Transcript** section. The section shows the conversation of the turn like the terminal of the agent: monospaced text on the theme colors, one block for each entry. The open turn is expanded and follows the stream while the agent works. An ended turn opens with **Show**. The **Link** of a turn opens `#run=<run-id>&turn=<operation-id>`: the run detail with that turn expanded.
+Each agent turn in the run detail has a **Transcript** section. The section shows the conversation of the turn like the terminal of the agent: monospaced text on the theme colors, one block for each entry.
+
+The turn in work is expanded and follows the stream while the agent works. When no turn is in work, the last agent turn (the turn that started last) is expanded. The other turns open with **Show**. The **Link** of a turn opens `#run=<run-id>&turn=<operation-id>`: the run detail with that turn expanded in place of the last turn. A transcript that you show or hide keeps that state until you leave the run detail.
 
 The service reads the `turn.jsonl` file of the journal folder of the turn and makes one entry from each line. The watch page does not read the journal. An entry has one of these kinds:
 

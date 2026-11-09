@@ -1999,6 +1999,7 @@
     "test/watch-today.test.ts": "test",
     "test/watch-transcript-browser.test.ts": "test",
     "test/watch-transcript-client.test.ts": "test",
+    "test/watch-transcript-default.test.ts": "test",
     "test/watch-transcript-stream.test.ts": "test",
     "test/watch-transcript-view.test.ts": "test",
     "test/watch-turn.test.ts": "test",
