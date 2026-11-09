@@ -23,7 +23,7 @@ import {
   queueStateLines,
 } from "./queue-render.ts";
 import { threadPoolLines } from "./thread-pool-render.ts";
-import { noteLines } from "./note-render.ts";
+import { noteLines, runNotedLines } from "./note-render.ts";
 import { reloadFieldLines } from "./reload-render.ts";
 import { restartLines, serviceLines } from "./restart-render.ts";
 import {
@@ -370,6 +370,7 @@ const renderers = new Map<string, (result: Fields) => readonly string[]>([
   ["run-command", runCommandLines],
   ["run-continued", runContinuedLines],
   ["run-dismissed", runDismissedLines],
+  ["run-noted", runNotedLines],
   ["queue", (result) => queueLines(result["queue"])],
   ["queue-command", (result) => queueLines(result["queue"])],
   ["event-page", eventPage],

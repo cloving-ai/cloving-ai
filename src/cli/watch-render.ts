@@ -85,6 +85,7 @@ export interface WatchStep {
 }
 
 export interface WatchCard {
+  readonly notesWaiting?: number;
   readonly scheduled?: { readonly slot: number };
   readonly manualFromLoop?: true;
   readonly commandWaits?: readonly CommandWaitView[];

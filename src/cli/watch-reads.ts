@@ -8,6 +8,7 @@ import {
 import { record, type Fields, type ServiceRequest } from "../protocol.ts";
 import { send } from "./client.ts";
 import { activeRun, linkFields, recentRun } from "./watch-board.ts";
+import { noteWaiting } from "./watch-notes-view.ts";
 import { loadedRun, todayOf } from "./watch-today.ts";
 import {
   workflowRefusals,
@@ -232,7 +233,7 @@ function refreshedStatus(run: ReadRun, status: ReadStatus): ReadRun {
 async function detailed(reader: Reader, summary: ReadStatus): Promise<ReadRun> {
   const { runId, latestSequence: sequence } = summary;
   const known = reader.details.get(runId);
-  if (known !== undefined && known.sequence === sequence)
+  if (known?.sequence === sequence && !noteWaiting(known.value.status["notes"]))
     return refreshedStatus(known.value, summary);
   const shown = await asked(reader, {
     operation: "status",

@@ -108,7 +108,7 @@ await test("CLV-326 the status of a run shows each note with its time and the tu
         {
           noteId: "note-b",
           text: "Keep the tests.",
-          source: "continue",
+          source: "steer",
           recordedAt: "2026-11-08T10:05:00.000Z",
           receivedBy: null,
         },
@@ -132,7 +132,7 @@ await test("CLV-326 the status of a run shows each note with its time and the tu
   });
   assert.match(
     text,
-    /\nNote at 2026-11-08T10:00:00\.000Z, got by implement\/claude-turn\/1: Merge the branch of the first run first\.\nNote at 2026-11-08T10:05:00\.000Z, waiting: Keep the tests\.\nNote at 2026-11-08T10:06:00\.000Z, got by turn-raw: Use the old branch\.\nNote at 2026-11-08T10:07:00\.000Z, receipt deleted by the retention rule: Keep the old tests\.\n/,
+    /\nNote at 2026-11-08T10:00:00\.000Z from continue, got by implement\/claude-turn\/1: Merge the branch of the first run first\.\nNote at 2026-11-08T10:05:00\.000Z from steer, waiting: Keep the tests\.\nNote at 2026-11-08T10:06:00\.000Z from continue, got by turn-raw: Use the old branch\.\nNote at 2026-11-08T10:07:00\.000Z from continue, receipt deleted by the retention rule: Keep the old tests\.\n/,
   );
 });
 

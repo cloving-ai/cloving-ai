@@ -1,7 +1,7 @@
 import type { TranscriptEntry } from "../turn-transcript.ts";
 import { component, element, type Shown } from "./watch-element.ts";
 import { watchHash } from "./watch-navigation.ts";
-import { counted, type WatchTurn } from "./watch-render.ts";
+import { counted, type WatchRun, type WatchTurn } from "./watch-render.ts";
 
 export interface TranscriptView {
   readonly shown: boolean;
@@ -178,18 +178,37 @@ export function TranscriptBody(props: {
   ];
 }
 
+export function transcriptWanted(props: {
+  readonly turns: readonly WatchTurn[];
+  readonly turn: WatchTurn;
+  readonly turnId: string | null;
+}): boolean {
+  const { turns, turn, turnId } = props;
+  if (turn.outcome === "in work" || turn.operationId === turnId) return true;
+  const chosen = turns.some(
+    (item) => item.outcome === "in work" || item.operationId === turnId,
+  );
+  if (chosen) return false;
+  const last = turns.reduce(
+    (latest, item) => (item.startedAt >= latest.startedAt ? item : latest),
+    turn,
+  );
+  return last.operationId === turn.operationId;
+}
+
 export function Transcript(props: {
-  readonly runId: string;
+  readonly run: Pick<WatchRun, "runId" | "turns">;
   readonly turn: WatchTurn;
   readonly turnId: string | null;
   readonly controls: TranscriptControls | undefined;
 }): Shown {
-  const { runId, turn, controls } = props;
+  const { run, turn, turnId, controls } = props;
+  const { runId } = run;
   const { operationId } = turn;
   const target = {
     runId,
     operationId,
-    wanted: turn.outcome === "in work" || operationId === props.turnId,
+    wanted: transcriptWanted({ turns: run.turns, turn, turnId }),
   };
   const view = controls?.view(target);
   const link = element("a", {

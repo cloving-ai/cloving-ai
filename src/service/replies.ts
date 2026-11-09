@@ -36,10 +36,25 @@ export interface NoteReceipts {
   ) => Promise<Readonly<Record<string, string>>>;
 }
 
+export interface SteerReply {
+  readonly delivery: "now" | "queued";
+  readonly reason?: string;
+  readonly operationId?: string;
+}
+
+export interface TurnSteering {
+  readonly steer: (request: {
+    readonly runId: string;
+    readonly noteId: string;
+    readonly text: string;
+  }) => Promise<SteerReply>;
+}
+
 export interface ServiceReads {
   readonly turnTranscript?: TranscriptReads;
   readonly workerHarness?: (operationId: string) => Promise<string | undefined>;
   readonly noteReceipts?: NoteReceipts;
+  readonly turnSteering?: TurnSteering;
   readonly turnDetails?: (turns: RunTurns) => Promise<TurnDetails | undefined>;
   readonly retentionExpired?: (runId: string) => Promise<boolean>;
   readonly githubRead?: GithubReader;
@@ -104,6 +119,7 @@ export function queryMetadata(
   | "queue"
   | "workerHarness"
   | "noteReceipts"
+  | "turnSteering"
   | "turnDetails"
   | "turnTranscript"
   | "retentionExpired"
@@ -145,7 +161,7 @@ export function queryMetadata(
 
 function turnReads(
   options: ServiceReads,
-): Pick<ServiceReads, "workerHarness" | "noteReceipts"> {
+): Pick<ServiceReads, "workerHarness" | "noteReceipts" | "turnSteering"> {
   return {
     ...(options.workerHarness === undefined
       ? {}
@@ -153,6 +169,9 @@ function turnReads(
     ...(options.noteReceipts === undefined
       ? {}
       : { noteReceipts: options.noteReceipts }),
+    ...(options.turnSteering === undefined
+      ? {}
+      : { turnSteering: options.turnSteering }),
   };
 }
 

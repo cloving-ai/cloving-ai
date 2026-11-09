@@ -1,6 +1,7 @@
 import { join } from "node:path";
 import { mkdir } from "node:fs/promises";
 import { readRecord, writeRecord } from "./operation-journal.ts";
+import type { ResumeReason } from "../worker-usage.ts";
 import {
   capacityRefusal,
   type TurnEnd,
@@ -10,6 +11,7 @@ import {
   attemptCommand,
   attemptUsage,
   attemptCost,
+  attemptMetadata,
   type Attempts,
 } from "./turn-attempts.ts";
 
@@ -25,9 +27,8 @@ function attemptEntry(
   selected: ReturnType<typeof attemptCommand>,
 ) {
   const attempt = attempts.ends.length + 1;
-  const resume = attempts.options.resume;
   return {
-    ...attempts.options.metadata,
+    ...attemptMetadata(attempts),
     turnStartCommit: attempts.turnStartCommit,
     model: selected.model,
     ...(selected.budgetUsd === undefined
@@ -37,11 +38,19 @@ function attemptEntry(
       ? {}
       : { fallbackReason: selected.fallbackReason }),
     attempt,
-    ...(resume !== undefined && attempt === resume.ends.length + 1
-      ? { resumedAfter: "daemon-restart" as const }
-      : {}),
+    ...resumedAfter(attempts, attempt),
     startedAt: attempt === 1 ? attempts.startedAt : new Date().toISOString(),
   };
+}
+
+function resumedAfter(
+  attempts: Attempts,
+  attempt: number,
+): { readonly resumedAfter?: ResumeReason } {
+  const resume = attempts.options.resume;
+  if (attempts.steering.pending !== undefined) return { resumedAfter: "steer" };
+  if (resume === undefined || attempt !== resume.ends.length + 1) return {};
+  return { resumedAfter: "daemon-restart" };
 }
 
 export async function prepareAttempt(attempts: Attempts) {
@@ -99,6 +108,7 @@ export function attemptJournal(
   const save = () => {
     const value = {
       ...entry,
+      ...attemptMetadata(attempts),
       phase: "running",
       processId,
       ...progressFields(attempts, progress),
@@ -122,6 +132,7 @@ export function attemptJournal(
         name: "started.json",
         value: {
           ...entry,
+          ...attemptMetadata(attempts),
           startedAt: attempts.startedAt,
           phase: "running",
           processId,
@@ -136,7 +147,7 @@ export async function recordedEnd(
   attempts: Attempts,
   completion: { readonly processId: number | null; readonly end: TurnEnd },
 ): Promise<void> {
-  const { start, ends, options } = attempts;
+  const { start, ends } = attempts;
   const { processId, end } = completion;
   const attempt = ends.length;
   const selected = attemptCommand(attempts, attempt);
@@ -150,7 +161,7 @@ export async function recordedEnd(
     name,
     value: {
       ...started,
-      ...options.metadata,
+      ...attemptMetadata(attempts),
       turnStartCommit: attempts.turnStartCommit,
       ...attemptUsage(attempts, { end, attempt }),
       ...(selected.fallbackReason === undefined

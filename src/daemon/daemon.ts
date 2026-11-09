@@ -284,6 +284,7 @@ async function openDaemon(settings: DaemonSettings): Promise<DaemonOpening> {
     ...controlPorts(controls),
     ...spendSettings(settings),
     workerHarness: worker.harness,
+    turnSteering: { steer: worker.steer },
     ...retentionReads(settings, given.promise),
     commandEffects: commandEffects(join(settings.directory, "commands")),
     stateDirectory: join(settings.directory, "state"),

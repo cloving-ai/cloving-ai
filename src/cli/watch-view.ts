@@ -1,9 +1,15 @@
+import {
+  SteerAction,
+  steerable,
+  type SteerControls,
+} from "./watch-steer-view.ts";
 import { RunNotes } from "./watch-notes-view.ts";
 import { loopText } from "./schedule-render.ts";
 import { CommandWaits, effectBudgetText } from "./command-waits.ts";
 import type { CardControls } from "./watch-card-view.ts";
 import type { PhoneControls } from "./watch-phone-view.ts";
 import {
+  BackLink,
   Header,
   Queue,
   RefusedWorkflows,
@@ -37,7 +43,7 @@ import {
   HandoffLinks,
   type ColumnControls,
 } from "./watch-board-view.ts";
-import { watchHash, watchLocation } from "./watch-navigation.ts";
+import { watchLocation } from "./watch-navigation.ts";
 import { Floor } from "./watch-floor-view.ts";
 import { Shelf } from "./watch-shelf-view.ts";
 import { NeedsYou, type ContinueControls } from "./watch-needs-view.ts";
@@ -156,7 +162,7 @@ export function RunTurns(
     component(Turn, { key: item.key, turn: item, now }),
     component(Transcript, {
       key: `transcript-${item.key}`,
-      runId: run.runId,
+      run,
       turn: item,
       turnId: props.turnId,
       controls: props.transcripts,
@@ -168,6 +174,7 @@ export function RunTurns(
 export function Run(
   props: Timed & {
     readonly copying: Copying;
+    readonly steering?: SteerControls | undefined;
     readonly transcripts?: TranscriptControls | undefined;
     readonly turnId?: string | null | undefined;
   },
@@ -191,6 +198,9 @@ export function Run(
       : element("p", { class: "meta", children: loopText(run) }),
     component(HandoffLinks, { run }),
     component(RunNotes, { notes: run.notes }),
+    steerable(run.state)
+      ? component(SteerAction, { runId: run.runId, steering: props.steering })
+      : null,
     component(CommandWaits, { waits: run.commandWaits ?? [] }),
     component(RunTotals, { run }),
     component(Phases, { phases: run.phases, now }),
@@ -229,6 +239,7 @@ export interface PageProps {
   readonly queue?: QueueControls | undefined;
   readonly continuing?: ContinueControls | undefined;
   readonly loops?: LoopControls | undefined;
+  readonly steering?: SteerControls | undefined;
   readonly theme?: ThemeControls | undefined;
   readonly transcripts?: TranscriptControls | undefined;
 }
@@ -263,6 +274,7 @@ export function Page(props: PageProps): Shown {
             run,
             now,
             copying,
+            steering: props.steering,
             transcripts: props.transcripts,
             turnId: location.turnId,
           }),
@@ -277,18 +289,6 @@ export function Page(props: PageProps): Shown {
   if (workflow === undefined)
     return component(FloorPage, { ...props, model, down });
   return component(BoardPage, { ...props, model, workflow, down });
-}
-
-export function BackLink(props: {
-  readonly workflowId: string | null;
-  readonly repository?: string | undefined;
-}): Shown {
-  const { workflowId, repository } = props;
-  return element("a", {
-    class: "back",
-    href: watchHash({ workflowId, repository, runId: null }),
-    children: `← Back to ${workflowId ?? "the floor"}`,
-  });
 }
 
 export function FloorPage(
@@ -380,6 +380,7 @@ export function BoardPage(
           now,
           observationNow: props.observationNow,
           controls: props.columns,
+          steering: props.steering,
           cardForm: model.cardForms?.find(
             (form) => form.workflowId === workflow.workflowId,
           ),

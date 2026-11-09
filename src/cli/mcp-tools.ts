@@ -5,6 +5,7 @@ import {
   decisionRequest,
   readCommandReply,
   dismissRequest,
+  steerRequest,
   readCommandRequest,
   runCommandRequest,
   runRequest,
@@ -221,6 +222,28 @@ const continueTool: Tool = {
     ),
 };
 
+const now: Argument = {
+  schema: { type: "boolean" },
+  valid: (value) => typeof value === "boolean",
+};
+
+const steerTool: Tool = {
+  name: "cloving_steer",
+  description: `Send a note of 1 to 4000 characters to an active run. Without now, the next agent turn of the run gets the note under Notes from the operator. With now, a Claude Code or Codex turn in work that recorded a session stops and resumes the same session with the note; otherwise the reply says queued and the note waits for the next turn. ${repeat}`,
+  arguments: { runId: key, text: note, now, commandId: key },
+  required: ["runId", "text", "commandId"],
+  annotations: mutation,
+  call: (values) =>
+    mutationCall(values, (commandId) =>
+      steerRequest({
+        runId: String(values["runId"]),
+        text: String(values["text"]),
+        now: values["now"] === true,
+        commandId,
+      }),
+    ),
+};
+
 const dismissTool: Tool = {
   name: "cloving_dismiss",
   description: `Dismiss a failed run, or a run that completed blocked, so that Needs you on the watch page does not list it. The dismissal is an event of the run. ${repeat}`,
@@ -263,6 +286,7 @@ const tools: readonly Tool[] = [
   runCommand("drop"),
   continueTool,
   dismissTool,
+  steerTool,
   ...scheduleTools,
 ];
 

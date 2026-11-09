@@ -52,7 +52,6 @@ async function notesOf(
     readonly turnDetails?: TurnDetails;
   },
 ): Promise<Fields> {
-  if (run.continuedFrom === undefined) return {};
   const { runId } = run;
   const notes = await runNotes(context, runId);
   if (notes.length === 0) return {};

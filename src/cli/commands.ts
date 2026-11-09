@@ -2,6 +2,7 @@ import {
   decisionRequest,
   readCommandReply,
   dismissRequest,
+  steerRequest,
   readCommandRequest,
   runCommandRequest,
   runRequest,
@@ -237,6 +238,17 @@ function dismiss(
   });
 }
 
+function steer(
+  environment: Located,
+  invocation: Invoked<"steer">,
+): Promise<number> {
+  const format = identified(environment, invocation);
+  return mutated(environment, {
+    format,
+    request: steerRequest({ ...invocation, commandId: format.commandId }),
+  });
+}
+
 async function events(
   environment: Located,
   invocation: Invoked<"events">,
@@ -290,13 +302,14 @@ export function runtimeCommand(
   if (invocation.kind === "restart") return restartCommand(placed, invocation);
   if (invocation.kind === "watch") return watch(placed, invocation);
   if (invocation.kind === "dismiss") return dismiss(placed, invocation);
+  if (invocation.kind === "steer") return steer(placed, invocation);
   return located(invocation, placed);
 }
 
 function located(
   invocation: Exclude<
     RuntimeInvocation,
-    { kind: "command-help" | "restart" | "watch" | "dismiss" }
+    { kind: "command-help" | "restart" | "watch" | "dismiss" | "steer" }
   >,
   environment: Located,
 ): Promise<number> {

@@ -63,6 +63,7 @@ const options = {
   from: { type: "string" },
   bundle: { type: "string" },
   note: { type: "string" },
+  now: { type: "boolean" },
   repository: { type: "string" },
   harness: { type: "string" },
   at: { type: "string" },
