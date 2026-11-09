@@ -477,9 +477,11 @@ The watch page has a read API at `http://127.0.0.1:3663/api/v1`. Its OpenAPI 3.1
 - `GET /api/v1/runs` gives one page of runs, newest first. The query parameters `workflowId`, `state`, `limit` (1 to 200, default 50) and `cursor` select the runs. The `nextCursor` of a page gives the next page.
 - `GET /api/v1/runs/{runId}` gives one run with its phases, open decisions, reviews and agent turns.
 - `GET /api/v1/runs/{runId}/events` gives the events of one run, the lowest sequence first. The query parameter `after` (default 0) gives only the events with a higher sequence.
+- `GET /api/v1/runs/{runId}/turns/{operationId}/transcript` gives one page of the transcript of one agent turn, the lowest position first. The query parameter `after` (default 0) gives only the entries with a higher position. A page has at most 200 entries and 256 KiB, with `nextAfter` for the next page and `open` (`true` while the turn works). The `operationId` of each turn is in the run detail.
+- `GET /api/v1/runs/{runId}/turns/{operationId}/transcript-stream` sends Server-Sent Events. Each new entry is one message with the event `entry`, the entry as its data and the position as its event ID. The header `Last-Event-ID` resumes after its position, so a lost connection loses no entry and gets no entry two times. When the turn ends, the stream sends one message with the event `end` and the data `{"nextAfter":<position>}`, and closes. When the service refuses the turn after the stream opens, for example because the retention removed its journal folder, the stream sends one message with the event `refused` and the problem as its data, and closes.
 - `GET /api/v1/stream` sends Server-Sent Events. Each message has the event `change` and the data `{"updatedAt":"<time>"}`. Read the runs again when a message arrives.
 
-Replace `<run-id>` with the ID of a run of `develop`, for example from the run list:
+Replace `<run-id>` with the ID of a run of `develop`, for example from the run list. Replace `<operation-id>` with the URL-encoded `operationId` of a turn from the run detail:
 
 ```sh
 curl http://127.0.0.1:3663/api/v1/
@@ -489,10 +491,31 @@ curl http://127.0.0.1:3663/api/v1/workflows
 curl 'http://127.0.0.1:3663/api/v1/runs?workflowId=develop&state=waiting_gate&limit=20'
 curl 'http://127.0.0.1:3663/api/v1/runs/<run-id>'
 curl 'http://127.0.0.1:3663/api/v1/runs/<run-id>/events?after=40'
+curl 'http://127.0.0.1:3663/api/v1/runs/<run-id>/turns/<operation-id>/transcript?after=200'
+curl -N 'http://127.0.0.1:3663/api/v1/runs/<run-id>/turns/<operation-id>/transcript-stream'
 curl -N http://127.0.0.1:3663/api/v1/stream
 ```
 
 The run list has the active runs and the runs of the last 7 days. The run detail reads each run, also a run older than 7 days. The events endpoint gives no event payloads, and the API has no write endpoint.
+
+#### Transcript of an agent turn
+
+Each agent turn in the run detail has a **Transcript** section. The section shows the conversation of the turn like the terminal of the agent: monospaced text on the theme colors, one block for each entry. The open turn is expanded and follows the stream while the agent works. An ended turn opens with **Show**. The **Link** of a turn opens `#run=<run-id>&turn=<operation-id>`: the run detail with that turn expanded.
+
+The service reads the `turn.jsonl` file of the journal folder of the turn and makes one entry from each line. The watch page does not read the journal. An entry has one of these kinds:
+
+- `assistant`: the text of the agent.
+- `thinking`: the thinking of the agent, closed until you open it.
+- `tool-call`: the tool name and its command or input in one line. The line opens to the full input.
+- `tool-result`: the output of a tool, with an error mark when the tool failed. The view shows the first 20 lines, and the rest opens on a click.
+- `notice`: a system event, for example a started or ended background task, a retry or a rate limit. A line of another harness, or a line that the service cannot read, becomes a notice with its raw text.
+- `result`: the end of the turn with its cost, its turns and its stop reason.
+
+Cloving reads Claude stream JSON. The worker translates the stream of another harness to Claude stream JSON before it writes `turn.jsonl`, so the transcript shows what that translation keeps. For a Codex turn, that is the agent messages, the commands, the changed files and the last 2000 characters of the output of a failed command. The journal keeps no Codex reasoning and no output of a successful command. Each attempt of a resumed turn starts with a line such as `Attempt 2 (resumed after a restart)`. The service leaves out frequent status events, for example the token counts of thinking and the progress of a tool.
+
+The view scrolls with new entries while you are at the end. When you scroll up, it stops, and **Jump to the end** shows the count of new entries. The page keeps at most 2000 entries, and **Load earlier entries** loads the entries before them.
+
+The view shows text only. It never renders HTML or Markdown from a transcript. The service removes terminal control sequences, and replaces GitHub token patterns (`ghp_`, `gho_`, `ghu_`, `ghs_`, `ghr_` and `github_pat_`) and the texts of the private setting `privateTexts` with `[hidden]`. A text above 64 KiB is cut, and the entry tells how many bytes the cut left out. When the retention archived or removed the journal folder of a turn, the section shows `The transcript of this turn is not kept`, and the routes reply `410` with the code `transcript-not-kept`. When a read fails, the section shows the reason and a **Retry** button. The page does not read a failed or removed transcript again by itself.
 
 #### Themes of the watch page
 
@@ -2085,7 +2108,7 @@ After a merge or branch update changes `package.json` or `package-lock.json`, re
 
 `npm run check` and `npm run test:concurrency` currently reject admission because the complete quality policy is not implemented. Setup checks are not product acceptance. State and retained releases will live outside the package installation; installing or updating the package does not activate a daemon or migrate state.
 
-Run `npm run test:scale` on an otherwise idle machine to measure authority opening at 1,000, 10,000 and 50,000 events. This command runs the benchmark alone, without coverage; the regular test suite excludes it. The fixture uses completed runs with budgets, gates and released continuations. It requires each opening to take less than two seconds and the largest opening to take less than eight times the 10,000-event opening. Replay uses the pure reducer with run-scoped projections and preserves shared effect and lease state. Large effect histories, growing gate or pending-intent state within one run, and cancelled-run recovery still require separate scaling work; this benchmark does not establish their bounds. The generated-history parity and tamper tests compare replay with the full reducer and cover every event type. The same command also measures the first status page of a service with 700 runs and 7,000 events, and requires an answer in less than 200 ms. The service keeps the projected authority state in memory, so a status request reads no projected table in full after the start.
+Run `npm run test:scale` on an otherwise idle machine to measure authority opening at 1,000, 10,000 and 50,000 events. This command runs the benchmark alone, without coverage; the regular test suite excludes it. The fixture uses completed runs with budgets, gates and released continuations. It requires each opening to take less than two seconds and the largest opening to take less than eight times the 10,000-event opening. Replay uses the pure reducer with run-scoped projections and preserves shared effect and lease state. Large effect histories, growing gate or pending-intent state within one run, and cancelled-run recovery still require separate scaling work; this benchmark does not establish their bounds. The generated-history parity and tamper tests compare replay with the full reducer and cover every event type. The same command also measures the first status page of a service with 700 runs and 7,000 events, and requires an answer in less than 200 ms. The service keeps the projected authority state in memory, so a status request reads no projected table in full after the start. The expiry check of leases, decisions and command waits also uses this state. It reads the end of the next lease once after each change of the authority state, and it runs no other query until that lease ends. The polls and heartbeats of the Solid Objects runtime still query the authority database while the service is idle.
 
 `npm run check:quality` checks the npm manifest, lock and installed versions, builds the package with `npm run build`, regenerates TypeScript output in memory, inventories first-party files, and runs strict compilation, the proposed module catalog, workflow/effect boundaries, suppression and test-integrity checks, formatting, typed lint, structural checks, clone detection and the regular local test suite. Production modules require at least 90% line, statement and function coverage and 85% branch coverage per file. Coverage uses native V8 ranges mapped to the syntax tree of the exact Node-stripped source; unimported production files fail. Class and named object types allow at most 24 callable members; interfaces allow 10. Clone checks support ordinary TypeScript and JavaScript; JSX is rejected until separately qualified. `npm run check:lint`, `npm run check:format` and `npm run test:quality` run individual development checks.
 

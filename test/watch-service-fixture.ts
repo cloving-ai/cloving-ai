@@ -12,6 +12,34 @@ import {
 import { withHarness } from "./service-fixture.ts";
 import { watching, type Watching, type WatchOptions } from "./watch-fixture.ts";
 
+export async function fakeService(
+  runtimeDirectory: string,
+  answer: (request: ServiceRequest) => Reply,
+): Promise<() => Promise<void>> {
+  const address = socketAddress(join(runtimeDirectory, "control.sock"));
+  assert.equal(address.kind, "address");
+  const server = createServer((socket) => {
+    socket.on("error", (error: NodeJS.ErrnoException) => {
+      if (!["EPIPE", "ECONNRESET"].includes(error.code ?? "")) throw error;
+    });
+    let buffered = "";
+    socket.on("data", (chunk: Buffer) => {
+      buffered += chunk.toString();
+      if (!buffered.includes("\n")) return;
+      const parsed = parseRequest(buffered.trim());
+      assert.equal(parsed.kind, "request");
+      socket.end(replyLine(answer(parsed.request)));
+    });
+  });
+  await new Promise<void>((ready) => server.listen(address.path, ready));
+  return () =>
+    new Promise<void>((closed) =>
+      server.close(() => {
+        closed();
+      }),
+    );
+}
+
 export async function withWatchService(
   configuration:
     | ((request: ServiceRequest) => Reply)
@@ -29,24 +57,7 @@ export async function withWatchService(
       ? { answer: configuration, configure: undefined, launch: undefined }
       : configuration;
   await withHarness(async (harness) => {
-    const address = socketAddress(
-      join(harness.runtimeDirectory, "control.sock"),
-    );
-    assert.equal(address.kind, "address");
-    const server = createServer((socket) => {
-      socket.on("error", (error: NodeJS.ErrnoException) => {
-        if (!["EPIPE", "ECONNRESET"].includes(error.code ?? "")) throw error;
-      });
-      let buffered = "";
-      socket.on("data", (chunk: Buffer) => {
-        buffered += chunk.toString();
-        if (!buffered.includes("\n")) return;
-        const parsed = parseRequest(buffered.trim());
-        assert.equal(parsed.kind, "request");
-        socket.end(replyLine(settings.answer(parsed.request)));
-      });
-    });
-    await new Promise<void>((ready) => server.listen(address.path, ready));
+    const close = await fakeService(harness.runtimeDirectory, settings.answer);
     try {
       const options = await settings.configure?.(harness.runtimeDirectory);
       const watch = await (settings.launch?.(harness.runtimeDirectory) ??
@@ -57,11 +68,7 @@ export async function withWatchService(
         assert.equal(await watch.stop(), 0);
       }
     } finally {
-      await new Promise<void>((closed) =>
-        server.close(() => {
-          closed();
-        }),
-      );
+      await close();
     }
   });
 }

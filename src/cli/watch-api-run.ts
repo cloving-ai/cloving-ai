@@ -34,6 +34,7 @@ interface ApiDecision {
 
 interface ApiTurn {
   readonly key: string;
+  readonly operationId: string;
   readonly harness: string | null;
   readonly startedAt: string;
   readonly endedAt: string | null;
@@ -98,6 +99,7 @@ function reviewOf(review: WatchReview): WatchReview {
 function turnOf(turn: WatchTurn): ApiTurn {
   return {
     key: turn.key,
+    operationId: turn.operationId,
     harness: turn.harness ?? null,
     startedAt: turn.startedAt,
     endedAt: turn.endedAt,

@@ -73,7 +73,7 @@ await test("CLV-319 an operator issue, a triaged issue, a recent comment and a p
       row({ number: 7, labels: [{ name: "bug" }] }),
     ],
     comments: {
-      3: ["2026-11-04T10:30:00Z", "2026-11-04T11:55:00Z"],
+      3: ["2026-11-04T11:55:00Z", "2026-11-04T10:30:00Z"],
       6: ["2026-11-04T11:00:00Z", "2026-11-04T11:50:00Z"],
     },
   });
@@ -170,6 +170,39 @@ await test("CLV-319 the candidates command prints nothing and ends with code 1 w
       await candidateOutput({ gh, operators, quietSince }),
       expected,
     );
+});
+
+await test("CLV-319 the candidates command refuses each malformed gh answer and names a failed start", async () => {
+  const unexpectedAnswer = {
+    stdout: "",
+    stderr: "gh printed an unexpected response.\n",
+    exitCode: 1,
+  };
+  for (const gh of [
+    () => Promise.resolve('["row"]'),
+    () => Promise.resolve('[["row"]]'),
+    fakeGh({ rows: [row({ number: -1 })] }).gh,
+    () =>
+      Promise.resolve(
+        JSON.stringify([[{ ...row({ number: 4 }), user: { login: 7 } }]]),
+      ),
+    () =>
+      Promise.resolve(
+        JSON.stringify([[{ ...row({ number: 4 }), labels: "bug" }]]),
+      ),
+  ])
+    assert.deepEqual(
+      await candidateOutput({ gh, operators: ["operator"], quietSince }),
+      unexpectedAnswer,
+    );
+  assert.deepEqual(
+    await candidateOutput({
+      gh: () => Promise.reject(new Error("spawn gh ENOENT")),
+      operators: ["operator"],
+      quietSince,
+    }),
+    { stdout: "", stderr: "spawn gh ENOENT\n", exitCode: 1 },
+  );
 });
 
 const scriptGh = `#!/usr/bin/env -S -u NODE_V8_COVERAGE ${process.execPath}

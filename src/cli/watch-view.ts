@@ -39,9 +39,13 @@ import { NeedsYou, type ContinueControls } from "./watch-needs-view.ts";
 export type { ContinueControls } from "./watch-needs-view.ts";
 import { Today } from "./watch-today-view.ts";
 import type { ThemeControls } from "./watch-theme-view.ts";
-import { Decision, Events, Turn, PullRequest } from "./watch-turn.ts";
+import { Decision, Events, Turn, PullRequest, Review } from "./watch-turn.ts";
 import { Commands } from "./command-effects.ts";
-export { PullRequest } from "./watch-turn.ts";
+import {
+  Transcript,
+  type TranscriptControls,
+} from "./watch-transcript-view.ts";
+export { PullRequest, Review } from "./watch-turn.ts";
 
 interface Timed {
   readonly run: WatchRun;
@@ -111,31 +115,6 @@ export function Phases(props: {
   return element("ol", { class: "phases", children: steps });
 }
 
-export function Review(props: {
-  readonly run: WatchRun;
-  readonly round: number;
-}): Shown {
-  const { run, round } = props;
-  const decisionId = `${run.runId}/review-${String(round)}`;
-  const denied = run.feedback.find((item) => item.decisionId === decisionId);
-  if (denied !== undefined)
-    return element("section", {
-      class: "review denied",
-      children: [
-        element("h3", { children: `Review ${String(round)} · denied` }),
-        element("p", { children: denied.text }),
-      ],
-    });
-  if (!run.decisions.some((item) => item.decisionId === decisionId))
-    return null;
-  return element("section", {
-    class: "review pending",
-    children: element("h3", {
-      children: `Review ${String(round)} · waits for your decision`,
-    }),
-  });
-}
-
 export function RunTotals(props: { readonly run: WatchRun }): Shown {
   const { run } = props;
   return element("section", {
@@ -155,7 +134,38 @@ export function RunTotals(props: { readonly run: WatchRun }): Shown {
   });
 }
 
-export function Run(props: Timed & { readonly copying: Copying }): Shown {
+export function RunTurns(
+  props: Timed & {
+    readonly transcripts: TranscriptControls | undefined;
+    readonly turnId: string | null;
+  },
+): Shown {
+  const { run, now } = props;
+  if (run.turns.length === 0)
+    return element("p", {
+      class: "meta",
+      children: "No agent turn for this run.",
+    });
+  return run.turns.map((item, index) => [
+    component(Turn, { key: item.key, turn: item, now }),
+    component(Transcript, {
+      key: `transcript-${item.key}`,
+      runId: run.runId,
+      turn: item,
+      turnId: props.turnId,
+      controls: props.transcripts,
+    }),
+    component(Review, { key: `review-${item.key}`, run, round: index + 1 }),
+  ]);
+}
+
+export function Run(
+  props: Timed & {
+    readonly copying: Copying;
+    readonly transcripts?: TranscriptControls | undefined;
+    readonly turnId?: string | null | undefined;
+  },
+): Shown {
   const { run, now, copying } = props;
   const turn = run.turns.at(-1);
   const budget = effectBudgetText(run.spent, run.limit);
@@ -163,18 +173,6 @@ export function Run(props: Timed & { readonly copying: Copying }): Shown {
     run.chain === undefined
       ? ""
       : ` · run ${String(run.chain.position)} of ${String(run.chain.limit)} in its chain`;
-  const none = "No agent turn for this run.";
-  const turns =
-    run.turns.length === 0
-      ? element("p", { class: "meta", children: none })
-      : run.turns.map((item, index) => [
-          component(Turn, { key: item.key, turn: item, now }),
-          component(Review, {
-            key: `review-${item.key}`,
-            run,
-            round: index + 1,
-          }),
-        ]);
   const foot = [
     `${run.workflowId} · ${run.runId}${budget === "" ? "" : ` · ${budget}`}${place}`,
     element("br", {}),
@@ -200,7 +198,12 @@ export function Run(props: Timed & { readonly copying: Copying }): Shown {
     run.decisions.map((decision) =>
       component(Decision, { decision, turn, copying }),
     ),
-    turns,
+    component(RunTurns, {
+      run,
+      now,
+      transcripts: props.transcripts,
+      turnId: props.turnId ?? null,
+    }),
     component(Commands, { effects: run.commandEffects ?? [] }),
     component(Events, { events: run.events }),
     element("p", { class: "meta foot", children: foot }),
@@ -220,6 +223,7 @@ export interface PageProps {
   readonly queue?: QueueControls | undefined;
   readonly continuing?: ContinueControls | undefined;
   readonly theme?: ThemeControls | undefined;
+  readonly transcripts?: TranscriptControls | undefined;
 }
 
 export function RefusedWorkflows(props: { readonly model: WatchModel }): Shown {
@@ -265,7 +269,14 @@ export function Page(props: PageProps): Shown {
       }),
       run === undefined
         ? text("meta", "This run is not available.")
-        : component(Run, { key: run.runId, run, now, copying }),
+        : component(Run, {
+            key: run.runId,
+            run,
+            now,
+            copying,
+            transcripts: props.transcripts,
+            turnId: location.turnId,
+          }),
     ];
   }
   const workflow = model.workflows.find(
