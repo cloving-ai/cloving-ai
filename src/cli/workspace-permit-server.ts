@@ -8,6 +8,7 @@ import {
   replyLine,
   type Reply,
 } from "../protocol.ts";
+import type { WorkspaceHold } from "../queue-room.ts";
 import { workspaceHold, type MemberReading } from "../workspace-hold.ts";
 import type { WorkspaceLimits } from "../workspace.ts";
 import { send } from "./client.ts";
@@ -27,6 +28,7 @@ export interface PermitSettings {
   readonly members: () => readonly WorkspaceMember[];
   readonly limits: WorkspaceLimits;
   readonly gapMilliseconds?: number;
+  readonly answerMilliseconds?: number;
 }
 
 const readMilliseconds = 10_000;
@@ -77,17 +79,19 @@ function invalid(detail: string): Reply {
   return { kind: "error", error: { code: "invalid-request", detail } };
 }
 
-async function permitAnswer(serving: Serving, permits: number): Promise<Reply> {
+function memberReadings(serving: Serving): Promise<readonly MemberReading[]> {
   const { limits } = serving.settings;
-  const restarting = serving.restart.hold();
-  const members =
-    restarting !== undefined ||
+  if (
+    serving.restart.hold() !== undefined ||
     (limits.lanes === undefined && limits.dailySpendLimitUsd === undefined)
-      ? []
-      : await Promise.all(
-          serving.settings.members().map((member) => reading(member, limits)),
-        );
-  const hold = restarting ?? workspaceHold(limits, { members, permits });
+  )
+    return Promise.resolve([]);
+  return Promise.all(
+    serving.settings.members().map((member) => reading(member, limits)),
+  );
+}
+
+function permitReply(hold: WorkspaceHold | undefined): Reply {
   return {
     kind: "result",
     result: {
@@ -108,17 +112,23 @@ interface Serving {
 
 function permitted(serving: Serving, socket: net.Socket): void {
   serving.turn = serving.turn.then(async () => {
-    const reply = await permitAnswer(serving, serving.permits);
+    const members = await memberReadings(serving);
     if (socket.destroyed) return;
-    if (reply.kind !== "result" || reply.result["admitted"] !== true) {
-      socket.end(replyLine(reply));
+    const hold =
+      serving.restart.hold() ??
+      workspaceHold(serving.settings.limits, {
+        members,
+        permits: serving.permits,
+      });
+    if (hold !== undefined) {
+      socket.end(replyLine(permitReply(hold)));
       return;
     }
     serving.permits += 1;
     socket.once("close", () => {
       serving.permits -= 1;
     });
-    socket.write(replyLine(reply));
+    socket.write(replyLine(permitReply(undefined)));
   });
 }
 
@@ -187,7 +197,9 @@ export async function permitServer(
     sockets: new Set(),
     restart: workspaceRestart({
       members: settings.members,
+      permits: () => serving.permits,
       gapMilliseconds: settings.gapMilliseconds ?? 2000,
+      answerMilliseconds: settings.answerMilliseconds ?? 180_000,
       signal: stopping.signal,
     }),
     permits: 0,

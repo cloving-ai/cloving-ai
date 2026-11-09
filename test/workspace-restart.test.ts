@@ -1,167 +1,13 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, realpathSync, rmSync } from "node:fs";
-import { mkdir } from "node:fs/promises";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { setTimeout as delay } from "node:timers/promises";
-import { send } from "../src/cli/client.ts";
-import { argumentRules } from "../src/cli/runtime-invocation.ts";
-import { permitServer } from "../src/cli/workspace-permit-server.ts";
 import { workspacePermits } from "../src/cli/workspace-permit.ts";
-import type { Fields, Reply, ServiceRequest } from "../src/protocol.ts";
-import { listen, type Listener } from "../src/service/transport.ts";
 import { eventually } from "./service-fixture.ts";
-import { testMilliseconds } from "./test-timing.ts";
-
-const root = realpathSync(mkdtempSync(join(tmpdir(), "clv-ws-restart-")));
-process.on("exit", () => {
-  rmSync(root, { recursive: true, force: true });
-});
-
-interface FakeMember {
-  readonly name: string;
-  readonly repository: string;
-  readonly runtime: string;
-  readonly restarts: Fields[];
-  readonly listener: Listener;
-  active: boolean;
-  startedAt: string;
-  gapReads: number;
-  refuses: boolean;
-  down: boolean;
-  bare: boolean;
-  fails: string | undefined;
-  cancels: boolean;
-  admits: readonly string[];
-  workflows: readonly string[];
-  pending: Fields | null;
-  failure: Fields | undefined;
-}
-
-const result = (fields: Fields): Promise<Reply> =>
-  Promise.resolve({ kind: "result", result: fields });
-
-const refusal = (code: string): Promise<Reply> =>
-  Promise.resolve({ kind: "error", error: { code, detail: code } });
-
-function restartedLater(member: FakeMember, pending: Fields): void {
-  member.down = true;
-  setTimeout(() => {
-    member.down = false;
-    member.pending = null;
-    if (member.fails !== undefined)
-      member.failure = {
-        ...pending,
-        code: member.fails,
-        step: "build",
-        output: "build output",
-      };
-    if (member.fails !== undefined || member.cancels) return;
-    member.startedAt = `${member.startedAt}-restarted`;
-    member.workflows = member.admits;
-  }, 40);
-}
-
-function restartReply(member: FakeMember, parameters: Fields): Promise<Reply> {
-  const { commandId } = parameters;
-  if (member.refuses) return refusal("restart-unavailable");
-  if (
-    typeof commandId !== "string" ||
-    !argumentRules.identifier.test(commandId)
-  )
-    return refusal("invalid-request");
-  member.restarts.push(parameters);
-  const pending = { commandId, requestedAt: Date.now() };
-  member.pending = pending;
-  const before = member.startedAt;
-  restartedLater(member, pending);
-  if (member.bare) return result({ kind: "restart" });
-  return result({
-    kind: "restart",
-    serviceStartedAt: before,
-    restart: {
-      state: "pending",
-      ...pending,
-      queueWorkflowId: "develop",
-      scheduledWorkflowIds: [],
-    },
-  });
-}
-
-function handled(member: FakeMember, request: ServiceRequest): Promise<Reply> {
-  if (request.operation === "restart")
-    return restartReply(member, request.parameters);
-  if (request.parameters["after"] !== undefined) member.gapReads += 1;
-  if (member.down) return refusal("authority-unavailable");
-  return result({
-    kind: "run-list",
-    runs: member.active ? [{ runId: "run-1", state: "running" }] : [],
-    next: null,
-    serviceStartedAt: member.startedAt,
-    workflows: member.workflows,
-    restart: member.pending,
-    ...(member.failure === undefined ? {} : { restartFailure: member.failure }),
-  });
-}
-
-async function fakeMember(folder: string, name: string): Promise<FakeMember> {
-  const repository = join(folder, name);
-  const runtime = join(repository, "run");
-  await mkdir(runtime, { recursive: true });
-  const member: FakeMember = {
-    name,
-    repository,
-    runtime,
-    restarts: [],
-    active: false,
-    startedAt: `${name}-start`,
-    gapReads: 0,
-    refuses: false,
-    down: false,
-    bare: false,
-    fails: undefined,
-    cancels: false,
-    admits: ["develop"],
-    workflows: ["develop"],
-    pending: null,
-    failure: undefined,
-    listener: await listen({
-      path: join(runtime, "control.sock"),
-      handle: (request) => handled(member, request),
-    }),
-  };
-  return member;
-}
-
-async function withSupervisor(
-  body: (scene: {
-    readonly folder: string;
-    readonly members: readonly FakeMember[];
-    readonly close: () => Promise<void>;
-  }) => Promise<void>,
-): Promise<void> {
-  const folder = mkdtempSync(join(root, "workspace-"));
-  const members = [
-    await fakeMember(folder, "alpha"),
-    await fakeMember(folder, "beta"),
-  ];
-  const server = await permitServer({
-    path: join(folder, "control.sock"),
-    members: () => members,
-    limits: {},
-    gapMilliseconds: 20,
-  });
-  try {
-    await body({ folder, members, close: server.close });
-  } finally {
-    await server.close();
-    for (const member of members) await member.listener.close();
-  }
-}
-
-const restarted = (folder: string, parameters: Fields) =>
-  send(folder, { operation: "restart", parameters });
+import {
+  failedDetail,
+  restarted,
+  withSupervisor,
+} from "./workspace-restart-fixture.ts";
 
 await test("CLV-312 the workspace restart holds the queue runs of all repositories and restarts all repositories at a common gap", () =>
   withSupervisor(async ({ folder, members }) => {
@@ -266,6 +112,50 @@ await test("CLV-312 a repeated workspace restart with the same command ID joins 
     assert.equal((await stopped).kind, "error");
   }));
 
+await test("CLV-312 a permit request that the supervisor reads while a workspace restart arrives gets the restart hold", () =>
+  withSupervisor(
+    async ({ folder, members }) => {
+      const [alpha] = members;
+      assert.ok(alpha !== undefined);
+      const answer = Promise.withResolvers<undefined>();
+      alpha.queueAnswer = answer.promise;
+      const permit = workspacePermits(join(folder, "control.sock"))();
+      await eventually(() => (alpha.queueReads >= 1 ? true : undefined));
+      alpha.active = true;
+      const reads = alpha.gapReads;
+      const reply = restarted(folder, { commandId: "during-reads" });
+      await eventually(() => (alpha.gapReads > reads ? true : undefined));
+      answer.resolve(undefined);
+      const held = await permit;
+      assert.ok(held.kind === "held");
+      assert.equal(held.hold.reason, "workspace-restart");
+      alpha.active = false;
+      assert.equal((await reply).kind, "result");
+    },
+    { limits: { lanes: 4 } },
+  ));
+
+await test("CLV-312 a workspace restart at a gap waits until every granted permit ends", () =>
+  withSupervisor(async ({ folder, members }) => {
+    const [alpha] = members;
+    assert.ok(alpha !== undefined);
+    const granted = await workspacePermits(join(folder, "control.sock"))();
+    assert.ok(granted.kind === "admitted");
+    const reads = alpha.gapReads;
+    const reply = restarted(folder, { commandId: "after-permit", at: "gap" });
+    await eventually(() => (alpha.gapReads >= reads + 2 ? true : undefined));
+    assert.deepEqual(
+      members.map((member) => member.restarts.length),
+      [0, 0],
+    );
+    granted.release();
+    assert.equal((await reply).kind, "result");
+    assert.deepEqual(
+      members.map((member) => member.restarts.length),
+      [1, 1],
+    );
+  }));
+
 await test("CLV-312 a workspace restart keeps waiting while a repository does not answer the gap read", () =>
   withSupervisor(async ({ folder, members }) => {
     const [, beta] = members;
@@ -292,26 +182,6 @@ await test("CLV-312 a workspace restart sends the command ID of the request to e
       [commandId, commandId],
     );
   }));
-
-const stillWaiting: Reply = {
-  kind: "error",
-  error: { code: "still-waiting", detail: "The restart did not end." },
-};
-
-const bounded = (reply: Promise<Reply>): Promise<Reply> =>
-  Promise.race([
-    reply,
-    delay(testMilliseconds(5000), stillWaiting, { ref: false }),
-  ]);
-
-async function failedDetail(folder: string, commandId: string) {
-  const reply = await bounded(restarted(folder, { commandId, at: "now" }));
-  assert.ok(reply.kind === "error");
-  assert.equal(reply.error.code, "workspace-restart-failed");
-  const permit = await workspacePermits(join(folder, "control.sock"))();
-  assert.equal(permit.kind, "admitted");
-  return reply.error.detail;
-}
 
 await test("CLV-312 a workspace restart fails and ends its queue hold when a repository fails its restart, another command cancels it, or the new service refuses a queue workflow", () =>
   withSupervisor(async ({ folder, members }) => {
@@ -340,3 +210,23 @@ await test("CLV-312 a workspace restart fails and ends its queue hold when a rep
       ].join("\n"),
     );
   }));
+
+await test("CLV-312 a workspace restart fails and names the repository when its service accepts a connection but does not answer", () =>
+  withSupervisor(
+    async ({ folder, members }) => {
+      const [alpha, beta] = members;
+      assert.ok(alpha !== undefined && beta !== undefined);
+      beta.mute = "status";
+      assert.match(
+        await failedDetail(folder, "unanswered"),
+        /: beta \(restart-start-unanswered\)\.$/,
+      );
+      beta.mute = undefined;
+      alpha.mute = "restart";
+      assert.match(
+        await failedDetail(folder, "no-reply"),
+        /: alpha \(outcome-unknown\)\.$/,
+      );
+    },
+    { answerMilliseconds: 200 },
+  ));

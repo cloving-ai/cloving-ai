@@ -60,6 +60,10 @@ const invalidCases: readonly (readonly [unknown, string])[] = [
         "dailySpendLimitUsd must be a number above 0",
       ] as const,
   ),
+  [
+    '{"version":1,"repositories":[{"path":"/a"}],"dailySpendLimitUsd":1e400}',
+    "dailySpendLimitUsd must be a number above 0",
+  ],
   [{ version: 1 }, "repositories must list one or more repositories"],
   [
     { version: 1, repositories: [] },

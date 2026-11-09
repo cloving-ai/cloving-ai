@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { mkdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { test } from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
 import type { Fields, Reply } from "../src/protocol.ts";
 import type { Permit } from "../src/cli/workspace-permit.ts";
-import type { WorkspaceHold } from "../src/queue-room.ts";
+import type { HostSignals, WorkspaceHold } from "../src/queue-room.ts";
 import { runIdentity } from "../src/service/submission-handler.ts";
 import type { Handle } from "../src/service/transport.ts";
 import { eventually } from "./service-fixture.ts";
@@ -103,6 +103,35 @@ await test("CLV-312 a queue submits its run only with a workspace permit and rel
         "released",
       ]);
       assert.equal(scene.control()?.hold, undefined);
+    },
+  );
+});
+
+await test("CLV-312 a queue releases its workspace permit when the hold record cannot be written after the permit", async () => {
+  const state = { runs: new Map<string, Fields>(), events: [] as string[] };
+  const signals: { current: HostSignals } = {
+    current: { loadAverage: 12, cores: 12, memoryPressure: "normal" },
+  };
+  await withQueue(
+    {
+      handle: admittingService(state),
+      room: {
+        limits: () => ({ maxLoadPerCore: 0.7, maxMemoryPressure: "normal" }),
+        signals: () => Promise.resolve(signals.current),
+      },
+      permit: () => switchedPermit({ held: false, events: state.events }),
+    },
+    async (scene) => {
+      await eventually(() =>
+        scene.control()?.hold?.reason === "load" ? true : undefined,
+      );
+      await mkdir(join(scene.directory, "queue-holds.json.tmp"));
+      signals.current = { loadAverage: 1, cores: 12, memoryPressure: "normal" };
+      await eventually(() =>
+        state.events.includes("released") ? true : undefined,
+      );
+      assert.deepEqual(state.events, ["permitted", "released"]);
+      assert.equal(state.runs.size, 0);
     },
   );
 });

@@ -80,6 +80,10 @@ function unique(
   }
 }
 
+function positiveNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value) && value > 0;
+}
+
 function workspaceLimits(fields: Fields): WorkspaceLimits {
   const { lanes, dailySpendLimitUsd } = fields;
   if (
@@ -87,10 +91,7 @@ function workspaceLimits(fields: Fields): WorkspaceLimits {
     !(Number.isSafeInteger(lanes) && Number(lanes) >= 1 && Number(lanes) <= 64)
   )
     refused("lanes must be a whole number from 1 to 64");
-  if (
-    dailySpendLimitUsd !== undefined &&
-    !(typeof dailySpendLimitUsd === "number" && dailySpendLimitUsd > 0)
-  )
+  if (dailySpendLimitUsd !== undefined && !positiveNumber(dailySpendLimitUsd))
     refused("dailySpendLimitUsd must be a number above 0");
   return {
     ...(lanes === undefined ? {} : { lanes: Number(lanes) }),

@@ -6,9 +6,10 @@ import type { WorkspaceHold } from "../queue-room.ts";
 import { atGap, workInProgress } from "../work-gap.ts";
 import { send } from "./client.ts";
 import {
-  settled,
+  polled,
   waitingFor,
-  type Settled,
+  type Unanswered,
+  type Waited,
   type Waiting,
 } from "./restart-command.ts";
 import { refusedWorkflowLines } from "./restart-render.ts";
@@ -29,9 +30,13 @@ interface RestartRequest {
 
 interface Restarting {
   readonly members: () => readonly WorkspaceMember[];
+  readonly permits: () => number;
   readonly gapMilliseconds: number;
+  readonly answerMilliseconds: number;
   readonly signal: AbortSignal;
 }
+
+type MemberOutcome = Exclude<Waited, { readonly kind: "interrupted" }>;
 
 const restartHold: WorkspaceHold = {
   reason: "workspace-restart",
@@ -68,16 +73,6 @@ function restartRequest(parameters: Fields): RestartRequest | undefined {
   };
 }
 
-async function memberStatus(
-  member: WorkspaceMember,
-): Promise<Fields | undefined> {
-  const reply = await send(member.runtime, {
-    operation: "status",
-    parameters: { limit: 1 },
-  });
-  return reply.kind === "result" ? reply.result : undefined;
-}
-
 function memberAtGap(member: WorkspaceMember): Promise<boolean> {
   const reads = daemonWorkReads({
     directory: dirname(member.runtime),
@@ -91,8 +86,9 @@ async function commonGap(
   restarting: Restarting,
 ): Promise<void> {
   for (;;) {
+    const idle = restarting.permits() === 0;
     const gaps = await Promise.all(members.map(memberAtGap));
-    if (!gaps.includes(false)) return;
+    if (idle && !gaps.includes(false)) return;
     await delay(restarting.gapMilliseconds, undefined, {
       signal: restarting.signal,
     });
@@ -105,22 +101,33 @@ async function settledMember(
     readonly waiting: Waiting;
     readonly restarting: Restarting;
   },
-): Promise<Settled> {
+): Promise<MemberOutcome> {
+  const { waiting, restarting } = input;
+  const source = {
+    runtimeDirectory: member.runtime,
+    answerMilliseconds: restarting.answerMilliseconds,
+  };
+  const unanswered: Unanswered = { since: undefined };
   for (;;) {
-    const now = await memberStatus(member);
-    const outcome = now === undefined ? undefined : settled(now, input.waiting);
-    if (outcome !== undefined) return outcome;
-    await delay(input.restarting.gapMilliseconds, undefined, {
-      signal: input.restarting.signal,
+    const outcome = await polled(source, {
+      waiting,
+      stopped: restarting.signal,
+      unanswered,
+    });
+    if (outcome !== undefined && outcome.kind !== "interrupted") return outcome;
+    await delay(restarting.gapMilliseconds, undefined, {
+      signal: restarting.signal,
     });
   }
 }
 
 function settledEntry(
   name: string,
-  outcome: Settled & { readonly before: Fields },
+  outcome: MemberOutcome & { readonly before: Fields },
 ): Fields {
   if (outcome.kind === "cancelled") return { name, error: "restart-cancelled" };
+  if (outcome.kind === "unanswered")
+    return { name, error: "restart-start-unanswered" };
   if (outcome.kind === "failed")
     return { name, error: String(outcome.failure["code"]) };
   const refusedWorkflows = refusedWorkflowLines(outcome.before, outcome.after);
@@ -144,6 +151,10 @@ async function restartedMember(
       at: "now",
       ...request.options,
     },
+    signal: AbortSignal.any([
+      restarting.signal,
+      AbortSignal.timeout(restarting.answerMilliseconds),
+    ]),
   });
   if (reply.kind === "error")
     return { name: member.name, error: reply.error.code };

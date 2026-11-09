@@ -297,14 +297,14 @@ async function cycle(
   await rm(join(settings.directory, "queue-submission"), { force: true });
   await recover(settings, pending);
   const stopped = (): boolean => signal.aborted;
+  const checks = { pending, stop, notice, update, room };
   while (!stopped()) {
     await delay(settings.intervalMilliseconds, undefined, { signal }).catch(
       () => undefined,
     );
     if (stopped()) return;
-    if (!(await admissible(settings, { pending, stop, notice, update, room })))
-      continue;
     try {
+      if (!(await admissible(settings, checks))) continue;
       if (stopped()) return;
       await admission(settings, { pending, holding, signal });
     } finally {
