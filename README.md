@@ -684,7 +684,7 @@ A text word is plain text of 1 to 60 characters, with no control characters and 
 
 `cloving mcp --repository <directory>` serves Cloving tools to an MCP client over standard input and output. The server connects to the service of that repository. Start the service with `cloving start` before the client calls a tool.
 
-To use a workflow computer from a harness on another machine, install the `cloving-zapier` integration package on both machines. On the workflow computer, run `cloving integrations connect mcp`, choose workflows, and open the link to connect it to your Cloving account. On the harness machine, run `cloving integrations pair mcp --name studio`. After signing in, copy the pairing code to `cloving integrations approve mcp` on the workflow computer, then keep `cloving integrations serve mcp` running there.
+To use a workflow computer from a harness on another machine, install the Cloving relay integration package on both machines. On the workflow computer, run `cloving integrations connect mcp`, choose workflows, and open the link to connect it to your Cloving account. On the harness machine, run `cloving integrations pair mcp --name studio`. After signing in, copy the pairing code to `cloving integrations approve mcp` on the workflow computer, then keep `cloving integrations serve mcp` running there.
 
 Configure the harness to launch `cloving-mcp --connection studio`, or `cloving mcp --connection studio`. The pairing command prints a complete configuration. Private keys stay at the endpoints, and cloving.ai carries encrypted messages. The bridge requires a harness that can launch a local MCP process. The `cloving.ai/mcp` page explains setup; it is not a URL-only MCP endpoint.
 
