@@ -229,3 +229,19 @@ await test("CLV-329 a summary masks a private text before the cut to 200 charact
   });
   assert.equal(found?.summary, `Bash: ${"a".repeat(180)} [hidden] done`);
 });
+
+await test("CLV-329 a tool name masks a private text and has no terminal control sequences", () => {
+  const [found] = transcriptEntries({
+    text: lines(
+      assistant({
+        type: "tool_use",
+        name: "mcp__acme_secret__\u001b[31mread",
+        input: { path: "notes.md" },
+      }),
+    ),
+    open: false,
+    attempts: [],
+    privateTexts: ["acme_secret"],
+  });
+  assert.equal(found?.tool, "mcp__[hidden]__read");
+});

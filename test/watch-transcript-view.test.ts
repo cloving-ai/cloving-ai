@@ -41,6 +41,7 @@ function shown(
       };
     },
     onToggle: () => undefined,
+    onLink: () => undefined,
     onScroll: () => undefined,
     onJump: () => undefined,
     onEarlier: () => undefined,
@@ -237,6 +238,7 @@ await test("CLV-329 the buttons and the scroll box of a transcript call their co
       detached: false,
     }),
     onToggle: (target) => calls.push(["toggle", target.operationId]),
+    onLink: (target) => calls.push(["link", target.operationId]),
     onScroll: (turn, box) => calls.push(["scroll", turn, box.scrollTop]),
     onJump: (target) => calls.push(["jump", target.operationId]),
     onEarlier: (target) => calls.push(["earlier", target.operationId]),
@@ -249,6 +251,7 @@ await test("CLV-329 the buttons and the scroll box of a transcript call their co
     controls,
   });
   for (const button of found(tree, "button")) handler(button, "onClick")({});
+  handler(found(tree, "a")[0], "onClick")({});
   const box = found(tree, "div").find(
     (props) => props["class"] === "transcript-lines",
   );
@@ -262,6 +265,7 @@ await test("CLV-329 the buttons and the scroll box of a transcript call their co
     ["toggle", operationId],
     ["earlier", operationId],
     ["jump", operationId],
+    ["link", operationId],
     ["scroll", operationId, 40],
   ]);
   const plain = component(Transcript, {
@@ -271,6 +275,7 @@ await test("CLV-329 the buttons and the scroll box of a transcript call their co
     controls: undefined,
   });
   handler(found(plain, "button")[0], "onClick")({});
+  handler(found(plain, "a")[0], "onClick")({});
   assert.match(rendered(plain), /class="transcript-toggle">Show</);
 });
 
@@ -287,6 +292,7 @@ await test("CLV-329 the Retry button of a failed transcript read calls its contr
       detached: false,
     }),
     onToggle: () => undefined,
+    onLink: () => undefined,
     onScroll: () => undefined,
     onJump: () => undefined,
     onEarlier: () => undefined,

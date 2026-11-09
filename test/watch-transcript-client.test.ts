@@ -5,6 +5,17 @@ import { sampleModel, sampleRun } from "./watch-sample.ts";
 
 const operationId = '["cloving-operation",1,"run-1","work","effect",1,null]';
 const streamPath = `api/v1/runs/run-1/turns/${encodeURIComponent(operationId)}/transcript-stream`;
+const turnHash = `#run=run-1&turn=${encodeURIComponent(operationId)}`;
+const heldRead = `
+const answered = globalThis.fetch;
+let release = () => undefined;
+globalThis.fetch = (address) => address.includes("/transcript?")
+  ? new Promise((settle) => { release = () => { settle(new Response(JSON.stringify({ entries: [], nextAfter: 1, open: true }))); }; })
+  : answered(address);
+streams[0].readyState = 2;
+streams[0].onerror();
+`;
+const turnSection = `document.querySelectorAll = () => [{ getAttribute: () => operationId, scrollIntoView: () => undefined }];`;
 
 function transcriptPlayed(
   turn: { readonly outcome: string },
@@ -144,6 +155,94 @@ location.hash = "#run=run-1&turn=" + encodeURIComponent(operationId);
 replies.push(model, { run: archived });
 document.querySelectorAll = () => [{ getAttribute: () => operationId, scrollIntoView: () => undefined }];
 listeners.hashchange();
+await later();
+await later();
+console.log(JSON.stringify({ hidden, shown: button("Hide") !== undefined }));
+`,
+  );
+  assert.deepEqual(result, { hidden: true, shown: true });
+});
+
+await test("CLV-329 a stream that stops opens again after its last entry when the transcript read answers", () => {
+  const result = transcriptPlayed(
+    { outcome: "in work" },
+    `
+send(streams[0], "entry", entryAt(1));
+await later();
+${heldRead}
+release();
+await later();
+console.log(JSON.stringify({ streams: streams.length, address: streams.at(-1).address }));
+`,
+  );
+  assert.deepEqual(result, { streams: 2, address: `${streamPath}?after=1` });
+});
+
+await test("CLV-329 a transcript read that answers after the page left the run opens no new stream", () => {
+  const result = transcriptPlayed(
+    { outcome: "in work" },
+    `
+${heldRead}
+location.hash = "";
+replies.push(model);
+listeners.hashchange();
+await settled();
+release();
+await later();
+console.log(JSON.stringify({ streams: streams.length }));
+`,
+  );
+  assert.deepEqual(result, { streams: 1 });
+});
+
+await test("CLV-329 a transcript read that answers after the reader hid the turn opens no new stream", () => {
+  const result = transcriptPlayed(
+    { outcome: "in work" },
+    `
+${heldRead}
+button("Hide")?.dispatch("click");
+release();
+await later();
+console.log(JSON.stringify({ hidden: button("Show") !== undefined, streams: streams.length }));
+`,
+  );
+  assert.deepEqual(result, { hidden: true, streams: 1 });
+});
+
+await test("CLV-329 a link with the turn opens a hidden transcript again after the page showed the run without a turn", () => {
+  const result = transcriptPlayed(
+    { outcome: "completed" },
+    `
+${turnSection}
+location.hash = ${JSON.stringify(turnHash)};
+listeners.hashchange();
+await later();
+button("Hide")?.dispatch("click");
+location.hash = "#run=run-1";
+listeners.hashchange();
+await later();
+const hidden = button("Show") !== undefined;
+location.hash = ${JSON.stringify(turnHash)};
+listeners.hashchange();
+await later();
+await later();
+console.log(JSON.stringify({ hidden, shown: button("Hide") !== undefined }));
+`,
+  );
+  assert.deepEqual(result, { hidden: true, shown: true });
+});
+
+await test("CLV-329 a click on the link of a hidden turn shows its transcript when the address has that turn already", () => {
+  const result = transcriptPlayed(
+    { outcome: "completed" },
+    `
+${turnSection}
+location.hash = ${JSON.stringify(turnHash)};
+listeners.hashchange();
+await later();
+button("Hide")?.dispatch("click");
+const hidden = button("Show") !== undefined;
+app.all("a").find((node) => node.inner === "Link")?.dispatch("click");
 await later();
 await later();
 console.log(JSON.stringify({ hidden, shown: button("Hide") !== undefined }));

@@ -91,16 +91,17 @@ function attemptDraft(
   };
 }
 
-function summaryOf(
+function shownTool(
   draft: TranscriptDraft,
   privateTexts: readonly string[],
-): string {
-  if (draft.tool === undefined) return "";
+): Pick<TranscriptEntry, "tool" | "summary"> {
+  if (draft.tool === undefined) return { tool: null, summary: "" };
+  const tool = maskedText(withoutControls(draft.tool), privateTexts);
   const input = maskedText(withoutControls(draft.summary ?? ""), privateTexts);
-  return maskedText(
-    `${withoutControls(draft.tool)}: ${summaryLine(input)}`,
-    privateTexts,
-  );
+  return {
+    tool,
+    summary: maskedText(`${tool}: ${summaryLine(input)}`, privateTexts),
+  };
 }
 
 function entryOf(
@@ -112,13 +113,14 @@ function entryOf(
   },
 ): TranscriptEntry {
   const { text, omittedBytes } = shownText(draft.text, place.privateTexts);
+  const { tool, summary } = shownTool(draft, place.privateTexts);
   return {
     position: place.position,
     attempt: place.attempt,
     kind: draft.kind,
     text,
-    tool: draft.tool ?? null,
-    summary: summaryOf(draft, place.privateTexts),
+    tool,
+    summary,
     error: draft.error ?? false,
     omittedBytes,
   };

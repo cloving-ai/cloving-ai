@@ -37,8 +37,7 @@ function transcriptStopped(item, problem) {
 async function transcriptRefused(item, operationId) {
   try {
     const reply = await fetch(transcriptPath(item, operationId, "transcript") + "?after=" + item.latest, { cache: "no-store" });
-    if (reply.ok) { item.source = null; transcriptOpened(item, operationId); return; }
-    transcriptStopped(item, await reply.json());
+    if (!reply.ok) transcriptStopped(item, await reply.json());
   } catch {
     transcriptStopped(item, { code: "failed", detail: "The watch tool does not answer." });
   }
@@ -129,6 +128,11 @@ function transcriptControls() {
       if (!item.shown) transcriptClosed(item);
       draw();
     },
+    onLink(target) {
+      transcriptItem(target).shown = true;
+      state.turnShown = null;
+      transcriptRedraw();
+    },
     onScroll(operationId, box) {
       const item = transcripts[operationId];
       if (item === undefined) return;
@@ -152,7 +156,8 @@ function transcriptsFollowed(selected) {
     if (item?.following && !item.detached) box.scrollTop = box.scrollHeight;
   }
   const { turnId } = watchLocation(selected);
-  if (turnId === null || turnId === undefined || state.turnShown === selected) return;
+  if (turnId === null || turnId === undefined) { state.turnShown = null; return; }
+  if (state.turnShown === selected) return;
   const section = [...(document.querySelectorAll?.("[data-turn]") ?? [])].find((node) => node.getAttribute("data-turn") === turnId);
   if (section === undefined) return;
   state.turnShown = selected;

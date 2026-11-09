@@ -28,6 +28,7 @@ export interface TranscriptBox {
 export interface TranscriptControls {
   readonly view: (target: TranscriptTarget) => TranscriptView;
   readonly onToggle: (target: TranscriptTarget) => void;
+  readonly onLink: (target: TranscriptTarget) => void;
   readonly onScroll: (operationId: string, box: TranscriptBox) => void;
   readonly onJump: (target: TranscriptTarget) => void;
   readonly onEarlier: (target: TranscriptTarget) => void;
@@ -194,6 +195,9 @@ export function Transcript(props: {
   const link = element("a", {
     class: "transcript-link",
     href: watchHash({ workflowId: null, runId, turnId: operationId }),
+    onClick: () => {
+      controls?.onLink(target);
+    },
     children: "Link",
   });
   const toggle = element("button", {
