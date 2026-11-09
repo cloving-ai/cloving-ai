@@ -42,7 +42,7 @@ export interface EffectQueries {
     sequence: number,
   ) => Promise<StoredDisposition | undefined>;
   readonly budget: (runId: string) => Promise<RunBudget | undefined>;
-  readonly dueLeases: (instant: string) => Promise<readonly DueLease[]>;
+  readonly leases: LeaseQueries;
   readonly stops: (runId: string) => Promise<readonly string[]>;
   readonly closure: (runId: string) => Promise<RunClosure>;
   readonly settledAt: (runId: string) => Promise<number | null>;
@@ -94,6 +94,11 @@ export interface DueLease {
   readonly generation: number;
 }
 
+export interface LeaseQueries {
+  readonly due: (instant: string) => Promise<readonly DueLease[]>;
+  readonly nextEnd: () => Promise<string | null>;
+}
+
 const dueBatch = 100;
 
 async function dueLeases(
@@ -109,6 +114,13 @@ async function dueLeases(
     operationId: text(row, "operation_id"),
     generation: integer(row, "generation"),
   }));
+}
+
+async function nextLeaseEnd(connection: SqlConnection): Promise<string | null> {
+  const row = await connection.get(
+    "SELECT min(expires_at) AS expires_at FROM leases WHERE state = 'held'",
+  );
+  return optionalText(row, "expires_at");
 }
 
 const viewColumns = operationColumns
@@ -225,8 +237,10 @@ export function effectQueries(
       ),
     settledAt: (runId) => read((connection) => settledAt(connection, runId)),
     budget: (runId) => read((connection) => budget(connection, runId)),
-    dueLeases: (instant) =>
-      read((connection) => dueLeases(connection, instant)),
+    leases: {
+      due: (instant) => read((connection) => dueLeases(connection, instant)),
+      nextEnd: () => read(nextLeaseEnd),
+    },
     operation: (operationId) =>
       read((connection) => operation(connection, operationId)),
     operations: (runId) => read((connection) => operations(connection, runId)),
