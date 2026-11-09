@@ -29,7 +29,8 @@ export async function reviewDay(input: ReviewInput): Promise<CycleOutcome> {
       cycleId: input.cycleId,
       evidenceId: "review-day",
       reason:
-        error instanceof Error && /^[a-z][a-z0-9-]{0,127}$/.test(error.message)
+        error instanceof Error &&
+        /^[a-z][a-z0-9-]{0,127}(?:: \d+ bytes, limit \d+)?$/.test(error.message)
           ? error.message
           : "review-failed",
     };
