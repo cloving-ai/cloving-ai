@@ -208,6 +208,29 @@ await test("CLV-317 a run with no drift ends completed with no issue and records
   );
 });
 
+for (const [more, over] of [
+  [0, ""],
+  [2, " Docs over the limit of 15: 2."],
+] as const)
+  await test(`CLV-330 a run with no ticket and ${String(more)} docs over the limit names the doc that the turn left and keeps its record`, async () => {
+    using bridge = fakeStepBridge({
+      effects: effects(
+        scan([candidate("README.md"), candidate("AGENTS.md")], { more }),
+        { docs: [], left: ["README.md"] },
+      ),
+      effectLimit: 10,
+    });
+    const outcome = await docsDrift(input);
+    assert.deepEqual(
+      JSON.parse(payloadOf(bridge.requests, "run:docs-drift-record")),
+      { commit, docs: ["AGENTS.md"] },
+    );
+    assert.equal(
+      outcome.kind === "handoff_requested" ? outcome.report : "",
+      `Docs audited: 2 at 0123456789ab. No ticket. Left for a later audit: README.md.${over}`,
+    );
+  });
+
 for (const branch of ["release+stable", "开发", "team/v2.0@next", "@"])
   await test(`CLV-317 the valid branch name ${branch} reaches the audit turn`, async () => {
     using bridge = fakeStepBridge({

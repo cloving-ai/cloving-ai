@@ -20,9 +20,13 @@ function driftReport(
   const audited = `Docs audited: ${String(scan.candidates.length)} at ${drifts.commit.slice(0, 12)}.`;
   const more =
     scan.more === 0 ? "" : ` Docs over the limit of 15: ${String(scan.more)}.`;
-  if (drifts.filed.length === 0) return `${audited} No drift.${more}`;
+  const left = drifts.left.join(", ");
+  if (drifts.filed.length === 0 && left === "")
+    return `${audited} No drift.${more}`;
+  if (drifts.filed.length === 0)
+    return `${audited} No ticket. Left for a later audit: ${left}.${more}`;
   const filed = drifts.filed.map((drift) => drift.doc).join(", ");
-  return `${audited} Ticket runs requested: ${String(drifts.filed.length)} (${filed}). Left for a later audit: ${drifts.left.join(", ") || "none"}.${more}`;
+  return `${audited} Ticket runs requested: ${String(drifts.filed.length)} (${filed}). Left for a later audit: ${left || "none"}.${more}`;
 }
 
 export async function docsDrift(input: DriftInput): Promise<CycleOutcome> {
