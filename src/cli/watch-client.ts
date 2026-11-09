@@ -157,9 +157,11 @@ function draw() {
   const queue = queueControls();
   const continuing = continueControls();
   const theme = themeControls();
-  const page = component(Page, { model, selected, now, observationNow, stale, copying, columns, cards, phone, queue, continuing, theme });
+  const transcripts = transcriptControls();
+  const page = component(Page, { model, selected, now, observationNow, stale, copying, columns, cards, phone, queue, continuing, theme, transcripts });
   render(page, document.getElementById("app"));
   if (model === null) return;
+  transcriptsFollowed(selected);
   document.title = watchTitle(model, selected);
   const { runId } = watchLocation(selected);
   moved(model.runs.find((run) => run.runId === runId)?.state ?? "", followed);

@@ -49,6 +49,7 @@ import {
   retentionExpiry,
   turnDetailsPlace,
 } from "./turn-details.ts";
+import { transcriptFiles } from "./transcript-files.ts";
 import { githubReader } from "./github-read.ts";
 import { defaultRetention } from "../record-retention.ts";
 import { threadPoolWatch, type ThreadPoolWatch } from "../cli/thread-pool.ts";
@@ -205,6 +206,11 @@ function retentionReads(settings: DaemonSettings, ports: Promise<HostPorts>) {
   };
   return {
     turnDetails: turnDetailsPlace(place),
+    turnTranscript: {
+      read: transcriptFiles(settings.directory),
+      privateTexts: settings.privateTexts ?? [],
+      cache: new Map(),
+    },
     retentionExpired: retentionExpiry(place),
     noteReceipts: noteReceiptsPlace(place),
     githubRead: githubReader(settings),
