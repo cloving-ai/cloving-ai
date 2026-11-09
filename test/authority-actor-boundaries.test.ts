@@ -28,7 +28,6 @@ const stalledTiming = {
   renewalMilliseconds: testMilliseconds(30),
   heartbeatMilliseconds: testMilliseconds(50),
   aliveThresholdMilliseconds: testMilliseconds(300),
-  cleanupIntervalMilliseconds: testMilliseconds(100),
   callTimeoutMilliseconds: testMilliseconds(1_000),
 };
 

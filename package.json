@@ -178,7 +178,7 @@
     "@workflow/builders": "5.0.2",
     "entities": "8.1.0",
     "preact": "11.0.0",
-    "solid-objects": "1.0.2",
+    "solid-objects": "1.0.7",
     "typescript": "6.0.3",
     "workflow": "5.1.0",
     "yaml": "2.9.1"
