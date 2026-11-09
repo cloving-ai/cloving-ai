@@ -123,7 +123,6 @@ await test("CLV-147 shared authority timings scale every duration with the check
     ...retention,
     heartbeatMilliseconds: 300,
     aliveThresholdMilliseconds: 900,
-    cleanupIntervalMilliseconds: 300,
   };
   assert.deepEqual(JSON.parse(output), {
     quickCleanupTiming: {

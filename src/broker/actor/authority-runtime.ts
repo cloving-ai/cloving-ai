@@ -22,11 +22,13 @@ import {
 } from "./authority-changes.ts";
 import {
   contentionMilliseconds,
-  lockContention,
+  fileRefusal,
   lockExclusively,
   observeSettings,
   requiredSettingsViolation,
+  storageRefusal,
   takeOwnership,
+  type Refusal,
 } from "./authority-connection.ts";
 import {
   inspectSchema,
@@ -70,11 +72,7 @@ export interface AuthorityOptions {
   readonly available?: AvailableManifest;
 }
 
-export interface Refusal {
-  readonly kind: "refused";
-  readonly reason: string;
-  readonly detail: string;
-}
+export type { Refusal } from "./authority-connection.ts";
 
 export { authorityTiming } from "./authority-settings.ts";
 export type { AuthorityTiming } from "./authority-settings.ts";
@@ -98,8 +96,11 @@ export async function ownedDatabase(
 ): Promise<Owned | Refusal> {
   let database: Database;
   try {
+    const path = join(await realpath(directory), "authority.sqlite");
+    const checked = await fileRefusal(path);
+    if (checked !== undefined) return checked;
     database = sqlite({
-      path: join(await realpath(directory), "authority.sqlite"),
+      path,
       timeoutMilliseconds: contentionMilliseconds,
       lockRetryAttempts: 1,
     });
@@ -120,10 +121,7 @@ async function ownership(database: Database): Promise<Owned | Refusal> {
     if (schema.kind === "refused") return schema;
     await takeOwnership(database);
   } catch (error) {
-    return refused(
-      lockContention(error) ? "authority-held" : "storage-failure",
-      error,
-    );
+    return storageRefusal(error);
   }
   const violation = requiredSettingsViolation(await observeSettings(database));
   return violation === null

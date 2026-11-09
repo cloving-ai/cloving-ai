@@ -1,7 +1,14 @@
 import type { Database } from "solid-objects";
 import { integer, text } from "../../storage/domain-rows.ts";
+import { inspectFile } from "../../storage/domain-schema.ts";
 
 export const contentionMilliseconds = 250;
+
+export interface Refusal {
+  readonly kind: "refused";
+  readonly reason: string;
+  readonly detail: string;
+}
 
 export interface ConnectionSettings {
   readonly schemaVersion: number;
@@ -63,6 +70,36 @@ export function requiredSettingsViolation(
     : `${key}=${String(Reflect.get(settings, key))}`;
 }
 
-export function lockContention(error: unknown): boolean {
-  return (Number(Reflect.get(Object(error), "errcode")) & 0xff) === 5;
+export function storageRefusal(error: unknown): Refusal {
+  if (!(error instanceof Error))
+    return {
+      kind: "refused",
+      reason: "storage-failure",
+      detail: "storage threw a value that is not an Error",
+    };
+  return {
+    kind: "refused",
+    reason: lockContention(error) ? "authority-held" : "storage-failure",
+    detail: error.message,
+  };
+}
+
+export async function fileRefusal(path: string): Promise<Refusal | undefined> {
+  try {
+    const schema = await inspectFile({
+      path,
+      timeoutMilliseconds: contentionMilliseconds,
+    });
+    return schema.kind === "refused" ? schema : undefined;
+  } catch (error) {
+    return storageRefusal(error);
+  }
+}
+
+export function lockContention(error: Error): boolean {
+  return (
+    "errcode" in error &&
+    typeof error.errcode === "number" &&
+    (error.errcode & 0xff) === 5
+  );
 }
