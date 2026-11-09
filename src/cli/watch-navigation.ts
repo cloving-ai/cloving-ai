@@ -4,6 +4,7 @@ export interface WatchLocation {
   readonly workflowId: string | null;
   readonly runId: string | null;
   readonly repository?: string | undefined;
+  readonly turnId?: string | null;
 }
 
 export function watchLocation(hash: string): WatchLocation {
@@ -12,10 +13,12 @@ export function watchLocation(hash: string): WatchLocation {
   if (/^(workflow|run)=/.test(value)) {
     const fields = new URLSearchParams(value);
     const repository = fields.get("repository");
+    const turnId = fields.get("turn") || null;
     return {
       workflowId: fields.get("workflow") || null,
       runId: fields.get("run") || null,
       ...(repository ? { repository } : {}),
+      ...(turnId === null ? {} : { turnId }),
     };
   }
   try {
@@ -36,7 +39,11 @@ export function watchHash(location: WatchLocation): string {
       : `repository=${encodeURIComponent(location.repository)}`;
   const run =
     location.runId === null ? "" : `run=${encodeURIComponent(location.runId)}`;
-  return `#${[workflow, repository, run].filter((part) => part !== "").join("&")}`;
+  const turn =
+    location.turnId === undefined || location.turnId === null
+      ? ""
+      : `turn=${encodeURIComponent(location.turnId)}`;
+  return `#${[workflow, repository, run, turn].filter((part) => part !== "").join("&")}`;
 }
 
 export function boardWorkflow(

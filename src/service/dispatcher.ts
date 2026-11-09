@@ -8,6 +8,7 @@ import { failed, scheduleRequest, type ServiceContext } from "./replies.ts";
 import { restartOperation } from "./restart-handler.ts";
 import { runCommand, status } from "./run-handlers.ts";
 import { steerRun } from "./steer-handler.ts";
+import { transcript } from "./transcript-handler.ts";
 import { admissionLock, submissionHandler } from "./submission-handler.ts";
 import { reloadUnavailable } from "./workflow-reload.ts";
 
@@ -38,6 +39,7 @@ export function dispatcher(
     ["continue-run", (request) => continued(request.parameters)],
     ["dismiss-run", (request) => dismissRun(context, request.parameters)],
     ["steer-run", (request) => steerRun(context, request.parameters)],
+    ["transcript", (request) => transcript(context, request.parameters)],
     ["reload", () => context.reload?.() ?? reloadUnavailable()],
     ["restart", (request) => restartOperation(context, request.parameters)],
     [

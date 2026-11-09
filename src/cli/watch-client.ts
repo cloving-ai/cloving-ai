@@ -203,9 +203,11 @@ function draw() {
   const continuing = continueControls();
   const steering = steerControls();
   const theme = themeControls();
-  const page = component(Page, { model, selected, now, observationNow, stale, copying, columns, cards, phone, queue, continuing, steering, theme });
+  const transcripts = transcriptControls();
+  const page = component(Page, { model, selected, now, observationNow, stale, copying, columns, cards, phone, queue, continuing, steering, theme, transcripts });
   render(page, document.getElementById("app"));
   if (model === null) return;
+  transcriptsFollowed(selected);
   document.title = watchTitle(model, selected);
   const { runId } = watchLocation(selected);
   moved(model.runs.find((run) => run.runId === runId)?.state ?? "", followed);

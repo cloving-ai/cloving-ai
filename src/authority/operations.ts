@@ -152,8 +152,8 @@ export function isHolding(operation: { readonly status: string }): boolean {
   return holdingStatuses.includes(operation.status);
 }
 
-export function isFinal(operation: Operation): boolean {
-  return finalStatuses.includes(operation.status);
+export function isFinal(operation: { readonly status: string }): boolean {
+  return finalStatuses.some((status) => status === operation.status);
 }
 
 export function rejected(reason: string): EffectResult {

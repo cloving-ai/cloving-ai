@@ -15,9 +15,19 @@ import type { RunTurns, TurnDetails } from "../record-retention.ts";
 import type { ThreadPoolCheck } from "../thread-pool-check.ts";
 import { serviceIdentity, type ServiceIdentity } from "./service-identity.ts";
 import type { EffectLeaseSource } from "../queue-room.ts";
+import type { ParsedTranscript, TranscriptFiles } from "../turn-transcript.ts";
 
 export interface GithubReader {
   readonly read: (path: string) => Promise<unknown>;
+}
+
+export interface TranscriptReads {
+  readonly read: (
+    operationId: string,
+    from: number,
+  ) => Promise<TranscriptFiles | undefined>;
+  readonly privateTexts: readonly string[];
+  readonly cache: Map<string, ParsedTranscript>;
 }
 
 export interface NoteReceipts {
@@ -41,6 +51,7 @@ export interface TurnSteering {
 }
 
 export interface ServiceReads {
+  readonly turnTranscript?: TranscriptReads;
   readonly workerHarness?: (operationId: string) => Promise<string | undefined>;
   readonly noteReceipts?: NoteReceipts;
   readonly turnSteering?: TurnSteering;
@@ -85,6 +96,14 @@ export function spendSettings(
   };
 }
 
+function transcriptReads(
+  options: ServiceReads,
+): Pick<ServiceReads, "turnTranscript"> {
+  return options.turnTranscript === undefined
+    ? {}
+    : { turnTranscript: options.turnTranscript };
+}
+
 export function queryMetadata(
   options: ServiceReads &
     ServiceIdentity & {
@@ -102,6 +121,7 @@ export function queryMetadata(
   | "noteReceipts"
   | "turnSteering"
   | "turnDetails"
+  | "turnTranscript"
   | "retentionExpired"
   | "githubRead"
   | "threadPool"
@@ -120,6 +140,7 @@ export function queryMetadata(
     ...(options.turnDetails === undefined
       ? {}
       : { turnDetails: options.turnDetails }),
+    ...transcriptReads(options),
     ...(options.retentionExpired === undefined
       ? {}
       : { retentionExpired: options.retentionExpired }),

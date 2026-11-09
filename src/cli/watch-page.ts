@@ -17,6 +17,17 @@ import {
   cardSubmitKey,
 } from "./watch-card-view.ts";
 import { watchClient } from "./watch-client.ts";
+import { watchTranscriptClient } from "./watch-transcript-client.ts";
+import {
+  CutNote,
+  ToolOutput,
+  Transcript,
+  TranscriptBody,
+  TranscriptButton,
+  TranscriptLine,
+  jumpLabel,
+  waitingText,
+} from "./watch-transcript-view.ts";
 import { RunNotes } from "./watch-notes-view.ts";
 import {
   NoteMark,
@@ -47,6 +58,7 @@ import {
 } from "./usage-render.ts";
 import { watchStyle } from "./watch-page-style.ts";
 import { artStyle } from "./watch-art-style.ts";
+import { transcriptStyle } from "./watch-transcript-style.ts";
 import type { WatchThemes } from "./watch-themes.ts";
 import {
   countText,
@@ -141,6 +153,7 @@ import {
   Decision,
   Events,
   Group,
+  Review,
   Item,
   Turn,
   Work,
@@ -154,9 +167,9 @@ import {
   Page,
   Phases,
   PullRequest,
-  Review,
   Run,
   RunTotals,
+  RunTurns,
 } from "./watch-view.ts";
 import {
   Brand,
@@ -297,11 +310,20 @@ const functions = [
   Command,
   Decision,
   Events,
+  CutNote,
+  ToolOutput,
+  TranscriptLine,
+  waitingText,
+  TranscriptButton,
+  jumpLabel,
+  TranscriptBody,
+  Transcript,
   BannerDetail,
   Banner,
   Phases,
   PullRequest,
   Review,
+  RunTurns,
   Run,
   RunTotals,
   timeLeft,
@@ -344,13 +366,14 @@ export function pageDocument(
     ...functions.map((item) => item.toString()),
     watchCardClient,
     watchPhoneClient,
+    watchTranscriptClient,
     watchClient,
   ].join("\n");
   return [
     "<!doctype html>",
     '<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Cloving</title>',
     `<link rel="icon" href="data:image/svg+xml,${encodeURIComponent(icon)}">`,
-    `<style>${watchStyle}${artStyle}</style><style id="theme-style">${themes.style}</style></head><body>`,
+    `<style>${watchStyle}${artStyle}${transcriptStyle}</style><style id="theme-style">${themes.style}</style></head><body>`,
     '<div id="app"></div>',
     `<script type="module">${script}</script></body></html>`,
     "",
