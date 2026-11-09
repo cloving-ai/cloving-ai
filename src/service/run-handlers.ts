@@ -7,6 +7,7 @@ import {
   submittedInput,
   ticketMetadataPage,
   workflowMetadata,
+  type LoopMarks,
 } from "./run-metadata.ts";
 import {
   chainPlace,
@@ -140,7 +141,7 @@ async function effectInput(
 
 type ShownRun = RunView &
   RunLinks & {
-    readonly scheduled?: { readonly slot: number };
+    readonly loop: LoopMarks;
     readonly commandOperations: readonly OperationView[];
     readonly input: Fields | null;
     readonly workflowId: string;
@@ -186,10 +187,7 @@ async function viewOf(
   };
   return {
     ...runView(input),
-    ...(await scheduledMetadata(context, {
-      runId: run.runId,
-      workflowId,
-    })),
+    loop: await scheduledMetadata(context, { runId: run.runId, workflowId }),
     commandOperations: effects.commandOperations,
     ...linksOf({ runId: run.runId, ...scope.snapshot.links[run.runId] }),
     chain: chainPlace(scope.snapshot.links, run.runId),
@@ -204,7 +202,7 @@ async function viewOf(
 function summary(view: ShownRun): Fields {
   return {
     runId: view.runId,
-    ...(view.scheduled === undefined ? {} : { scheduled: view.scheduled }),
+    ...view.loop,
     ...linksOf(view),
     input: view.input,
     workflowId: view.workflowId,

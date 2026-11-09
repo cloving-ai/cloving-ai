@@ -168,3 +168,9 @@ export function scheduledText(value: unknown): string {
   const { scheduled } = shownScheduled(value);
   return scheduled === undefined ? "" : `scheduled ${String(scheduled.slot)}`;
 }
+
+export function loopText(run: unknown): string {
+  const fields = record(run);
+  if (fields?.["manualFromLoop"] === true) return "manual from loop";
+  return scheduledText(fields?.["scheduled"]);
+}

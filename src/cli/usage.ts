@@ -108,11 +108,15 @@ Use --repository <name> to show the runs of one repository.
   schedule: `Usage: cloving schedule [--json]
        cloving schedule pause <workflowId> [--json]
        cloving schedule resume <workflowId> [--json]
+       cloving schedule run <workflowId> [--command-id <id>] [--json]
 
 Lists interval schedules and their state. Pause stops new runs; an active run continues.
 Three consecutive failed or blocked scheduled runs stop a schedule.
 Resume clears failures and starts the next run one interval later.
 Paused and stopped schedules survive a service restart.
+Run admits one manual run with the input of the schedule, marked manual from loop.
+It does not change the next run. While a run of the workflow is active, the service
+refuses it with run-active.
 `,
   questions: `Usage: cloving questions [<run-id>] [--json]
 

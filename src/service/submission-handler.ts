@@ -283,7 +283,7 @@ function capacityRefusal(
   return undefined;
 }
 
-async function submitted(
+export async function submitted(
   context: ServiceContext,
   parameters: Fields,
 ): Promise<Reply> {

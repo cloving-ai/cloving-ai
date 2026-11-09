@@ -166,14 +166,22 @@ export async function scheduleMetadata(
   };
 }
 
+export interface LoopMarks {
+  readonly scheduled?: { readonly slot: number };
+  readonly manualFromLoop?: true;
+}
+
 export async function scheduledMetadata(
   context: ServiceContext,
   run: { readonly runId: string; readonly workflowId: string },
-): Promise<{ readonly scheduled?: { readonly slot: number } }> {
+): Promise<LoopMarks> {
   const commandId = (await context.authority.queries.run(run.runId))
     ?.admissionCommandId;
+  if (typeof commandId !== "string") return {};
+  if (commandId.startsWith(`loop:${run.workflowId}:`))
+    return { manualFromLoop: true };
   const prefix = `schedule:${run.workflowId}:`;
-  if (typeof commandId !== "string" || !commandId.startsWith(prefix)) return {};
+  if (!commandId.startsWith(prefix)) return {};
   const suffix = commandId.slice(prefix.length);
   const slot = Number(suffix);
   return /^(0|[1-9][0-9]*)$/.test(suffix) && Number.isSafeInteger(slot)
