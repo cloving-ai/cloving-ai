@@ -71,10 +71,16 @@ export function requiredSettingsViolation(
 }
 
 export function storageRefusal(error: unknown): Refusal {
+  if (!(error instanceof Error))
+    return {
+      kind: "refused",
+      reason: "storage-failure",
+      detail: "storage threw a value that is not an Error",
+    };
   return {
     kind: "refused",
     reason: lockContention(error) ? "authority-held" : "storage-failure",
-    detail: String(Reflect.get(Object(error), "message")),
+    detail: error.message,
   };
 }
 
@@ -90,6 +96,10 @@ export async function fileRefusal(path: string): Promise<Refusal | undefined> {
   }
 }
 
-export function lockContention(error: unknown): boolean {
-  return (Number(Reflect.get(Object(error), "errcode")) & 0xff) === 5;
+export function lockContention(error: Error): boolean {
+  return (
+    "errcode" in error &&
+    typeof error.errcode === "number" &&
+    (error.errcode & 0xff) === 5
+  );
 }
