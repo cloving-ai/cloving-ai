@@ -8,6 +8,7 @@ import {
   type ServiceContext,
 } from "./replies.ts";
 import {
+  admissionKeys,
   admitted,
   conflict,
   submitted,
@@ -67,7 +68,7 @@ async function loopRun(
   request: { readonly admission: LoopAdmission; readonly lock: AdmissionLock },
 ): Promise<Reply> {
   const { admission, lock } = request;
-  const { workflowId, commandId } = admission;
+  const { workflowId } = admission;
   const stored = await storedLoopRun(context, admission);
   if (stored !== undefined) return stored;
   const found = await scheduleRequest(context, {
@@ -75,7 +76,7 @@ async function loopRun(
     workflowId,
   });
   if (found.kind === "error") return found;
-  return lock([`command:${commandId}`, `workflow:${workflowId}`], () =>
+  return lock(admissionKeys(admission), () =>
     lockedLoopRun(context, { ...admission, submission: found.result["input"] }),
   );
 }

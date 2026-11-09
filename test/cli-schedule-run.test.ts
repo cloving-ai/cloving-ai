@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { test } from "node:test";
+import { setTimeout as delay } from "node:timers/promises";
 import { parseInvocation } from "../src/cli/arguments.ts";
 import { send } from "../src/cli/client.ts";
 import { commandUsage } from "../src/cli/usage.ts";
 import type { Reply } from "../src/protocol.ts";
+import type { WorkflowRegistration } from "../src/service/service.ts";
 import { failed, result } from "../src/service/replies.ts";
 import { runIdentity } from "../src/service/submission-handler.ts";
 import { scheduledWorkflow } from "./workflow-scheduler-fixture.ts";
@@ -17,6 +19,7 @@ import {
   type Harness,
 } from "./service-fixture.ts";
 import { withSchedule } from "./cli-schedule-fixture.ts";
+import { testMilliseconds } from "./test-timing.ts";
 
 const developLoop = {
   declarations: [{ ...scheduledWorkflow, workflowId: "develop" }],
@@ -152,6 +155,10 @@ await test("CLV-328 the README describes the Loops panel, its controls, cloving 
     /the queue control, the loop controls and their endpoints/,
   );
   assert.match(readme, /`manual from loop`/);
+  assert.match(
+    readme,
+    /The service admits the run requests of one workflow one at a time\. So a run now that comes during another admission of the workflow waits for it and then refuses with `run-active`\./,
+  );
 });
 
 await test("CLV-328 the service refuses a run of a loop with no command ID or with a command ID that is too long", () =>
@@ -311,4 +318,60 @@ await test("CLV-328 a loop run command refuses a command ID that a run of anothe
         commandId,
       );
     assert.equal(harness.resolved.length, 2);
+  }));
+
+interface HeldCard {
+  readonly registration: WorkflowRegistration;
+  readonly cardEntered: Promise<undefined>;
+  readonly loopEntered: Promise<undefined>;
+  readonly release: () => void;
+}
+
+function heldCard(registration: WorkflowRegistration): HeldCard {
+  const { resolver } = registration;
+  const cardEntered = Promise.withResolvers<undefined>();
+  const loopEntered = Promise.withResolvers<undefined>();
+  const cardHeld = Promise.withResolvers<undefined>();
+  const resolve: typeof resolver.resolve = async (request) => {
+    if (request.commandId !== "card") {
+      loopEntered.resolve(undefined);
+      return resolver.resolve(request);
+    }
+    cardEntered.resolve(undefined);
+    await cardHeld.promise;
+    return resolver.resolve(request);
+  };
+  return {
+    registration: { ...registration, resolver: { ...resolver, resolve } },
+    cardEntered: cardEntered.promise,
+    loopEntered: loopEntered.promise,
+    release: () => {
+      cardHeld.resolve(undefined);
+    },
+  };
+}
+
+await test("CLV-328 a loop run waits for an ordinary run of a workflow with no admission limit and then refuses with run-active", () =>
+  withHarness(async (harness) => {
+    const held = heldCard(harness.registration);
+    await harness.start({
+      workflows: [held.registration],
+      schedule: () => Promise.resolve(inputReply({ prompt: "current" })),
+    });
+    const card = call(harness, {
+      operation: "run",
+      parameters: {
+        workflowId: "develop",
+        source: "declared",
+        submission: { prompt: "card" },
+        commandId: "card",
+      },
+    });
+    await held.cardEntered;
+    const loop = call(harness, loopCommand("now"));
+    await Promise.race([held.loopEntered, delay(testMilliseconds(500))]);
+    held.release();
+    assert.equal((await card)["kind"], "run-admitted");
+    assert.equal((await loop)["code"], "run-active");
+    assert.equal(harness.resolved.length, 1);
   }));

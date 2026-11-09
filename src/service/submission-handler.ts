@@ -365,18 +365,11 @@ export function admissionLock(): AdmissionLock {
   };
 }
 
-export function admissionKeys(
-  context: ServiceContext,
-  admission: { readonly commandId: string; readonly workflowId: string },
-): string[] {
-  const { workflowId } = admission;
-  const workflow = context.registry.byId(workflowId);
-  const shared =
-    hasTicketField(workflow?.submission) || workflow?.admission !== undefined;
-  return [
-    `command:${admission.commandId}`,
-    ...(shared ? [`workflow:${workflowId}`] : []),
-  ];
+export function admissionKeys(admission: {
+  readonly commandId: string;
+  readonly workflowId: string;
+}): string[] {
+  return [`command:${admission.commandId}`, `workflow:${admission.workflowId}`];
 }
 
 export function submissionHandler(
@@ -385,7 +378,7 @@ export function submissionHandler(
 ): (parameters: Fields) => Promise<Reply> {
   return (parameters) =>
     lock(
-      admissionKeys(context, {
+      admissionKeys({
         commandId: String(parameters["commandId"]),
         workflowId: String(parameters["workflowId"]),
       }),
