@@ -111,11 +111,23 @@ function resultOf(messages: readonly Fields[], id: number): Fields {
   return fields(messages.find((message) => message["id"] === id)?.["result"]);
 }
 
-await test("CLV-312 the workspace MCP server lists the repositories and gives each tool a repository argument", () =>
+await test("CLV-312 the workspace MCP server lists the repositories, gives each tool a repository argument, and refuses arguments that are not an object, an unknown tool and an argument that cloving_repositories does not take", () =>
   withWorkspace(["alpha", "beta"], async () => {
     const output = await exchanged([
       request({ id: 1, method: "tools/list" }),
       toolCall(2, { name: "cloving_repositories", values: {} }),
+      request({
+        id: 3,
+        method: "tools/call",
+        params: { name: "cloving_repositories" },
+      }),
+      request({
+        id: 4,
+        method: "tools/call",
+        params: { name: "cloving_status", arguments: "alpha" },
+      }),
+      toolCall(5, { name: "cloving_nothing", values: {} }),
+      toolCall(6, { name: "cloving_repositories", values: { limit: 1 } }),
     ]);
     assert.equal(output.status, 0, output.stderr);
     const tools = items(resultOf(output.messages, 1)["tools"]).map(fields);
@@ -140,9 +152,20 @@ await test("CLV-312 the workspace MCP server lists the repositories and gives ea
         ["beta", "up"],
       ],
     );
+    assert.equal(
+      fields(resultOf(output.messages, 3)["structuredContent"])["kind"],
+      "workspace-status",
+    );
+    for (const id of [4, 5, 6])
+      assert.equal(
+        fields(
+          output.messages.find((message) => message["id"] === id)?.["error"],
+        )["code"],
+        -32602,
+      );
   }));
 
-await test("CLV-312 a workspace tool call that changes state needs the repository argument when the workspace lists more than one repository", () =>
+await test("CLV-312 a workspace tool call that changes state needs the repository argument when the workspace lists more than one repository, and a read with no repository argument reads every repository", () =>
   withWorkspace(["alpha", "beta"], async ([alpha, beta]) => {
     const output = await exchanged([
       toolCall(1, { name: "cloving_run", values: run }),
@@ -154,6 +177,7 @@ await test("CLV-312 a workspace tool call that changes state needs the repositor
         name: "cloving_run",
         values: { ...run, repository: "gamma" },
       }),
+      toolCall(4, { name: "cloving_questions", values: {} }),
     ]);
     assert.equal(output.status, 0, output.stderr);
     const refused = resultOf(output.messages, 1);
@@ -176,21 +200,7 @@ await test("CLV-312 a workspace tool call that changes state needs the repositor
       ],
       -32602,
     );
-    assert.deepEqual(
-      [alpha, beta].map(
-        (shown) =>
-          shown?.requests.filter((sent) => sent.operation === "run").length,
-      ),
-      [0, 1],
-    );
-  }));
-
-await test("CLV-312 a workspace read with no repository argument reads every repository, and a workspace of one repository needs no repository argument", async () => {
-  await withWorkspace(["alpha", "beta"], async () => {
-    const output = await exchanged([
-      toolCall(1, { name: "cloving_questions", values: {} }),
-    ]);
-    const shown = fields(resultOf(output.messages, 1)["structuredContent"]);
+    const shown = fields(resultOf(output.messages, 4)["structuredContent"]);
     assert.equal(shown["kind"], "workspace-read");
     assert.deepEqual(
       items(shown["repositories"]).map((entry) => [
@@ -202,7 +212,16 @@ await test("CLV-312 a workspace read with no repository argument reads every rep
         ["beta", "questions"],
       ],
     );
-  });
+    assert.deepEqual(
+      [alpha, beta].map(
+        (shown) =>
+          shown?.requests.filter((sent) => sent.operation === "run").length,
+      ),
+      [0, 1],
+    );
+  }));
+
+await test("CLV-312 a workspace of one repository needs no repository argument", async () => {
   await withWorkspace(["solo"], async ([solo]) => {
     const output = await exchanged([
       toolCall(1, { name: "cloving_run", values: run }),
@@ -238,32 +257,3 @@ await test("CLV-312 cloving mcp parses --workspace and refuses it together with 
     /cloving mcp --workspace.*cloving_repositories.*repository argument.*more than one repository/,
   );
 });
-
-await test("CLV-312 the workspace MCP server answers a call with no arguments, and refuses arguments that are not an object, an unknown tool and an argument that cloving_repositories does not take", () =>
-  withWorkspace(["alpha", "beta"], async () => {
-    const output = await exchanged([
-      request({
-        id: 1,
-        method: "tools/call",
-        params: { name: "cloving_repositories" },
-      }),
-      request({
-        id: 2,
-        method: "tools/call",
-        params: { name: "cloving_status", arguments: "alpha" },
-      }),
-      toolCall(3, { name: "cloving_nothing", values: {} }),
-      toolCall(4, { name: "cloving_repositories", values: { limit: 1 } }),
-    ]);
-    assert.equal(
-      fields(resultOf(output.messages, 1)["structuredContent"])["kind"],
-      "workspace-status",
-    );
-    for (const id of [2, 3, 4])
-      assert.equal(
-        fields(
-          output.messages.find((message) => message["id"] === id)?.["error"],
-        )["code"],
-        -32602,
-      );
-  }));

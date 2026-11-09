@@ -13,6 +13,8 @@ import {
 } from "../src/cli/workspace-record.ts";
 import type { Fields } from "../src/protocol.ts";
 import { commandUsage } from "../src/cli/usage.ts";
+import type { RestartInvocation } from "../src/cli/restart-arguments.ts";
+import { workspaceRestartCommand } from "../src/cli/workspace-restart-command.ts";
 import { listen } from "../src/service/transport.ts";
 import { entry } from "./workspace-fixture.ts";
 
@@ -86,6 +88,39 @@ async function withSupervisor(
   }
 }
 
+function invocation(changes: Partial<RestartInvocation>): RestartInvocation {
+  return {
+    kind: "restart",
+    at: "gap",
+    cancel: false,
+    resumeQueue: false,
+    settings: "environment",
+    update: false,
+    within: null,
+    commandId: "restart-8",
+    json: false,
+    ...changes,
+  };
+}
+
+async function restartedInProcess(changes: Partial<RestartInvocation>) {
+  const output = { out: "", error: "" };
+  const status = await workspaceRestartCommand(invocation(changes), {
+    terminal: {
+      out: (text) => {
+        output.out += text;
+      },
+      error: (text) => {
+        output.error += text;
+      },
+    },
+    identifier: () => "generated-1",
+    variables: environment,
+    interrupted: () => new Promise<void>(() => undefined),
+  });
+  return { status, ...output };
+}
+
 await test("CLV-312 cloving restart restarts the whole workspace through the supervisor while a workspace runs", () =>
   withSupervisor(async (requests) => {
     const json = await cloving([
@@ -104,16 +139,11 @@ await test("CLV-312 cloving restart restarts the whole workspace through the sup
         { name: "beta", serviceStartedAt: "2026-11-08T10:00:01.000Z" },
       ],
     });
-    const text = await cloving([
-      "restart",
-      "--at",
-      "now",
-      "--settings",
-      "files",
-    ]);
-    assert.match(
-      text.stdout,
-      /^The workspace restarted all repositories:\n {2}alpha: service started at 2026-11-08T10:00:00\.000Z\n {2}beta: service started at 2026-11-08T10:00:01\.000Z\n$/,
+    const text = await restartedInProcess({ at: "now", settings: "files" });
+    assert.equal(text.status, 0);
+    assert.equal(
+      text.out,
+      "The workspace restarted all repositories:\n  alpha: service started at 2026-11-08T10:00:00.000Z\n  beta: service started at 2026-11-08T10:00:01.000Z\n",
     );
     assert.deepEqual(
       requests.map(({ operation, at, resumeQueue, settings }) => [
@@ -127,15 +157,22 @@ await test("CLV-312 cloving restart restarts the whole workspace through the sup
         ["restart", "now", undefined, "files"],
       ],
     );
-    assert.equal(requests[0]?.["commandId"], "restart-7");
+    assert.deepEqual(
+      requests.map((request) => request["commandId"]),
+      ["restart-7", "restart-8"],
+    );
   }));
 
 await test("CLV-312 a workspace restart refuses --update, --cancel and --within", () =>
   withSupervisor(async (requests) => {
-    for (const option of [["--update"], ["--cancel"], ["--within", "1h"]]) {
-      const refused = await cloving(["restart", ...option]);
-      assert.equal(Reflect.get(refused, "code"), 1);
-      assert.match(refused.stderr, /workspace-restart-option: /);
+    for (const changes of [
+      { update: true },
+      { cancel: true },
+      { within: 3600 },
+    ]) {
+      const refused = await restartedInProcess(changes);
+      assert.equal(refused.status, 1);
+      assert.match(refused.error, /workspace-restart-option: /);
     }
     assert.deepEqual(requests, []);
   }));
@@ -164,9 +201,9 @@ await test("CLV-312 a workspace restart reports a supervisor that does not answe
     ],
   });
   try {
-    const refused = await cloving(["restart", "--command-id", "lost-1"]);
-    assert.equal(Reflect.get(refused, "code"), 1);
-    assert.match(refused.stderr, /service-unavailable/);
+    const refused = await restartedInProcess({ commandId: "lost-1" });
+    assert.equal(refused.status, 1);
+    assert.match(refused.error, /service-unavailable/);
   } finally {
     await removeWorkspaceRecord(record, process.pid);
   }
