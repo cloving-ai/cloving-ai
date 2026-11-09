@@ -85,29 +85,49 @@ export function combined(attempts: Attempts): TurnEnd {
   };
 }
 
-function selectedCommand(attempts: Attempts, attempt: number) {
-  const { start, options } = attempts;
-  const original = start.command;
+function steeredAttempt(attempts: Attempts, attempt: number): boolean {
+  if (attempt > attempts.ends.length)
+    return attempts.steering.pending !== undefined;
+  return attempts.ends[attempt - 1]?.resumedAfter === "steer";
+}
+
+function fallbackModel(
+  attempts: Attempts,
+  attempt: number,
+): string | undefined {
   const previous = attempts.ends[attempt - 2];
-  if (
-    options.resume !== undefined &&
-    attempt === options.resume.ends.length + 1
-  ) {
-    const model = previous?.result?.model;
-    return {
-      command: model == null ? original : replaceCommandModel(original, model),
-      fallback: undefined,
-    };
-  }
+  if (previous === undefined || kindOf(attempts, previous) !== "capacity")
+    return undefined;
   const ordinal =
     attempt -
     attempts.ends
       .slice(0, attempt - 1)
       .filter((end) => end.resumedAfter !== undefined).length;
-  const fallback =
-    previous !== undefined && kindOf(attempts, previous) === "capacity"
-      ? options.fallbackModels?.[ordinal - 3]
-      : undefined;
+  return attempts.options.fallbackModels?.[ordinal - 3];
+}
+
+function selectedCommand(
+  attempts: Attempts,
+  attempt: number,
+): {
+  readonly command: readonly string[];
+  readonly fallback: string | undefined;
+} {
+  if (steeredAttempt(attempts, attempt))
+    return selectedCommand(attempts, attempt - 1);
+  const { start, options } = attempts;
+  const original = start.command;
+  if (
+    options.resume !== undefined &&
+    attempt === options.resume.ends.length + 1
+  ) {
+    const model = attempts.ends[attempt - 2]?.result?.model;
+    return {
+      command: model == null ? original : replaceCommandModel(original, model),
+      fallback: undefined,
+    };
+  }
+  const fallback = fallbackModel(attempts, attempt);
   return {
     command:
       fallback === undefined

@@ -235,6 +235,37 @@ await test("CLV-327 a fresh retry after a capacity refusal of the resumed attemp
     assert.equal(field(scene.reports[0], "outcome"), "completed");
   }));
 
+await test("CLV-327 a note sent now resumes a turn on its fallback model with the same model", () =>
+  withScene(async (scene) => {
+    const worker = scene.worker("fallback-resume", {
+      profiles: { main: { model: "opus" } },
+      fallbackModels: ["sonnet"],
+      retryDelay: () => Promise.resolve(),
+    });
+    await worker.deliver(intent({ method: "run-turn:main" }), signal);
+    await until(
+      () =>
+        field(record(scene, "operation-1/attempt-3.json"), "sessionId") ===
+        "session-3",
+    );
+    assert.equal((await worker.steer(steerNote("note-b"))).delivery, "now");
+    await until(() => scene.reports.length === 1);
+    assert.equal(field(scene.reports[0], "outcome"), "completed");
+    assert.deepEqual(
+      scene
+        .turns()
+        .map((turn) => turn.arguments[turn.arguments.indexOf("--model") + 1]),
+      ["opus", "opus", "sonnet", "sonnet"],
+    );
+    assert.deepEqual(scene.turns()[3]?.arguments.slice(-2), [
+      "--resume",
+      "session-3",
+    ]);
+    const steered = record(scene, "operation-1/attempt-4.json");
+    assert.equal(field(steered, "resumedAfter"), "steer");
+    assert.equal(field(steered, "model"), "sonnet");
+  }));
+
 await test("CLV-327 a turn that a daemon restart resumes keeps the count of its notes sent now, and a fourth note waits for the next turn", () =>
   withScene(async (scene) => {
     const worker = scene.worker("hold");
