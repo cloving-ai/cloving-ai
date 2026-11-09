@@ -9,9 +9,10 @@ import { workspacePermits } from "../src/cli/workspace-permit.ts";
 import type { Fields, Reply } from "../src/protocol.ts";
 import { listen } from "../src/service/transport.ts";
 import type { WorkspaceLimits } from "../src/workspace.ts";
-import { createConnection, createServer } from "node:net";
+import { createConnection, createServer, type Socket } from "node:net";
 import { setTimeout as delay } from "node:timers/promises";
 import { eventually } from "./service-fixture.ts";
+import { testMilliseconds } from "./test-timing.ts";
 
 const root = realpathSync(mkdtempSync(join(tmpdir(), "clv-permits-")));
 process.on("exit", () => {
@@ -326,4 +327,43 @@ await test("CLV-312 a queue holds its run for an error answer or an unknown hold
       permit.release();
     },
   );
+});
+
+const permitLine = `${JSON.stringify({ protocol: 1, operation: "permit", parameters: {} })}\n`;
+
+await test("CLV-312 the supervisor closes the connection of a held permit, and a queue closes its connection after a held answer", async () => {
+  await withPermits(
+    { limits: { lanes: 1 }, alpha: state(1), beta: state(0) },
+    async (permit, path) => {
+      assert.equal((await permit()).kind, "held");
+      const answer = await Promise.race([
+        rawExchange(path, permitLine),
+        delay(testMilliseconds(5000), "still open", { ref: false }),
+      ]);
+      assert.match(answer, /workspace-lanes/);
+    },
+  );
+  const hold = { reason: "workspace-lanes", busy: 1, limit: 1, text: "x" };
+  let closed = false;
+  const sockets: Socket[] = [];
+  const path = join(mkdtempSync(join(root, "held-")), "control.sock");
+  const server = createServer((socket) => {
+    sockets.push(socket);
+    socket.on("close", () => {
+      closed = true;
+    });
+    socket.once("data", () => {
+      socket.write(
+        `${JSON.stringify({ ok: true, result: { admitted: false, hold } })}\n`,
+      );
+    });
+  });
+  await new Promise<void>((ready) => server.listen(path, ready));
+  try {
+    assert.equal((await workspacePermits(path)()).kind, "held");
+    assert.equal(await eventually(() => (closed ? true : undefined)), true);
+  } finally {
+    for (const socket of sockets) socket.destroy();
+    server.close();
+  }
 });

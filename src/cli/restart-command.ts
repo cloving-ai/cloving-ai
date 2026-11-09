@@ -31,7 +31,7 @@ type Waited =
   | { readonly kind: "unanswered" }
   | { readonly kind: "interrupted" };
 
-interface Waiting {
+export interface Waiting {
   readonly startedAt: string;
   readonly commandId: string;
   readonly requestedAt: number;
@@ -55,7 +55,10 @@ function unansweredStart(milliseconds: number): ServiceError {
   };
 }
 
-function waitingFor(reply: Fields, commandId: string): Waiting | undefined {
+export function waitingFor(
+  reply: Fields,
+  commandId: string,
+): Waiting | undefined {
   const startedAt = reply["serviceStartedAt"];
   const requestedAt = record(reply["restart"])?.["requestedAt"];
   if (typeof startedAt !== "string") return undefined;
@@ -84,7 +87,12 @@ function ownFailure(now: Fields, waiting: Waiting): Fields | undefined {
     : undefined;
 }
 
-function settled(now: Fields, waiting: Waiting): Waited | undefined {
+export type Settled = Extract<
+  Waited,
+  { readonly kind: "restarted" | "failed" | "cancelled" }
+>;
+
+export function settled(now: Fields, waiting: Waiting): Settled | undefined {
   if (now["serviceStartedAt"] !== waiting.startedAt)
     return { kind: "restarted", after: now };
   const failure = ownFailure(now, waiting);

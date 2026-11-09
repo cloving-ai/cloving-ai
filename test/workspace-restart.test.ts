@@ -4,12 +4,15 @@ import { mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
+import { setTimeout as delay } from "node:timers/promises";
 import { send } from "../src/cli/client.ts";
+import { argumentRules } from "../src/cli/runtime-invocation.ts";
 import { permitServer } from "../src/cli/workspace-permit-server.ts";
 import { workspacePermits } from "../src/cli/workspace-permit.ts";
 import type { Fields, Reply, ServiceRequest } from "../src/protocol.ts";
 import { listen, type Listener } from "../src/service/transport.ts";
 import { eventually } from "./service-fixture.ts";
+import { testMilliseconds } from "./test-timing.ts";
 
 const root = realpathSync(mkdtempSync(join(tmpdir(), "clv-ws-restart-")));
 process.on("exit", () => {
@@ -27,39 +30,78 @@ interface FakeMember {
   gapReads: number;
   refuses: boolean;
   down: boolean;
+  bare: boolean;
+  fails: string | undefined;
+  cancels: boolean;
+  admits: readonly string[];
+  workflows: readonly string[];
+  pending: Fields | null;
+  failure: Fields | undefined;
 }
 
 const result = (fields: Fields): Promise<Reply> =>
   Promise.resolve({ kind: "result", result: fields });
 
-function restartedLater(member: FakeMember): void {
+const refusal = (code: string): Promise<Reply> =>
+  Promise.resolve({ kind: "error", error: { code, detail: code } });
+
+function restartedLater(member: FakeMember, pending: Fields): void {
+  member.down = true;
   setTimeout(() => {
+    member.down = false;
+    member.pending = null;
+    if (member.fails !== undefined)
+      member.failure = {
+        ...pending,
+        code: member.fails,
+        step: "build",
+        output: "build output",
+      };
+    if (member.fails !== undefined || member.cancels) return;
     member.startedAt = `${member.startedAt}-restarted`;
+    member.workflows = member.admits;
   }, 40);
 }
 
+function restartReply(member: FakeMember, parameters: Fields): Promise<Reply> {
+  const { commandId } = parameters;
+  if (member.refuses) return refusal("restart-unavailable");
+  if (
+    typeof commandId !== "string" ||
+    !argumentRules.identifier.test(commandId)
+  )
+    return refusal("invalid-request");
+  member.restarts.push(parameters);
+  const pending = { commandId, requestedAt: Date.now() };
+  member.pending = pending;
+  const before = member.startedAt;
+  restartedLater(member, pending);
+  if (member.bare) return result({ kind: "restart" });
+  return result({
+    kind: "restart",
+    serviceStartedAt: before,
+    restart: {
+      state: "pending",
+      ...pending,
+      queueWorkflowId: "develop",
+      scheduledWorkflowIds: [],
+    },
+  });
+}
+
 function handled(member: FakeMember, request: ServiceRequest): Promise<Reply> {
-  if (request.operation === "restart" && member.refuses)
-    return Promise.resolve({
-      kind: "error",
-      error: { code: "restart-unavailable", detail: "No restart." },
-    });
-  if (request.operation === "restart") {
-    member.restarts.push(request.parameters);
-    restartedLater(member);
-    return result({ kind: "restart" });
-  }
+  if (request.operation === "restart")
+    return restartReply(member, request.parameters);
   if (request.parameters["after"] !== undefined) member.gapReads += 1;
-  if (member.down)
-    return Promise.resolve({
-      kind: "error",
-      error: { code: "authority-unavailable", detail: "Down." },
-    });
+  if (member.down) return refusal("authority-unavailable");
   return result({
     kind: "run-list",
     runs: member.active ? [{ runId: "run-1", state: "running" }] : [],
     next: null,
     serviceStartedAt: member.startedAt,
+    workflows: member.workflows,
+    restart: member.pending,
+    ...(member.failure === undefined ? {} : { restartFailure: member.failure }),
   });
 }
 
@@ -77,6 +119,13 @@ async function fakeMember(folder: string, name: string): Promise<FakeMember> {
     gapReads: 0,
     refuses: false,
     down: false,
+    bare: false,
+    fails: undefined,
+    cancels: false,
+    admits: ["develop"],
+    workflows: ["develop"],
+    pending: null,
+    failure: undefined,
     listener: await listen({
       path: join(runtime, "control.sock"),
       handle: (request) => handled(member, request),
@@ -152,8 +201,8 @@ await test("CLV-312 the workspace restart holds the queue runs of all repositori
     assert.deepEqual(
       members.map((member) => member.restarts),
       [
-        [{ commandId: "restart-1.alpha", at: "now", resumeQueue: true }],
-        [{ commandId: "restart-1.beta", at: "now", resumeQueue: true }],
+        [{ commandId: "restart-1", at: "now", resumeQueue: true }],
+        [{ commandId: "restart-1", at: "now", resumeQueue: true }],
       ],
     );
     assert.equal((await permit()).kind, "admitted");
@@ -182,7 +231,7 @@ await test("CLV-312 a workspace restart at now does not wait for a gap, and a se
     });
     assert.equal(now.kind, "result");
     assert.deepEqual(alpha.restarts.at(-1), {
-      commandId: "fast.alpha",
+      commandId: "fast",
       at: "now",
       settings: "files",
     });
@@ -229,4 +278,65 @@ await test("CLV-312 a workspace restart keeps waiting while a repository does no
     await eventually(() => (beta.gapReads >= reads + 2 ? true : undefined));
     beta.down = false;
     assert.equal((await reply).kind, "result");
+  }));
+
+await test("CLV-312 a workspace restart sends the command ID of the request to each repository, also an ID of 128 characters", () =>
+  withSupervisor(async ({ folder, members }) => {
+    const commandId = "a".repeat(128);
+    assert.equal(
+      (await restarted(folder, { commandId, at: "now" })).kind,
+      "result",
+    );
+    assert.deepEqual(
+      members.map((member) => member.restarts.at(-1)?.["commandId"]),
+      [commandId, commandId],
+    );
+  }));
+
+const stillWaiting: Reply = {
+  kind: "error",
+  error: { code: "still-waiting", detail: "The restart did not end." },
+};
+
+const bounded = (reply: Promise<Reply>): Promise<Reply> =>
+  Promise.race([
+    reply,
+    delay(testMilliseconds(5000), stillWaiting, { ref: false }),
+  ]);
+
+async function failedDetail(folder: string, commandId: string) {
+  const reply = await bounded(restarted(folder, { commandId, at: "now" }));
+  assert.ok(reply.kind === "error");
+  assert.equal(reply.error.code, "workspace-restart-failed");
+  const permit = await workspacePermits(join(folder, "control.sock"))();
+  assert.equal(permit.kind, "admitted");
+  return reply.error.detail;
+}
+
+await test("CLV-312 a workspace restart fails and ends its queue hold when a repository fails its restart, another command cancels it, or the new service refuses a queue workflow", () =>
+  withSupervisor(async ({ folder, members }) => {
+    const [alpha, beta] = members;
+    assert.ok(alpha !== undefined && beta !== undefined);
+    beta.fails = "restart-build-failed";
+    assert.match(
+      await failedDetail(folder, "build"),
+      /: beta \(restart-build-failed\)\.$/,
+    );
+    beta.fails = undefined;
+    beta.cancels = true;
+    alpha.bare = true;
+    assert.match(
+      await failedDetail(folder, "cancelled"),
+      /: alpha \(restart-reply-invalid\), beta \(restart-cancelled\)\.$/,
+    );
+    alpha.bare = false;
+    beta.cancels = false;
+    beta.admits = [];
+    assert.equal(
+      await failedDetail(folder, "workflow"),
+      [
+        "The restart failed in these repositories: beta (restart-workflow-refused).",
+        "beta: queue workflow develop: workflow-missing",
+      ].join("\n"),
+    );
   }));

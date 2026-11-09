@@ -48,8 +48,8 @@ function asked(path: string): Promise<Permit> {
       const permit = permitOf(buffered.slice(0, end), () => {
         socket.end();
       });
-      if (permit === undefined) held();
-      else settle(permit);
+      settle(permit ?? unansweredPermit);
+      if (permit?.kind !== "admitted") socket.destroy();
     });
     socket.on("error", held);
     socket.on("close", held);

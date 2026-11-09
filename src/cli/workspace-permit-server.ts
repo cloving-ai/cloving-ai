@@ -110,12 +110,14 @@ function permitted(serving: Serving, socket: net.Socket): void {
   serving.turn = serving.turn.then(async () => {
     const reply = await permitAnswer(serving, serving.permits);
     if (socket.destroyed) return;
-    if (reply.kind === "result" && reply.result["admitted"] === true) {
-      serving.permits += 1;
-      socket.once("close", () => {
-        serving.permits -= 1;
-      });
+    if (reply.kind !== "result" || reply.result["admitted"] !== true) {
+      socket.end(replyLine(reply));
+      return;
     }
+    serving.permits += 1;
+    socket.once("close", () => {
+      serving.permits -= 1;
+    });
     socket.write(replyLine(reply));
   });
 }

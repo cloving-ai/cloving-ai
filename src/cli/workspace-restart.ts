@@ -5,6 +5,13 @@ import { isRestartTime, type RestartTime } from "../restart-request.ts";
 import type { WorkspaceHold } from "../queue-room.ts";
 import { atGap, workInProgress } from "../work-gap.ts";
 import { send } from "./client.ts";
+import {
+  settled,
+  waitingFor,
+  type Settled,
+  type Waiting,
+} from "./restart-command.ts";
+import { refusedWorkflowLines } from "./restart-render.ts";
 import { argumentRules } from "./runtime-invocation.ts";
 import { daemonWorkReads } from "./work-reads.ts";
 import type { WorkspaceMember } from "./workspace-record.ts";
@@ -61,14 +68,14 @@ function restartRequest(parameters: Fields): RestartRequest | undefined {
   };
 }
 
-async function startedAt(member: WorkspaceMember): Promise<string | undefined> {
+async function memberStatus(
+  member: WorkspaceMember,
+): Promise<Fields | undefined> {
   const reply = await send(member.runtime, {
     operation: "status",
     parameters: { limit: 1 },
   });
-  const started =
-    reply.kind === "result" ? reply.result["serviceStartedAt"] : undefined;
-  return typeof started === "string" ? started : undefined;
+  return reply.kind === "result" ? reply.result : undefined;
 }
 
 function memberAtGap(member: WorkspaceMember): Promise<boolean> {
@@ -92,33 +99,76 @@ async function commonGap(
   }
 }
 
+async function settledMember(
+  member: WorkspaceMember,
+  input: {
+    readonly waiting: Waiting;
+    readonly restarting: Restarting;
+  },
+): Promise<Settled> {
+  for (;;) {
+    const now = await memberStatus(member);
+    const outcome = now === undefined ? undefined : settled(now, input.waiting);
+    if (outcome !== undefined) return outcome;
+    await delay(input.restarting.gapMilliseconds, undefined, {
+      signal: input.restarting.signal,
+    });
+  }
+}
+
+function settledEntry(
+  name: string,
+  outcome: Settled & { readonly before: Fields },
+): Fields {
+  if (outcome.kind === "cancelled") return { name, error: "restart-cancelled" };
+  if (outcome.kind === "failed")
+    return { name, error: String(outcome.failure["code"]) };
+  const refusedWorkflows = refusedWorkflowLines(outcome.before, outcome.after);
+  if (refusedWorkflows.length > 0)
+    return { name, error: "restart-workflow-refused", refusedWorkflows };
+  return { name, serviceStartedAt: outcome.after["serviceStartedAt"] };
+}
+
 async function restartedMember(
   member: WorkspaceMember,
   input: {
     readonly request: RestartRequest;
-    readonly before: string | undefined;
     readonly restarting: Restarting;
   },
 ): Promise<Fields> {
-  const { request, before, restarting } = input;
+  const { request, restarting } = input;
   const reply = await send(member.runtime, {
     operation: "restart",
     parameters: {
-      commandId: `${request.commandId}.${member.name}`,
+      commandId: request.commandId,
       at: "now",
       ...request.options,
     },
   });
   if (reply.kind === "error")
     return { name: member.name, error: reply.error.code };
-  for (;;) {
-    const now = await startedAt(member);
-    if (now !== undefined && now !== before)
-      return { name: member.name, serviceStartedAt: now };
-    await delay(restarting.gapMilliseconds, undefined, {
-      signal: restarting.signal,
-    });
-  }
+  const waiting = waitingFor(reply.result, request.commandId);
+  if (waiting === undefined)
+    return { name: member.name, error: "restart-reply-invalid" };
+  const outcome = await settledMember(member, { waiting, restarting });
+  return settledEntry(member.name, { ...outcome, before: reply.result });
+}
+
+function failedDetail(failed: readonly Fields[]): string {
+  const names = failed
+    .map((entry) => `${String(entry["name"])} (${String(entry["error"])})`)
+    .join(", ");
+  const workflows = failed.flatMap((entry) =>
+    Array.isArray(entry["refusedWorkflows"])
+      ? entry["refusedWorkflows"].map(
+          (line: unknown) => `${String(entry["name"])}: ${String(line)}`,
+        )
+      : [],
+  );
+  return [
+    `The restart failed in these repositories: ${names}.`,
+    ...workflows,
+  ].join("\n");
 }
 
 async function restartedWorkspace(
@@ -126,23 +176,13 @@ async function restartedWorkspace(
   restarting: Restarting,
 ): Promise<Reply> {
   const members = restarting.members();
-  const before = await Promise.all(members.map(startedAt));
   if (request.at === "gap") await commonGap(members, restarting);
   const repositories = await Promise.all(
-    members.map((member, index) =>
-      restartedMember(member, {
-        request,
-        before: before[index],
-        restarting,
-      }),
-    ),
+    members.map((member) => restartedMember(member, { request, restarting })),
   );
-  const refused = repositories.filter((entry) => entry["error"] !== undefined);
-  if (refused.length > 0)
-    return failure(
-      "workspace-restart-failed",
-      `These repositories refused the restart: ${refused.map((entry) => `${String(entry["name"])} (${String(entry["error"])})`).join(", ")}.`,
-    );
+  const failed = repositories.filter((entry) => entry["error"] !== undefined);
+  if (failed.length > 0)
+    return failure("workspace-restart-failed", failedDetail(failed));
   return {
     kind: "result",
     result: {
