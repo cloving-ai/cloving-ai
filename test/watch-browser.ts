@@ -48,6 +48,8 @@ Object.assign(globalThis, {
       this.address = address;
       sources.push(this);
     }
+    addEventListener() {}
+    close() {}
   },
 });
 Object.defineProperty(globalThis, "navigator", {

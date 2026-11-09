@@ -156,7 +156,7 @@ export function RunTurns(
     component(Turn, { key: item.key, turn: item, now }),
     component(Transcript, {
       key: `transcript-${item.key}`,
-      runId: run.runId,
+      run,
       turn: item,
       turnId: props.turnId,
       controls: props.transcripts,

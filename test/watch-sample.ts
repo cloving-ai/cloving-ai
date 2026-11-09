@@ -5,6 +5,7 @@ import type {
   WatchRun,
   WatchTurn,
 } from "../src/cli/watch-render.ts";
+import type { TranscriptControls } from "../src/cli/watch-transcript-view.ts";
 
 export const at = (clock: string): string => `2026-10-13T${clock}.000Z`;
 export const shownClock = (clock: string): string =>
@@ -132,3 +133,21 @@ export function sampleModel(runs: readonly WatchRun[]): WatchModel {
     runs,
   };
 }
+
+export const wantedTranscripts: TranscriptControls = {
+  view: (target) => ({
+    shown: target.wanted,
+    entries: [],
+    state: "loading",
+    message: "",
+    earlier: false,
+    unseen: 0,
+    detached: false,
+  }),
+  onToggle: () => undefined,
+  onLink: () => undefined,
+  onScroll: () => undefined,
+  onJump: () => undefined,
+  onEarlier: () => undefined,
+  onRetry: () => undefined,
+};
