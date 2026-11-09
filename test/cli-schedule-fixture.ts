@@ -1,4 +1,4 @@
-import { mkdir } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { scheduleConnection } from "../src/daemon/schedule-control.ts";
 import { workflowSchedules } from "../src/daemon/workflow-schedules.ts";
@@ -11,10 +11,16 @@ export async function withSchedule(
   scheduling: {
     readonly declarations: readonly DeclaredWorkflow[];
     readonly clock: number;
+    readonly initial?: unknown;
   } = { declarations: [scheduledWorkflow], clock: 0 },
 ): Promise<void> {
   await withHarness(async (harness) => {
     await mkdir(join(harness.stateDirectory, "state"));
+    if (scheduling.initial !== undefined)
+      await writeFile(
+        join(harness.stateDirectory, "state", "schedules.json"),
+        JSON.stringify(scheduling.initial),
+      );
     const connection = scheduleConnection();
     await harness.start({ schedule: connection.request });
     const scheduler = await workflowSchedules({

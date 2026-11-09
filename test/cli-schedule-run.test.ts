@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { test } from "node:test";
 import { parseInvocation } from "../src/cli/arguments.ts";
+import { send } from "../src/cli/client.ts";
 import { commandUsage } from "../src/cli/usage.ts";
 import { runIdentity } from "../src/service/submission-handler.ts";
 import { scheduledWorkflow } from "./workflow-scheduler-fixture.ts";
@@ -143,3 +144,20 @@ await test("CLV-328 the README describes the Loops panel, its controls, cloving 
   );
   assert.match(readme, /`manual from loop`/);
 });
+
+await test("CLV-328 the service refuses a run of a loop with no command ID or with a command ID that is too long", () =>
+  withSchedule(async (harness) => {
+    for (const parameters of [
+      { action: "run", workflowId: "develop" },
+      { action: "run", workflowId: 7, commandId: "one" },
+      { action: "run", workflowId: "develop", commandId: "x".repeat(128) },
+    ]) {
+      const reply = await send(harness.runtimeDirectory, {
+        operation: "schedule",
+        parameters,
+      });
+      assert.equal(reply.kind, "error");
+      assert.equal(reply.error.code, "invalid-request");
+    }
+    assert.equal(harness.resolved.length, 0);
+  }, developLoop));

@@ -177,11 +177,13 @@ export async function scheduledMetadata(
 ): Promise<LoopMarks> {
   const commandId = (await context.authority.queries.run(run.runId))
     ?.admissionCommandId;
-  if (typeof commandId !== "string") return {};
-  if (commandId.startsWith(`loop:${run.workflowId}:`))
+  if (
+    typeof commandId === "string" &&
+    commandId.startsWith(`loop:${run.workflowId}:`)
+  )
     return { manualFromLoop: true };
   const prefix = `schedule:${run.workflowId}:`;
-  if (!commandId.startsWith(prefix)) return {};
+  if (typeof commandId !== "string" || !commandId.startsWith(prefix)) return {};
   const suffix = commandId.slice(prefix.length);
   const slot = Number(suffix);
   return /^(0|[1-9][0-9]*)$/.test(suffix) && Number.isSafeInteger(slot)

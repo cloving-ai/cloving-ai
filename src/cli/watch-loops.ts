@@ -70,8 +70,8 @@ async function fullStatus(
     operation: "status",
     parameters: { runId: summary["runId"] },
   });
-  if (reply.kind === "error") return summary;
-  return record(reply.result["run"]) ?? summary;
+  const run = reply.kind === "result" ? record(reply.result["run"]) : undefined;
+  return run ?? summary;
 }
 
 export async function loopRunsOf(

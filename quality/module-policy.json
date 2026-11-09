@@ -1929,6 +1929,8 @@
     "test/watch-loops-api.test.ts": "test",
     "test/watch-loops-client.test.ts": "test",
     "test/watch-loops-fixture.ts": "test",
+    "test/watch-loops-rows.test.ts": "test",
+    "test/watch-loops-service.test.ts": "test",
     "test/watch-loops-style.test.ts": "test",
     "test/watch-loops-view.test.ts": "test",
     "test/watch-merge-fixture.ts": "test",
