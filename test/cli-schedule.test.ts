@@ -1,37 +1,9 @@
 import assert from "node:assert/strict";
-import { mkdir } from "node:fs/promises";
-import { join } from "node:path";
 import { test } from "node:test";
 import { parseInvocation } from "../src/cli/arguments.ts";
-import { scheduleConnection } from "../src/daemon/schedule-control.ts";
-import { workflowSchedules } from "../src/daemon/workflow-schedules.ts";
 import { scheduledWorkflow } from "./workflow-scheduler-fixture.ts";
-import { withHarness, parsed, type Harness } from "./service-fixture.ts";
-
-async function withSchedule(
-  body: (harness: Harness) => Promise<void>,
-  scheduling = { declarations: [scheduledWorkflow], clock: 0 },
-): Promise<void> {
-  await withHarness(async (harness) => {
-    await mkdir(join(harness.stateDirectory, "state"));
-    const connection = scheduleConnection();
-    await harness.start({ schedule: connection.request });
-    const scheduler = await workflowSchedules({
-      directory: harness.stateDirectory,
-      runtimeDirectory: harness.runtimeDirectory,
-      declarations: scheduling.declarations,
-      scheduleClock: () => scheduling.clock,
-      submit: () =>
-        Promise.resolve({ kind: "accepted", sequence: 1, intents: [] }),
-    });
-    connection.connect(scheduler.request);
-    try {
-      await body(harness);
-    } finally {
-      await scheduler.stop();
-    }
-  });
-}
+import { withHarness, parsed } from "./service-fixture.ts";
+import { withSchedule } from "./cli-schedule-fixture.ts";
 
 await test("CLV-242 schedule CLI lists text and JSON state", () =>
   withSchedule(async (harness) => {

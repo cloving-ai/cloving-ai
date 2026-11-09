@@ -14,6 +14,7 @@ import { send } from "./client.ts";
 import { isPhoneAction, phoneAction, phoneRead } from "./watch-phone.ts";
 import { queueAction } from "./watch-queue.ts";
 import { routedRunAction } from "./watch-continue.ts";
+import { scheduleAction } from "./watch-loops-action.ts";
 import type { WatchPrSettings } from "./watch-pr-settings.ts";
 import { readFile } from "node:fs/promises";
 import {
@@ -143,6 +144,7 @@ function routedAction(path: string): typeof watchAction | null {
   if (path === "/actions/queue") return queueAction;
   const run = routedRunAction(path);
   if (run !== null) return run;
+  if (path === "/actions/schedule") return scheduleAction;
   return path === "/actions/run" ? watchAction : null;
 }
 

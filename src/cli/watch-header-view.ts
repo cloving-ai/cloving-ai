@@ -5,6 +5,7 @@ import { PhonePanel, type PhoneControls } from "./watch-phone-view.ts";
 import { component, element, type Shown } from "./watch-element.ts";
 import { needsOf } from "./watch-needs-view.ts";
 import { clockTime, type WatchModel } from "./watch-render.ts";
+import { watchHash } from "./watch-navigation.ts";
 import {
   countText,
   ThemeMenu,
@@ -230,5 +231,17 @@ export function RefusedWorkflows(props: { readonly model: WatchModel }): Shown {
         ),
       }),
     ],
+  });
+}
+
+export function BackLink(props: {
+  readonly workflowId: string | null;
+  readonly repository?: string | undefined;
+}): Shown {
+  const { workflowId, repository } = props;
+  return element("a", {
+    class: "back",
+    href: watchHash({ workflowId, repository, runId: null }),
+    children: `← Back to ${workflowId ?? "the floor"}`,
   });
 }

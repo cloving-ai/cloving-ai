@@ -6,6 +6,7 @@ import type {
   WatchWorkflow,
 } from "./watch-render.ts";
 import type { CardField } from "./watch-run-input.ts";
+import type { WatchLoop } from "./watch-loops.ts";
 import {
   cursorOf,
   eventsAfter,
@@ -65,6 +66,7 @@ type ApiBody =
   | ApiIndex
   | ApiService
   | { readonly workflows: readonly ApiWorkflow[] }
+  | { readonly schedules: readonly WatchLoop[] }
   | { readonly runs: readonly ApiRun[]; readonly nextCursor: string | null }
   | { readonly run: ApiRunDetail }
   | { readonly events: readonly WatchEvent[] };
@@ -74,6 +76,11 @@ const base = "/api/v1";
 function found(body: ApiBody): ApiReply {
   return { status: 200, type: "application/json", body: JSON.stringify(body) };
 }
+
+const schedulesUnavailable = problem(503, {
+  code: "schedules-unavailable",
+  detail: "The scheduler of the Cloving service does not answer.",
+});
 
 const unknownRun = problem(404, {
   code: "not-found",
@@ -141,6 +148,14 @@ async function workflows(request: ApiRequest): Promise<ApiReply> {
       workflowOf(workflow, model.cardForms),
     ),
   });
+}
+
+async function schedules(request: ApiRequest): Promise<ApiReply> {
+  const model = await request.model();
+  if (model.service !== "up") return serviceUnavailable;
+  if (model.schedules !== undefined && "status" in model.schedules)
+    return schedulesUnavailable;
+  return found({ schedules: model.loops ?? [] });
 }
 
 interface RunQuery {
@@ -258,6 +273,7 @@ const routes = new Map<string, Route>([
   ["/openapi.json", fixed(() => found(watchApiDocument))],
   ["/service", { parameters: new Map(), reply: service }],
   ["/workflows", { parameters: new Map(), reply: workflows }],
+  ["/schedules", { parameters: new Map(), reply: schedules }],
   ["/runs", { parameters: runParameters, reply: runs }],
   ["/runs/{runId}", { parameters: new Map(), reply: runDetail }],
   [

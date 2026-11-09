@@ -113,3 +113,5 @@ export function SteerAction(props: {
     ],
   });
 }
+
+export const steerFunctions = [steerable, NoteMark, SteerForm, SteerAction];

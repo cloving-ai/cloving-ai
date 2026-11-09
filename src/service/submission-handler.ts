@@ -38,7 +38,7 @@ function resolverIdentity(text: string): Fields {
   return { id: text.slice(0, separator), version: text.slice(separator + 1) };
 }
 
-function admitted(
+export function admitted(
   stored: CommandRecord,
   outcome: { readonly workflowId: string; readonly replayed: boolean },
 ): Reply {
@@ -58,7 +58,7 @@ function admitted(
   });
 }
 
-function conflict(commandId: string): Reply {
+export function conflict(commandId: string): Reply {
   return failed("conflicting-command", {
     commandId,
     detail: "The command ID is known with a different request.",
@@ -283,7 +283,7 @@ function capacityRefusal(
   return undefined;
 }
 
-async function submitted(
+export async function submitted(
   context: ServiceContext,
   parameters: Fields,
 ): Promise<Reply> {
@@ -365,18 +365,11 @@ export function admissionLock(): AdmissionLock {
   };
 }
 
-export function admissionKeys(
-  context: ServiceContext,
-  admission: { readonly commandId: string; readonly workflowId: string },
-): string[] {
-  const { workflowId } = admission;
-  const workflow = context.registry.byId(workflowId);
-  const shared =
-    hasTicketField(workflow?.submission) || workflow?.admission !== undefined;
-  return [
-    `command:${admission.commandId}`,
-    ...(shared ? [`workflow:${workflowId}`] : []),
-  ];
+export function admissionKeys(admission: {
+  readonly commandId: string;
+  readonly workflowId: string;
+}): string[] {
+  return [`command:${admission.commandId}`, `workflow:${admission.workflowId}`];
 }
 
 export function submissionHandler(
@@ -385,7 +378,7 @@ export function submissionHandler(
 ): (parameters: Fields) => Promise<Reply> {
   return (parameters) =>
     lock(
-      admissionKeys(context, {
+      admissionKeys({
         commandId: String(parameters["commandId"]),
         workflowId: String(parameters["workflowId"]),
       }),

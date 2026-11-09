@@ -168,3 +168,20 @@ export function scheduledText(value: unknown): string {
   const { scheduled } = shownScheduled(value);
   return scheduled === undefined ? "" : `scheduled ${String(scheduled.slot)}`;
 }
+
+export function shownLoopMarks(status: {
+  readonly scheduled?: unknown;
+  readonly manualFromLoop?: unknown;
+}): {
+  readonly scheduled?: { readonly slot: number };
+  readonly manualFromLoop?: true;
+} {
+  if (status.manualFromLoop === true) return { manualFromLoop: true };
+  return shownScheduled(status.scheduled);
+}
+
+export function loopText(run: unknown): string {
+  const fields = record(run);
+  if (fields?.["manualFromLoop"] === true) return "manual from loop";
+  return scheduledText(fields?.["scheduled"]);
+}

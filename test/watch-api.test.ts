@@ -54,6 +54,8 @@ await test("CLV-254 the document has openapi, info and paths, each $ref resolves
   assert.deepEqual(Object.keys(document.components.schemas), [
     "Service",
     "Workflow",
+    "Schedule",
+    "LoopRun",
     "CardField",
     "RunSummary",
     "RunPage",
@@ -68,7 +70,7 @@ await test("CLV-254 the document has openapi, info and paths, each $ref resolves
     "Problem",
   ]);
   const schemas = documentSchemas(document);
-  assert.equal(schemas.length, 59);
+  assert.equal(schemas.length, 64);
   assert.deepEqual(
     schemas.flatMap((found) => schemaFailures(document, found)),
     [],
@@ -176,6 +178,7 @@ await test("CLV-254 GET api/v1 gives the version, the document path and one endp
             ["/api/v1/openapi.json", "getOpenApiDocument"],
             ["/api/v1/service", "getService"],
             ["/api/v1/workflows", "listWorkflows"],
+            ["/api/v1/schedules", "listSchedules"],
             ["/api/v1/runs", "listRuns"],
             ["/api/v1/runs/{runId}", "getRun"],
             ["/api/v1/runs/{runId}/events", "listRunEvents"],

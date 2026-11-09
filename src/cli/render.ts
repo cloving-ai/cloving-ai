@@ -12,7 +12,7 @@ import { record, type Fields } from "../protocol.ts";
 import { workflowRefusals } from "../workflow-refusals.ts";
 import { commandText, shownCommands } from "./command-effects.ts";
 import {
-  scheduledText,
+  loopText,
   statusScheduleLines,
   scheduleLines,
 } from "./schedule-render.ts";
@@ -47,7 +47,7 @@ function admitted(result: Fields): readonly string[] {
 }
 
 function runLine(run: unknown): string {
-  const line = `  ${show(part(run, "runId"))}  ${show(part(run, "workflowId"))}  ${show(part(run, "condition"))}  revision ${show(part(run, "revision"))}  latest at ${show(part(run, "latestAt") ?? "none")}${part(run, "scheduled") === undefined ? "" : `  ${scheduledText(part(run, "scheduled"))}`}`;
+  const line = `  ${show(part(run, "runId"))}  ${show(part(run, "workflowId"))}  ${show(part(run, "condition"))}  revision ${show(part(run, "revision"))}  latest at ${show(part(run, "latestAt") ?? "none")}${loopText(run) === "" ? "" : `  ${loopText(run)}`}`;
   return [
     line,
     ...ciLines(run).map((notice) => `    ${notice}`),
@@ -250,7 +250,7 @@ export function runStatus(result: Fields): readonly string[] {
   const suffix = totalsSuffix(part(run, "state"));
   return [
     `Run ${show(part(run, "runId"))} (${show(part(run, "workflowId"))})`,
-    ...[scheduledText(part(run, "scheduled"))].filter((mark) => mark !== ""),
+    ...[loopText(run)].filter((mark) => mark !== ""),
     `Title: ${visible(part(run, "title") ?? "none")}`,
     `State: ${show(part(run, "state"))}`,
     ...outcomeLines(part(run, "outcome")),

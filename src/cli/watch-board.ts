@@ -1,4 +1,4 @@
-import type { ShownSchedules } from "./schedule-render.ts";
+import { shownLoopMarks, type ShownSchedules } from "./schedule-render.ts";
 import { activeCommandWait, shownCommandWaits } from "./command-waits.ts";
 import type { WorkflowStage, WorkflowStages } from "../workflow-declaration.ts";
 import { linksOf } from "../authority/handoff-chain.ts";
@@ -220,7 +220,7 @@ function notesWaitingOf(run: WatchRun): { readonly notesWaiting?: number } {
 function cardOf(run: WatchRun, runs: readonly WatchRun[]): WatchCard {
   return {
     runId: run.runId,
-    ...(run.scheduled === undefined ? {} : { scheduled: run.scheduled }),
+    ...shownLoopMarks(run),
     commandWaits: run.commandWaits ?? [],
     spent: run.spent,
     limit: run.limit,
