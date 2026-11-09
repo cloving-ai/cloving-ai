@@ -26,7 +26,7 @@ cloving_resume, cloving_drop, cloving_continue and cloving_dismiss to submit run
 needs a commandId. After a lost reply, send the same commandId again.
 The server binds to one repository at startup. It needs an existing Cloving service.
 Standard output contains only JSON-RPC messages. Diagnostics use standard error.
---connection launches the encrypted remote bridge from the cloving-zapier integration package.
+--connection launches the encrypted remote bridge from the Cloving relay integration package.
 Pair the harness first with cloving integrations pair mcp --name <name>.
 On the workflow computer, use cloving integrations connect mcp, approve mcp and serve mcp.
 The remote bridge exposes only locally permitted workflows and tools. It does not need a local project.
@@ -285,7 +285,7 @@ export const usage = `Usage: cloving [--help] [--version]
        cloving templates show <name> [--json]
        cloving templates copy <name> [--id <workflow-id>] [--json] [--repository <directory>]
        cloving themes list [--json] [--repository <directory>]
-       cloving integrations <command> <zapier|mcp> [options]
+       cloving integrations <command> mcp [options]
        cloving red-green
        cloving <command> [--help]
 
@@ -297,7 +297,7 @@ Commands:
   templates show      Show the decision points and the files of one template.
   templates copy      Copy one template into .cloving/workflows of the repository.
   themes list         List the themes of the watch page and their refusal codes.
-  integrations        Connect and manage encrypted Zapier and MCP access.
+  integrations        Connect and manage encrypted MCP access.
   red-green  Check assertion failure on the base and success on the head.
   init             Start the setup agent
   init-prompt Print setup instructions for an agent.

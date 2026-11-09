@@ -16,6 +16,7 @@ import { delimiter, dirname, extname, join, resolve } from "node:path";
 import { main } from "./cli/main.ts";
 import { parseInvocation } from "./cli/arguments.ts";
 import { repositoryArguments } from "./cli/repository-arguments.ts";
+import { integrationRequest } from "./cli/integration-arguments.ts";
 import type {
   WatchCommandOutput,
   WatchCommandRunner,
@@ -38,7 +39,9 @@ import { stalledExit } from "./cli/thread-pool.ts";
 import { threadPoolStallExitCode } from "./thread-pool-check.ts";
 
 const [command, ...options] = process.argv.slice(2);
-const repositorySelection = repositoryArguments(process.argv.slice(2), {});
+const integration = integrationRequest(
+  repositoryArguments(process.argv.slice(2), {}),
+);
 
 function repositoryDirectory(directory: string): string | undefined {
   try {
@@ -196,7 +199,7 @@ function toolProcess(input: ToolInput): Promise<number> {
   });
   child.once("error", () => {
     process.stderr.write(
-      `tool-unavailable: Install the cloving-zapier integration package (${input.executable ?? input.tool}).\n`,
+      `tool-unavailable: Install the Cloving relay integration package (${input.executable ?? input.tool}).\n`,
     );
   });
   const aborted =
@@ -333,25 +336,17 @@ else if (command === "red-green")
     argumentsList: options,
   });
 else if (command === "start") process.exitCode = await start();
-else if (
-  typeof repositorySelection !== "string" &&
-  (repositorySelection.argumentsList[0] === "integrations" ||
-    (repositorySelection.argumentsList[0] === "mcp" &&
-      repositorySelection.argumentsList.some((option) =>
-        /^--connection(?:=|$)/.test(option),
-      )))
-) {
-  const repository = repositoryDirectory(
-    repositorySelection.repository ?? process.cwd(),
+else if (integration?.kind === "refused") {
+  process.stderr.write(integration.text);
+  process.exitCode = 2;
+} else if (integration?.kind === "hand-off") {
+  const runtime = runtimeDirectory(
+    process.env,
+    repositoryDirectory(integration.repository ?? process.cwd()),
   );
-  const runtime = runtimeDirectory(process.env, repository);
   process.exitCode = await toolProcess({
-    executable:
-      repositorySelection.argumentsList[0] === "mcp" ||
-      repositorySelection.argumentsList[2] === "mcp"
-        ? "cloving-mcp"
-        : "cloving-zapier",
-    argumentsList: repositorySelection.argumentsList.slice(1),
+    executable: "cloving-mcp",
+    argumentsList: integration.argumentsList,
     environment: {
       ...process.env,
       ...(runtime === undefined ? {} : { CLOVING_RUNTIME_DIR: runtime }),

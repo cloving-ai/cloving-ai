@@ -178,7 +178,18 @@ The turn returns JSON of at most 15000 characters in its final summary, because
 the Claude worker keeps only 16000 characters of a summary. When the rows do not
 fit, the turn keeps the docs with the most rows and names each other drifted
 doc in the list `left`. A doc in `left` keeps its earlier record, so the next
-audit checks it again, and the report counts it under "Left for a later audit".
+audit checks it again, and the report names it under "Left for a later audit".
+The report names these docs also when the run files no ticket. For example, when
+the rows of `README.md` alone do not fit, the turn returns
+`{"docs": [], "left": ["README.md"]}`. The report of this audit of 2 docs is:
+
+```text
+Docs audited: 2 at 0123456789ab. No ticket. Left for a later audit: README.md.
+```
+
+When the turn finds no drift and `left` is empty, the report says `No drift.`
+in place of this text.
+
 After the turn, also after a failure, the `discard` method removes the work
 tree.
 

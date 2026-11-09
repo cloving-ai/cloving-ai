@@ -269,6 +269,7 @@
     "src/cli/init-prompt-command.ts": "cli",
     "src/cli/init-prompt.ts": "pure",
     "src/cli/init-selection.ts": "cli",
+    "src/cli/integration-arguments.ts": "pure",
     "src/cli/main.ts": "cli",
     "src/cli/mcp-schedule-tools.ts": "cli",
     "src/cli/mcp-server.ts": "cli",
