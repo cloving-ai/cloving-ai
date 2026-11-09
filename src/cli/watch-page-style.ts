@@ -102,6 +102,24 @@ h2, h3 { font-family: var(--font-heading); font-weight: 700; }
 .today-table th:first-child { padding-left: 0; text-align: left; overflow-wrap: anywhere; }
 .today-table tbody tr:last-child > * { border-bottom: 0; }
 .today-queue { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; margin: 0; padding: 12px 20px; }
+.loops { background: var(--color-surface); box-shadow: inset 0 0 0 var(--shape-border) var(--color-line); }
+.loops h2 { margin: 0; padding: 12px 20px; font-size: 18px; border-bottom: var(--shape-border) solid var(--color-line); }
+.loops-list { list-style: none; margin: 0; padding: 0; }
+.loop { display: flex; flex-direction: column; gap: 4px; padding: 12px 20px; border-bottom: var(--shape-border) solid var(--color-line); }
+.loop:last-child { border-bottom: 0; }
+.loop-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.loop-workflow { font-weight: 700; overflow-wrap: anywhere; }
+.loop-state { font-size: 13px; font-weight: 700; }
+.loop-active .loop-state { color: var(--color-state-running); }
+.loop-paused .loop-state { color: var(--color-state-waiting); }
+.loop-stopped .loop-state { color: var(--color-state-failed); }
+.loop p { margin: 0; color: var(--color-muted); font-size: 13px; overflow-wrap: anywhere; }
+.loop-actions { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 4px; }
+.loop-switch { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; }
+.loop-run { border: 0; cursor: pointer; padding: 6px 12px; background: var(--color-panel); color: var(--color-ink); font: inherit; font-size: 13px; clip-path: var(--angled); }
+.loop-run:disabled { cursor: progress; opacity: 0.6; }
+.loop-run:focus-visible { clip-path: none; }
+.loop p.loop-message { color: var(--color-ink); font-size: 13px; }
 .lanes { display: inline-flex; gap: 3px; }
 .lane { width: 14px; height: 12px; clip-path: var(--angled); }
 .lane.busy { background: var(--color-state-running); }

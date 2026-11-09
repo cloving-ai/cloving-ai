@@ -1,4 +1,4 @@
-import { scheduleStatusLine, scheduledText } from "./schedule-render.ts";
+import { loopText, scheduleStatusLine } from "./schedule-render.ts";
 import { CommandWaits, effectBudgetText } from "./command-waits.ts";
 import { AddCard, type CardControls } from "./watch-card-view.ts";
 import type { CardForm } from "./watch-run-input.ts";
@@ -167,12 +167,9 @@ export function Card(props: {
             children: cardStep(card, now),
           }),
           component(CardReview, { card, workflowId }),
-          card.scheduled === undefined
+          loopText(card) === ""
             ? null
-            : element("span", {
-                class: "meta",
-                children: scheduledText(card.scheduled),
-              }),
+            : element("span", { class: "meta", children: loopText(card) }),
           element("span", {
             class: "card-cost",
             children: cardTotals(card, words),

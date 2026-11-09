@@ -1,10 +1,22 @@
 import {
   calendarText,
   dayText,
+  loopText,
   scheduleStatusLine,
   scheduledText,
   shownScheduled,
 } from "./schedule-render.ts";
+import {
+  LoopActions,
+  LoopRow,
+  LoopsPanel,
+  loopAmount,
+  loopLastText,
+  loopMessage,
+  loopNextText,
+  loopTime,
+  relativeText,
+} from "./watch-loops-view.ts";
 import * as waitDisplay from "./command-waits.ts";
 import { cardReply } from "./watch-card-reply.ts";
 import { record } from "../protocol.ts";
@@ -17,6 +29,7 @@ import {
   cardSubmitKey,
 } from "./watch-card-view.ts";
 import { watchClient } from "./watch-client.ts";
+import { watchLoopsClient } from "./watch-loops-client.ts";
 import { watchTranscriptClient } from "./watch-transcript-client.ts";
 import {
   CutNote,
@@ -161,7 +174,6 @@ import {
   Page,
   Phases,
   PullRequest,
-  RefusedWorkflows,
   Run,
   RunTotals,
   RunTurns,
@@ -176,6 +188,7 @@ import {
   QueueControl,
   Queue,
   queueLanes,
+  RefusedWorkflows,
   skippedText,
   Version,
 } from "./watch-header-view.ts";
@@ -186,6 +199,16 @@ const functions = [
   dayText,
   scheduledText,
   shownScheduled,
+  loopText,
+  loopTime,
+  loopAmount,
+  relativeText,
+  loopNextText,
+  loopLastText,
+  loopMessage,
+  LoopActions,
+  LoopRow,
+  LoopsPanel,
   record,
   commandText,
   Commands,
@@ -356,6 +379,7 @@ export function pageDocument(
     ...functions.map((item) => item.toString()),
     watchCardClient,
     watchPhoneClient,
+    watchLoopsClient,
     watchTranscriptClient,
     watchClient,
   ].join("\n");

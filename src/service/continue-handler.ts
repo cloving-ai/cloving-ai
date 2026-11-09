@@ -385,7 +385,7 @@ export function continueHandler(
     return lock(
       workflowId === undefined
         ? [`command:${commandId}`]
-        : admissionKeys(context, { commandId, workflowId }),
+        : admissionKeys({ commandId, workflowId }),
       () => continueRun(context, parameters),
     );
   };

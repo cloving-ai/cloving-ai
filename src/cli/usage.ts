@@ -108,11 +108,15 @@ Use --repository <name> to show the runs of one repository.
   schedule: `Usage: cloving schedule [--json]
        cloving schedule pause <workflowId> [--json]
        cloving schedule resume <workflowId> [--json]
+       cloving schedule run <workflowId> [--command-id <id>] [--json]
 
 Lists interval schedules and their state. Pause stops new runs; an active run continues.
 Three consecutive failed or blocked scheduled runs stop a schedule.
 Resume clears failures and starts the next run one interval later.
 Paused and stopped schedules survive a service restart.
+Run admits one manual run with the input of the schedule, marked manual from loop.
+It does not change the next run. While a run of the workflow is active, the service
+refuses it with run-active.
 `,
   questions: `Usage: cloving questions [<run-id>] [--json]
 
@@ -256,7 +260,7 @@ Settings files: .cloving/config.json in the repository and <config>/cloving/proj
   CLOVING_GEMINI_COMMAND           A JSON list of a command and its arguments for the gemini worker. The default is gemini --output-format stream-json --approval-mode yolo; Cloving appends -p and the turn text; turn text of 64 KiB or more in UTF-8 goes through standard input instead. No approval prompts or capacity retries.
   CLOVING_OPENCODE_COMMAND         A JSON list of a command and its arguments for opencode. The default is opencode run --format json; the turn text is appended as one argument. OPENCODE_PERMISSION permits unattended tools.
   CLOVING_WATCH_REPOSITORY         The service repository context for the watch board, set by start from --repository. Its local origin supplies the GitHub identity. There is no current-directory default.
-  CLOVING_WATCH_ACTIONS            The value off removes the board run form, the queue control and their write endpoints. The default is on.
+  CLOVING_WATCH_ACTIONS            The value off removes the board run form, the queue control, the loop controls and their write endpoints. The default is on.
   CLOVING_WATCH_PORT               The port number of the watch page. The value off starts no watch page. The default is 3663.
   CLOVING_PHONE_RELAY              The phone relay child, which connects phones through cloving.ai. The value off starts no phone relay. The default is on.
   CLOVING_RELAY_ORIGIN             The origin of the phone relay server. Only https origins are accepted. The default is https://cloving.ai.

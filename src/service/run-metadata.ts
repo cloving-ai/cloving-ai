@@ -166,12 +166,22 @@ export async function scheduleMetadata(
   };
 }
 
+export interface LoopMarks {
+  readonly scheduled?: { readonly slot: number };
+  readonly manualFromLoop?: true;
+}
+
 export async function scheduledMetadata(
   context: ServiceContext,
   run: { readonly runId: string; readonly workflowId: string },
-): Promise<{ readonly scheduled?: { readonly slot: number } }> {
+): Promise<LoopMarks> {
   const commandId = (await context.authority.queries.run(run.runId))
     ?.admissionCommandId;
+  if (
+    typeof commandId === "string" &&
+    commandId.startsWith(`loop:${run.workflowId}:`)
+  )
+    return { manualFromLoop: true };
   const prefix = `schedule:${run.workflowId}:`;
   if (typeof commandId !== "string" || !commandId.startsWith(prefix)) return {};
   const suffix = commandId.slice(prefix.length);

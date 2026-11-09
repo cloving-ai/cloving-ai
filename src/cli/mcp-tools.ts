@@ -1,10 +1,4 @@
-import { isRecordKey } from "../authority/commands.ts";
-import {
-  record,
-  type Fields,
-  type Reply,
-  type ServiceRequest,
-} from "../protocol.ts";
+import { record, type Fields, type Reply } from "../protocol.ts";
 import { mutate } from "./client.ts";
 import {
   commandJson,
@@ -18,40 +12,22 @@ import {
   type SubmittedSource,
 } from "./command-requests.ts";
 import { continueServiceRequest, stepName } from "./continue-arguments.ts";
+import { scheduleTools } from "./mcp-schedule-tools.ts";
+import {
+  identifierSchema,
+  key,
+  mutation,
+  mutationCall,
+  repeat,
+  type Argument,
+  type McpCall,
+  type Tool,
+} from "./mcp-tool.ts";
 import {
   argumentRules,
   type DecisionCommand,
   type RunCommand,
 } from "./runtime-invocation.ts";
-
-interface Argument {
-  readonly schema: Fields;
-  readonly valid: (value: unknown) => boolean;
-}
-
-export type McpCall =
-  | { readonly kind: "read"; readonly request: ServiceRequest }
-  | {
-      readonly kind: "mutation";
-      readonly request: ServiceRequest;
-      readonly commandId: string;
-    };
-
-interface Tool {
-  readonly name: string;
-  readonly description?: string;
-  readonly arguments: Readonly<Record<string, Argument>>;
-  readonly required: readonly string[];
-  readonly annotations: Fields;
-  readonly call: (values: Fields) => McpCall | undefined;
-}
-
-const identifierSchema = {
-  type: "string",
-  minLength: 1,
-  maxLength: 128,
-  pattern: "^[A-Za-z0-9._:/-]+$",
-};
 
 function matching(pattern: RegExp, schema: Fields): Argument {
   return {
@@ -74,7 +50,6 @@ function whole(range: {
   };
 }
 
-const key: Argument = { schema: identifierSchema, valid: isRecordKey };
 const identifier = matching(argumentRules.identifier, identifierSchema);
 const reference = matching(argumentRules.decisionReference, {
   ...identifierSchema,
@@ -120,8 +95,6 @@ function read(
   };
 }
 
-const mutation = { readOnlyHint: false, idempotentHint: true };
-const repeat = "If the reply is lost, send the same commandId again.";
 const decisionDescriptions: Readonly<Record<DecisionCommand, string>> = {
   answer: "Answer an open question.",
   approve: "Approve an open approval.",
@@ -132,14 +105,6 @@ const runCommandDescriptions: Readonly<Record<RunCommand, string>> = {
   resume: "Resume a paused run.",
   drop: "Drop a run. A dropped run does not continue.",
 };
-
-function mutationCall(
-  values: Fields,
-  request: (commandId: string) => ServiceRequest,
-): McpCall {
-  const commandId = String(values["commandId"]);
-  return { kind: "mutation", commandId, request: request(commandId) };
-}
 
 function decisionCall(command: DecisionCommand, values: Fields): McpCall {
   const { text } = values;
@@ -298,6 +263,7 @@ const tools: readonly Tool[] = [
   runCommand("drop"),
   continueTool,
   dismissTool,
+  ...scheduleTools,
 ];
 
 function listing(tool: Tool): Fields {

@@ -1,9 +1,14 @@
 import { RunNotes } from "./watch-notes-view.ts";
-import { scheduledText } from "./schedule-render.ts";
+import { loopText } from "./schedule-render.ts";
 import { CommandWaits, effectBudgetText } from "./command-waits.ts";
 import type { CardControls } from "./watch-card-view.ts";
 import type { PhoneControls } from "./watch-phone-view.ts";
-import { Header, Queue, type QueueControls } from "./watch-header-view.ts";
+import {
+  Header,
+  Queue,
+  RefusedWorkflows,
+  type QueueControls,
+} from "./watch-header-view.ts";
 export { clove, Header, type QueueControls } from "./watch-header-view.ts";
 import {
   continuedCostText,
@@ -38,6 +43,7 @@ import { Shelf } from "./watch-shelf-view.ts";
 import { NeedsYou, type ContinueControls } from "./watch-needs-view.ts";
 export type { ContinueControls } from "./watch-needs-view.ts";
 import { Today } from "./watch-today-view.ts";
+import { LoopsPanel, type LoopControls } from "./watch-loops-view.ts";
 import type { ThemeControls } from "./watch-theme-view.ts";
 import { Decision, Events, Turn, PullRequest, Review } from "./watch-turn.ts";
 import { Commands } from "./command-effects.ts";
@@ -180,9 +186,9 @@ export function Run(
   ];
   return [
     component(Banner, { run, now }),
-    run.scheduled === undefined
+    loopText(run) === ""
       ? null
-      : element("p", { class: "meta", children: scheduledText(run.scheduled) }),
+      : element("p", { class: "meta", children: loopText(run) }),
     component(HandoffLinks, { run }),
     component(RunNotes, { notes: run.notes }),
     component(CommandWaits, { waits: run.commandWaits ?? [] }),
@@ -222,26 +228,9 @@ export interface PageProps {
   readonly phone?: PhoneControls | undefined;
   readonly queue?: QueueControls | undefined;
   readonly continuing?: ContinueControls | undefined;
+  readonly loops?: LoopControls | undefined;
   readonly theme?: ThemeControls | undefined;
   readonly transcripts?: TranscriptControls | undefined;
-}
-
-export function RefusedWorkflows(props: { readonly model: WatchModel }): Shown {
-  const refusals = props.model.workflowRefusals ?? [];
-  if (refusals.length === 0) return null;
-  return element("section", {
-    class: "workflow-refusals",
-    children: [
-      element("h2", { children: "Refused workflows" }),
-      element("ul", {
-        children: refusals.map((entry) =>
-          element("li", {
-            children: `${entry.scope} ${entry.label}: ${entry.codes.join(", ")}`,
-          }),
-        ),
-      }),
-    ],
-  });
 }
 
 export function Page(props: PageProps): Shown {
@@ -341,6 +330,11 @@ export function FloorPage(
             class: "side-panels",
             children: [
               component(Today, { model, words }),
+              component(LoopsPanel, {
+                loops: model.loops ?? [],
+                now,
+                controls: props.loops,
+              }),
               component(Queue, { model, words }),
               component(RefusedWorkflows, { model }),
             ],

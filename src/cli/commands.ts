@@ -300,11 +300,7 @@ function located(
   >,
   environment: Located,
 ): Promise<number> {
-  if (invocation.kind === "schedule")
-    return requested(environment, {
-      format: { json: invocation.json },
-      request: scheduleServiceRequest(invocation),
-    });
+  if (invocation.kind === "schedule") return schedule(environment, invocation);
   if (invocation.kind === "queue") return queue(environment, invocation);
   if (invocation.kind === "report")
     return reportCommand(invocation, environment);
@@ -317,6 +313,22 @@ function located(
   return requested(environment, {
     format: { json: invocation.json },
     request: readCommandRequest(invocation),
+  });
+}
+
+function schedule(
+  environment: Located,
+  invocation: Invoked<"schedule">,
+): Promise<number> {
+  if (invocation.action !== "run")
+    return requested(environment, {
+      format: { json: invocation.json },
+      request: scheduleServiceRequest(invocation, null),
+    });
+  const format = identified(environment, invocation);
+  return mutated(environment, {
+    format,
+    request: scheduleServiceRequest(invocation, format.commandId),
   });
 }
 

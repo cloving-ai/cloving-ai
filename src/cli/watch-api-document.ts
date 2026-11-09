@@ -3,6 +3,7 @@ import {
   closed,
   flag,
   integer,
+  invalidQuery,
   json,
   listOf,
   nullableNumber,
@@ -11,6 +12,7 @@ import {
   reference,
   text,
 } from "./watch-api-schema.ts";
+import { scheduleSchemas, schedulesPath } from "./watch-api-schedules.ts";
 
 export const runStates = [
   "queued",
@@ -29,9 +31,6 @@ export const runLimit = {
   default: 50,
 } as const;
 
-const invalidQuery = problem(
-  "A query parameter is unknown, repeated or has an invalid value.",
-);
 const serviceUnavailable = problem("The Cloving service does not answer.");
 const unknownRun = problem("The service has no run with this ID.");
 const unknownTurn = problem(
@@ -150,6 +149,7 @@ export const watchApiDocument = {
     { name: "api", description: "The index and the contract of the API." },
     { name: "service", description: "The state of the Cloving service." },
     { name: "workflows", description: "The workflows of the service." },
+    { name: "schedules", description: "The loops of the service." },
     { name: "runs", description: "The runs of the watch page." },
     { name: "stream", description: "The change signals of the runs." },
   ],
@@ -202,6 +202,7 @@ export const watchApiDocument = {
         },
       },
     },
+    "/schedules": schedulesPath,
     "/runs": {
       get: {
         operationId: "listRuns",
@@ -315,6 +316,7 @@ export const watchApiDocument = {
         latestAt: nullableText,
         inputs: listOf(reference("CardField")),
       }),
+      ...scheduleSchemas,
       CardField: closed({
         name: text,
         label: text,
