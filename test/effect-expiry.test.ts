@@ -246,8 +246,8 @@ await test("CLV-049 the lease scan sends one expiry for each lease that is due, 
   const started = await scene();
   const { authority, clock } = started;
   await running(started, held);
-  assert.deepEqual(await authority.effects.dueLeases(noon), []);
-  assert.deepEqual(await authority.effects.dueLeases(later), [
+  assert.deepEqual(await authority.effects.leases.due(noon), []);
+  assert.deepEqual(await authority.effects.leases.due(later), [
     { runId: "run-1", operationId: held.operationId, generation: 1 },
   ]);
   const scan = expiryScan({
@@ -275,7 +275,7 @@ await test("CLV-049 the lease scan sends one expiry for each lease that is due, 
       .length,
     1,
   );
-  assert.deepEqual(await authority.effects.dueLeases(later), []);
+  assert.deepEqual(await authority.effects.leases.due(later), []);
   await authority.close();
 });
 

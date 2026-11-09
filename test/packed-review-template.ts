@@ -31,6 +31,7 @@ export const packedReviewSources = [
   "templates/review-day/review-day/critique.ts",
   "templates/review-day/review-day/decision.ts",
   "templates/review-day/review-day/facts.ts",
+  "templates/review-day/review-day/input.ts",
   "templates/review-day/review-day/label.ts",
   "templates/review-day/review-day/next.ts",
   "templates/review-day/review-day/post.ts",

@@ -5,33 +5,26 @@ import {
   type WatchActions,
 } from "./watch-actions.ts";
 import { watchApiChange, watchApiReply } from "./watch-api.ts";
-import { observedBoard } from "./watch-pr-board.ts";
-import { finishedModel, type IssueState } from "./watch-finished.ts";
 import { isPhoneAction, phoneAction, phoneRead } from "./watch-phone.ts";
 import { queueAction } from "./watch-queue.ts";
 import { routedRunAction } from "./watch-continue.ts";
-import { watchPrObserver, type WatchPrSettings } from "./watch-pr-settings.ts";
-import type { PrObserver } from "./watch-pr-observer.ts";
-import { readdir, readFile, stat } from "node:fs/promises";
+import type { WatchPrSettings } from "./watch-pr-settings.ts";
+import { readFile } from "node:fs/promises";
 import {
   createServer,
   type IncomingMessage,
   type RequestListener,
 } from "node:http";
-import { homedir } from "node:os";
-import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { watchReader, type WatchReader } from "./watch-reads.ts";
-import { ciRerunNotices } from "./github-ci-progress.ts";
-import {
-  turnActivity,
-  turnOf,
-  watchModel,
-  type GithubRecords,
-} from "./watch-model.ts";
 import { pageDocument } from "./watch-page.ts";
-import type { WatchItem, WatchModel, WatchTurn } from "./watch-render.ts";
-import { watchStream, type WatchStream } from "./watch-stream.ts";
+import type { WatchModel } from "./watch-render.ts";
+import type { WatchStream } from "./watch-stream.ts";
+import {
+  watchSnapshots,
+  workspaceSnapshots,
+  type WatchMember,
+  type WatchSnapshots,
+} from "./watch-snapshot.ts";
 import {
   threadPoolWatch,
   type ThreadPoolSettings,
@@ -55,144 +48,51 @@ import {
 
 export const defaultWatchPort = 3663;
 
-export interface WatchSettings {
-  readonly actions?: string;
-  readonly pullRequests?: WatchPrSettings;
-  readonly themes?: WatchThemeSettings;
-  readonly runtimeDirectory: string;
-  readonly retentionDays?: number | null;
+interface ServedSettings {
+  readonly themes?: WatchThemeSettings | undefined;
+  readonly retentionDays?: number | null | undefined;
   readonly replyMilliseconds?: number;
   readonly threadPool?: ThreadPoolSettings;
   readonly port: number;
-  readonly client: string;
   readonly announce: (text: string) => void;
   readonly complain: (text: string) => void;
   readonly stopped: Promise<void>;
 }
 
-interface Watch {
-  readonly actions: WatchActions | null;
-  readonly settings: WatchSettings;
-  readonly observer: PrObserver;
-  readonly pool: ThreadPoolWatch;
-  readonly reader: WatchReader;
-  readonly streams: Map<
-    string,
-    { size: number; activity: readonly WatchItem[] }
-  >;
-  readonly github: Map<string, GithubRecords>;
+export interface WatchSettings extends ServedSettings {
+  readonly client: string;
+  readonly actions?: string;
+  readonly pullRequests?: WatchPrSettings;
+  readonly runtimeDirectory: string;
 }
 
-const unknownIssue = (): IssueState => "unknown";
+export interface WorkspaceWatchSettings extends ServedSettings {
+  readonly repositories: readonly WatchMember[];
+}
+
+interface Watch {
+  readonly actions: WatchActions | null;
+  readonly settings: ServedSettings;
+  readonly runtimeDirectory: string | null;
+  readonly pool: ThreadPoolWatch;
+  readonly snapshots: WatchSnapshots;
+}
+
+interface WatchSource {
+  readonly actions: WatchActions | null;
+  readonly runtimeDirectory: string | null;
+  readonly snapshots: WatchSnapshots;
+}
+
 const forbidden: Reply = { status: 403, type: "text/plain", body: "refused" };
 const libraryFile = fileURLToPath(import.meta.resolve("preact"));
 const pageChange = (): string => "data: change\n\n";
 const artPolicy = "default-src 'none'; style-src 'unsafe-inline'";
-function parsed(text: string): unknown {
-  try {
-    const value: unknown = JSON.parse(text);
-    return value;
-  } catch {
-    return null;
-  }
-}
-
-interface Stream {
-  readonly size: number;
-  readonly activity: readonly WatchItem[];
-  readonly activeAt: string | null;
-}
-
-const noStream: Stream = { size: 0, activity: [], activeAt: null };
-
-async function streamed(watch: Watch, file: string): Promise<Stream> {
-  const found = await stat(file).catch(() => null);
-  if (found === null) return noStream;
-  const known = watch.streams.get(file);
-  const activeAt = found.mtime.toISOString();
-  if (known?.size === found.size) return { ...known, activeAt };
-  const activity = turnActivity(
-    (await readFile(file, "utf8").catch(() => "")).split("\n"),
-  );
-  watch.streams.set(file, { size: found.size, activity });
-  return { size: found.size, activity, activeAt };
-}
-
-async function stored(file: string): Promise<unknown> {
-  return parsed(await readFile(file, "utf8").catch(() => "null"));
-}
-
-async function turns(watch: Watch): Promise<WatchTurn[]> {
-  const journal = join(dirname(watch.settings.runtimeDirectory), "journal");
-  const found: WatchTurn[] = [];
-  for (const key of await readdir(journal).catch(() => [])) {
-    const started = await stored(join(journal, key, "started.json"));
-    if (started === null) continue;
-    const stream = await streamed(watch, join(journal, key, "turn.jsonl"));
-    found.push(
-      turnOf({
-        key,
-        started,
-        result: await stored(join(journal, key, "result.json")),
-        activity: stream.activity,
-        activeAt: stream.activeAt,
-      }),
-    );
-  }
-  return found.toSorted((first, second) =>
-    first.startedAt < second.startedAt ? -1 : 1,
-  );
-}
-
-async function githubRecords(watch: Watch): Promise<GithubRecords[]> {
-  const journal = join(dirname(watch.settings.runtimeDirectory), "github");
-  const keys = await readdir(journal).catch(() => []);
-  for (const key of keys) {
-    const known = watch.github.get(key);
-    if (known !== undefined && known.result !== null) continue;
-    const started =
-      known?.started ?? (await stored(join(journal, key, "started.json")));
-    if (started === null) continue;
-    const result = await stored(join(journal, key, "result.json"));
-    watch.github.set(key, {
-      started,
-      result,
-      ciReruns: await ciRerunNotices(join(journal, key)),
-    });
-  }
-  return keys.flatMap((key) => watch.github.get(key) ?? []);
-}
-
 async function snapshot(
   watch: Watch,
   runId: string | null,
 ): Promise<WatchModel> {
-  const updatedAt = new Date().toISOString();
-  const [read, journal, github] = await Promise.all([
-    runId === null ? watch.reader.read(updatedAt) : watch.reader.run(runId),
-    turns(watch),
-    githubRecords(watch),
-  ]);
-  const model = watchModel({
-    ...read,
-    repository: watch.observer.repository ?? null,
-    home: homedir(),
-    client: watch.settings.client,
-    updatedAt,
-    turns: journal,
-    githubRecords: github,
-  });
-  const shown =
-    runId === null
-      ? observedBoard(
-          finishedModel(model, {
-            issue: watch.observer.issueState ?? unknownIssue,
-            pullRequest: watch.observer.observe,
-            retentionDays: watch.settings.retentionDays ?? null,
-          }),
-          watch.observer,
-        )
-      : model;
+  const shown = await watch.snapshots.snapshot(runId);
   return {
     ...shown,
     cardForms:
@@ -247,12 +147,7 @@ async function readReply(watch: Watch, url: URL): Promise<Reply> {
       type: "text/javascript; charset=utf-8",
       body: await readFile(libraryFile, "utf8"),
     };
-  if (path === "/phone.json")
-    return {
-      status: 200,
-      type: "application/json",
-      body: await phoneRead(watch.settings.runtimeDirectory),
-    };
+  if (path === "/phone.json") return phoneReply(watch);
   if (path === "/health.json") return healthReply(watch.pool);
   if (path !== "/data.json") return notFound;
   const runId = url.searchParams.get("runId");
@@ -262,6 +157,17 @@ async function readReply(watch: Watch, url: URL): Promise<Reply> {
     status: 200,
     type: "application/json",
     body: JSON.stringify(runId === null ? model : { run: model.runs[0] }),
+  };
+}
+
+async function phoneReply(watch: Watch): Promise<Reply> {
+  return {
+    status: 200,
+    type: "application/json",
+    body:
+      watch.runtimeDirectory === null
+        ? JSON.stringify({ relay: "off" })
+        : await phoneRead(watch.runtimeDirectory),
   };
 }
 
@@ -322,32 +228,22 @@ function requestHandler(watch: Watch, stream: WatchStream): RequestListener {
 }
 
 async function served(
-  settings: WatchSettings,
-  pool: ThreadPoolWatch,
+  settings: ServedSettings,
+  hosted: { readonly pool: ThreadPoolWatch; readonly source: WatchSource },
 ): Promise<number> {
-  const observer = await observerFor(settings);
+  const { pool, source } = hosted;
   const watch: Watch = {
-    actions:
-      settings.actions === "off"
-        ? null
-        : await watchActions(settings.runtimeDirectory),
+    actions: source.actions,
     settings,
-    observer,
+    runtimeDirectory: source.runtimeDirectory,
     pool,
-    reader: watchReader(settings.runtimeDirectory, observer.repository ?? null),
-    streams: new Map(),
-    github: new Map(),
+    snapshots: source.snapshots,
   };
-  const stream = watchStream({
-    runtimeDirectory: settings.runtimeDirectory,
-    journal: join(dirname(settings.runtimeDirectory), "journal"),
-    retryMilliseconds: 1000,
-  });
+  const stream: WatchStream = source.snapshots.stream;
   const server = createServer(requestHandler(watch, stream));
   return new Promise((settle) => {
     server.once("error", (error) => {
-      observer.close();
-      stream.close();
+      source.snapshots.close();
       settings.complain(`watch-not-started: ${error.message}\n`);
       settle(1);
     });
@@ -356,8 +252,7 @@ async function served(
       settings.announce(`Watch page: http://127.0.0.1:${String(bound)}/\n`);
     });
     const closed = (): void => {
-      observer.close();
-      stream.close();
+      source.snapshots.close();
       server.close();
       server.closeAllConnections();
       settle(0);
@@ -366,7 +261,34 @@ async function served(
   });
 }
 
-export async function watchServer(settings: WatchSettings): Promise<number> {
+async function repositorySource(settings: WatchSettings): Promise<WatchSource> {
+  return {
+    actions:
+      settings.actions === "off"
+        ? null
+        : await watchActions(settings.runtimeDirectory),
+    runtimeDirectory: settings.runtimeDirectory,
+    snapshots: await watchSnapshots(settings),
+  };
+}
+
+async function workspaceSource(
+  settings: WorkspaceWatchSettings,
+): Promise<WatchSource> {
+  return {
+    actions: null,
+    runtimeDirectory: null,
+    snapshots: await workspaceSnapshots({
+      ...settings,
+      members: settings.repositories,
+    }),
+  };
+}
+
+async function guarded(
+  settings: ServedSettings,
+  source: (settings: ServedSettings) => Promise<WatchSource>,
+): Promise<number> {
   const stall = Promise.withResolvers<number>();
   const pool = threadPoolWatch({
     ...settings.threadPool,
@@ -380,8 +302,9 @@ export async function watchServer(settings: WatchSettings): Promise<number> {
     stall.promise.then(() => undefined),
   ]);
   try {
+    const shown = { ...settings, stopped };
     return await Promise.race([
-      served({ ...settings, stopped }, pool),
+      source(shown).then((found) => served(shown, { pool, source: found })),
       stall.promise,
     ]);
   } finally {
@@ -389,11 +312,16 @@ export async function watchServer(settings: WatchSettings): Promise<number> {
   }
 }
 
-function observerFor(settings: WatchSettings): Promise<PrObserver> {
-  if (settings.pullRequests !== undefined)
-    return watchPrObserver(settings.pullRequests);
-  return Promise.resolve({
-    observe: () => ({ status: "unavailable", failure: "configuration" }),
-    close: () => undefined,
-  });
+export function watchServer(settings: WatchSettings): Promise<number> {
+  return guarded(settings, (shown) =>
+    repositorySource({ ...settings, ...shown }),
+  );
+}
+
+export function workspaceWatchServer(
+  settings: WorkspaceWatchSettings,
+): Promise<number> {
+  return guarded(settings, (shown) =>
+    workspaceSource({ ...settings, ...shown }),
+  );
 }

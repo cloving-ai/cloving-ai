@@ -214,3 +214,21 @@ export function Header(props: HeaderProps): Shown {
     ],
   });
 }
+
+export function RefusedWorkflows(props: { readonly model: WatchModel }): Shown {
+  const refusals = props.model.workflowRefusals ?? [];
+  if (refusals.length === 0) return null;
+  return element("section", {
+    class: "workflow-refusals",
+    children: [
+      element("h2", { children: "Refused workflows" }),
+      element("ul", {
+        children: refusals.map((entry) =>
+          element("li", {
+            children: `${entry.scope} ${entry.label}: ${entry.codes.join(", ")}`,
+          }),
+        ),
+      }),
+    ],
+  });
+}

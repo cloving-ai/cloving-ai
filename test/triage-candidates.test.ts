@@ -73,7 +73,7 @@ await test("CLV-319 an operator issue, a triaged issue, a recent comment and a p
       row({ number: 7, labels: [{ name: "bug" }] }),
     ],
     comments: {
-      3: ["2026-11-04T10:30:00Z", "2026-11-04T11:55:00Z"],
+      3: ["2026-11-04T11:55:00Z", "2026-11-04T10:30:00Z"],
       6: ["2026-11-04T11:00:00Z", "2026-11-04T11:50:00Z"],
     },
   });

@@ -220,3 +220,51 @@ await test("CLV-286 start help says that CLOVING_WATCH_ACTIONS=off also removes 
     /run form, the queue control and their write endpoints/,
   );
 });
+
+await test("CLV-312 start help and the README describe a workspace start of several repositories", () => {
+  const help = String(commandUsage["start"]);
+  assert.match(
+    help,
+    /^Usage: cloving start \[--repository <directory> \| --workspace\] \[--reset-queue\]$/m,
+  );
+  assert.match(
+    help.replaceAll("\n", " "),
+    /--workspace.*<config>\/cloving\/workspace\.json.*"version": 1.*"repositories".*absolute path.*name.*last part of the path.*own daemon, runtime directory and settings.*no watch page.*Control-C stops all repositories.*stops the other repositories/,
+  );
+  const readme = readFileSync(new URL("../README.md", import.meta.url), "utf8");
+  const workspace = readme
+    .split("\n")
+    .find((line) => line.startsWith("`cloving start --workspace`"));
+  assert.match(
+    workspace ?? "",
+    /<config>\/cloving\/workspace\.json.*own daemon, runtime directory and settings.*no watch page.*Control-C stops all repositories.*stops the other repositories/,
+  );
+});
+
+await test("CLV-312 the help texts and the README describe the workspace watch page and the workspace status", () => {
+  const start = String(commandUsage["start"]).replaceAll("\n", " ");
+  assert.match(
+    start,
+    /no watch page of its own.*one watch page for all repositories on the watch port.*cloving status lists each repository.*--repository <name> selects one/,
+  );
+  assert.match(
+    String(commandUsage["watch"]),
+    /^Usage: cloving watch \[--port <n>\] \[--workspace\]$/m,
+  );
+  assert.match(
+    String(commandUsage["watch"]).replaceAll("\n", " "),
+    /With --workspace.*each repository of the running workspace.*one group of lines for each repository/,
+  );
+  assert.match(
+    String(commandUsage["status"]).replaceAll("\n", " "),
+    /While a workspace runs.*one summary line for each repository.*--repository <name>/,
+  );
+  const readme = readFileSync(new URL("../README.md", import.meta.url), "utf8");
+  const workspace = readme
+    .split("\n")
+    .find((line) => line.startsWith("`cloving start --workspace`"));
+  assert.match(
+    workspace ?? "",
+    /one watch page for all repositories.*Needs you names the repository.*Today panel.*one row for each repository.*cloving status.*--repository <name>/,
+  );
+});

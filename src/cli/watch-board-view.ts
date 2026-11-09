@@ -109,6 +109,7 @@ export function completionMark(
   card: WatchCard,
   context: {
     readonly workflowId: string;
+    readonly repository?: string | undefined;
     readonly now: string;
     readonly words?: WatchWords | undefined;
   },
@@ -125,7 +126,11 @@ export function completionMark(
     ];
   return element("a", {
     class: "completion-mark",
-    href: watchHash({ workflowId: context.workflowId, runId: mark.laterRunId }),
+    href: watchHash({
+      workflowId: context.workflowId,
+      repository: context.repository,
+      runId: mark.laterRunId,
+    }),
     children: mark.text,
   });
 }
@@ -143,6 +148,7 @@ interface CardProps {
   readonly card: WatchCard;
   readonly steering?: SteerControls | undefined;
   readonly workflowId: string;
+  readonly repository?: string | undefined;
   readonly now: string;
   readonly observationNow?: string | undefined;
   readonly words?: WatchWords | undefined;
@@ -156,7 +162,7 @@ export function Card(props: CardProps): Shown {
     children: [
       element("a", {
         class: "card-run",
-        href: watchHash({ workflowId, runId: card.runId }),
+        href: watchHash({ ...props, runId: card.runId }),
         title: card.runId,
         children: [
           element("strong", {
@@ -191,11 +197,7 @@ export function Card(props: CardProps): Shown {
         ],
       }),
       component(SteerAction, { runId: card.runId, steering }),
-      completionMark(card, {
-        workflowId,
-        now: props.observationNow ?? now,
-        words,
-      }),
+      completionMark(card, { ...props, now: props.observationNow ?? now }),
       element("span", {
         class: "meta",
         children: effectBudgetText(card.spent, card.limit),
@@ -264,6 +266,7 @@ interface ColumnProps {
   readonly column: WatchWorkflow["columns"][number];
   readonly addCard?: Shown;
   readonly workflowId: string;
+  readonly repository?: string | undefined;
   readonly now: string;
   readonly observationNow?: string | undefined;
   readonly controls?: ColumnControls | undefined;
@@ -272,7 +275,7 @@ interface ColumnProps {
 }
 
 export function Column(props: ColumnProps): Shown {
-  const { column, workflowId, now, controls, words } = props;
+  const { column, controls, words } = props;
   const collapsed = columnCollapsed(controls?.choices ?? null, column.name);
   const name = labelWord(words, column.name);
   const tone = column.name === "Stopped" ? "column stopped" : "column";
@@ -307,15 +310,7 @@ export function Column(props: ColumnProps): Shown {
             class: "column-cards",
             children: [
               column.cards.map((card) =>
-                component(Card, {
-                  key: card.runId,
-                  card,
-                  workflowId,
-                  now,
-                  observationNow: props.observationNow,
-                  steering: props.steering,
-                  words,
-                }),
+                component(Card, { ...props, key: card.runId, card }),
               ),
               props.addCard,
             ],
@@ -355,6 +350,7 @@ export function Board(props: {
             key: column.name,
             column,
             workflowId: workflow.workflowId,
+            repository: workflow.repository,
             now,
             observationNow: props.observationNow,
             controls: props.controls,

@@ -142,6 +142,7 @@ export type WatchReady =
   | { readonly failure: string };
 
 export interface WatchWorkflow {
+  readonly repository?: string;
   readonly schedule?: ShownSchedule;
   readonly ready?: WatchReady;
   readonly workflowId: string;
@@ -173,6 +174,7 @@ export type WatchFinished =
   | "retention-expired";
 
 export interface WatchRun {
+  readonly repository?: string;
   readonly finished?: WatchFinished;
   readonly linked?: true;
   readonly demo?: string;
@@ -222,7 +224,14 @@ export interface WatchRun {
   readonly mergeCommit: string | null;
 }
 
+export interface WatchRepository {
+  readonly name: string;
+  readonly service: string;
+  readonly today?: DailyNumbers;
+}
+
 export interface WatchModel {
+  readonly repositories?: readonly WatchRepository[];
   readonly serviceVersion?: string;
   readonly restart?: Fields;
   readonly schedules?: ShownSchedules;

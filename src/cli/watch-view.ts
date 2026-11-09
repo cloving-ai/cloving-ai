@@ -8,7 +8,12 @@ import { scheduledText } from "./schedule-render.ts";
 import { CommandWaits, effectBudgetText } from "./command-waits.ts";
 import type { CardControls } from "./watch-card-view.ts";
 import type { PhoneControls } from "./watch-phone-view.ts";
-import { Header, Queue, type QueueControls } from "./watch-header-view.ts";
+import {
+  Header,
+  Queue,
+  RefusedWorkflows,
+  type QueueControls,
+} from "./watch-header-view.ts";
 export { clove, Header, type QueueControls } from "./watch-header-view.ts";
 import {
   continuedCostText,
@@ -236,24 +241,6 @@ export interface PageProps {
   readonly theme?: ThemeControls | undefined;
 }
 
-export function RefusedWorkflows(props: { readonly model: WatchModel }): Shown {
-  const refusals = props.model.workflowRefusals ?? [];
-  if (refusals.length === 0) return null;
-  return element("section", {
-    class: "workflow-refusals",
-    children: [
-      element("h2", { children: "Refused workflows" }),
-      element("ul", {
-        children: refusals.map((entry) =>
-          element("li", {
-            children: `${entry.scope} ${entry.label}: ${entry.codes.join(", ")}`,
-          }),
-        ),
-      }),
-    ],
-  });
-}
-
 export function Page(props: PageProps): Shown {
   const { model, selected, now, stale, copying, theme } = props;
   const words = theme?.shown.theme?.words;
@@ -273,7 +260,10 @@ export function Page(props: PageProps): Shown {
       down,
       component(Queue, { model, words }),
       component(RefusedWorkflows, { model }),
-      component(BackLink, { workflowId: location.workflowId }),
+      component(BackLink, {
+        workflowId: location.workflowId,
+        repository: location.repository,
+      }),
       run === undefined
         ? text("meta", "This run is not available.")
         : component(Run, {
@@ -286,18 +276,24 @@ export function Page(props: PageProps): Shown {
     ];
   }
   const workflow = model.workflows.find(
-    (item) => item.workflowId === location.workflowId,
+    (item) =>
+      item.workflowId === location.workflowId &&
+      (location.repository === undefined ||
+        item.repository === location.repository),
   );
   if (workflow === undefined)
     return component(FloorPage, { ...props, model, down });
   return component(BoardPage, { ...props, model, workflow, down });
 }
 
-export function BackLink(props: { readonly workflowId: string | null }): Shown {
-  const { workflowId } = props;
+export function BackLink(props: {
+  readonly workflowId: string | null;
+  readonly repository?: string | undefined;
+}): Shown {
+  const { workflowId, repository } = props;
   return element("a", {
     class: "back",
-    href: watchHash({ workflowId, runId: null }),
+    href: watchHash({ workflowId, repository, runId: null }),
     children: `← Back to ${workflowId ?? "the floor"}`,
   });
 }

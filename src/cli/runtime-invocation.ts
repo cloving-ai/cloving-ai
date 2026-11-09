@@ -85,6 +85,7 @@ export type RuntimeInvocation =
       readonly kind: "watch";
       readonly port: number | null;
       readonly json: boolean;
+      readonly workspace?: true;
     };
 
 export interface GivenOption {

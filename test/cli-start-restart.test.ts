@@ -61,7 +61,7 @@ import { dirname, join } from "node:path";
 let launches = [];
 try { launches = JSON.parse(readFileSync("launches.json", "utf8")); }
 catch (error) { if (error.code !== "ENOENT") throw error; }
-launches.push({ arguments: process.argv.slice(2), marker: process.env.CLOVING_TEST_MARKER, mergeMode: process.env.CLOVING_MERGE_MODE });
+launches.push({ arguments: process.argv.slice(2), marker: process.env.CLOVING_TEST_MARKER, mergeMode: process.env.CLOVING_MERGE_MODE, watchPort: process.env.CLOVING_WATCH_PORT });
 if (process.env.CLOVING_TEST_FILES && launches.length === 1) writeFileSync("restart-settings", "files");
 ${adoptionScript}
 writeFileSync("launches.json", JSON.stringify(launches));
@@ -88,6 +88,7 @@ interface StartOptions {
   readonly mergeMode?: string;
   readonly files?: "first" | "stale";
   readonly adopt?: true;
+  readonly workspace?: true;
 }
 
 interface StartObservation {
@@ -112,6 +113,7 @@ function startEnvironment(input: {
     CLOVING_TEST_SIGNAL: options.signal,
     CLOVING_TEST_SIGNAL_ON_CLOSE: options.signalOnClose,
     CLOVING_MERGE_MODE: options.mergeMode,
+    CLOVING_WATCH_PORT: undefined,
     CLOVING_TEST_FILES: options.files === "first" ? "1" : undefined,
     NODE_OPTIONS: nodeOptions,
     ...(options.adopt === true
@@ -122,7 +124,28 @@ function startEnvironment(input: {
           XDG_STATE_HOME: join(root, "state"),
         }
       : {}),
+    ...(options.workspace === true
+      ? {
+          CLOVING_WATCH_PORT: "off",
+          XDG_CONFIG_HOME: join(root, "config"),
+          XDG_RUNTIME_DIR: "",
+          XDG_STATE_HOME: join(root, "state"),
+        }
+      : {}),
   };
+}
+
+async function workspaceArguments(root: string): Promise<readonly string[]> {
+  spawnSync("git", ["init", "-q", join(root, "chosen")]);
+  await mkdir(join(root, "config/cloving"), { recursive: true });
+  await writeFile(
+    join(root, "config/cloving/workspace.json"),
+    JSON.stringify({
+      version: 1,
+      repositories: [{ path: join(root, "chosen"), name: "chosen" }],
+    }),
+  );
+  return ["start", "--workspace"];
 }
 
 async function started(
@@ -139,15 +162,13 @@ async function started(
       await writeFile(join(root, "restart-settings"), "files");
     if (options.adopt === true)
       spawnSync("git", ["init", "-q", join(root, "chosen")]);
+    const command =
+      options.workspace === true
+        ? await workspaceArguments(root)
+        : ["start", "--repository", "chosen", ...(options.arguments ?? [])];
     const result = spawnSync(
       process.execPath,
-      [
-        resolve("src/cli.ts"),
-        "start",
-        "--repository",
-        "chosen",
-        ...(options.arguments ?? []),
-      ],
+      [resolve("src/cli.ts"), ...command],
       {
         cwd: root,
         env: startEnvironment({ root, nodeOptions, options }),
@@ -258,5 +279,18 @@ await test("CLV-306 a restart from the files reads the settings note of an adopt
         : undefined,
     ),
     ["queue", undefined],
+  );
+});
+
+await test("CLV-312 a workspace repository that restarts from the files keeps its watch port off", async () => {
+  const result = await started([75, 0], { files: "first", workspace: true });
+  assert.equal(result.status, 0);
+  assert.deepEqual(
+    result.launches.map((launch) =>
+      typeof launch === "object" && launch !== null && "watchPort" in launch
+        ? launch.watchPort
+        : undefined,
+    ),
+    ["off", "off"],
   );
 });

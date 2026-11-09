@@ -104,7 +104,7 @@ const shapes: ReadonlyMap<string, Shape> = new Map<string, Shape>([
       json: given(request, "json"),
     })),
   ],
-  ["watch", noSubjectShape(["port"], watch)],
+  ["watch", noSubjectShape(["port", "workspace"], watch)],
 ]);
 
 function noSubjectShape(
@@ -271,7 +271,12 @@ function status(request: RuntimeRequest): Outcome {
 function watch(request: RuntimeRequest): Outcome {
   const port = whole(valueOf(request, "port"), { minimum: 0, maximum: 65535 });
   if (port === invalid) return "invalid-option-value";
-  return { kind: "watch", port, json: false };
+  return {
+    kind: "watch",
+    port,
+    json: false,
+    ...(given(request, "workspace") ? { workspace: true } : {}),
+  };
 }
 
 function questions(request: RuntimeRequest): Outcome {

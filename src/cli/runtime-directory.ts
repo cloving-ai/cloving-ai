@@ -101,9 +101,13 @@ export function runtimeDirectory(
   if (repository === undefined) return undefined;
   const adopted = adoptedRuntime(environment, repository);
   if (adopted !== undefined) return adopted;
-  const runtime = environment["XDG_RUNTIME_DIR"];
-  const root = given(runtime) ? runtime : stateRoot(environment);
+  const root = runtimeRoot(environment);
   return root === undefined
     ? undefined
     : join(root, "cloving", repositoryRuntimeName(repository), "run");
+}
+
+export function runtimeRoot(environment: Environment): string | undefined {
+  const runtime = environment["XDG_RUNTIME_DIR"];
+  return given(runtime) ? runtime : stateRoot(environment);
 }
