@@ -55,6 +55,9 @@ const invalidQuery = problem(
   "A query parameter is unknown, repeated or has an invalid value.",
 );
 const serviceUnavailable = problem("The Cloving service does not answer.");
+const schedulesUnavailable = problem(
+  "The Cloving service or its scheduler does not answer.",
+);
 const unknownRun = problem("The service has no run with this ID.");
 
 const documentSchema = closed({
@@ -204,7 +207,7 @@ export const watchApiDocument = {
             closed({ schedules: listOf(reference("Schedule")) }),
           ),
           "400": invalidQuery,
-          "503": serviceUnavailable,
+          "503": schedulesUnavailable,
         },
       },
     },

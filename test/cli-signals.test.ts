@@ -190,6 +190,37 @@ await test("CLV-321 a lost dismiss reply gives outcome-unknown and tells the ope
   });
 });
 
+await test("CLV-328 a lost schedule run reply gives outcome-unknown and tells the operator to send the same command ID again, and a lost pause reply does not", async () => {
+  const lost = (argumentsList: readonly string[]) =>
+    withSilentService({
+      argumentsList,
+      onRequest: (socket) => {
+        socket.destroy();
+      },
+    });
+  const ended = await lost([
+    "schedule",
+    "run",
+    "develop",
+    "--command-id",
+    "c-loop",
+    "--json",
+  ]);
+  assert.equal(ended.code, 1, ended.stderr);
+  assert.deepEqual(JSON.parse(ended.stdout), {
+    schemaVersion: 1,
+    kind: "error",
+    code: "outcome-unknown",
+    detail:
+      "The connection ended before the reply. Send the command again with the same command ID.",
+    commandId: "c-loop",
+    runId: null,
+    currentRevision: null,
+  });
+  const paused = await lost(["schedule", "pause", "develop", "--json"]);
+  assert.match(paused.stdout, /"code": ?"service-unavailable"/);
+});
+
 await test("CLV-008 a read command has no signal handler: a signal ends it with no result and no success exit", async () => {
   const ended = await withSilentService({
     argumentsList: ["status", "--json"],

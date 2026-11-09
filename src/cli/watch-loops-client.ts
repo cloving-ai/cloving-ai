@@ -1,9 +1,9 @@
 export const watchLoopsClient = `
 async function loopPost(workflowId, action) {
   if (state.loopBusy.includes(workflowId)) return;
-  const known = state.loopCommands[workflowId];
-  const commandId = known?.action === action ? known.commandId : crypto.randomUUID();
-  state.loopCommands = { ...state.loopCommands, [workflowId]: { action, commandId } };
+  const control = action + " " + workflowId;
+  const commandId = state.loopCommands[control] ?? crypto.randomUUID();
+  state.loopCommands = { ...state.loopCommands, [control]: commandId };
   state.loopBusy = [...state.loopBusy, workflowId];
   draw();
   let message;
@@ -13,9 +13,13 @@ async function loopPost(workflowId, action) {
       headers: { "content-type": "application/json", "x-cloving-token": actionToken },
       body: JSON.stringify({ workflowId, action, commandId }),
     });
-    message = response.ok ? loopMessage(await response.json()) : refusedRequest;
-    const { [workflowId]: sent, ...others } = state.loopCommands;
-    state.loopCommands = others;
+    if (response.status === 503) throw new Error("late");
+    const reply = response.ok ? await response.json() : null;
+    message = reply === null ? refusedRequest : loopMessage(reply);
+    if (reply?.error?.code !== "outcome-unknown") {
+      const { [control]: answered, ...others } = state.loopCommands;
+      state.loopCommands = others;
+    }
   } catch {
     message = "The watch tool does not answer. Click again to send the same command.";
   }

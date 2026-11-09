@@ -4,9 +4,18 @@ import { test } from "node:test";
 import { parseInvocation } from "../src/cli/arguments.ts";
 import { send } from "../src/cli/client.ts";
 import { commandUsage } from "../src/cli/usage.ts";
+import type { Reply } from "../src/protocol.ts";
+import { failed, result } from "../src/service/replies.ts";
 import { runIdentity } from "../src/service/submission-handler.ts";
 import { scheduledWorkflow } from "./workflow-scheduler-fixture.ts";
-import { fields, items, parsed, type Harness } from "./service-fixture.ts";
+import {
+  call,
+  fields,
+  items,
+  parsed,
+  withHarness,
+  type Harness,
+} from "./service-fixture.ts";
 import { withSchedule } from "./cli-schedule-fixture.ts";
 
 const developLoop = {
@@ -161,3 +170,145 @@ await test("CLV-328 the service refuses a run of a loop with no command ID or wi
     }
     assert.equal(harness.resolved.length, 0);
   }, developLoop));
+
+function loopCommand(commandId: string): {
+  readonly operation: string;
+  readonly parameters: Readonly<Record<string, unknown>>;
+} {
+  return {
+    operation: "schedule",
+    parameters: { action: "run", workflowId: "develop", commandId },
+  };
+}
+
+function inputReply(input: unknown): Reply {
+  return result("schedule-input", { workflowId: "develop", input });
+}
+
+await test("CLV-328 a loop run reads the schedule input before it holds the workflow lock, so a scheduled run that the input read waits for is not blocked", () =>
+  withHarness(async (harness) => {
+    const ticks: unknown[] = [];
+    await harness.start({
+      workflows: [{ ...harness.registration, admission: "when-idle" }],
+      schedule: async () => {
+        ticks.push(
+          await call(harness, {
+            operation: "run",
+            parameters: {
+              workflowId: "develop",
+              source: "declared",
+              submission: { prompt: "tick" },
+              commandId: "tick",
+            },
+          }),
+        );
+        return inputReply({ prompt: "current" });
+      },
+    });
+    const refused = await call(harness, loopCommand("now"));
+    assert.equal(fields(ticks[0])["kind"], "run-admitted");
+    assert.equal(refused["code"], "run-active");
+  }));
+
+await test("CLV-328 a repeated loop run command gives its stored run after the schedule input changes or the schedule is removed", () =>
+  withHarness(async (harness) => {
+    const inputs = [
+      inputReply({ prompt: "first" }),
+      inputReply({ prompt: "changed" }),
+    ];
+    let reads = 0;
+    await harness.start({
+      schedule: () => {
+        reads += 1;
+        return Promise.resolve(
+          inputs.shift() ??
+            failed("unknown-schedule", { workflowId: "develop" }),
+        );
+      },
+    });
+    const first = await call(harness, loopCommand("again"));
+    assert.equal(first["kind"], "run-admitted");
+    for (const repeated of [
+      await call(harness, loopCommand("again")),
+      await call(harness, loopCommand("again")),
+    ]) {
+      assert.equal(repeated["kind"], "run-admitted", JSON.stringify(repeated));
+      assert.equal(repeated["runId"], first["runId"]);
+      assert.equal(repeated["replayed"], true);
+    }
+    assert.equal(reads, 1);
+    assert.equal(harness.resolved.length, 1);
+  }));
+
+await test("CLV-328 two loop run commands with the same command ID that both read the schedule input give one run", () =>
+  withHarness(async (harness) => {
+    const held: (() => void)[] = [];
+    await harness.start({
+      schedule: () =>
+        new Promise((settle) => {
+          held.push(() => {
+            settle(inputReply({ prompt: "current" }));
+          });
+          if (held.length === 2) for (const release of held) release();
+        }),
+    });
+    const replies = await Promise.all([
+      call(harness, loopCommand("twice")),
+      call(harness, loopCommand("twice")),
+    ]);
+    assert.deepEqual(
+      replies.map((reply) => [reply["kind"], reply["runId"]]),
+      Array.from({ length: 2 }, () => [
+        "run-admitted",
+        runIdentity("loop:develop:twice"),
+      ]),
+    );
+    assert.equal(harness.resolved.length, 1);
+  }));
+
+await test("CLV-328 a loop run command refuses a command ID that a run of another workflow or another command already has", () =>
+  withHarness(async (harness) => {
+    await harness.start({
+      workflows: [
+        harness.registration,
+        { ...harness.registration, workflowId: "other" },
+      ],
+      schedule: () => Promise.resolve(inputReply({ prompt: "current" })),
+    });
+    const admit = async (workflowId: string, commandId: string) => {
+      const admitted = await call(harness, {
+        operation: "run",
+        parameters: {
+          workflowId,
+          source: "declared",
+          submission: { prompt: "current" },
+          commandId,
+        },
+      });
+      assert.equal(admitted["kind"], "run-admitted");
+      return admitted["runId"];
+    };
+    await admit("other", "loop:develop:taken");
+    const runId = await admit("develop", "base");
+    const status = await call(harness, {
+      operation: "status",
+      parameters: { runId },
+    });
+    const paused = await call(harness, {
+      operation: "run-command",
+      parameters: {
+        command: "pause",
+        runId,
+        expectedRevision: fields(status["run"])["revision"],
+        commandId: "loop:develop:paused",
+      },
+    });
+    assert.equal(paused["kind"], "run-command", JSON.stringify(paused));
+    for (const commandId of ["taken", "paused"])
+      assert.equal(
+        (await call(harness, loopCommand(commandId)))["code"],
+        "conflicting-command",
+        commandId,
+      );
+    assert.equal(harness.resolved.length, 2);
+  }));

@@ -38,7 +38,7 @@ function resolverIdentity(text: string): Fields {
   return { id: text.slice(0, separator), version: text.slice(separator + 1) };
 }
 
-function admitted(
+export function admitted(
   stored: CommandRecord,
   outcome: { readonly workflowId: string; readonly replayed: boolean },
 ): Reply {
@@ -58,7 +58,7 @@ function admitted(
   });
 }
 
-function conflict(commandId: string): Reply {
+export function conflict(commandId: string): Reply {
   return failed("conflicting-command", {
     commandId,
     detail: "The command ID is known with a different request.",

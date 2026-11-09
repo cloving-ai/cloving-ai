@@ -100,7 +100,7 @@ export const expectedLoops = [
 ];
 
 export function loopReplies(
-  schedules: readonly Fields[] = loopSchedules,
+  schedules: readonly Fields[] | Fields = loopSchedules,
 ): ReturnType<typeof watchReplies> {
   const replies = watchReplies({
     workflows: ["review-day", "docs-drift"],

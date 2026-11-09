@@ -420,7 +420,7 @@ With watch actions on, each row has a switch and a **Run now** button:
 - The switch of a paused or stopped loop sends the same command as `cloving schedule resume <workflowId>`. A resume also sets the failures in a row to 0.
 - **Run now** sends the same command as `cloving schedule run <workflowId>`. The service admits one manual run with the input of the schedule. The run shows `manual from loop` in status, on its card and in the run detail. The next run of the schedule does not change.
 
-When a run of the workflow is active, the service refuses **Run now** with `run-active`. The row shows the reply of the service. Each click has its own random command ID. When the reply is lost, the next click of the same control sends the same command ID again, so the service does not admit a second run.
+When a run of the workflow is active, the service refuses **Run now** with `run-active`. The row shows the reply of the service. Each click has its own random command ID. When the reply is lost, is late (status 503) or is `outcome-unknown`, the next click of the same control sends the same command ID again, so the service does not admit a second run. A click of the other control of the row does not change that command ID. A repeated command ID gives the stored run, also after the input of the schedule changes or the schedule is removed.
 
 A day starts at local midnight of the computer that runs the service. The panel counts a run on the day that the run ends. It uses the same events, outcomes and run costs as `cloving report`. The cost is the sum of the known run costs. When the cost of a run is not known, the cost shows as "at least $129.93", and a line under it shows the count, for example "4 runs with no cost". The rows of the table show their cost in the same way. The cost per completed run is the known cost of the day divided by the count of completed runs with a known cost.
 
@@ -475,7 +475,7 @@ The watch page has a read API at `http://127.0.0.1:3663/api/v1`. Its OpenAPI 3.1
 - `GET /api/v1/openapi.json` gives the OpenAPI document.
 - `GET /api/v1/service` tells if the Cloving service answers.
 - `GET /api/v1/workflows` gives the workflows with their counts and card fields.
-- `GET /api/v1/schedules` gives the loops, the rows of the Loops panel: the workflow, the rule, the state, the next run, the failures in a row and the last run.
+- `GET /api/v1/schedules` gives the loops, the rows of the Loops panel: the workflow, the rule, the state, the next run, the failures in a row and the last run. When the service answers but its scheduler does not, the route answers 503 with the code `schedules-unavailable`.
 - `GET /api/v1/runs` gives one page of runs, newest first. The query parameters `workflowId`, `state`, `limit` (1 to 200, default 50) and `cursor` select the runs. The `nextCursor` of a page gives the next page.
 - `GET /api/v1/runs/{runId}` gives one run with its phases, open decisions, reviews and agent turns.
 - `GET /api/v1/runs/{runId}/events` gives the events of one run, the lowest sequence first. The query parameter `after` (default 0) gives only the events with a higher sequence.

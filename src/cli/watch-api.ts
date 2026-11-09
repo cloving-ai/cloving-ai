@@ -97,6 +97,11 @@ const serviceUnavailable = problem(503, {
   detail: "The Cloving service does not answer.",
 });
 
+const schedulesUnavailable = problem(503, {
+  code: "schedules-unavailable",
+  detail: "The scheduler of the Cloving service does not answer.",
+});
+
 const unknownRun = problem(404, {
   code: "not-found",
   detail: "The service has no run with this ID.",
@@ -168,6 +173,8 @@ async function workflows(request: ApiRequest): Promise<ApiReply> {
 async function schedules(request: ApiRequest): Promise<ApiReply> {
   const model = await request.model();
   if (model.service !== "up") return serviceUnavailable;
+  if (model.schedules !== undefined && "status" in model.schedules)
+    return schedulesUnavailable;
   return found({ schedules: model.loops ?? [] });
 }
 

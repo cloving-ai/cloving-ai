@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { watchApiDocument } from "../src/cli/watch-api-document.ts";
 import { contractBody } from "./watch-api-contract.ts";
+import { fields } from "./service-fixture.ts";
 import { expectedLoops, loopReplies } from "./watch-loops-fixture.ts";
 import { watchData, withWatchService } from "./watch-service-fixture.ts";
 
@@ -55,5 +56,19 @@ await test("CLV-328 GET api/v1/schedules answers 503 when the service does not a
       const response = await fetch(`${watch.address}api/v1/schedules`);
       assert.equal(response.status, 503);
       await contractBody(watchApiDocument, { response, path: "/schedules" });
+    },
+  ));
+
+await test("CLV-328 GET api/v1/schedules answers 503 with schedules-unavailable when the service answers but its scheduler does not", () =>
+  withWatchService(
+    loopReplies({ status: "unavailable" }).answer,
+    async (watch) => {
+      const response = await fetch(`${watch.address}api/v1/schedules`);
+      assert.equal(response.status, 503);
+      const body = await contractBody(watchApiDocument, {
+        response,
+        path: "/schedules",
+      });
+      assert.equal(fields(body)["code"], "schedules-unavailable");
     },
   ));
