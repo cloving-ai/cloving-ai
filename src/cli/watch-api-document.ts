@@ -1,4 +1,18 @@
 import type { RunStatus } from "../authority/transitions.ts";
+import {
+  closed,
+  flag,
+  integer,
+  invalidQuery,
+  json,
+  listOf,
+  nullableNumber,
+  nullableText,
+  problem,
+  reference,
+  text,
+} from "./watch-api-schema.ts";
+import { scheduleSchemas, schedulesPath } from "./watch-api-schedules.ts";
 
 export const runStates = [
   "queued",
@@ -17,48 +31,17 @@ export const runLimit = {
   default: 50,
 } as const;
 
-const text = { type: "string" };
-const nullableText = { type: ["string", "null"] };
-const integer = { type: "integer" };
-const nullableNumber = { type: ["number", "null"] };
-const flag = { type: "boolean" };
-
-function reference(name: string): { readonly $ref: string } {
-  return { $ref: `#/components/schemas/${name}` };
-}
-
-function closed(properties: Readonly<Record<string, unknown>>) {
-  return {
-    type: "object",
-    required: Object.keys(properties),
-    properties,
-    additionalProperties: false,
-  };
-}
-
-function listOf(items: unknown) {
-  return { type: "array", items };
-}
-
-function json(description: string, schema: unknown) {
-  return { description, content: { "application/json": { schema } } };
-}
-
-function problem(description: string) {
-  return {
-    description,
-    content: { "application/problem+json": { schema: reference("Problem") } },
-  };
-}
-
-const invalidQuery = problem(
-  "A query parameter is unknown, repeated or has an invalid value.",
-);
 const serviceUnavailable = problem("The Cloving service does not answer.");
-const schedulesUnavailable = problem(
-  "The Cloving service or its scheduler does not answer.",
-);
 const unknownRun = problem("The service has no run with this ID.");
+const unknownTurn = problem(
+  "The run has no agent turn with this operation ID.",
+);
+const notKept = problem(
+  "The retention archived or removed the journal folder of this turn.",
+);
+const noTranscripts = problem(
+  "The Cloving service does not answer or gives no transcripts.",
+);
 
 const documentSchema = closed({
   openapi: { const: "3.1.1" },
@@ -118,6 +101,30 @@ const after = {
   description: "Give only the events with a higher sequence.",
   schema: { type: "integer", minimum: 0, default: 0 },
 };
+
+const operationId = {
+  name: "operationId",
+  in: "path",
+  required: true,
+  description: "The operation ID of an agent turn of the run.",
+  schema: text,
+};
+
+const transcriptAfter = {
+  name: "after",
+  in: "query",
+  description: "Give only the entries with a higher position.",
+  schema: { type: "integer", minimum: 0, default: 0 },
+};
+
+export const transcriptKinds = [
+  "assistant",
+  "thinking",
+  "tool-call",
+  "tool-result",
+  "notice",
+  "result",
+] as const;
 
 const runSummary = {
   runId: text,
@@ -195,22 +202,7 @@ export const watchApiDocument = {
         },
       },
     },
-    "/schedules": {
-      get: {
-        operationId: "listSchedules",
-        tags: ["schedules"],
-        summary:
-          "Give the loops: each schedule with its rule, state, next run, last run and failures in a row.",
-        responses: {
-          "200": json(
-            "The loops of the service.",
-            closed({ schedules: listOf(reference("Schedule")) }),
-          ),
-          "400": invalidQuery,
-          "503": schedulesUnavailable,
-        },
-      },
-    },
+    "/schedules": schedulesPath,
     "/runs": {
       get: {
         operationId: "listRuns",
@@ -258,6 +250,46 @@ export const watchApiDocument = {
         },
       },
     },
+    "/runs/{runId}/turns/{operationId}/transcript": {
+      get: {
+        operationId: "getTurnTranscript",
+        tags: ["runs"],
+        summary:
+          "Give at most 200 entries and 256 KiB of the transcript of one agent turn after a position, the lowest position first.",
+        parameters: [runId, operationId, transcriptAfter],
+        responses: {
+          "200": json(
+            "One page of the transcript.",
+            reference("TranscriptPage"),
+          ),
+          "400": invalidQuery,
+          "404": unknownTurn,
+          "410": notKept,
+          "503": noTranscripts,
+        },
+      },
+    },
+    "/runs/{runId}/turns/{operationId}/transcript-stream": {
+      get: {
+        operationId: "streamTurnTranscript",
+        tags: ["stream"],
+        summary:
+          'Send the event entry with one TranscriptEntry for each entry after a position, with the position as the event ID, and the event end with the data {"nextAfter":<position>} when the turn ends. The header Last-Event-ID resumes after its position. When the service refuses the turn after the stream opens, send the event refused with the problem as its data and close.',
+        parameters: [runId, operationId, transcriptAfter],
+        responses: {
+          "200": {
+            description: "Server-Sent Events.",
+            content: { "text/event-stream": { schema: text } },
+          },
+          "400": problem(
+            "A query parameter or the Last-Event-ID header has an invalid value.",
+          ),
+          "404": unknownTurn,
+          "410": notKept,
+          "503": noTranscripts,
+        },
+      },
+    },
     "/stream": {
       get: {
         operationId: "streamChanges",
@@ -284,20 +316,7 @@ export const watchApiDocument = {
         latestAt: nullableText,
         inputs: listOf(reference("CardField")),
       }),
-      Schedule: closed({
-        workflowId: text,
-        rule: text,
-        state: { type: "string", enum: ["active", "paused", "stopped"] },
-        nextAt: nullableText,
-        failuresInRow: integer,
-        lastRun: { oneOf: [reference("LoopRun"), { type: "null" }] },
-      }),
-      LoopRun: closed({
-        runId: text,
-        state: text,
-        outcome: nullableText,
-        endedAt: nullableText,
-      }),
+      ...scheduleSchemas,
       CardField: closed({
         name: text,
         label: text,
@@ -336,6 +355,7 @@ export const watchApiDocument = {
       }),
       Turn: closed({
         key: text,
+        operationId: text,
         harness: nullableText,
         startedAt: text,
         endedAt: nullableText,
@@ -344,6 +364,21 @@ export const watchApiDocument = {
         summary: text,
       }),
       Event: closed({ sequence: integer, type: text, recordedAt: text }),
+      TranscriptPage: closed({
+        entries: listOf(reference("TranscriptEntry")),
+        nextAfter: integer,
+        open: flag,
+      }),
+      TranscriptEntry: closed({
+        position: integer,
+        attempt: integer,
+        kind: { type: "string", enum: transcriptKinds },
+        text,
+        tool: nullableText,
+        summary: text,
+        error: flag,
+        omittedBytes: integer,
+      }),
       Problem: closed({
         type: text,
         title: text,

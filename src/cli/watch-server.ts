@@ -4,7 +4,13 @@ import {
   watchHost,
   type WatchActions,
 } from "./watch-actions.ts";
-import { watchApiChange, watchApiReply } from "./watch-api.ts";
+import { watchApiChange, watchApiReply, type ApiRequest } from "./watch-api.ts";
+import { transcriptStreamed } from "./watch-transcript-stream.ts";
+import type {
+  TranscriptFeed,
+  TranscriptQuery,
+} from "./watch-api-transcript.ts";
+import { send } from "./client.ts";
 import { isPhoneAction, phoneAction, phoneRead } from "./watch-phone.ts";
 import { queueAction } from "./watch-queue.ts";
 import { continueAction, dismissAction } from "./watch-continue.ts";
@@ -40,6 +46,7 @@ import {
   subscribed,
   type Reply,
 } from "./watch-reply.ts";
+import type { Reply as ServiceReply } from "../protocol.ts";
 import { fontReply } from "./watch-font-reply.ts";
 import {
   themeFile,
@@ -71,18 +78,22 @@ export interface WorkspaceWatchSettings extends ServedSettings {
   readonly repositories: readonly WatchMember[];
 }
 
+type TranscriptRead = (query: TranscriptQuery) => Promise<ServiceReply>;
+
 interface Watch {
   readonly actions: WatchActions | null;
   readonly settings: ServedSettings;
   readonly runtimeDirectory: string | null;
   readonly pool: ThreadPoolWatch;
   readonly snapshots: WatchSnapshots;
+  readonly transcript: TranscriptRead;
 }
 
 interface WatchSource {
   readonly actions: WatchActions | null;
   readonly runtimeDirectory: string | null;
   readonly snapshots: WatchSnapshots;
+  readonly transcript: TranscriptRead;
 }
 
 const forbidden: Reply = { status: 403, type: "text/plain", body: "refused" };
@@ -105,6 +116,29 @@ async function snapshot(
   };
 }
 
+const unknownTurn: ServiceReply = {
+  kind: "error",
+  error: { code: "unknown-turn", detail: "No service knows this turn." },
+};
+
+function transcriptRead(directories: readonly string[]): TranscriptRead {
+  return async (query) => {
+    const answers = await Promise.all(
+      directories.map((directory) =>
+        send(directory, { operation: "transcript", parameters: { ...query } }),
+      ),
+    );
+    return (
+      answers.find((answer) => answer.kind === "result") ??
+      answers.find(
+        (answer) =>
+          answer.kind === "error" && answer.error.code !== "unknown-turn",
+      ) ??
+      unknownTurn
+    );
+  };
+}
+
 function routedAction(path: string): typeof watchAction | null {
   if (isPhoneAction(path)) return phoneAction;
   if (path === "/actions/queue") return queueAction;
@@ -114,20 +148,30 @@ function routedAction(path: string): typeof watchAction | null {
   return path === "/actions/run" ? watchAction : null;
 }
 
+function apiRequest(
+  watch: Watch,
+  exchange: { readonly request: IncomingMessage; readonly url: URL },
+): ApiRequest {
+  const { request, url } = exchange;
+  return {
+    method: request.method ?? "",
+    url,
+    lastEventId: request.headers["last-event-id"]?.toString() ?? null,
+    model: () => snapshot(watch, null),
+    run: (runId) => snapshot(watch, runId),
+    transcript: watch.transcript,
+  };
+}
+
 async function answered(
   watch: Watch,
   request: IncomingMessage,
-): Promise<Reply | "stream"> {
+): Promise<Reply | "stream" | TranscriptFeed> {
   if (!watchHost(request)) return forbidden;
   const font = await fontReply(request);
   if (font !== null) return font;
   const url = new URL(String(request.url), "http://localhost");
-  const api = await watchApiReply({
-    method: request.method ?? "",
-    url,
-    model: () => snapshot(watch, null),
-    run: (runId) => snapshot(watch, runId),
-  });
+  const api = await watchApiReply(apiRequest(watch, { request, url }));
   if (api !== null) return api;
   if (request.method === "GET") return readReply(watch, url);
   if (request.method !== "POST" || watch.actions === null) return notFound;
@@ -220,6 +264,8 @@ function requestHandler(watch: Watch, stream: WatchStream): RequestListener {
       (reply) => {
         if (reply === "stream")
           subscribed(stream, { request, response, message: watchApiChange });
+        else if ("kind" in reply)
+          transcriptStreamed(reply, { request, response, stream });
         else replied(response, reply);
       },
       () => {
@@ -240,6 +286,7 @@ async function served(
     runtimeDirectory: source.runtimeDirectory,
     pool,
     snapshots: source.snapshots,
+    transcript: source.transcript,
   };
   const stream: WatchStream = source.snapshots.stream;
   const server = createServer(requestHandler(watch, stream));
@@ -271,6 +318,7 @@ async function repositorySource(settings: WatchSettings): Promise<WatchSource> {
         : await watchActions(settings.runtimeDirectory),
     runtimeDirectory: settings.runtimeDirectory,
     snapshots: await watchSnapshots(settings),
+    transcript: transcriptRead([settings.runtimeDirectory]),
   };
 }
 
@@ -284,6 +332,9 @@ async function workspaceSource(
       ...settings,
       members: settings.repositories,
     }),
+    transcript: transcriptRead(
+      settings.repositories.map((member) => member.runtimeDirectory),
+    ),
   };
 }
 
