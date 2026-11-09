@@ -63,6 +63,7 @@ await test("CLV-317 docs-drift runs on Mondays at 07:00, reads docs-candidates, 
     "privateTexts",
     "create-issue",
     '{"text": "<ticket>"}',
+    "No ticket. Left for a later audit: README.md.",
   ])
     assert.ok(readme.includes(requirement), requirement);
 });
