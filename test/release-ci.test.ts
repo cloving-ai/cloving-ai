@@ -68,6 +68,7 @@ await test("CLV-097 CI checks main and version tag pushes, every pull request an
     );
     assert.deepEqual(checkout?.with, {
       ref: "${{ github.sha }}",
+      ...(name === "publish" ? {} : { "fetch-depth": 2 }),
       "persist-credentials": false,
     });
     const setup = steps(workflow, name).find((step) =>
@@ -116,7 +117,8 @@ await test("CLV-266 only the first full shard and the macOS platform job run set
           "${{ matrix.shard == '1' }}",
         ],
         [
-          step.uses?.startsWith("actions/upload-artifact@") === true,
+          step.uses?.startsWith("actions/upload-artifact@") === true ||
+            step.id === "changed-paths",
           "${{ github.event_name == 'pull_request' }}",
         ],
       ] as const;
@@ -170,6 +172,8 @@ await test("CLV-097 quality qualifies the exact toolchain and completes the deve
   assert.deepEqual(commands.slice(2), [
     "npm ci --ignore-scripts",
     "npm run check:setup",
+    steps(workflow, "quality_macos").find((step) => step.id === "changed-paths")
+      ?.run,
     "npm run check:quality",
   ]);
 });

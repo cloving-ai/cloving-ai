@@ -19,7 +19,12 @@ import recordedDurations from "./test-durations.json" with { type: "json" };
 import packageMetadata from "#package" with { type: "json" };
 import { workflowTestHook } from "../tools/workflow-test-hook.ts";
 import { exportShardCoverage } from "./shard-coverage.ts";
-import { selectTestSet, selectTestShard } from "./test-shards.ts";
+import {
+  selectChangedTests,
+  selectTestSet,
+  selectTestShard,
+  type LeftOutTest,
+} from "./test-shards.ts";
 import { reportTestFailures } from "./test-failures.ts";
 
 export function testConcurrency(cores: number): number {
@@ -64,6 +69,7 @@ export interface TestExecutionOptions {
   readonly coverageFiles?: readonly string[];
   readonly shard?: string;
   readonly testSet?: TestSet;
+  readonly changedPaths?: readonly string[];
   readonly coverageDirectory?: string;
   readonly requiredTests?: Readonly<Record<string, readonly string[]>>;
 }
@@ -114,7 +120,7 @@ function validateRequiredTests(
 export async function checkTests(
   directory: string,
   execution: TestExecution,
-): Promise<void> {
+): Promise<{ readonly leftOut: readonly LeftOutTest[] }> {
   const { files, ...options } = execution;
   if (
     parseTestShard(options.shard) &&
@@ -132,8 +138,12 @@ export async function checkTests(
     )
   )
     throw new Error("mandatory-test-inventory-mismatch");
-  const tests = selectTestShard(directory, {
+  const changed = selectChangedTests(directory, {
     tests: selectTestSet(directory, { tests: inventory, set: options.testSet }),
+    changedPaths: options.changedPaths,
+  });
+  const tests = selectTestShard(directory, {
+    tests: changed.tests,
     durations: recordedDurations,
     ...(options.shard === undefined ? {} : { shard: options.shard }),
   }).sort();
@@ -152,6 +162,7 @@ export async function checkTests(
   } finally {
     releaseCoverageFolder(temporary);
   }
+  return { leftOut: changed.leftOut };
 }
 
 function sourceSnapshot(files: readonly string[]): string {

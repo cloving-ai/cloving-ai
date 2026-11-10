@@ -43,6 +43,7 @@
           "uses": "actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803",
           "with": {
             "ref": "${{ github.sha }}",
+            "fetch-depth": 2,
             "persist-credentials": false
           }
         },
@@ -68,6 +69,12 @@
         {
           "run": "npm run check:setup",
           "if": "${{ matrix.shard == '1' || matrix.shard == 'platform' }}"
+        },
+        {
+          "id": "changed-paths",
+          "name": "List the changed paths of the pull request",
+          "if": "${{ github.event_name == 'pull_request' }}",
+          "run": "git diff --name-only --no-renames -z HEAD^1 HEAD > \"$RUNNER_TEMP/changed-paths\"\necho \"CLOVING_CHANGED_PATHS=$RUNNER_TEMP/changed-paths\" >> \"$GITHUB_ENV\""
         },
         {
           "run": "npm run check:quality",
@@ -124,6 +131,7 @@
           "uses": "actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803",
           "with": {
             "ref": "${{ github.sha }}",
+            "fetch-depth": 2,
             "persist-credentials": false
           }
         },
@@ -155,6 +163,12 @@
         {
           "run": "npm run check:setup",
           "if": "${{ matrix.shard == '1' }}"
+        },
+        {
+          "id": "changed-paths",
+          "name": "List the changed paths of the pull request",
+          "if": "${{ github.event_name == 'pull_request' }}",
+          "run": "git diff --name-only --no-renames -z HEAD^1 HEAD > \"$RUNNER_TEMP/changed-paths\"\necho \"CLOVING_CHANGED_PATHS=$RUNNER_TEMP/changed-paths\" >> \"$GITHUB_ENV\""
         },
         {
           "run": "npm run check:quality",

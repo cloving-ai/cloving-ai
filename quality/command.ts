@@ -17,6 +17,21 @@ export function parseTestSet(value: string | undefined): TestSet {
   throw new Error("CLOVING_TEST_SET must be all or platform");
 }
 
+export function parseChangedPaths(text: string): readonly string[] {
+  if (text === "") return [];
+  const paths = text.endsWith("\0") ? text.slice(0, -1).split("\0") : [text];
+  if (
+    !text.endsWith("\0") ||
+    paths.some(
+      (path) => path === "" || path.startsWith("/") || path.includes("\n"),
+    )
+  )
+    throw new Error(
+      "CLOVING_CHANGED_PATHS must name a file of NUL-separated relative paths",
+    );
+  return paths;
+}
+
 export function parseTestShard(
   value: string | undefined,
 ): TestShard | undefined {

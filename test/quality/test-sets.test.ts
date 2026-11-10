@@ -2,9 +2,12 @@ import assert from "node:assert/strict";
 import { readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { test } from "node:test";
-import { parseTestSet } from "../../quality/command.ts";
+import { parseChangedPaths, parseTestSet } from "../../quality/command.ts";
 import { sourceFiles } from "../../quality/source-files.ts";
-import { selectTestSet } from "../../quality/test-shards.ts";
+import {
+  selectChangedTests,
+  selectTestSet,
+} from "../../quality/test-shards.ts";
 import { withFiles } from "./files-fixture.ts";
 
 const projectFiles = {
@@ -106,4 +109,181 @@ await test("the committed platform list names test files of the inventory, with 
       browserTests.push(join(directory, "test", name));
   assert.ok(browserTests.length > 0);
   for (const file of browserTests) assert.ok(selected.includes(file), file);
+});
+
+const mainOnlyFiles = {
+  ...projectFiles,
+  "quality/main-only-tests.json": JSON.stringify([
+    { files: ["a.test.ts"], triggers: ["a.test.ts", "package.json", "tools/"] },
+    {
+      files: ["test/c.test.ts", "test/d.test.ts"],
+      triggers: ["quality/", "test/"],
+    },
+  ]),
+};
+
+await test("a pull request leaves out each main-only test when no changed path matches its triggers, and names the reason", async () => {
+  await withFiles(mainOnlyFiles, (directory) => {
+    assert.deepEqual(
+      selectChangedTests(directory, {
+        tests: inventory(directory),
+        changedPaths: ["src/cli/watch-view.ts", "README.md"],
+      }),
+      {
+        tests: [join(directory, "b.test.ts")],
+        leftOut: [
+          {
+            file: "a.test.ts",
+            reason:
+              "no changed path matches its triggers: a.test.ts, package.json, tools/",
+          },
+          {
+            file: "test/c.test.ts",
+            reason: "no changed path matches its triggers: quality/, test/",
+          },
+          {
+            file: "test/d.test.ts",
+            reason: "no changed path matches its triggers: quality/, test/",
+          },
+        ],
+      },
+    );
+  });
+});
+
+for (const [changed, kept] of [
+  [["package.json"], ["a.test.ts", "b.test.ts"]],
+  [["tools/check-quality.ts"], ["a.test.ts", "b.test.ts"]],
+  [["a.test.ts"], ["a.test.ts", "b.test.ts"]],
+  [["quality/project.ts"], ["b.test.ts", "test/c.test.ts", "test/d.test.ts"]],
+  [["package.json", "test/e.ts"], Object.keys(projectFiles)],
+] as const)
+  await test(`a pull request that changes ${changed.join(" and ")} runs the main-only tests of the matched triggers`, async () => {
+    await withFiles(mainOnlyFiles, (directory) => {
+      const selected = selectChangedTests(directory, {
+        tests: inventory(directory),
+        changedPaths: changed,
+      });
+      assert.deepEqual(
+        selected.tests,
+        kept.map((file) => join(directory, file)),
+      );
+      assert.deepEqual(
+        selected.leftOut.map((entry) => entry.file),
+        Object.keys(projectFiles).filter(
+          (file) => !kept.some((name) => name === file),
+        ),
+      );
+    });
+  });
+
+await test("a run with no changed paths, as on main or in the merge queue, runs every test file and reads no list", async () => {
+  await withFiles(projectFiles, (directory) => {
+    assert.deepEqual(
+      selectChangedTests(directory, {
+        tests: inventory(directory),
+        changedPaths: undefined,
+      }),
+      { tests: inventory(directory), leftOut: [] },
+    );
+  });
+});
+
+for (const [list, message] of [
+  ["{}", "must be a JSON array of groups with files and triggers"],
+  [
+    '[{"files": ["a.test.ts"]}]',
+    "must be a JSON array of groups with files and triggers",
+  ],
+  [
+    '[{"files": ["a.test.ts"], "triggers": [1]}]',
+    "must be a JSON array of groups with files and triggers",
+  ],
+  [
+    '[{"files": [], "triggers": ["a.test.ts"]}]',
+    "must give each group files and triggers",
+  ],
+  [
+    '[{"files": ["a.test.ts"], "triggers": [""]}]',
+    "must give each group files and triggers",
+  ],
+  [
+    '[{"files": ["b.test.ts", "a.test.ts"], "triggers": ["a", "b"]}]',
+    "must keep files and triggers sorted with no duplicates",
+  ],
+  [
+    '[{"files": ["a.test.ts"], "triggers": ["a", "a"]}]',
+    "must keep files and triggers sorted with no duplicates",
+  ],
+  [
+    '[{"files": ["a.test.ts"], "triggers": ["a"]}, {"files": ["a.test.ts"], "triggers": ["a"]}]',
+    "names a file two times: a.test.ts",
+  ],
+  [
+    '[{"files": ["gone.test.ts"], "triggers": ["gone"]}]',
+    "names a file that is not in the test inventory: gone.test.ts",
+  ],
+  [
+    '[{"files": ["a.test.ts"], "triggers": ["quality/"]}]',
+    "names a file that its own triggers do not match: a.test.ts",
+  ],
+] as const)
+  await test(`the main-only list refuses ${list}`, async () => {
+    await withFiles(
+      { ...projectFiles, "quality/main-only-tests.json": list },
+      (directory) => {
+        assert.throws(
+          () =>
+            selectChangedTests(directory, {
+              tests: inventory(directory),
+              changedPaths: ["README.md"],
+            }),
+          { message: `quality/main-only-tests.json ${message}` },
+        );
+      },
+    );
+  });
+
+await test("the changed paths are the NUL-separated output of git diff -z", () => {
+  assert.deepEqual(parseChangedPaths(""), []);
+  assert.deepEqual(parseChangedPaths("package.json\0src/a b.ts\0"), [
+    "package.json",
+    "src/a b.ts",
+  ]);
+  for (const text of ["\0", "a\0\0b\0", "/etc/passwd\0", "a\nb\0"])
+    assert.throws(() => parseChangedPaths(text), {
+      message:
+        "CLOVING_CHANGED_PATHS must name a file of NUL-separated relative paths",
+    });
+});
+
+await test("the committed main-only list leaves out the packed install and the slow gate tests for a change outside their triggers", async () => {
+  const directory = process.cwd();
+  const tests = (await sourceFiles(directory)).filter((file) =>
+    file.endsWith(".test.ts"),
+  );
+  const gateTests = [
+    "test/quality/coverage-volume.test.ts",
+    "test/quality/project.test.ts",
+    "test/quality/quality-output.test.ts",
+    "test/quality/worker-hooks.test.ts",
+  ];
+  const leftOut = (changedPaths: readonly string[] | undefined) =>
+    selectChangedTests(directory, { tests, changedPaths }).leftOut.map(
+      (entry) => entry.file,
+    );
+  assert.deepEqual(leftOut(["src/cli/watch-view.ts"]), [
+    "test/packed-install.test.ts",
+    ...gateTests,
+  ]);
+  assert.deepEqual(leftOut(["package.json"]), gateTests);
+  assert.deepEqual(leftOut(["package-lock.json"]), gateTests);
+  assert.deepEqual(leftOut(["quality/project.ts"]), [
+    "test/packed-install.test.ts",
+  ]);
+  assert.deepEqual(leftOut([".github/workflows/ci.yml"]), [
+    "test/packed-install.test.ts",
+  ]);
+  assert.deepEqual(leftOut(["tools/check-quality.ts"]), []);
+  assert.deepEqual(leftOut(undefined), []);
 });

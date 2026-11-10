@@ -1,0 +1,28 @@
+[
+  {
+    "files": ["test/packed-install.test.ts"],
+    "triggers": [
+      "bin/",
+      "package-lock.json",
+      "package.json",
+      "test/packed-",
+      "tools/",
+      "tsconfig.build.json"
+    ]
+  },
+  {
+    "files": [
+      "test/quality/coverage-volume.test.ts",
+      "test/quality/project.test.ts",
+      "test/quality/quality-output.test.ts",
+      "test/quality/worker-hooks.test.ts"
+    ],
+    "triggers": [
+      ".github/workflows/",
+      "quality/",
+      "test/quality/",
+      "test/test-timing.ts",
+      "tools/"
+    ]
+  }
+]
