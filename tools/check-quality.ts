@@ -13,6 +13,7 @@ import { parseCheckTimeFactor } from "../quality/test-execution.ts";
 import {
   checkTimeWarnings,
   parseTestCoverage,
+  parseTestSet,
   parseTestShard,
   runCommand,
   runSupervisedCommand,
@@ -24,6 +25,9 @@ const timeFactor = parseCheckTimeFactor(
 );
 const shard = process.env["CLOVING_TEST_SHARD"];
 const selected = parseTestShard(shard);
+const testSet = parseTestSet(process.env["CLOVING_TEST_SET"]);
+if (testSet === "platform" && !selected)
+  throw new Error("CLOVING_TEST_SET=platform needs CLOVING_TEST_SHARD");
 const coverage = selected
   ? parseTestCoverage(process.env["CLOVING_TEST_COVERAGE"])
   : "on";
@@ -72,6 +76,7 @@ async function checkQuality(): Promise<void> {
     const result = await checkProjectTestShard(process.cwd(), {
       timeFactor,
       shard,
+      testSet,
       coverage,
       ...(coverage === "off"
         ? {}

@@ -24,14 +24,19 @@ export interface RestartEnvironment extends OutputEnvironment {
   readonly answerMilliseconds?: number;
 }
 
-type Waited =
+export type StatusSource = Pick<
+  RestartEnvironment,
+  "runtimeDirectory" | "answerMilliseconds"
+>;
+
+export type Waited =
   | { readonly kind: "restarted"; readonly after: Fields }
   | { readonly kind: "failed"; readonly failure: Fields }
   | { readonly kind: "cancelled" }
   | { readonly kind: "unanswered" }
   | { readonly kind: "interrupted" };
 
-interface Waiting {
+export interface Waiting {
   readonly startedAt: string;
   readonly commandId: string;
   readonly requestedAt: number;
@@ -55,7 +60,10 @@ function unansweredStart(milliseconds: number): ServiceError {
   };
 }
 
-function waitingFor(reply: Fields, commandId: string): Waiting | undefined {
+export function waitingFor(
+  reply: Fields,
+  commandId: string,
+): Waiting | undefined {
   const startedAt = reply["serviceStartedAt"];
   const requestedAt = record(reply["restart"])?.["requestedAt"];
   if (typeof startedAt !== "string") return undefined;
@@ -84,7 +92,12 @@ function ownFailure(now: Fields, waiting: Waiting): Fields | undefined {
     : undefined;
 }
 
-function settled(now: Fields, waiting: Waiting): Waited | undefined {
+type Settled = Extract<
+  Waited,
+  { readonly kind: "restarted" | "failed" | "cancelled" }
+>;
+
+function settled(now: Fields, waiting: Waiting): Settled | undefined {
   if (now["serviceStartedAt"] !== waiting.startedAt)
     return { kind: "restarted", after: now };
   const failure = ownFailure(now, waiting);
@@ -115,7 +128,7 @@ function refusal(failure: Fields, before: Fields): ServiceError {
   };
 }
 
-interface Unanswered {
+export interface Unanswered {
   since: number | undefined;
 }
 
@@ -135,7 +148,7 @@ async function claimHeld(runtimeDirectory: string): Promise<boolean> {
 }
 
 async function startLimitPassed(
-  environment: RestartEnvironment,
+  environment: StatusSource,
   unanswered: Unanswered,
 ): Promise<boolean> {
   if (await claimHeld(environment.runtimeDirectory)) {
@@ -148,8 +161,8 @@ async function startLimitPassed(
   );
 }
 
-async function polled(
-  environment: RestartEnvironment,
+export async function polled(
+  environment: StatusSource,
   watched: {
     readonly waiting: Waiting;
     readonly stopped: AbortSignal;

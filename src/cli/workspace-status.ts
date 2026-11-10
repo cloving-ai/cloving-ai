@@ -9,6 +9,7 @@ import type { WatchMember } from "./watch-snapshot.ts";
 import type { WatchPrSettings } from "./watch-pr-settings.ts";
 import { defaultWatchPort, workspaceWatchServer } from "./watch-server.ts";
 import type { WorkspaceMember, WorkspaceRecord } from "./workspace-record.ts";
+import { workspaceRestartCommand } from "./workspace-restart-command.ts";
 
 export interface WorkspaceEnvironment extends CommandEnvironment {
   readonly workspace: WorkspaceRecord | undefined;
@@ -17,7 +18,7 @@ export interface WorkspaceEnvironment extends CommandEnvironment {
   readonly variables: Readonly<NodeJS.ProcessEnv>;
 }
 
-type Summary =
+export type WorkspaceSummary =
   | {
       readonly name: string;
       readonly repository: string;
@@ -39,7 +40,9 @@ function listed(result: Fields, field: string): number {
   return Array.isArray(value) ? value.length : 0;
 }
 
-async function summary(member: WorkspaceMember): Promise<Summary> {
+export async function workspaceSummary(
+  member: WorkspaceMember,
+): Promise<WorkspaceSummary> {
   const place = {
     name: member.name,
     repository: member.repository,
@@ -66,7 +69,7 @@ function counted(count: number, noun: string): string {
   return `${String(count)} ${noun}${count === 1 ? "" : "s"}`;
 }
 
-function summaryLine(shown: Summary): string {
+function summaryLine(shown: WorkspaceSummary): string {
   if (shown.service === "down")
     return `  ${shown.name}: service down, ${shown.error.code}\n`;
   return `  ${shown.name}: service up, ${counted(shown.activeRuns, "active run")}, ${counted(shown.pendingDecisions, "pending decision")}\n`;
@@ -79,7 +82,7 @@ async function workspaceStatus(
     readonly json: boolean;
   },
 ): Promise<number> {
-  const summaries = await Promise.all(input.members.map(summary));
+  const summaries = await Promise.all(input.members.map(workspaceSummary));
   const { out } = environment.terminal;
   if (input.json)
     out(
@@ -96,18 +99,24 @@ async function workspaceStatus(
   return summaries.every((shown) => shown.service === "up") ? 0 : 1;
 }
 
-function summaryMembers(
-  invocation: Extract<RuntimeInvocation, { readonly kind: "status" }>,
+function workspaceMembers(
   environment: WorkspaceEnvironment,
 ): readonly WorkspaceMember[] | undefined {
   const { workspace, selected, repository } = environment;
   if (workspace === undefined || selected !== undefined) return undefined;
-  const { runId, limit, after } = invocation;
-  if (runId !== null || limit !== null || after !== null) return undefined;
   const outside =
     repository !== undefined &&
     !workspace.members.some((member) => member.repository === repository);
   return outside ? undefined : workspace.members;
+}
+
+function summaryMembers(
+  invocation: Extract<RuntimeInvocation, { readonly kind: "status" }>,
+  environment: WorkspaceEnvironment,
+): readonly WorkspaceMember[] | undefined {
+  const { runId, limit, after } = invocation;
+  if (runId !== null || limit !== null || after !== null) return undefined;
+  return workspaceMembers(environment);
 }
 
 export function watchMembers(
@@ -163,6 +172,10 @@ export function workspaceCommand(
 ): Promise<number> | undefined {
   if (invocation.kind === "watch" && invocation.workspace === true)
     return workspaceWatch(environment, invocation.port);
+  if (invocation.kind === "restart")
+    return workspaceMembers(environment) === undefined
+      ? undefined
+      : workspaceRestartCommand(invocation, environment);
   if (invocation.kind !== "status") return undefined;
   const members = summaryMembers(invocation, environment);
   if (members === undefined) return undefined;

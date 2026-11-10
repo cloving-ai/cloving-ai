@@ -4,6 +4,7 @@ import {
   runSupervisedCommand,
   type CheckCommand,
   type CommandOptions,
+  type TestSet,
 } from "./command.ts";
 import { mkdtempSync, readFileSync, realpathSync } from "node:fs";
 import { createHash } from "node:crypto";
@@ -18,7 +19,7 @@ import recordedDurations from "./test-durations.json" with { type: "json" };
 import packageMetadata from "#package" with { type: "json" };
 import { workflowTestHook } from "../tools/workflow-test-hook.ts";
 import { exportShardCoverage } from "./shard-coverage.ts";
-import { selectTestShard } from "./test-shards.ts";
+import { selectTestSet, selectTestShard } from "./test-shards.ts";
 import { reportTestFailures } from "./test-failures.ts";
 
 export function testConcurrency(cores: number): number {
@@ -62,6 +63,7 @@ export interface TestExecutionOptions {
   readonly timeFactor?: number;
   readonly coverageFiles?: readonly string[];
   readonly shard?: string;
+  readonly testSet?: TestSet;
   readonly coverageDirectory?: string;
   readonly requiredTests?: Readonly<Record<string, readonly string[]>>;
 }
@@ -131,7 +133,7 @@ export async function checkTests(
   )
     throw new Error("mandatory-test-inventory-mismatch");
   const tests = selectTestShard(directory, {
-    tests: inventory,
+    tests: selectTestSet(directory, { tests: inventory, set: options.testSet }),
     durations: recordedDurations,
     ...(options.shard === undefined ? {} : { shard: options.shard }),
   }).sort();

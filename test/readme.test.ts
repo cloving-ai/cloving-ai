@@ -229,6 +229,8 @@ function readmeFindings(text: string): readonly string[] {
             "CLOVING_CHECK_TIME_FACTOR",
             "CLOVING_TEST_CONCURRENCY",
             "CLOVING_TEST_COVERAGE",
+            "CLOVING_TEST_SET",
+            "CLOVING_TEST_SHARD",
           ].includes(name),
       )
       .map((name) => `unknown-setting: ${name}`),
@@ -270,6 +272,18 @@ await test("CLV-175 the README recognizes and documents test concurrency", () =>
     readme,
     /CLOVING_TEST_CONCURRENCY.*whole number from 1 to 16.*one fewer worker.*minimum of 2 and a maximum of 4.*macOS CI sets it to 3 and Ubuntu CI sets it to 4/,
   );
+});
+
+await test("the README documents the test set and the macOS rule of CI", () => {
+  assert.deepEqual(
+    readmeFindings(`${valid}Set CLOVING_TEST_SET to platform.\n`),
+    [],
+  );
+  assert.match(
+    readme,
+    /CLOVING_TEST_SET.*`all`.*`platform`.*quality\/platform-tests\.json/,
+  );
+  assert.match(readme, /pull request runs only the platform tests on macOS/);
 });
 
 await test("CLV-073 the README checks reject a setting that the help of cloving start does not name", () => {

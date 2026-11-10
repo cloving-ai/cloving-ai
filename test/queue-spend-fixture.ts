@@ -16,7 +16,7 @@ import {
 } from "./service-fixture.ts";
 
 interface SpendSettings {
-  readonly limitUsd?: number;
+  readonly limitUsd?: number | null;
   readonly issueResolver?: Resolver;
   readonly spendScope?: "all";
   readonly runSpendLimitUsd?: number;
@@ -206,7 +206,9 @@ function spendOptions(harness: Harness, state: SpendState) {
       counts.clockReads += 1;
       return clock.now;
     },
-    queueDailySpendLimitUsd: state.limitUsd ?? 20,
+    ...(state.limitUsd === null
+      ? {}
+      : { queueDailySpendLimitUsd: state.limitUsd ?? 20 }),
   };
 }
 
