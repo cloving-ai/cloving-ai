@@ -72,6 +72,28 @@ await test("CLV-310 a turn end stops a child in the work tree that ignores SIGTE
     }
   }));
 
+await test("CLV-310 CLV-346 a cleanup log line that fails does not fail the end of the turn", () =>
+  withScene(async (scene) => {
+    const worker = scene.worker("bare", {
+      command: leaving(scene),
+      log: (line) => {
+        if (line.startsWith("turn: stopped process"))
+          throw new Error("log-failed");
+      },
+    });
+    await worker.deliver(intent({ method: "run-turn" }), signal);
+    await until(() => scene.reports.length === 1);
+    const child = Number(
+      readFileSync(join(scene.directory, "left-child.pid"), "utf8"),
+    );
+    try {
+      assert.equal(scene.reports[0]?.outcome, "completed");
+      assert.equal(alive(child), false);
+    } finally {
+      if (alive(child)) process.kill(child, "SIGKILL");
+    }
+  }));
+
 await test("CLV-310 a turn end stops a left child that holds the output pipes", () =>
   withScene(async (scene) => {
     const lines: string[] = [];
