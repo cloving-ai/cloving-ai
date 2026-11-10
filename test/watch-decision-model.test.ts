@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { decisionCommands } from "../src/cli/watch-decision.ts";
+import { decisionCommands, runDecision } from "../src/cli/watch-decision.ts";
 import { boardModel, boardRun } from "./watch-board-fixture.ts";
 
 const decision = {
@@ -65,4 +65,17 @@ await test("CLV-336 a question of analyze-chats is private in the model and keep
   const shown = model("develop");
   assert.equal(shown?.private, undefined);
   assert.equal(shown?.prompt, "Q?");
+});
+
+await test("CLV-336 a decision that is not an object gives empty fields, and a decision keeps the time it opened", () => {
+  const empty = runDecision(null, { workflowId: "develop", client: "cloving" });
+  assert.deepEqual(
+    [empty.decisionId, empty.openedAt, empty.replies, empty.generation],
+    ["", null, [], 0],
+  );
+  const openedAt = "2026-11-09T10:00:00.000Z";
+  assert.equal(
+    decisionCommands({ ...decision, openedAt }, "cloving").openedAt,
+    openedAt,
+  );
 });
