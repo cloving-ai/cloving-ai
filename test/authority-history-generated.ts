@@ -167,6 +167,7 @@ function choices(state: AuthorityState, subject: Subject): readonly Fields[] {
       note: "generated",
       source: "continue",
     },
+    { kind: "rename-run", title: "Generated name", label: "GEN-1" },
     { kind: "complete-run", expectedRevision: revision },
     { kind: "cancel-run", expectedRevision: revision },
     { kind: "fail-run", expectedRevision: revision },
