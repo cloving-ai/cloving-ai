@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { test } from "node:test";
-import { daemonWorkReads } from "../src/daemon/work-reads.ts";
+import { daemonWorkReads } from "../src/cli/work-reads.ts";
 import type { Reply } from "../src/protocol.ts";
 import { listen } from "../src/service/transport.ts";
 import { atGap, workInProgress } from "../src/work-gap.ts";

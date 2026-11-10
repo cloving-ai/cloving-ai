@@ -79,7 +79,13 @@ await test("CLV-312 each repository gets its own runtime directory, the start op
   assert.notEqual(result.hosts[0]?.runtime, result.hosts[1]?.runtime);
   for (const host of result.hosts) {
     assert.ok(host.runtime.startsWith(join(root, "state/cloving/")));
-    assert.deepEqual(host.overrides, { CLOVING_WATCH_PORT: "off" });
+    assert.deepEqual(host.overrides, {
+      CLOVING_WATCH_PORT: "off",
+      CLOVING_WORKSPACE_PERMITS: join(
+        root,
+        "state/cloving/workspace/control.sock",
+      ),
+    });
     assert.deepEqual(host.options, ["--reset-queue"]);
   }
   assert.deepEqual(

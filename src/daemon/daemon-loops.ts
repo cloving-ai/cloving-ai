@@ -4,6 +4,7 @@ import { workflowSchedules } from "./workflow-schedules.ts";
 import { issueQueue } from "./issue-queue.ts";
 import { notifyRuns } from "./notify.ts";
 import type { HostSignals, QueueLimits } from "../queue-room.ts";
+import { workspacePermits } from "../cli/workspace-permit.ts";
 
 interface LoopSettings extends ParametersOfSchedules {
   readonly scheduleConnection?: ReturnType<typeof scheduleConnection>;
@@ -14,6 +15,7 @@ interface LoopSettings extends ParametersOfSchedules {
   readonly queueLimits: () => QueueLimits;
   readonly hostSignals?: () => Promise<HostSignals>;
   readonly readyCommand?: readonly string[];
+  readonly workspacePermits?: string;
   readonly resetQueue?: boolean;
   readonly queueWorkflowId: string | undefined;
 }
@@ -40,6 +42,9 @@ async function startedQueue(
     ...(settings.readyCommand === undefined
       ? {}
       : { readyCommand: settings.readyCommand }),
+    ...(settings.workspacePermits === undefined
+      ? {}
+      : { permit: workspacePermits(settings.workspacePermits) }),
     workflowId: settings.queueWorkflowId,
   });
   settings.queueConnection?.connect(queue.port);
