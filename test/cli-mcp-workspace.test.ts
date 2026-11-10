@@ -221,6 +221,37 @@ await test("CLV-312 a workspace tool call that changes state needs the repositor
     );
   }));
 
+await test("CLV-312 a workspace schedule pause or resume with no repository argument needs the repository argument when the workspace lists more than one repository and reaches no repository", () =>
+  withWorkspace(["alpha", "beta"], async ([alpha, beta]) => {
+    const output = await exchanged([
+      toolCall(1, {
+        name: "cloving_schedule_pause",
+        values: { workflowId: "docs-drift" },
+      }),
+      toolCall(2, {
+        name: "cloving_schedule_resume",
+        values: { workflowId: "docs-drift" },
+      }),
+    ]);
+    assert.equal(output.status, 0, output.stderr);
+    for (const id of [1, 2]) {
+      const refused = resultOf(output.messages, id);
+      assert.equal(refused["isError"], true);
+      assert.equal(
+        fields(refused["structuredContent"])["code"],
+        "repository-required",
+      );
+    }
+    assert.deepEqual(
+      [alpha, beta].map(
+        (shown) =>
+          shown?.requests.filter((sent) => sent.operation === "schedule")
+            .length,
+      ),
+      [0, 0],
+    );
+  }));
+
 await test("CLV-312 a workspace of one repository needs no repository argument", async () => {
   await withWorkspace(["solo"], async ([solo]) => {
     const output = await exchanged([

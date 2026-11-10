@@ -58,7 +58,7 @@ async function repositories(
 
 function repositoryRequired(
   members: readonly WorkspaceMember[],
-  call: Extract<McpCall, { readonly kind: "mutation" }>,
+  call: McpCall,
 ): Fields {
   const names = members.map((member) => member.name).join(", ");
   return toolResult(
@@ -70,7 +70,7 @@ function repositoryRequired(
           detail: `The workspace lists more than one repository. Give the repository argument: ${names}.`,
         },
       },
-      { commandId: call.commandId },
+      call.kind === "mutation" ? { commandId: call.commandId } : {},
     ),
     { error: true },
   );
@@ -93,6 +93,14 @@ async function everyRepository(
       })),
     },
     { error: results.every((result) => result["isError"] === true) },
+  );
+}
+
+function readsOnly(name: unknown): boolean {
+  return mcpTools.some(
+    (tool) =>
+      tool.name === name &&
+      record(tool["annotations"])?.["readOnlyHint"] === true,
   );
 }
 
@@ -124,9 +132,9 @@ function workspaceCall(members: readonly WorkspaceMember[]): McpTarget["call"] {
     const [only] = called;
     if (called.length === 1 && only !== undefined)
       return callMcpTool(only.runtime, { call, signal });
-    return call.kind === "mutation"
-      ? repositoryRequired(members, call)
-      : everyRepository(called, { call, signal });
+    return readsOnly(parameters["name"])
+      ? everyRepository(called, { call, signal })
+      : repositoryRequired(members, call);
   };
 }
 
