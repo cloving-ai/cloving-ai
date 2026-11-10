@@ -12,6 +12,7 @@ import {
   ThemeNotice,
   type ThemeControls,
   type WatchWords,
+  wordText,
 } from "./watch-theme-view.ts";
 
 export interface QueueControls {
@@ -243,5 +244,24 @@ export function BackLink(props: {
     class: "back",
     href: watchHash({ workflowId, repository, runId: null }),
     children: `← Back to ${workflowId ?? "the floor"}`,
+  });
+}
+
+export interface BannerBackProps {
+  readonly workflowId: string | null;
+  readonly repository?: string | undefined;
+  readonly words?: WatchWords | undefined;
+}
+
+export function BannerBack(props: BannerBackProps): Shown {
+  const { workflowId, repository } = props;
+  const floor = wordText(props.words, {
+    key: "workflows.title",
+    text: "Floor",
+  });
+  return element("a", {
+    class: "banner-back",
+    href: watchHash({ workflowId, repository, runId: null }),
+    children: `← ${workflowId ?? floor}`,
   });
 }

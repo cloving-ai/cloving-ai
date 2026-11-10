@@ -291,6 +291,7 @@ header button:hover, .phone button:hover, .column-name button:hover, .add-card:h
 .banner.bad { border-left-color: var(--color-bad); }
 .banner.attention { border-left-color: var(--color-warn); }
 .banner div { min-width: 0; flex: 1; }
+.banner-back { flex: 0 1 auto; min-width: 0; max-width: 40%; align-self: flex-start; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-right: 12px; border-right: var(--shape-border) solid var(--color-line); font-weight: 600; line-height: 29px; }
 .banner .icon { font-size: 22px; line-height: 1.2; }
 .banner h2 { margin: 0; font-size: 20px; line-height: 1.45; }
 .banner .name { font: 400 13px/1.5 var(--font-ui); color: var(--color-muted); margin-left: 6px; }
@@ -366,6 +367,8 @@ button:focus-visible, .token:focus-visible { clip-path: none; }
   .line-end { align-items: flex-start; border-left: 0; text-align: left; padding-top: 8px; }
   .line-end:empty { padding: 0; }
   .line-loop { align-items: flex-start; }
+  .banner { display: grid; grid-template-columns: auto minmax(0, 1fr); row-gap: 4px; }
+  .banner-back { grid-column: 1 / -1; justify-self: start; max-width: 100%; padding-right: 0; border-right: 0; line-height: 1.5; }
 }
 @media (max-width: 700px) { body { padding-inline: 12px; } }
 `;
