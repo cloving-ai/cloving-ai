@@ -1596,6 +1596,7 @@
     "test/quality/test-failures.test.ts": "test",
     "test/quality/test-integrity.test.ts": "test",
     "test/quality/test-reporter.test.ts": "test",
+    "test/quality/test-sets.test.ts": "test",
     "test/quality/test-shard-coverage.test.ts": "test",
     "test/quality/trusted-project.test.ts": "test",
     "test/quality/tuple-results.test.ts": "test",

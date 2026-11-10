@@ -1,5 +1,6 @@
-import { parseTestShard } from "./command.ts";
-import { relative, resolve } from "node:path";
+import { readFileSync, realpathSync } from "node:fs";
+import { join, relative, resolve } from "node:path";
+import { parseTestShard, type TestSet } from "./command.ts";
 
 export function selectTestShard(
   directory: string,
@@ -30,4 +31,38 @@ export function selectTestShard(
     if (index === shard.index - 1) selected.push(file);
   }
   return selected;
+}
+
+function pathList(value: unknown): value is string[] {
+  return (
+    Array.isArray(value) &&
+    value.every((item: unknown) => typeof item === "string")
+  );
+}
+
+export function selectTestSet(
+  directory: string,
+  run: {
+    readonly tests: readonly string[];
+    readonly set: TestSet | undefined;
+  },
+): readonly string[] {
+  if (run.set !== "platform") return run.tests;
+  const list = "quality/platform-tests.json";
+  const listed: unknown = JSON.parse(
+    readFileSync(join(directory, list), "utf8"),
+  );
+  if (!pathList(listed))
+    throw new Error(`${list} must be a JSON array of paths`);
+  if (JSON.stringify([...new Set(listed)].sort()) !== JSON.stringify(listed))
+    throw new Error(`${list} must be sorted with no duplicates`);
+  const root = realpathSync(directory);
+  const missing = listed.find(
+    (file) => !run.tests.includes(resolve(root, file)),
+  );
+  if (missing !== undefined)
+    throw new Error(
+      `${list} names a file that is not in the test inventory: ${missing}`,
+    );
+  return listed.map((file) => resolve(root, file));
 }

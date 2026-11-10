@@ -105,6 +105,37 @@ await test("a shard refuses an unknown CLOVING_TEST_COVERAGE value, and the loca
   assert.equal(local.status, 0, local.stderr);
 });
 
+for (const [setting, testSet] of [
+  [undefined, "all"],
+  ["all", "all"],
+  ["platform", "platform"],
+] as const)
+  await test(`a shard takes its test set from CLOVING_TEST_SET=${String(setting)}`, async () => {
+    const result = await shardGate({
+      CLOVING_TEST_SHARD: "1/1",
+      CLOVING_TEST_SET: setting,
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(result.testSet, [testSet]);
+  });
+
+for (const [environment, message] of [
+  [
+    { CLOVING_TEST_SHARD: "2/2", CLOVING_TEST_SET: "full" },
+    "CLOVING_TEST_SET must be all or platform",
+  ],
+  [
+    { CLOVING_TEST_SET: "platform" },
+    "CLOVING_TEST_SET=platform needs CLOVING_TEST_SHARD",
+  ],
+] as const)
+  await test(`the gate refuses CLOVING_TEST_SET=${environment.CLOVING_TEST_SET} with ${String(environment.CLOVING_TEST_SHARD)} shard`, async () => {
+    const result = await shardGate(environment);
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, new RegExp(message));
+    assert.equal(result.testSet, null);
+  });
+
 for (const shard of [undefined, "1/2", "2/2"]) {
   await test(`CLV-266 prepares runtime declarations before shard ${String(shard)} tests`, async () => {
     await withFiles(await runtimeGate(), (directory) => {
