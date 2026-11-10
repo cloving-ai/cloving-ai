@@ -228,7 +228,8 @@ await test("CLV-079 cards show step time, review progress, cost, decisions and e
   for (const text of [
     "Review the change",
     "Code review · 3 min",
-    '<span class="review-pill">round 2</span> · <span class="review-pill">4/5</span> · <span class="review-pill">#67</span>',
+    '<span class="review-pill">round 2</span> · <span class="review-pill">4/5</span></span>',
+    '<span class="card-ids"><span class="card-pull">PR #67</span></span>',
     "1.24 USD",
     "Decision waiting",
     "run /&amp;1",
@@ -282,7 +283,7 @@ await test("CLV-098 active steps and stopped categories retain their words with 
 await test("CLV-098 cards render only present review values as separate ordered pills", () => {
   assert.match(
     cardPage({}),
-    /<span class="card-review"><span class="review-pill">round 2<\/span> · <span class="review-pill">4\/5<\/span> · <span class="review-pill">#67<\/span><\/span>/,
+    /<span class="card-review"><span class="review-pill">round 2<\/span> · <span class="review-pill">4\/5<\/span><\/span>/,
   );
   assert.match(
     cardPage({ round: null, pullRequestNumber: null }),
@@ -295,7 +296,7 @@ await test("CLV-098 cards render only present review values as separate ordered 
   for (const workflow of ["develop-ticket", "develop-prompt"])
     assert.match(
       cardPage({}, { column: "Agent turn", workflowId: workflow }),
-      /<span class="review-pill">#67<\/span>/,
+      /<span class="card-pull">PR #67<\/span>/,
     );
 });
 

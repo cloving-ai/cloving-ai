@@ -35,7 +35,7 @@ const decisionItem =
   '<li class="need need-decision"><span class="need-mark" title="Decision"></span><div class="need-body"><h3 class="need-title">Title of draft</h3><p class="need-text">Examine the work, then approve or deny it.</p><p class="need-meta">idea, waiting 12m</p></div><a class="need-action" href="#run=draft">Answer</a></li>';
 
 const stoppedItem =
-  '<li class="need need-stopped"><span class="need-mark" title="Stopped run"></span><div class="need-body"><h3 class="need-title">Title of merge</h3><p class="need-text">The operator paused the run. Examine the run, then resume or drop it.</p><p class="need-meta">develop-issue, waiting 51m</p></div><a class="need-action" href="#run=merge">Open run</a></li>';
+  '<li class="need need-stopped"><span class="need-mark" title="Stopped run"></span><div class="need-body"><h3 class="need-title"><span class="need-label">#540</span> Title of merge</h3><p class="need-text">The operator paused the run. Examine the run, then resume or drop it.</p><p class="need-meta">develop-issue, waiting 51m</p></div><a class="need-action" href="#run=merge">Open run</a></li>';
 
 const fullPanel = `<section class="needs" aria-labelledby="needs-title"><div class="needs-head"><h2 id="needs-title">Needs you</h2><span class="needs-count">2 waiting for a person</span></div><ol class="needs-list">${stoppedItem}${decisionItem}</ol></section>`;
 

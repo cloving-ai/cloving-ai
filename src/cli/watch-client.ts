@@ -1,5 +1,5 @@
 export const watchClient = `
-const state = { model: null, receivedAt: 0, stale: false, copied: "", label: "", run: "", loading: false, again: false, columns: {}, cards: {}, hovered: null, focused: null, phonePairing: null, phoneBusy: false, phoneMessage: "", phone: null, phoneLoadedAt: 0, phoneAccepted: null, phoneSequence: 0, phoneApplied: 0, queueBusy: false, queueMessage: "", continueBusy: [], continueMessages: {}, continueOpen: null, continueNote: "", steerOpen: null, steerNote: "", steerNow: false, steerBusy: [], steerMessages: {}, themeChoice: null, loopBusy: [], loopMessages: {}, loopCommands: {} };
+const state = { model: null, receivedAt: 0, stale: false, copied: "", label: "", run: "", loading: false, again: false, columns: {}, cards: {}, hovered: null, focused: null, phonePairing: null, phoneBusy: false, phoneMessage: "", phone: null, phoneLoadedAt: 0, phoneAccepted: null, phoneSequence: 0, phoneApplied: 0, queueBusy: false, queueMessage: "", continueBusy: [], continueMessages: {}, continueOpen: null, continueNote: "", steerOpen: null, steerNote: "", steerNow: false, steerBusy: [], steerMessages: {}, renameOpen: null, renameTitle: "", renameLabel: "", renameBusy: [], renameMessages: {}, renameCommands: {}, themeChoice: null, loopBusy: [], loopMessages: {}, loopCommands: {} };
 function readPreference(key) {
   try { return JSON.parse(localStorage.getItem(key)); }
   catch { return null; }
@@ -172,6 +172,54 @@ function steerControls() {
   if (actionToken === null) return undefined;
   return { open: state.steerOpen, note: state.steerNote, now: state.steerNow, busy: state.steerBusy, messages: state.steerMessages, onOpen: steerOpen, onClose: steerClose, onNote: steerNote, onNow: steerNow, onSend: steerPost };
 }
+function renameMessage(reply) {
+  if (reply.error) return reply.error.code + ": " + reply.error.detail;
+  return "The run has the title " + reply.title + ".";
+}
+function renameOpen(target) {
+  state.renameOpen = target.runId;
+  state.renameTitle = target.title;
+  state.renameLabel = target.label;
+  draw();
+  document.querySelector(".rename-form input")?.focus();
+}
+function renameClose() {
+  state.renameOpen = null;
+  draw();
+  document.querySelector(".rename-open")?.focus();
+}
+async function renamePost(runId, fields) {
+  if (state.renameBusy.includes(runId)) return;
+  const control = JSON.stringify([runId, fields]);
+  const commandId = state.renameCommands[control] ?? crypto.randomUUID();
+  state.renameCommands = { ...state.renameCommands, [control]: commandId };
+  state.renameOpen = null;
+  state.renameBusy = [...state.renameBusy, runId];
+  draw();
+  let message;
+  try {
+    const response = await fetch("actions/rename", { method: "POST", headers: { "content-type": "application/json", "x-cloving-token": actionToken }, body: JSON.stringify({ runId, ...fields, commandId }) });
+    if (response.status === 503) throw new Error("late");
+    const reply = response.ok ? await response.json() : null;
+    message = reply === null ? refusedRequest : renameMessage(reply);
+    const { [control]: answered, ...others } = state.renameCommands;
+    state.renameCommands = others;
+  } catch {
+    message = "The watch tool does not answer. Save again to send the same command.";
+    if (fields.title !== undefined) state.renameOpen = runId;
+  }
+  state.renameBusy = state.renameBusy.filter((busy) => busy !== runId);
+  state.renameMessages = { ...state.renameMessages, [runId]: message };
+  await load();
+}
+function renameSave(runId) {
+  const label = state.renameLabel.trim();
+  return renamePost(runId, label === "" ? { title: state.renameTitle } : { title: state.renameTitle, label });
+}
+function renameControls() {
+  if (actionToken === null) return undefined;
+  return { open: state.renameOpen, title: state.renameTitle, label: state.renameLabel, busy: state.renameBusy, messages: state.renameMessages, onOpen: renameOpen, onClose: renameClose, onTitle(text) { state.renameTitle = text; }, onLabel(text) { state.renameLabel = text; }, onSave: renameSave, onClear(runId) { return renamePost(runId, { clear: true }); } };
+}
 function moved(next, followed) {
   const arrived = next === "waiting_gate" && next !== state.run;
   state.run = next;
@@ -202,10 +250,11 @@ function draw() {
   const queue = queueControls();
   const continuing = continueControls();
   const steering = steerControls();
+  const renaming = renameControls();
   const theme = themeControls();
   const loops = loopControls();
   const transcripts = transcriptControls();
-  const page = component(Page, { model, selected, now, observationNow, stale, copying, columns, cards, phone, queue, continuing, steering, loops, theme, transcripts });
+  const page = component(Page, { model, selected, now, observationNow, stale, copying, columns, cards, phone, queue, continuing, steering, renaming, loops, theme, transcripts });
   render(page, document.getElementById("app"));
   if (model === null) return;
   transcriptsFollowed(selected);

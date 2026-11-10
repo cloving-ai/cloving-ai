@@ -51,7 +51,7 @@ await test("CLV-288 three runs that completed today show three tiles, the newest
   );
   assert.deepEqual(tiles(html), [
     '<li class="tile line-color-1"><div class="tile-ids"><span class="tile-ticket">#477</span><span class="tile-pull">PR #577</span></div><a class="tile-title" href="#run=late" title="Title of late">Title of late</a><div class="tile-facts"><span>develop-issue</span><span>2 h 34 min</span><span>1.25 USD</span></div></li>',
-    '<li class="tile line-color-2"><div class="tile-ids"><span class="tile-ticket">Draft</span></div><a class="tile-title" href="#run=draft" title="Title of draft">Title of draft</a><div class="tile-facts"><span>idea</span><span>30 min 0 s</span><span>1.25 USD</span></div></li>',
+    '<li class="tile line-color-2"><div class="tile-ids"></div><a class="tile-title" href="#run=draft" title="Title of draft">Title of draft</a><div class="tile-facts"><span>idea</span><span>30 min 0 s</span><span>1.25 USD</span></div></li>',
     `<li class="tile line-color-1"><div class="tile-ids"><span class="tile-ticket">#475</span><span class="tile-pull">PR #580</span></div><a class="tile-title" href="#run=early" title="Title of early">Title of early</a><div class="tile-facts"><span>develop-issue</span><span>3 h 44 min</span><span>1.25 USD</span></div>${demoLink}</li>`,
   ]);
 });

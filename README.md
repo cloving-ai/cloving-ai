@@ -1235,6 +1235,49 @@ The service refuses these notes:
 
 On the watch page, with watch actions on, the card of a run in work and the run detail have a **Steer** button. The button opens a form with a note field and the check box **Send to the turn in work now**. **Send** sends the same request as `cloving steer`, and Esc closes the form. The reply shows under the button. Until a turn gets the note, the card shows `1 note waiting`.
 
+### Name a run
+
+Each run card has a name with no setup. A ticket command is optional. The service picks the title of a run from the first of these sources that exists:
+
+1. A manual name from **Rename**, `cloving rename` or `cloving_rename`.
+2. The ticket title: the first line of the ticket text when it starts with `# `.
+3. The title of the pull request that the run opened.
+4. A field `title` in the run input.
+5. The first line of the prompt or the ticket text that is not empty, without a leading `# `, cut at 80 characters at a word end.
+6. The workflow ID and the task ID, for example `develop task-0123456789ab`.
+
+The result of the `open-pr` effect keeps the title of the pull request. Each later `open-pr` call of the run reads the current title on GitHub, so the run shows a new title after its next push.
+
+The service picks the label in this order:
+
+1. A manual label.
+2. The issue number, for example `#699`, or the ticket ID.
+3. A ticket key at the start of the title, for example `SID-4820` in `SID-4820: Filter and page Notion database files`. A key has two or more capital letters or digits with at least one letter, a hyphen and a number.
+4. No label.
+
+When the run has a pull request, the card also shows its number, for example `PR #686`. The station token, the card, the run detail, **Needs you**, the shelf, `cloving status <run-id>`, the status JSON and the read API show the same title and label. The status JSON and the read API also have `titleSource` (`manual`, `ticket`, `pull-request`, `input`, `prompt` or `fallback`) and `labelSource` (`manual`, `ticket`, `title` or `null`).
+
+To give a run a new name, use one of these:
+
+```sh
+cloving rename <run-id> --title "Fix the flaky retention test" --label SID-4820
+cloving rename <run-id> --clear
+```
+
+- **Watch page:** with watch actions on, the run detail and each card have a **Rename** action. It opens a form with the current title and a label field. Enter saves, and Esc cancels. When the run has a manual name, **Use the automatic name** removes it.
+- **MCP:** the tool `cloving_rename` takes `runId`, `commandId`, `title`, an optional `label` and an optional `clear`.
+
+A title has 1 to 200 characters after the spaces at its start and end are removed. It is on one line and has no control characters. A label has 1 to 32 characters from letters, digits and `# ! . _ / -`. `--clear` takes no title and no label. A rename works for an active run and for a run that ended. It is the event `run.renamed` of the run, so the name stays after `cloving restart`, and the newest rename wins. A rename does not change the pull request or the ticket.
+
+The service refuses these renames:
+
+- A blank or invalid title gets `invalid-title`.
+- An invalid label gets `invalid-label`.
+- A rename of an unknown run gets `unknown-run`.
+- A request with a known command ID and other values gets `conflicting-command`. The same request gets the stored receipt again.
+
+The watch page sends a rename with the page token, the same Origin and a loopback Host, in at most 16 KiB of JSON, like its other actions. Each save gets a random command ID, and a save again after a lost reply sends the same command ID. `CLOVING_WATCH_ACTIONS=off` removes the Rename action and its endpoint.
+
 ### Rescue stuck pull requests
 
 A run can end `blocked` or `failed` while its pull request stays open. The templates `patrol` and `rescue-pr` find such pull requests and repair them. Copy both into your private workflow folder with `cloving templates copy patrol` and `cloving templates copy rescue-pr`.

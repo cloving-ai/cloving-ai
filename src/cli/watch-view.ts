@@ -58,6 +58,7 @@ import {
   type TranscriptControls,
 } from "./watch-transcript-view.ts";
 export { PullRequest, Review } from "./watch-turn.ts";
+import { RunHeading, type RenameControls } from "./watch-rename-view.ts";
 
 interface Timed {
   readonly run: WatchRun;
@@ -175,6 +176,7 @@ export function Run(
   props: Timed & {
     readonly copying: Copying;
     readonly steering?: SteerControls | undefined;
+    readonly renaming?: RenameControls | undefined;
     readonly transcripts?: TranscriptControls | undefined;
     readonly turnId?: string | null | undefined;
   },
@@ -193,6 +195,7 @@ export function Run(
   ];
   return [
     component(Banner, { run, now }),
+    component(RunHeading, { run, renaming: props.renaming }),
     loopText(run) === ""
       ? null
       : element("p", { class: "meta", children: loopText(run) }),
@@ -240,6 +243,7 @@ export interface PageProps {
   readonly continuing?: ContinueControls | undefined;
   readonly loops?: LoopControls | undefined;
   readonly steering?: SteerControls | undefined;
+  readonly renaming?: RenameControls | undefined;
   readonly theme?: ThemeControls | undefined;
   readonly transcripts?: TranscriptControls | undefined;
 }
@@ -275,6 +279,7 @@ export function Page(props: PageProps): Shown {
             now,
             copying,
             steering: props.steering,
+            renaming: props.renaming,
             transcripts: props.transcripts,
             turnId: location.turnId,
           }),
@@ -381,6 +386,7 @@ export function BoardPage(
           observationNow: props.observationNow,
           controls: props.columns,
           steering: props.steering,
+          renaming: props.renaming,
           cardForm: model.cardForms?.find(
             (form) => form.workflowId === workflow.workflowId,
           ),

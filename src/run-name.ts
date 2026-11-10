@@ -1,7 +1,17 @@
-export type TitleSource =
-  "manual" | "ticket" | "pull-request" | "input" | "prompt" | "fallback";
+export const titleSources = [
+  "manual",
+  "ticket",
+  "pull-request",
+  "input",
+  "prompt",
+  "fallback",
+] as const;
 
-export type LabelSource = "manual" | "ticket" | "title";
+export type TitleSource = (typeof titleSources)[number];
+
+export const labelSources = ["manual", "ticket", "title"] as const;
+
+export type LabelSource = (typeof labelSources)[number];
 
 export interface ManualName {
   readonly title: string;
