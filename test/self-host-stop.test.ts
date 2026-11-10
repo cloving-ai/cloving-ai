@@ -62,7 +62,7 @@ for (const signal of ["SIGINT", "SIGTERM"])
       });
     });
 
-await test("CLV-259 self-update kills a stuck watch before the fast-forward", async () => {
+await test("CLV-259 CLV-337 self-update kills a stuck watch before the fast-forward and stops the daemon with the signal that keeps turns", async () => {
   await withUpdateRepository(async ({ root, repository, git, target }) => {
     const paths = await programs(root, { stuckPrograms: ["watch"] });
     const stopMilliseconds = testMilliseconds(100);
@@ -88,7 +88,7 @@ await test("CLV-259 self-update kills a stuck watch before the fast-forward", as
         await readFile(join(root, "watch-signals"), "utf8"),
         "SIGTERM\n",
       );
-      assert.deepEqual(observed.signals, ["SIGTERM", "SIGTERM", "SIGKILL"]);
+      assert.deepEqual(observed.signals, ["SIGUSR2", "SIGTERM", "SIGKILL"]);
       assert.deepEqual(observed.errors, [
         `Cloving stopped the watch child with SIGKILL after ${String(stopMilliseconds / 1000)} s\n`,
       ]);

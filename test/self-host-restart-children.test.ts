@@ -66,13 +66,13 @@ function signalled(root: string, name: string): Promise<string> {
   return readFile(join(root, `${name}-signals`), "utf8").catch(() => "");
 }
 
-await test("CLV-320 a restart stops the watch and the relay before the daemon and ends with exit 75", () =>
+await test("CLV-320 CLV-337 a restart stops the watch and the relay before the daemon, stops the daemon with the signal that keeps turns, and ends with exit 75", () =>
   withChildren({ stuckPrograms: [] }, async ({ root, directory, hosting }) => {
     await writeFile(join(directory, "pending-restart-one"), request("plain"));
     assert.equal(await hosting, 75);
     assert.equal(await signalled(root, "watch"), "SIGTERM\n");
     assert.equal(await signalled(root, "relay"), "SIGTERM\n");
-    assert.equal(await signalled(root, "daemon"), "SIGTERM\n");
+    assert.equal(await signalled(root, "daemon"), "SIGUSR2\n");
     const starts = await readFile(join(root, "watch-starts"), "utf8");
     assert.equal(starts.trim().split("\n").length, 1);
     const daemonSignal = (await stat(join(root, "daemon-signals"))).mtimeMs;
