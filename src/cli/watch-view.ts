@@ -16,13 +16,6 @@ import {
   type QueueControls,
 } from "./watch-header-view.ts";
 export { clove, Header, type QueueControls } from "./watch-header-view.ts";
-import {
-  continuedCostText,
-  priceText,
-  spendLimitText,
-  usageText,
-  totalsSuffix,
-} from "./usage-render.ts";
 import { component, element, type Shown } from "./watch-element.ts";
 import {
   completedDetail,
@@ -51,13 +44,21 @@ export type { ContinueControls } from "./watch-needs-view.ts";
 import { Today } from "./watch-today-view.ts";
 import { LoopsPanel, type LoopControls } from "./watch-loops-view.ts";
 import type { ThemeControls } from "./watch-theme-view.ts";
-import { Decision, Events, Turn, PullRequest, Review } from "./watch-turn.ts";
+import {
+  Decision,
+  Events,
+  Turn,
+  PullRequest,
+  Review,
+  RunTotals,
+} from "./watch-turn.ts";
 import { Commands } from "./command-effects.ts";
 import {
   Transcript,
   type TranscriptControls,
 } from "./watch-transcript-view.ts";
 export { PullRequest, Review } from "./watch-turn.ts";
+import { RunHeading, type RenameControls } from "./watch-rename-view.ts";
 
 interface Timed {
   readonly run: WatchRun;
@@ -127,25 +128,6 @@ export function Phases(props: {
   return element("ol", { class: "phases", children: steps });
 }
 
-export function RunTotals(props: { readonly run: WatchRun }): Shown {
-  const { run } = props;
-  return element("section", {
-    class: "run-usage",
-    children: [
-      element("h3", { children: `Run totals${totalsSuffix(run.state)}` }),
-      element("p", { children: usageText(run.usage) }),
-      element("p", {
-        children: `${priceText(run.claudeCostUsd, run.estimatedCostUsd)}${spendLimitText(run.spendLimitUsd)}`,
-      }),
-      run.continuedCostUsd === undefined
-        ? null
-        : element("p", {
-            children: continuedCostText(run.continuedCostUsd),
-          }),
-    ],
-  });
-}
-
 export function RunTurns(
   props: Timed & {
     readonly transcripts: TranscriptControls | undefined;
@@ -176,6 +158,7 @@ export function Run(
     readonly copying: Copying;
     readonly steering?: SteerControls | undefined;
     readonly controlling?: RunCommandControls | undefined;
+    readonly renaming?: RenameControls | undefined;
     readonly transcripts?: TranscriptControls | undefined;
     readonly turnId?: string | null | undefined;
   },
@@ -194,6 +177,7 @@ export function Run(
   ];
   return [
     component(Banner, { run, now }),
+    component(RunHeading, { run, renaming: props.renaming }),
     loopText(run) === ""
       ? null
       : element("p", { class: "meta", children: loopText(run) }),
@@ -244,6 +228,7 @@ export interface PageProps {
   readonly loops?: LoopControls | undefined;
   readonly steering?: SteerControls | undefined;
   readonly controlling?: RunCommandControls | undefined;
+  readonly renaming?: RenameControls | undefined;
   readonly theme?: ThemeControls | undefined;
   readonly transcripts?: TranscriptControls | undefined;
 }
@@ -280,6 +265,7 @@ export function Page(props: PageProps): Shown {
             copying,
             steering: props.steering,
             controlling: props.controlling,
+            renaming: props.renaming,
             transcripts: props.transcripts,
             turnId: location.turnId,
           }),
@@ -388,6 +374,7 @@ export function BoardPage(
           controls: props.columns,
           steering: props.steering,
           controlling: props.controlling,
+          renaming: props.renaming,
           cardForm: model.cardForms?.find(
             (form) => form.workflowId === workflow.workflowId,
           ),

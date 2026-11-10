@@ -83,6 +83,11 @@ const listed = [
     ["runId", "text", "now", "commandId"],
     ["runId", "text", "commandId"],
   ],
+  [
+    "cloving_rename",
+    ["runId", "title", "label", "clear", "commandId"],
+    ["runId", "commandId"],
+  ],
   ["cloving_schedules", [], undefined],
   ["cloving_schedule_pause", ["workflowId"], ["workflowId"]],
   ["cloving_schedule_resume", ["workflowId"], ["workflowId"]],
@@ -99,7 +104,7 @@ const reads = [
   "cloving_schedules",
 ];
 
-await test("CLV-251 CLV-328 mcp handshake lists the four read tools and the eleven mutation tools and answers ping", async () => {
+await test("CLV-251 CLV-328 mcp handshake lists the four read tools and the twelve mutation tools and answers ping", async () => {
   const output = await mcpExchange([
     request({
       id: 1,

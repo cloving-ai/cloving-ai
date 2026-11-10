@@ -1,5 +1,6 @@
 import { activeCommandWait } from "./command-waits.ts";
 import { record, type Fields } from "../protocol.ts";
+import type { PrIdentity } from "./watch-pr-identity.ts";
 import type {
   WatchLamp,
   WatchReady,
@@ -37,10 +38,39 @@ function workerOf(run: WatchRun, lamp: WatchLamp): string {
   return harness?.charAt(0).toUpperCase() ?? "·";
 }
 
-function ticketOf(run: WatchRun): string {
-  if (run.issueIdentity != null) return `#${String(run.issueIdentity.number)}`;
-  if (run.ticketId === null) return "Draft";
-  return /^\d+$/.test(run.ticketId) ? `#${run.ticketId}` : run.ticketId;
+function ticketLabel(known: {
+  readonly ticketId: string | null;
+  readonly issue: PrIdentity | null;
+}): string | null {
+  if (known.issue !== null) return `#${String(known.issue.number)}`;
+  if (known.ticketId === null) return null;
+  return /^\d+$/.test(known.ticketId) ? `#${known.ticketId}` : known.ticketId;
+}
+
+function labelOf(
+  status: Fields,
+  known: Parameters<typeof ticketLabel>[0],
+): string | null {
+  if (!Object.hasOwn(status, "label")) return ticketLabel(known);
+  return typeof status["label"] === "string" ? status["label"] : null;
+}
+
+export function shownName(
+  status: Fields,
+  known: Parameters<typeof ticketLabel>[0],
+): Pick<WatchRun, "label" | "titleSource" | "labelSource" | "manualName"> {
+  const { titleSource, labelSource } = status;
+  const manual = titleSource === "manual" || labelSource === "manual";
+  return {
+    label: labelOf(status, known),
+    titleSource: typeof titleSource === "string" ? titleSource : null,
+    labelSource: typeof labelSource === "string" ? labelSource : null,
+    ...(manual ? { manualName: true } : {}),
+  };
+}
+
+function labelText(run: WatchRun): string | null {
+  return run.label ?? null;
 }
 
 function tokenOf(run: WatchRun): WatchToken {
@@ -50,7 +80,8 @@ function tokenOf(run: WatchRun): WatchToken {
     title: run.title,
     lamp,
     worker: workerOf(run, lamp),
-    ticket: ticketOf(run),
+    ticket: labelText(run),
+    pullRequestNumber: run.pullRequest?.number ?? null,
     startedAt: run.currentStep.startedAt,
   };
 }
@@ -126,7 +157,7 @@ function tilesOf(run: WatchRun): WatchTile[] {
     {
       runId: run.runId,
       workflowId: run.workflowId,
-      ticket: ticketOf(run),
+      ticket: labelText(run),
       pullRequestNumber: run.pullRequest?.number ?? null,
       title: run.title ?? run.runId,
       startedAt,

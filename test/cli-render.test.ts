@@ -70,6 +70,7 @@ await test("CLV-008 the human form of each result has its fixed lines", () => {
     [
       "Run run-1 (develop)",
       "Title: none",
+      "Label: none",
       "State: running",
       "Outcome: none",
       "Condition: quota-wait",

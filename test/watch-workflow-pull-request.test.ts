@@ -140,7 +140,7 @@ for (const workflowId of ["develop", "custom-workflow"]) {
     const html = rendered(
       component(Card, { card, workflowId, now: model.updatedAt }),
     );
-    assert.match(html, /review-pill">#7</);
+    assert.match(html, /card-pull">PR #7</);
     assert.match(html, /review-pill">5\/5</);
     assert.match(html, /PR merged · #7/);
     const data = record(JSON.parse(JSON.stringify(model)));

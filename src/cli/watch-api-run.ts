@@ -12,6 +12,9 @@ export interface ApiRun {
   readonly workflowId: string;
   readonly ticketId: string | null;
   readonly title: string | null;
+  readonly titleSource: string | null;
+  readonly label: string | null;
+  readonly labelSource: string | null;
   readonly state: string;
   readonly outcome: string | null;
   readonly currentStep: {
@@ -63,6 +66,9 @@ export function runOf(run: WatchRun): ApiRun {
     workflowId: run.workflowId,
     ticketId: run.ticketId,
     title: run.title,
+    titleSource: run.titleSource ?? null,
+    label: run.label ?? null,
+    labelSource: run.labelSource ?? null,
     state: run.state,
     outcome: run.outcome,
     currentStep: { name: currentStep.name, startedAt: currentStep.startedAt },

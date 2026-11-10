@@ -372,6 +372,9 @@ await test("CLV-016 the watch model orders the runs with the newest first and gi
       ],
       turns: [],
       phases: selected.phases,
+      label: null,
+      titleSource: null,
+      labelSource: null,
     }),
   );
   assert.deepEqual(

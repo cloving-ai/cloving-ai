@@ -34,6 +34,8 @@ import {
   runCommandLines,
   runContinuedLines,
   runDismissedLines,
+  nameLines,
+  runRenamedLines,
 } from "./run-command-render.ts";
 export { oneLine } from "./terminal-text.ts";
 export { errorText } from "./error-render.ts";
@@ -251,7 +253,7 @@ export function runStatus(result: Fields): readonly string[] {
   return [
     `Run ${show(part(run, "runId"))} (${show(part(run, "workflowId"))})`,
     ...[loopText(run)].filter((mark) => mark !== ""),
-    `Title: ${visible(part(run, "title") ?? "none")}`,
+    ...nameLines(run),
     `State: ${show(part(run, "state"))}`,
     ...outcomeLines(part(run, "outcome")),
     ...ciLines(run),
@@ -371,6 +373,7 @@ const renderers = new Map<string, (result: Fields) => readonly string[]>([
   ["run-continued", runContinuedLines],
   ["run-dismissed", runDismissedLines],
   ["run-noted", runNotedLines],
+  ["run-renamed", runRenamedLines],
   ["queue", (result) => queueLines(result["queue"])],
   ["queue-command", (result) => queueLines(result["queue"])],
   ["event-page", eventPage],

@@ -225,6 +225,8 @@ function cardOf(run: WatchRun, runs: readonly WatchRun[]): WatchCard {
     spent: run.spent,
     limit: run.limit,
     title: run.title,
+    ...(run.label == null ? {} : { label: run.label }),
+    ...(run.manualName === undefined ? {} : { manualName: run.manualName }),
     ...linksOf(run),
     ...(run.awaitedRunId == null ? {} : { awaitedRunId: run.awaitedRunId }),
     completionMark: completionMarkOf(run, runs),

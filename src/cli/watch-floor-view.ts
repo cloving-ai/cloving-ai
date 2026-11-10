@@ -54,7 +54,15 @@ export function Token(props: {
     title: token.title ?? token.runId,
     children: [
       element("span", { class: "token-worker", children: token.worker }),
-      element("span", { class: "token-ticket", children: token.ticket }),
+      token.ticket === null
+        ? null
+        : element("span", { class: "token-ticket", children: token.ticket }),
+      token.pullRequestNumber === null
+        ? null
+        : element("span", {
+            class: "token-pull",
+            children: `PR #${String(token.pullRequestNumber)}`,
+          }),
       element("span", {
         class: "token-time",
         children: stepAge(token.startedAt, now),

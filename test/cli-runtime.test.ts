@@ -28,6 +28,7 @@ const commands = [
   "resume",
   "drop",
   "dismiss",
+  "rename",
   "events",
   "watch",
   "start",

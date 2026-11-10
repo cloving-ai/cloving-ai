@@ -22,7 +22,7 @@ const readHead = (pr) => {
   return visibleHead(pr);
 };
 const url = (number) => "https://github.com/acme/demo/pull/" + number;
-const view = (pr) => ({ number: pr.number, url: url(pr.number), state: pr.state, headRefOid: pr.state === "OPEN" ? headOf(pr.head) : pr.mergedHead });
+const view = (pr) => ({ number: pr.number, url: url(pr.number), title: pr.title, state: pr.state, headRefOid: pr.state === "OPEN" ? headOf(pr.head) : pr.mergedHead });
 const out = (value) => {
   if (!failure?.after) process.stdout.write(typeof value === "string" ? value + "\\n" : JSON.stringify(value));
 };

@@ -4,6 +4,11 @@ import {
   RunCommandReplies,
   type RunCommandControls,
 } from "./watch-run-command-view.ts";
+import {
+  NameMarks,
+  RenameAction,
+  type RenameControls,
+} from "./watch-rename-view.ts";
 import { loopText, scheduleStatusLine } from "./schedule-render.ts";
 import { CommandWaits, effectBudgetText } from "./command-waits.ts";
 import { AddCard, type CardControls } from "./watch-card-view.ts";
@@ -56,9 +61,6 @@ export function cardReview(card: WatchCard): string {
   return [
     card.round === null ? null : `round ${String(card.round)}`,
     card.greptileScore === null ? null : `${String(card.greptileScore)}/5`,
-    card.pullRequestNumber === null
-      ? null
-      : `#${String(card.pullRequestNumber)}`,
   ]
     .filter((part) => part !== null)
     .join(" · ");
@@ -149,6 +151,7 @@ interface CardProps {
   readonly card: WatchCard;
   readonly steering?: SteerControls | undefined;
   readonly controlling?: RunCommandControls | undefined;
+  readonly renaming?: RenameControls | undefined;
   readonly workflowId: string;
   readonly repository?: string | undefined;
   readonly now: string;
@@ -168,6 +171,11 @@ export function Card(props: CardProps): Shown {
         children: [
           element("strong", {
             children: card.title ?? card.runId.slice(0, 12),
+          }),
+          component(NameMarks, {
+            tone: "card",
+            label: card.label,
+            pullRequestNumber: card.pullRequestNumber,
           }),
           element("span", {
             class:
@@ -199,6 +207,7 @@ export function Card(props: CardProps): Shown {
         steering: props.steering,
         controlling: props.controlling,
       }),
+      component(RenameAction, { run: card, renaming: props.renaming }),
       completionMark(card, { ...props, now: props.observationNow ?? now }),
       element("span", {
         class: "meta",
@@ -274,6 +283,7 @@ interface ColumnProps {
   readonly controls?: ColumnControls | undefined;
   readonly steering?: SteerControls | undefined;
   readonly controlling?: RunCommandControls | undefined;
+  readonly renaming?: RenameControls | undefined;
   readonly words?: WatchWords | undefined;
 }
 
@@ -331,6 +341,7 @@ export function Board(props: {
   readonly controls?: ColumnControls | undefined;
   readonly steering?: SteerControls | undefined;
   readonly controlling?: RunCommandControls | undefined;
+  readonly renaming?: RenameControls | undefined;
   readonly words?: WatchWords | undefined;
 }): Shown {
   const { workflow, now, words } = props;
@@ -366,6 +377,7 @@ export function Board(props: {
             controls: props.controls,
             steering: props.steering,
             controlling: props.controlling,
+            renaming: props.renaming,
             words,
             addCard:
               index === 0

@@ -43,7 +43,7 @@ import {
   waitingText,
 } from "./watch-transcript-view.ts";
 import { RunNotes } from "./watch-notes-view.ts";
-import { steerFunctions } from "./watch-steer-view.ts";
+import { runActionFunctions } from "./watch-rename-view.ts";
 import { runCommandFunctions } from "./watch-run-command-view.ts";
 import { watchRunCommandClient } from "./watch-run-command-client.ts";
 import { watchPhoneClient } from "./watch-phone-client.ts";
@@ -167,6 +167,7 @@ import {
   Group,
   Review,
   Item,
+  RunTotals,
   Turn,
   Work,
 } from "./watch-turn.ts";
@@ -179,7 +180,6 @@ import {
   Phases,
   PullRequest,
   Run,
-  RunTotals,
   RunTurns,
 } from "./watch-view.ts";
 import {
@@ -266,7 +266,7 @@ const functions = [
   Card,
   HandoffLinks,
   RunNotes,
-  ...steerFunctions,
+  ...runActionFunctions,
   ...runCommandFunctions,
   Column,
   columnCollapsed,

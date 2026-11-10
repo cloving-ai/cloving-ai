@@ -64,14 +64,13 @@ export function outcomeNotification(run: Fields): NotifyEvent | undefined {
     run["state"] === "completed" && outcome?.["kind"] === "blocked";
   if (!blocked && run["state"] !== "failed") return undefined;
   const event = blocked ? "blocked" : "failed";
-  const lines = runStatus({ run });
+  const wanted = blocked ? "Outcome:" : "Reason:";
+  const line = runStatus({ run }).find((text) => text.startsWith(wanted));
   return {
     key: `${event}:${String(run["runId"])}`,
     message: message(run, {
       event,
-      body: body(String(lines[blocked ? 3 : 5]), [
-        `cloving status ${String(run["runId"])}`,
-      ]),
+      body: body(String(line), [`cloving status ${String(run["runId"])}`]),
     }),
   };
 }

@@ -2,6 +2,7 @@ import {
   decisionRequest,
   readCommandReply,
   dismissRequest,
+  renameRequest,
   steerRequest,
   readCommandRequest,
   runCommandRequest,
@@ -238,6 +239,15 @@ function dismiss(
   });
 }
 
+function rename(
+  environment: Located,
+  invocation: Invoked<"rename">,
+): Promise<number> {
+  const format = identified(environment, invocation);
+  const request = renameRequest({ ...invocation, commandId: format.commandId });
+  return mutated(environment, { format, request });
+}
+
 function steer(
   environment: Located,
   invocation: Invoked<"steer">,
@@ -303,13 +313,17 @@ export function runtimeCommand(
   if (invocation.kind === "watch") return watch(placed, invocation);
   if (invocation.kind === "dismiss") return dismiss(placed, invocation);
   if (invocation.kind === "steer") return steer(placed, invocation);
+  if (invocation.kind === "rename") return rename(placed, invocation);
   return located(invocation, placed);
 }
 
 function located(
   invocation: Exclude<
     RuntimeInvocation,
-    { kind: "command-help" | "restart" | "watch" | "dismiss" | "steer" }
+    {
+      kind:
+        "command-help" | "restart" | "watch" | "dismiss" | "steer" | "rename";
+    }
   >,
   environment: Located,
 ): Promise<number> {

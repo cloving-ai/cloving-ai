@@ -140,6 +140,7 @@ await test("CLV-063 the GitHub worker pushes the branch and opens one pull reque
       number: 1,
       url: pullUrl,
       commit: first,
+      title,
     });
     assert.equal(git(scene.origin, ["rev-parse", "cloving/ticket-one"]), first);
     const second = committed(tree(scene), { name: "two.ts", text: "2;\n" });
@@ -148,6 +149,7 @@ await test("CLV-063 the GitHub worker pushes the branch and opens one pull reque
       number: 1,
       url: pullUrl,
       commit: second,
+      title,
     });
     assert.equal(
       git(scene.origin, ["rev-parse", "cloving/ticket-one"]),
