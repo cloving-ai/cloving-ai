@@ -171,18 +171,6 @@ export async function checkProjectSources(
   return { program, files, completed };
 }
 
-function testSelection(
-  options: ProjectOptions,
-): Pick<ProjectOptions, "shard" | "testSet" | "changedPaths"> {
-  return {
-    ...(options.shard === undefined ? {} : { shard: options.shard }),
-    ...(options.testSet === undefined ? {} : { testSet: options.testSet }),
-    ...(options.changedPaths === undefined
-      ? {}
-      : { changedPaths: options.changedPaths }),
-  };
-}
-
 async function checkProjectTests(
   directory: string,
   checked: {
@@ -210,7 +198,9 @@ async function checkProjectTests(
       ? { commandOptions: options.commandOptions }
       : {}),
     timeFactor: options.timeFactor ?? 1,
-    ...testSelection(options),
+    shard: options.shard,
+    testSet: options.testSet,
+    changedPaths: options.changedPaths,
     ...(options.coverageDirectory === undefined
       ? {}
       : { coverageDirectory: options.coverageDirectory }),

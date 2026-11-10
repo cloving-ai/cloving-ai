@@ -67,9 +67,9 @@ export interface TestExecutionOptions {
   readonly commandOptions?: CommandOptions;
   readonly timeFactor?: number;
   readonly coverageFiles?: readonly string[];
-  readonly shard?: string;
-  readonly testSet?: TestSet;
-  readonly changedPaths?: readonly string[];
+  readonly shard?: string | undefined;
+  readonly testSet?: TestSet | undefined;
+  readonly changedPaths?: readonly string[] | undefined;
   readonly coverageDirectory?: string;
   readonly requiredTests?: Readonly<Record<string, readonly string[]>>;
 }
