@@ -5,9 +5,9 @@ import { channelMessage } from "../channel-message.ts";
 import type { Fields } from "../protocol.ts";
 import type { ChannelMessage } from "../channel-message.ts";
 import {
-  alertScan,
+  openScheduleAlerts,
   runAlerts,
-  scheduleAlerts,
+  runScan,
   type RunCache,
 } from "./alert-reads.ts";
 import { prunedSent, recordSent, sentEntries } from "./channel-journal.ts";
@@ -81,7 +81,10 @@ async function delivered(watch: Watch, alert: Alert): Promise<void> {
 async function scanned(watch: Watch): Promise<void> {
   for (const key of (await sentEntries(watch.journal)).keys())
     watch.sent.add(key);
-  const alerts = await alertScan(watch.runtimeDirectory, watch.cache);
+  const alerts = [
+    ...(await runScan(watch.runtimeDirectory, watch.cache)),
+    ...(await openScheduleAlerts(watch.runtimeDirectory)),
+  ];
   for (const alert of alerts) await delivered(watch, alert);
   const open = new Set(alerts.map((alert) => alert.key));
   await prunedSent(
@@ -91,7 +94,7 @@ async function scanned(watch: Watch): Promise<void> {
 }
 
 async function scheduled(watch: Watch): Promise<void> {
-  for (const alert of await scheduleAlerts(watch.runtimeDirectory))
+  for (const alert of await openScheduleAlerts(watch.runtimeDirectory))
     await delivered(watch, alert);
 }
 

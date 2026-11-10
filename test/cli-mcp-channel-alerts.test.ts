@@ -46,6 +46,7 @@ const stoppedRuns = {
     runId: "run-paused0000",
     workflowId: "develop",
     state: "paused",
+    revision: 2,
     title: "Paused work",
     reason: { code: "paused", detail: "The operator paused the run." },
   },
@@ -75,6 +76,17 @@ const scheduleStop = {
       stoppedAt: 900_000,
       stoppedSlot: 3,
       failedRunIds: ["run-one", "run-two", "run-three00000"],
+    },
+  ],
+};
+
+const resumedStop = {
+  workflowId: "review",
+  stops: [
+    {
+      stoppedAt: 800_000,
+      stoppedSlot: 2,
+      failedRunIds: ["run-a", "run-b", "run-resumed00"],
     },
   ],
 };
@@ -159,7 +171,7 @@ await test("CLV-338 paused, failed and blocked runs and a stopped schedule each 
     );
   }));
 
-await test("CLV-338 a server start sends the open items and skips continued and dismissed runs", () =>
+await test("CLV-338 a server start sends the open items and skips continued and dismissed runs and resumed schedules", () =>
   withHarness(async (harness) => {
     const service = await channelService(harness.runtimeDirectory);
     harness.cleanup(() => service.close());
@@ -178,7 +190,9 @@ await test("CLV-338 a server start sends the open items and skips continued and 
     );
     service.run(approvalRun, "run.started");
     service.decide(approval);
-    service.state.stops.push(scheduleStop);
+    service.stopped(scheduleStop);
+    service.stopped(resumedStop);
+    service.resumed(resumedStop.workflowId);
     const server = await channelServer({ runtime: harness.runtimeDirectory });
     harness.cleanup(() => {
       server.child.kill();

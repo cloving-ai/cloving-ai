@@ -86,6 +86,7 @@ await test("CLV-338 channel content of a stop with no detail ends the state sent
     runId: "run-paused0000",
     workflowId: "develop",
     state: "paused",
+    revision: 2,
     title: "",
     ticketId: `CLV-1 ${token}`,
   });

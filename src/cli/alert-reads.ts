@@ -2,6 +2,7 @@ import {
   decisionAlert,
   runAlert,
   scheduleStopAlerts,
+  stoppedScheduleAlert,
   type Alert,
 } from "../alert-selection.ts";
 import { record, type Fields, type ServiceRequest } from "../protocol.ts";
@@ -40,17 +41,31 @@ function shownRun(status: Fields): Fields {
   return run;
 }
 
-export async function scheduleAlerts(
-  runtimeDirectory: string,
-): Promise<readonly Alert[]> {
+async function scheduleList(runtimeDirectory: string): Promise<Fields> {
   const reply = await send(runtimeDirectory, {
     operation: "schedule",
     parameters: { action: "list" },
   });
-  if (reply.kind !== "error")
-    return rows(reply.result["stops"]).flatMap(scheduleStopAlerts);
-  if (reply.error.code === "schedules-unavailable") return [];
+  if (reply.kind !== "error") return reply.result;
+  if (reply.error.code === "schedules-unavailable")
+    return { stops: [], schedules: [] };
   throw new Error(reply.error.code);
+}
+
+export async function scheduleAlerts(
+  runtimeDirectory: string,
+): Promise<readonly Alert[]> {
+  const list = await scheduleList(runtimeDirectory);
+  return rows(list["stops"]).flatMap(scheduleStopAlerts);
+}
+
+export async function openScheduleAlerts(
+  runtimeDirectory: string,
+): Promise<readonly Alert[]> {
+  const list = await scheduleList(runtimeDirectory);
+  return rows(list["schedules"]).flatMap(
+    (schedule) => stoppedScheduleAlert(schedule) ?? [],
+  );
 }
 
 async function observedRun(
@@ -100,7 +115,7 @@ async function scannedRuns(
   return runs;
 }
 
-export async function alertScan(
+export async function runScan(
   runtimeDirectory: string,
   cache: RunCache,
 ): Promise<readonly Alert[]> {
@@ -116,7 +131,7 @@ export async function alertScan(
     const run = runs.get(String(decision["runId"]));
     if (run !== undefined) found.push(decisionAlert(run, decision));
   }
-  return [...found, ...(await scheduleAlerts(runtimeDirectory))];
+  return found;
 }
 
 export async function runAlerts(

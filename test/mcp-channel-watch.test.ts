@@ -48,7 +48,7 @@ await test("CLV-338 the channel reads stopped schedules on its own interval", ()
     const watch = watching(harness.runtimeDirectory);
     harness.cleanup(() => watch.stop());
     await delay(testMilliseconds(100));
-    service.state.stops.push({
+    service.stopped({
       workflowId: "patrol",
       stops: [
         {

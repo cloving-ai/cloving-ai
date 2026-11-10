@@ -99,14 +99,24 @@ await test("CLV-148 automatic analysis notifications keep question text private 
 });
 
 await test("CLV-338 a paused run notifies with its reason and status command", () => {
-  const paused = outcomeNotification({
+  const pausedRun = {
     runId: "run-paused",
     workflowId: "develop-ticket",
     state: "paused",
+    revision: 4,
     reason: { code: "paused", detail: "The operator paused the run." },
-  });
+  };
+  const paused = outcomeNotification(pausedRun);
   assert.ok(paused);
-  assert.equal(paused.key, "paused:run-paused");
+  assert.equal(paused.key, "paused:run-paused:4");
+  assert.equal(
+    outcomeNotification({ ...pausedRun, revision: 6 })?.key,
+    "paused:run-paused:6",
+  );
+  assert.throws(
+    () => outcomeNotification({ ...pausedRun, revision: undefined }),
+    /invalid-alert-revision/,
+  );
   assert.equal(paused.message.event, "paused");
   assert.equal(paused.message.subject, "Cloving: develop-ticket paused");
   assert.equal(

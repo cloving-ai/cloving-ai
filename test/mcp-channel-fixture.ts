@@ -9,6 +9,7 @@ export interface ChannelState {
   readonly runs: Map<string, Fields>;
   readonly decisions: Fields[];
   readonly stops: Fields[];
+  readonly schedules: Fields[];
   readonly events: Fields[];
   readonly requests: Fields[];
   readonly failing: Set<string>;
@@ -83,7 +84,7 @@ function served(state: ChannelState, changed: () => Promise<void>): Handle {
         ),
       });
     if (operation === "schedule")
-      return answer({ stops: state.stops, schedules: [] });
+      return answer({ stops: state.stops, schedules: state.schedules });
     if (parameters["follow"] === true)
       return followed(state, {
         after: Number(parameters["after"]),
@@ -94,11 +95,36 @@ function served(state: ChannelState, changed: () => Promise<void>): Handle {
   };
 }
 
+function stoppedSchedule(state: ChannelState, stop: Fields): void {
+  const history = stop["stops"];
+  const last = fields(Array.isArray(history) ? history.at(-1) : undefined);
+  state.stops.push(stop);
+  state.schedules.push({
+    workflowId: stop["workflowId"],
+    state: "stopped",
+    stoppedSlot: last["stoppedSlot"],
+    failedRunIds: last["failedRunIds"],
+  });
+}
+
+function resumedSchedule(state: ChannelState, workflowId: string): void {
+  const index = state.schedules.findIndex(
+    (schedule) => schedule["workflowId"] === workflowId,
+  );
+  state.schedules[index] = {
+    workflowId,
+    state: "active",
+    stoppedSlot: null,
+    failedRunIds: [],
+  };
+}
+
 export async function channelService(runtime: string) {
   const state: ChannelState = {
     runs: new Map(),
     decisions: [],
     stops: [],
+    schedules: [],
     events: [],
     requests: [],
     failing: new Set(),
@@ -141,8 +167,14 @@ export async function channelService(runtime: string) {
       recorded(String(decision["runId"]), "gate.opened");
     },
     stop: (stop: Fields, runId: string): void => {
-      state.stops.push(stop);
+      stoppedSchedule(state, stop);
       recorded(runId, "run.failed");
+    },
+    stopped: (stop: Fields): void => {
+      stoppedSchedule(state, stop);
+    },
+    resumed: (workflowId: string): void => {
+      resumedSchedule(state, workflowId);
     },
   };
 }

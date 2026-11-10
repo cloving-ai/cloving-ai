@@ -79,6 +79,7 @@ const pausedRun = {
   runId: "run-paused0000",
   workflowId: "develop",
   state: "paused",
+  revision: 2,
   title: "Alpha Secret work",
   reason: { code: "paused", detail: "The operator paused the run." },
 };

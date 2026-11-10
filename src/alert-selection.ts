@@ -37,10 +37,18 @@ function stoppedKind(run: Fields): RunAlertKind | undefined {
   return blocked ? "blocked" : undefined;
 }
 
+function runAlertKey(kind: RunAlertKind, run: Fields): string {
+  const key = `${kind}:${String(run["runId"])}`;
+  if (kind !== "paused") return key;
+  const revision = run["revision"];
+  if (typeof revision !== "number") throw new Error("invalid-alert-revision");
+  return `${key}:${String(revision)}`;
+}
+
 export function runAlert(run: Fields): Alert | undefined {
   const kind = stoppedKind(run);
   if (kind === undefined) return undefined;
-  return { kind, key: `${kind}:${String(run["runId"])}`, run };
+  return { kind, key: runAlertKey(kind, run), run };
 }
 
 export function stoppedScheduleAlert(schedule: Fields): Alert | undefined {
