@@ -1,6 +1,6 @@
 import packageMetadata from "#package" with { type: "json" };
 import { maximumFrameBytes, record, type Fields } from "../protocol.ts";
-import { channelAlerts } from "./mcp-channel.ts";
+import { channelAlerts, type ChannelSource } from "./mcp-channel.ts";
 import { mcpTools, mcpToolCall, callMcpTool } from "./mcp-tools.ts";
 
 const versions = ["2025-11-25", "2025-06-18", "2025-03-26"];
@@ -103,6 +103,15 @@ const channelInstructions = [
   "Continue a failed or blocked run with cloving_continue, or dismiss it with cloving_dismiss.",
 ].join(" ");
 
+const workspaceInstructions =
+  "In a workspace, the repository attribute names the repository of the run. Give it as the repository argument of each tool.";
+
+function instructions(channel: readonly ChannelSource[]): string {
+  return channel.some((source) => source.repositoryName !== undefined)
+    ? `${channelInstructions} ${workspaceInstructions}`
+    : channelInstructions;
+}
+
 function initialize(parameters: Fields, options: ServerOptions): Fields {
   const version = parameters["protocolVersion"];
   return {
@@ -116,7 +125,7 @@ function initialize(parameters: Fields, options: ServerOptions): Fields {
         : { tools: {} },
     serverInfo: { name: "cloving", version: packageMetadata.version },
     ...(options.channel !== undefined
-      ? { instructions: channelInstructions }
+      ? { instructions: instructions(options.channel) }
       : {}),
   };
 }
@@ -177,7 +186,9 @@ interface Session {
   readonly options: ServerOptions;
   readonly calls: Map<string | number, AbortController>;
   readonly pending: Set<Promise<void>>;
-  readonly channel: { watcher?: { readonly stop: () => Promise<void> } };
+  readonly channel: {
+    watchers?: readonly { readonly stop: () => Promise<void> }[];
+  };
 }
 
 function write(reply: Fields): void {
@@ -195,8 +206,10 @@ function written(message: Fields): Promise<void> {
 
 function watchChannel(session: Session): void {
   const { channel } = session.options;
-  if (channel === undefined || session.channel.watcher !== undefined) return;
-  session.channel.watcher = channelAlerts({ ...channel, write: written });
+  if (channel === undefined || session.channel.watchers !== undefined) return;
+  session.channel.watchers = channel.map((source) =>
+    channelAlerts({ ...source, write: written }),
+  );
 }
 
 function notified(request: Fields, session: Session): void {
@@ -239,17 +252,12 @@ function dispatch(message: Message, session: Session): void {
 }
 
 export interface ServerOptions {
-  readonly channel?: {
-    readonly runtimeDirectory: string;
-    readonly privateTexts: readonly string[];
-  };
+  readonly channel?: readonly ChannelSource[];
 }
 
 export async function mcpServer(
   runtimeDirectory: string | undefined,
-  options: {
-    readonly channel?: { readonly privateTexts: readonly string[] };
-  } = {},
+  options: ServerOptions = {},
 ): Promise<number> {
   if (runtimeDirectory === undefined) {
     process.stderr.write(
@@ -257,11 +265,7 @@ export async function mcpServer(
     );
     return 2;
   }
-  const { channel } = options;
-  return servedMcp(
-    repositoryTarget(runtimeDirectory),
-    channel === undefined ? {} : { channel: { ...channel, runtimeDirectory } },
-  );
+  return servedMcp(repositoryTarget(runtimeDirectory), options);
 }
 
 export async function servedMcp(
@@ -277,6 +281,8 @@ export async function servedMcp(
   };
   for await (const line of messages()) dispatch(parse(line), session);
   await Promise.all(session.pending);
-  await session.channel.watcher?.stop();
+  await Promise.all(
+    (session.channel.watchers ?? []).map((watcher) => watcher.stop()),
+  );
   return 0;
 }

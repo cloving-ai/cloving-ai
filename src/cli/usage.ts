@@ -18,7 +18,7 @@ cloving reload applies changes of profiles, fallbackModels, tokenPrices, workflo
 
 export const commandUsage: Readonly<Record<string, string>> = {
   mcp: `Usage: cloving mcp [--repository <directory>] [--channel]
-       cloving mcp --workspace
+       cloving mcp --workspace [--channel]
        cloving mcp --connection <name> [--state-dir <directory>]
 
 Serves cloving_status, cloving_questions and cloving_events as read tools over stdio.
@@ -35,6 +35,7 @@ one repository. A read tool with no repository argument reads each repository.
 Standard output contains only JSON-RPC messages. Diagnostics use standard error.
 --channel tells a connected Claude Code session when a run needs you: a pending
 decision, a paused run, a failed or blocked run, or a stopped schedule.
+With --workspace, each channel message names its repository.
 --connection launches the encrypted remote bridge from the Cloving relay integration package.
 Pair the harness first with cloving integrations pair mcp --name <name>.
 On the workflow computer, use cloving integrations connect mcp, approve mcp and serve mcp.

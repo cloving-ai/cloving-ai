@@ -3,6 +3,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import type { Alert } from "../alert-selection.ts";
 import { channelMessage } from "../channel-message.ts";
 import type { Fields } from "../protocol.ts";
+import type { ChannelMessage } from "../channel-message.ts";
 import {
   alertScan,
   runAlerts,
@@ -11,6 +12,7 @@ import {
 } from "./alert-reads.ts";
 import { prunedSent, recordSent, sentEntries } from "./channel-journal.ts";
 import { follow, send } from "./client.ts";
+import { settingsEnvironment } from "./project-settings.ts";
 
 interface ChannelTiming {
   readonly retryMilliseconds: number;
@@ -18,9 +20,13 @@ interface ChannelTiming {
   readonly burstMilliseconds: number;
 }
 
-export interface ChannelPlace {
+export interface ChannelSource {
   readonly runtimeDirectory: string;
   readonly privateTexts: readonly string[];
+  readonly repositoryName?: string;
+}
+
+export interface ChannelPlace extends ChannelSource {
   readonly write: (message: Fields) => Promise<void>;
   readonly timing?: ChannelTiming;
 }
@@ -51,13 +57,23 @@ function alertRun(alert: Alert): string {
     : String(alert.run["runId"]);
 }
 
+function sentMessage(watch: Watch, alert: Alert): ChannelMessage {
+  const message = channelMessage(alert, watch.privateTexts);
+  return watch.repositoryName === undefined
+    ? message
+    : {
+        ...message,
+        meta: { ...message.meta, repository: watch.repositoryName },
+      };
+}
+
 async function delivered(watch: Watch, alert: Alert): Promise<void> {
   if (watch.sent.has(alert.key)) return;
   watch.sent.add(alert.key);
   await watch.write({
     jsonrpc: "2.0",
     method: "notifications/claude/channel",
-    params: channelMessage(alert, watch.privateTexts),
+    params: sentMessage(watch, alert),
   });
   await recordSent(watch.journal, { key: alert.key, runId: alertRun(alert) });
 }
@@ -178,4 +194,28 @@ export function channelTexts(
     return undefined;
   }
   return undefined;
+}
+
+export function channelSource(
+  environment: Readonly<NodeJS.ProcessEnv>,
+  place: {
+    readonly runtimeDirectory: string;
+    readonly repository: string | undefined;
+    readonly repositoryName?: string;
+  },
+): ChannelSource | undefined {
+  const { repository, ...source } = place;
+  const privateTexts = channelTexts(
+    repository === undefined
+      ? environment
+      : settingsEnvironment(environment, repository),
+  );
+  return privateTexts === undefined ? undefined : { ...source, privateTexts };
+}
+
+export function refusedPrivateTexts(): Promise<number> {
+  process.stderr.write(
+    "invalid-private-texts: CLOVING_PRIVATE_TEXTS is not a JSON list of texts.\n",
+  );
+  return Promise.resolve(2);
 }

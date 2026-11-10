@@ -161,11 +161,12 @@ export async function channelServer(input: {
   readonly runtime: string;
   readonly directory?: string;
   readonly environment?: NodeJS.ProcessEnv;
+  readonly argumentsList?: readonly string[];
 }) {
   const server = startMcp({
     runtime: input.runtime,
     directory: input.directory ?? input.runtime,
-    argumentsList: ["--channel"],
+    argumentsList: input.argumentsList ?? ["--channel"],
     ...(input.environment === undefined
       ? {}
       : { environment: input.environment }),

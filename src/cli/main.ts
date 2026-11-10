@@ -16,10 +16,9 @@ import { workspaceCommand } from "./workspace-status.ts";
 import type { RuntimeInvocation } from "./runtime-invocation.ts";
 import type { WorkspaceRecord } from "./workspace-record.ts";
 import { themesCommand } from "./themes-command.ts";
-import { channelTexts } from "./mcp-channel.ts";
+import { channelSource, refusedPrivateTexts } from "./mcp-channel.ts";
 import { mcpServer } from "./mcp-server.ts";
 import { workspaceMcpServer } from "./mcp-workspace.ts";
-import { settingsEnvironment } from "./project-settings.ts";
 import { clientCommand, runtimeDirectory } from "./runtime-directory.ts";
 import {
   commandUsage,
@@ -107,21 +106,18 @@ function mcpCommand(
   },
 ): Promise<number> {
   if (invocation.workspace === true)
-    return workspaceMcpServer(context.workspace);
+    return workspaceMcpServer(context.workspace, invocation);
   const { repository } = context;
   const runtime = runtimeDirectory(process.env, repository);
-  if (invocation.channel === undefined) return mcpServer(runtime);
-  const privateTexts = channelTexts(
-    repository === undefined
-      ? process.env
-      : settingsEnvironment(process.env, repository),
-  );
-  if (privateTexts !== undefined)
-    return mcpServer(runtime, { channel: { privateTexts } });
-  process.stderr.write(
-    "invalid-private-texts: CLOVING_PRIVATE_TEXTS is not a JSON list of texts.\n",
-  );
-  return Promise.resolve(2);
+  if (invocation.channel === undefined || runtime === undefined)
+    return mcpServer(runtime);
+  const source = channelSource(process.env, {
+    runtimeDirectory: runtime,
+    repository,
+  });
+  return source === undefined
+    ? refusedPrivateTexts()
+    : mcpServer(runtime, { channel: [source] });
 }
 
 function serviceCommand(
