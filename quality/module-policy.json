@@ -1656,6 +1656,7 @@
     "test/queue-spend.test.ts": "test",
     "test/queue-state-display.test.ts": "test",
     "test/queue-status.test.ts": "test",
+    "test/readme-ci.test.ts": "test",
     "test/readme.test.ts": "test",
     "test/reconciliation.test.ts": "test",
     "test/record-archive.test.ts": "test",
