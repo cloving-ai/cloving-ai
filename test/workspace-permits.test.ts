@@ -367,3 +367,20 @@ await test("CLV-312 the supervisor closes the connection of a held permit, and a
     server.close();
   }
 });
+
+await test("CLV-312 a permit that ends while another request reads the repositories still counts toward the workspace lanes", async () => {
+  const alpha = state(0);
+  const beta: MemberState = { ...state(0), answerMilliseconds: 300 };
+  await withPermits({ limits: { lanes: 1 }, alpha, beta }, async (permit) => {
+    const first = await permit();
+    assert.ok(first.kind === "admitted");
+    const second = permit();
+    await delay(100);
+    alpha.busy = 1;
+    first.release();
+    await delay(50);
+    const answer = await second;
+    assert.ok(answer.kind === "held");
+    assert.equal(answer.hold.reason, "workspace-lanes");
+  });
+});

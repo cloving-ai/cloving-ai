@@ -112,14 +112,12 @@ interface Serving {
 
 function permitted(serving: Serving, socket: net.Socket): void {
   serving.turn = serving.turn.then(async () => {
+    const permits = serving.permits;
     const members = await memberReadings(serving);
     if (socket.destroyed) return;
     const hold =
       serving.restart.hold() ??
-      workspaceHold(serving.settings.limits, {
-        members,
-        permits: serving.permits,
-      });
+      workspaceHold(serving.settings.limits, { members, permits });
     if (hold !== undefined) {
       socket.end(replyLine(permitReply(hold)));
       return;
