@@ -13,6 +13,7 @@ import {
   type Waiting,
 } from "./restart-command.ts";
 import { refusedWorkflowLines } from "./restart-render.ts";
+import { show } from "./terminal-text.ts";
 import { argumentRules } from "./runtime-invocation.ts";
 import { daemonWorkReads } from "./work-reads.ts";
 import type { WorkspaceMember } from "./workspace-record.ts";
@@ -37,6 +38,19 @@ interface Restarting {
 }
 
 type MemberOutcome = Exclude<Waited, { readonly kind: "interrupted" }>;
+
+interface FailedEntry {
+  readonly name: string;
+  readonly error: string;
+  readonly refusedWorkflows?: readonly string[];
+}
+
+interface RestartedEntry {
+  readonly name: string;
+  readonly serviceStartedAt: unknown;
+}
+
+type MemberEntry = FailedEntry | RestartedEntry;
 
 const restartHold: WorkspaceHold = {
   reason: "workspace-restart",
@@ -124,12 +138,12 @@ async function settledMember(
 function settledEntry(
   name: string,
   outcome: MemberOutcome & { readonly before: Fields },
-): Fields {
+): MemberEntry {
   if (outcome.kind === "cancelled") return { name, error: "restart-cancelled" };
   if (outcome.kind === "unanswered")
     return { name, error: "restart-start-unanswered" };
   if (outcome.kind === "failed")
-    return { name, error: String(outcome.failure["code"]) };
+    return { name, error: show(outcome.failure["code"]) };
   const refusedWorkflows = refusedWorkflowLines(outcome.before, outcome.after);
   if (refusedWorkflows.length > 0)
     return { name, error: "restart-workflow-refused", refusedWorkflows };
@@ -142,7 +156,7 @@ async function restartedMember(
     readonly request: RestartRequest;
     readonly restarting: Restarting;
   },
-): Promise<Fields> {
+): Promise<MemberEntry> {
   const { request, restarting } = input;
   const reply = await send(member.runtime, {
     operation: "restart",
@@ -165,16 +179,12 @@ async function restartedMember(
   return settledEntry(member.name, { ...outcome, before: reply.result });
 }
 
-function failedDetail(failed: readonly Fields[]): string {
+function failedDetail(failed: readonly FailedEntry[]): string {
   const names = failed
-    .map((entry) => `${String(entry["name"])} (${String(entry["error"])})`)
+    .map((entry) => `${entry.name} (${entry.error})`)
     .join(", ");
   const workflows = failed.flatMap((entry) =>
-    Array.isArray(entry["refusedWorkflows"])
-      ? entry["refusedWorkflows"].map(
-          (line: unknown) => `${String(entry["name"])}: ${String(line)}`,
-        )
-      : [],
+    (entry.refusedWorkflows ?? []).map((line) => `${entry.name}: ${line}`),
   );
   return [
     `The restart failed in these repositories: ${names}.`,
@@ -191,7 +201,9 @@ async function restartedWorkspace(
   const repositories = await Promise.all(
     members.map((member) => restartedMember(member, { request, restarting })),
   );
-  const failed = repositories.filter((entry) => entry["error"] !== undefined);
+  const failed = repositories.filter(
+    (entry): entry is FailedEntry => "error" in entry,
+  );
   if (failed.length > 0)
     return failure("workspace-restart-failed", failedDetail(failed));
   return {
