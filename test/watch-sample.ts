@@ -141,6 +141,8 @@ export function sampleModel(runs: readonly WatchRun[]): WatchModel {
 }
 
 export const wantedTranscripts: TranscriptControls = {
+  tab: "transcript",
+  onTab: () => undefined,
   view: (target) => ({
     shown: target.wanted,
     entries: [],
