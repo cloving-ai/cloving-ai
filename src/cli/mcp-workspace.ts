@@ -1,5 +1,6 @@
 import { record, type Fields } from "../protocol.ts";
 import { commandJson } from "./command-requests.ts";
+import { channelSource, refusedPrivateTexts } from "./mcp-channel.ts";
 import { servedMcp, type McpTarget } from "./mcp-server.ts";
 import type { McpCall } from "./mcp-tool.ts";
 import {
@@ -153,6 +154,7 @@ export function workspaceTarget(
 
 export async function workspaceMcpServer(
   workspace: WorkspaceRecord | undefined,
+  options: { readonly channel?: true } = {},
 ): Promise<number> {
   if (workspace === undefined) {
     process.stderr.write(
@@ -160,5 +162,16 @@ export async function workspaceMcpServer(
     );
     return 2;
   }
-  return servedMcp(workspaceTarget(workspace.members));
+  const target = workspaceTarget(workspace.members);
+  if (options.channel === undefined) return servedMcp(target);
+  const channel = workspace.members.map((member) =>
+    channelSource(process.env, {
+      runtimeDirectory: member.runtime,
+      repository: member.repository,
+      repositoryName: member.name,
+    }),
+  );
+  return channel.every((source) => source !== undefined)
+    ? servedMcp(target, { channel })
+    : refusedPrivateTexts();
 }
