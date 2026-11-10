@@ -28,6 +28,24 @@ await test("CLV-338 channel content masks token patterns and private texts in th
   );
 });
 
+await test("CLV-338 channel content masks a private text of more than one line before it takes the first line", () => {
+  const message = channelMessage(
+    decisionAlert(
+      { runId: "run-plan000000", workflowId: "develop" },
+      {
+        decisionId: "run-plan000000/g",
+        type: "choice",
+        prompt: "Customer Secret\nInternal Plan is ready. Ship it?",
+      },
+    ),
+    ["Customer Secret\nInternal Plan"],
+  );
+  assert.equal(
+    message.content,
+    "Run run-plan… waits for your decision: [hidden] is ready. Ship it? Answer with cloving_questions.",
+  );
+});
+
 await test("CLV-338 channel content of a private question gives only its preview", () => {
   const message = channelMessage(
     decisionAlert(

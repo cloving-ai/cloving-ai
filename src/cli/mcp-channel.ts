@@ -79,15 +79,25 @@ async function scheduled(watch: Watch): Promise<void> {
     await delivered(watch, alert);
 }
 
+async function checked(watch: Watch, pending: Set<string>): Promise<void> {
+  for (const runId of [...pending]) {
+    pending.delete(runId);
+    const alerts = await runAlerts(watch.runtimeDirectory, runId).catch(
+      (error: unknown) => {
+        report(error);
+        pending.add(runId);
+        return [];
+      },
+    );
+    for (const alert of alerts) await delivered(watch, alert);
+  }
+  await scheduled(watch);
+}
+
 async function drained(watch: Watch, pending: Set<string>): Promise<void> {
   if (pending.size === 0) return;
   await delay(watch.timing.burstMilliseconds);
-  for (const runId of pending) {
-    pending.delete(runId);
-    for (const alert of await runAlerts(watch.runtimeDirectory, runId))
-      await delivered(watch, alert);
-  }
-  await scheduled(watch);
+  await checked(watch, pending);
 }
 
 async function followed(watch: Watch): Promise<void> {
@@ -103,7 +113,7 @@ async function followed(watch: Watch): Promise<void> {
     queue.chain = queue.chain.then(task).catch(report);
   };
   const timer = setInterval(() => {
-    enqueue(() => scheduled(watch));
+    enqueue(() => checked(watch, pending));
   }, watch.timing.scheduleMilliseconds);
   await follow(watch.runtimeDirectory, {
     request: {

@@ -38,17 +38,18 @@ const stops: Readonly<Record<string, readonly [string, string]>> = {
   blocked: ["is blocked", continued],
 };
 
-function firstLine(value: unknown): string {
+function firstLine(text: string): string {
   return (
-    withoutControls(typeof value === "string" ? value : "")
-      .split(/\r?\n/)
+    text
+      .split("\n")
       .map((line) => line.trim())
       .find((line) => line !== "") ?? ""
   );
 }
 
 function shown(value: unknown, privateTexts: readonly string[]): string {
-  const characters = Array.from(maskedText(firstLine(value), privateTexts));
+  const text = withoutControls(typeof value === "string" ? value : "");
+  const characters = Array.from(firstLine(maskedText(text, privateTexts)));
   return characters.length > shownLimit
     ? `${characters.slice(0, shownLimit - 1).join("")}…`
     : characters.join("");

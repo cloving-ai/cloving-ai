@@ -1,5 +1,6 @@
 import { open, readFile, rename } from "node:fs/promises";
 import { record } from "../protocol.ts";
+import { acquireSettingsLock, releaseSettingsLock } from "./config-lock.ts";
 
 export interface SentEntry {
   readonly key: string;
@@ -63,20 +64,36 @@ async function saved(
   await rename(temporary, file);
 }
 
+async function locked(
+  file: string,
+  change: () => Promise<void>,
+): Promise<void> {
+  const lock = await acquireSettingsLock(`${file}.lock`);
+  try {
+    await change();
+  } finally {
+    await releaseSettingsLock(lock);
+  }
+}
+
 export async function recordSent(
   file: string,
   entry: SentEntry,
 ): Promise<void> {
-  const entries = await sentEntries(file);
-  entries.set(entry.key, entry);
-  await saved(file, entries.values());
+  await locked(file, async () => {
+    const entries = await sentEntries(file);
+    entries.set(entry.key, entry);
+    await saved(file, entries.values());
+  });
 }
 
 export async function prunedSent(
   file: string,
   kept: (entry: SentEntry) => boolean,
 ): Promise<void> {
-  const entries = [...(await sentEntries(file)).values()];
-  const remaining = entries.filter(kept);
-  if (remaining.length < entries.length) await saved(file, remaining);
+  await locked(file, async () => {
+    const entries = [...(await sentEntries(file)).values()];
+    const remaining = entries.filter(kept);
+    if (remaining.length < entries.length) await saved(file, remaining);
+  });
 }

@@ -141,6 +141,34 @@ await test("CLV-338 the channel skips a run that the service no longer knows and
     }),
   ));
 
+await test("CLV-338 the channel reads the other runs of a burst after a failed read and retries the failed run with no new event", () =>
+  withNotificationEnvironment((environment) =>
+    withHarness(async (harness) => {
+      const service = await channelService(harness.runtimeDirectory);
+      harness.cleanup(() => service.close());
+      const watch = watching(harness.runtimeDirectory);
+      harness.cleanup(() => watch.stop());
+      await delay(testMilliseconds(100));
+      const broken = { ...failedRun, runId: "run-broken000" };
+      service.state.failing.add(broken.runId);
+      service.run(broken, "run.failed");
+      service.run(failedRun, "run.failed");
+      await eventually(() => (watch.messages.length > 0 ? true : undefined));
+      assert.ok(
+        environment.errors.some((line) =>
+          line.includes('Channel read failed: "authority-unavailable"'),
+        ),
+      );
+      service.state.failing.delete(broken.runId);
+      await eventually(() => (watch.messages.length > 1 ? true : undefined));
+      await watch.stop();
+      assert.deepEqual(
+        watch.messages.map((message) => fields(message["meta"])["run_id"]),
+        [failedRun.runId, broken.runId],
+      );
+    }),
+  ));
+
 await test("CLV-338 the channel reads a run one time for a burst of its events", () =>
   withHarness(async (harness) => {
     const service = await channelService(harness.runtimeDirectory);

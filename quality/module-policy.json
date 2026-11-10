@@ -946,6 +946,7 @@
     "test/bundle-sweep-limits.test.ts": "test",
     "test/bundle-sweep.test.ts": "test",
     "test/candidate-package-fixture.ts": "test",
+    "test/channel-journal.test.ts": "test",
     "test/channel-message.test.ts": "test",
     "test/chats-analysis-data.test.ts": "test",
     "test/chats-analysis-fixture.ts": "test",

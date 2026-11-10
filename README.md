@@ -757,7 +757,7 @@ A message has one or two sentences with the run title and the next step, for exa
 
 The text of a message comes from the run, so it is not trusted. The server uses the run title and fixed sentences, cuts each text at 300 characters, and hides token patterns and the private texts (`privateTexts`). A private question, for example of `analyze-chats`, shows only its preview, as on the watch page.
 
-The server sends each event one time. The private file `channel-events.json` in the runtime directory records the sent events. After a restart, the server sends only the open items that it did not send before. The server learns of changes from the event stream of the service, and it reads the stopped schedules every 15 seconds.
+The server sends each event one time. The private file `channel-events.json` in the runtime directory records the sent events. After a restart, the server sends only the open items that it did not send before. The server learns of changes from the event stream of the service, and it reads the stopped schedules every 15 seconds. If the server cannot read a changed run, it tries again every 15 seconds. Two sessions of the same repository share the record and hold a lock while they change it.
 
 Claude Code first asks a server for MCP protocol revision `2026-07-28` (`server/discover`). Claude Code does not register a channel on that revision. The Cloving server refuses that request, and Claude Code then connects on the earlier handshake with revision `2025-11-25`, where the channel registers. You do not need `MCP_PROTOCOL_NEGOTIATION=legacy`.
 
