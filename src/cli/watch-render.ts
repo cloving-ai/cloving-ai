@@ -109,6 +109,8 @@ export interface WatchCard {
   readonly estimatedCostUsd: number | null;
   readonly runId: string;
   readonly title: string | null;
+  readonly label?: string | null;
+  readonly manualName?: true;
   readonly claudeCostUsd: number | null;
   readonly usage: WorkerUsage;
   readonly currentStep: WatchStep | null;
@@ -138,7 +140,8 @@ export interface WatchToken {
   readonly title: string | null;
   readonly lamp: WatchLamp;
   readonly worker: string;
-  readonly ticket: string;
+  readonly ticket: string | null;
+  readonly pullRequestNumber: number | null;
   readonly startedAt: string | null;
 }
 
@@ -167,7 +170,7 @@ export interface WatchWorkflow {
 export interface WatchTile {
   readonly runId: string;
   readonly workflowId: string;
-  readonly ticket: string;
+  readonly ticket: string | null;
   readonly pullRequestNumber: number | null;
   readonly title: string;
   readonly startedAt: string;
@@ -212,6 +215,10 @@ export interface WatchRun {
   readonly estimatedCostUsd: number | null;
   readonly ticketId: string | null;
   readonly title: string | null;
+  readonly label?: string | null;
+  readonly titleSource?: string | null;
+  readonly labelSource?: string | null;
+  readonly manualName?: true;
   readonly outcome: string | null;
   readonly latestAt: string | null;
   readonly claudeCostUsd: number | null;

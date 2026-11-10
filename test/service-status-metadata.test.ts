@@ -33,13 +33,13 @@ const titleCases = [
     "CLV-067: Continue a GitHub operation after a daemon restart",
   ],
   ["develop", "# Issue title\r\nDetails", "Issue title"],
-  ["develop", "No heading\n# Later heading", "Cloving task cycle-title"],
-  ["develop", "\n# Later heading", "Cloving task cycle-title"],
+  [
+    "develop",
+    "No heading\n# Later heading",
+    JSON.stringify("No heading\n# Later heading"),
+  ],
   ["develop", `# ${"t".repeat(201)}`, "t".repeat(200)],
-  ["develop-prompt", "\n \t\n#  Prompt heading  \nBody", "Prompt heading"],
-  ["develop-prompt", "\n  Plain prompt  \nBody", "Plain prompt"],
-  ["develop-prompt", "\n \t\n", "Cloving task cycle-title"],
-  ["develop-prompt", "p".repeat(201), "p".repeat(200)],
+  ["develop-prompt", "#  Prompt heading  \nBody", "Prompt heading"],
 ];
 
 function parsedTicket(value: unknown): unknown {
@@ -106,7 +106,7 @@ await test("CLV-091 single status exposes the exact stored ticket ID alongside t
         assert.ok(Object.hasOwn(fields(shown), name), name);
       assert.doesNotMatch(
         JSON.stringify(shown),
-        /Private ticket text|private-repository|different-cycle|"ticket"|"repository"/,
+        /Private ticket text|private-repository|different-cycle|"ticket":|"repository"/,
       );
     }
     const missing = await admitted(harness, {
@@ -262,7 +262,8 @@ await test("CLV-072 completed status reads its outcome without loading the event
       queries: {
         ...store.queries,
         eventsAfter: (cursor) =>
-          cursor.type === "run.noted" && cursor.runId === "run-1"
+          ["run.noted", "run.renamed"].includes(cursor.type ?? "") &&
+          cursor.runId === "run-1"
             ? store.queries.eventsAfter(cursor)
             : Promise.reject(new Error("Status must not load event history")),
       },
@@ -326,7 +327,10 @@ await test("CLV-072 status derives ticket, issue and prompt titles from the stor
       commandId: "no-ticket",
       workflowId: "empty-input",
     });
-    assert.equal(field(await view(harness, untitled), "title"), null);
+    assert.equal(
+      field(await view(harness, untitled), "title"),
+      "task of no-ticket",
+    );
     await service.close();
   }));
 

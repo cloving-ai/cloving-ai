@@ -24,6 +24,7 @@ import {
   type McpCall,
   type Tool,
 } from "./mcp-tool.ts";
+import { renameTool } from "./mcp-rename-tool.ts";
 import {
   argumentRules,
   type DecisionCommand,
@@ -287,6 +288,7 @@ const tools: readonly Tool[] = [
   continueTool,
   dismissTool,
   steerTool,
+  renameTool,
   ...scheduleTools,
 ];
 

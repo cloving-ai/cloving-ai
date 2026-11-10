@@ -82,7 +82,7 @@ await test("CLV-286 a run at its third step shows its token under the third stat
     assert.doesNotMatch(stations(develop)[index] ?? "", /class="token/);
   assert.match(
     stations(idea)[0] ?? "",
-    /href="#run=draft-run"[^>]*><span class="token-worker">C<\/span><span class="token-ticket">Draft<\/span><span class="token-time">12m</,
+    /href="#run=draft-run"[^>]*><span class="token-worker">C<\/span><span class="token-time">12m</,
   );
 });
 
@@ -104,7 +104,7 @@ await test("CLV-286 a legend names the four lamp colors, and lamps and tokens ca
   const [develop = ""] = lines(html);
   assert.match(
     stations(develop)[2] ?? "",
-    /^ stopped"><span class="lamp stopped" title="Stopped"><\/span><span class="station-name">Pull request<\/span><ul class="tokens"><li><a class="token stopped" href="#run=stopped"[^>]*><span class="token-worker">C<\/span><span class="token-ticket">Draft<\/span><span class="token-time">51m<\/span><\/a><\/li><li><a class="token running" href="#run=running"/,
+    /^ stopped"><span class="lamp stopped" title="Stopped"><\/span><span class="station-name">Pull request<\/span><ul class="tokens"><li><a class="token stopped" href="#run=stopped"[^>]*><span class="token-worker">C<\/span><span class="token-time">51m<\/span><\/a><\/li><li><a class="token running" href="#run=running"/,
   );
   assert.match(
     stations(develop)[0] ?? "",

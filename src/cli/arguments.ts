@@ -73,6 +73,9 @@ const options = {
   update: { type: "boolean" },
   within: { type: "string" },
   workspace: { type: "boolean" },
+  title: { type: "string" },
+  label: { type: "string" },
+  clear: { type: "boolean" },
 } as const;
 
 type Parsed = ReturnType<

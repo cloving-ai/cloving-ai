@@ -72,11 +72,37 @@ const decisionAction: RunAction = async (actions, request) => {
   return JSON.stringify(commandJson(reply, { commandId: call.commandId }));
 };
 
+function renameFields(body: Fields): Fields | null {
+  const { runId, commandId, title, label, clear } = body;
+  if (!isRecordKey(runId) || !isRecordKey(commandId)) return null;
+  if (clear === true)
+    return title === undefined && label === undefined
+      ? { runId, commandId, clear }
+      : null;
+  if (typeof title !== "string") return null;
+  if (label === undefined) return { runId, commandId, title };
+  return typeof label === "string" ? { runId, commandId, title, label } : null;
+}
+
+const renameAction: RunAction = async (actions, request) => {
+  if (!actionAllowed(actions, request)) return null;
+  const fields = renameFields(record(await actionBody(request)) ?? {});
+  if (fields === null) return null;
+  const reply = await send(actions.runtimeDirectory, {
+    operation: "rename-run",
+    parameters: fields,
+  });
+  return JSON.stringify(
+    reply.kind === "result" ? reply.result : { error: reply.error },
+  );
+};
+
 const runActions: Readonly<Record<string, RunAction>> = {
   "/actions/continue": runAction("continue-run"),
   "/actions/decision": decisionAction,
   "/actions/dismiss": runAction("dismiss-run"),
   "/actions/steer": runAction("steer-run"),
+  "/actions/rename": renameAction,
 };
 
 export function routedRunAction(path: string): RunAction | null {

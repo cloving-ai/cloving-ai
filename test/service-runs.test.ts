@@ -29,7 +29,10 @@ const initialRunDetails = {
   ticketId: null,
   latestAt: noon,
   outcome: null,
-  title: null,
+  title: "task of c-1",
+  titleSource: "prompt",
+  label: null,
+  labelSource: null,
   claudeCostUsd: null,
   estimatedCostUsd: null,
   usage: {

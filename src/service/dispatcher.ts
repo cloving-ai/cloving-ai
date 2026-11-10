@@ -5,6 +5,7 @@ import { dismissRun } from "./dismiss-handler.ts";
 import { events, type Connection } from "./event-handler.ts";
 import { queueCommand, queueRead } from "./queue-handlers.ts";
 import { failed, type ServiceContext } from "./replies.ts";
+import { renameRun } from "./rename-handler.ts";
 import { restartOperation } from "./restart-handler.ts";
 import { runCommand, status } from "./run-handlers.ts";
 import { steerRun } from "./steer-handler.ts";
@@ -41,6 +42,7 @@ export function dispatcher(
     ["continue-run", (request) => continued(request.parameters)],
     ["dismiss-run", (request) => dismissRun(context, request.parameters)],
     ["steer-run", (request) => steerRun(context, request.parameters)],
+    ["rename-run", (request) => renameRun(context, request.parameters)],
     ["transcript", (request) => transcript(context, request.parameters)],
     ["reload", () => context.reload?.() ?? reloadUnavailable()],
     ["restart", (request) => restartOperation(context, request.parameters)],
