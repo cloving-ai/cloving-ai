@@ -2,6 +2,7 @@ import { record } from "../protocol.ts";
 import { component, element, type Shown } from "./watch-element.ts";
 import type { WatchLoop, WatchLoopRun } from "./watch-loops.ts";
 import { watchHash } from "./watch-navigation.ts";
+import { counted } from "./watch-render.ts";
 
 export interface LoopControls {
   readonly busy: readonly string[];
@@ -19,22 +20,28 @@ export function loopTime(at: string | number): string {
   });
 }
 
-export function loopAmount(minutes: number): string {
-  if (minutes < 60) return `${String(minutes)} min`;
-  if (minutes < 2880) return `${String(Math.round(minutes / 60))} h`;
-  return `${String(Math.round(minutes / 1440))} d`;
+export function pastClock(at: string, now: string): string {
+  const ended = new Date(at);
+  const today = new Date(now);
+  const yesterday = new Date(
+    today.getFullYear(),
+    today.getMonth(),
+    today.getDate() - 1,
+  );
+  const clock = ended.toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+  if (ended.toDateString() === today.toDateString()) return clock;
+  if (ended.toDateString() === yesterday.toDateString())
+    return `${clock} yesterday`;
+  return loopTime(at);
 }
 
-export function relativeText(at: string, now: string): string {
-  const minutes = Math.round((Date.parse(at) - Date.parse(now)) / 60000);
-  const size = Math.abs(minutes);
-  if (size < 1) return "now";
-  return minutes > 0 ? `in ${loopAmount(size)}` : `${loopAmount(size)} ago`;
-}
-
-export function loopNextText(nextAt: string | null, now: string): string {
-  if (nextAt === null) return "No next run";
-  return `Next run ${loopTime(nextAt)} · ${relativeText(nextAt, now)}`;
+export function lastRunText(run: WatchLoopRun, now: string): string {
+  if (run.endedAt === null) return "last run in work";
+  const mark = run.state === "completed" ? "✓" : `· ${run.state}`;
+  return `last run ${pastClock(run.endedAt, now)} ${mark}`;
 }
 
 export function loopLastText(run: WatchLoopRun): string {
@@ -109,73 +116,50 @@ export function LoopActions(props: {
   ];
 }
 
-export function LoopRow(props: {
-  readonly loop: WatchLoop;
+export function LoopLast(props: {
+  readonly run: WatchLoopRun | null;
   readonly now: string;
-  readonly controls?: LoopControls | undefined;
 }): Shown {
-  const { loop, now, controls } = props;
-  const { lastRun } = loop;
-  return [
-    element("div", {
-      class: "loop-head",
-      children: [
-        element("a", {
-          class: "loop-workflow",
-          href: watchHash({ workflowId: loop.workflowId, runId: null }),
-          children: loop.workflowId,
-        }),
-        element("span", { class: "loop-state", children: loop.state }),
-      ],
-    }),
-    element("p", { class: "loop-rule", children: loop.rule }),
-    element("p", {
-      class: "loop-next",
-      children: loopNextText(loop.nextAt, now),
-    }),
-    element("p", {
-      class: "loop-last",
-      children:
-        lastRun === null
-          ? "No run yet"
-          : [
-              "Last run ",
-              element("a", {
-                href: watchHash({ workflowId: null, runId: lastRun.runId }),
-                children: loopLastText(lastRun),
-              }),
-            ],
-    }),
-    element("p", {
-      class: "loop-failures",
-      children: `${String(loop.failuresInRow)} failures in a row`,
-    }),
-    controls === undefined ? null : component(LoopActions, { loop, controls }),
-  ];
+  const { run, now } = props;
+  if (run === null) return "no run yet";
+  return element("a", {
+    href: watchHash({ workflowId: null, runId: run.runId }),
+    title: loopLastText(run),
+    children: lastRunText(run, now),
+  });
 }
 
-export function LoopsPanel(props: {
-  readonly loops: readonly WatchLoop[];
+export function LoopCell(props: {
+  readonly loop: WatchLoop;
+  readonly next: string;
   readonly now: string;
   readonly controls?: LoopControls | undefined;
 }): Shown {
-  const { loops, now, controls } = props;
-  if (loops.length === 0) return null;
-  return element("section", {
-    class: "loops",
-    "aria-labelledby": "loops-title",
+  const { loop, next, now, controls } = props;
+  return element("div", {
+    class: `line-loop loop-${loop.state}`,
     children: [
-      element("h2", { id: "loops-title", children: "Loops" }),
-      element("ul", {
-        class: "loops-list",
-        children: loops.map((loop) =>
-          element("li", {
-            key: loop.workflowId,
-            class: `loop loop-${loop.state}`,
-            children: component(LoopRow, { loop, now, controls }),
-          }),
-        ),
+      element("p", {
+        class: "loop-rule",
+        children: [
+          element("span", { class: "loop-state", children: loop.state }),
+          ` · ${loop.rule}`,
+        ],
       }),
+      next === "" ? null : element("p", { class: "loop-next", children: next }),
+      element("p", {
+        class: "loop-last",
+        children: component(LoopLast, { run: loop.lastRun, now }),
+      }),
+      loop.failuresInRow === 0
+        ? null
+        : element("p", {
+            class: "loop-failures",
+            children: `${counted(loop.failuresInRow, "failure")} in a row`,
+          }),
+      controls === undefined
+        ? null
+        : component(LoopActions, { loop, controls }),
     ],
   });
 }
