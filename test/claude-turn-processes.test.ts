@@ -43,7 +43,7 @@ console.log(JSON.stringify({ type: "result", is_error: false, result: "done" }))
   return [process.execPath, script];
 }
 
-await test("CLV-310 a turn end stops a child in the work tree that ignores SIGTERM and logs it", () =>
+await test("CLV-310 a turn end stops a child in the work tree that ignores SIGTERM and logs it with the run of the turn", () =>
   withScene(async (scene) => {
     const lines: string[] = [];
     const worker = scene.worker("bare", {
@@ -64,7 +64,7 @@ await test("CLV-310 a turn end stops a child in the work tree that ignores SIGTE
       assert.match(
         lines[0] ?? "",
         new RegExp(
-          `^turn: stopped process ${String(child)} \\([^()\\n]+\\) left in the work tree ${scene.worktrees}/ticket-one\\n$`,
+          `^turn: stopped process ${String(child)} \\([^()\\n]+\\) that run run-1 left in the work tree ${scene.worktrees}/ticket-one\\n$`,
         ),
       );
     } finally {
@@ -115,6 +115,7 @@ await test("CLV-310 a turn end stops only the processes in the work tree that ar
   const lines: string[] = [];
   const request = {
     directory,
+    runId: "run-1",
     signal: new AbortController().signal,
     stopMilliseconds: 100,
     log: (line: string) => {
@@ -164,6 +165,7 @@ setInterval(() => undefined, 1000);`,
     await until(() => alive(young));
     await stopLeftProcesses({
       directory,
+      runId: "run-1",
       signal: new AbortController().signal,
       stopMilliseconds: 100,
       seconds: 1,
