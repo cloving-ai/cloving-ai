@@ -347,6 +347,7 @@
     "src/cli/watch-fonts.ts": "cli",
     "src/cli/watch-header-view.ts": "cli",
     "src/cli/watch-issue-observer.ts": "cli",
+    "src/cli/watch-line-next-view.ts": "cli",
     "src/cli/watch-loops-action.ts": "cli",
     "src/cli/watch-loops-client.ts": "cli",
     "src/cli/watch-loops-view.ts": "cli",
