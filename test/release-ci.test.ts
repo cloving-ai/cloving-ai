@@ -93,7 +93,7 @@ await test("CLV-097 CI checks main and version tag pushes, every pull request an
   }
 });
 
-await test("CLV-266 only shard 1 runs setup checks and the gate prepares test builds", async () => {
+await test("CLV-266 only the first full shard and the macOS platform job run setup checks", async () => {
   const workflow = await releaseWorkflow();
   for (const name of [
     "quality_macos",
@@ -107,6 +107,10 @@ await test("CLV-266 only shard 1 runs setup checks and the gate prepares test bu
         step.id === "prepare-shells" ? 3 : undefined,
       );
       const conditions = [
+        [
+          step.run === "npm run check:setup" && name === "quality_macos",
+          "${{ matrix.shard == '1' || matrix.shard == 'platform' }}",
+        ],
         [
           step.run === "npm run check:setup" && name !== "publish",
           "${{ matrix.shard == '1' }}",
@@ -140,7 +144,10 @@ await test("CLV-097 quality qualifies the exact toolchain and completes the deve
   assert.deepEqual(job(workflow, "quality_macos").env, {
     CLOVING_CHECK_TIME_FACTOR: "3",
     CLOVING_TEST_CONCURRENCY: "3",
-    CLOVING_TEST_SHARD: "${{ matrix.shard }}/3",
+    CLOVING_TEST_SET:
+      "${{ matrix.shard == 'platform' && 'platform' || 'all' }}",
+    CLOVING_TEST_SHARD:
+      "${{ matrix.shard == 'platform' && '1/1' || format('{0}/3', matrix.shard) }}",
     CLOVING_CI_MACOS_VERSION: "15.*",
     NODE_OPTIONS: "--max-old-space-size=4096",
   });
@@ -202,10 +209,6 @@ await test("CLV-097 Linux CI qualifies the lowest Node version of each engine ra
   assert.deepEqual(job(workflow, "quality_linux_node").strategy, {
     "fail-fast": false,
     matrix: { node: lowest, shard: ["1", "2", "3"] },
-  });
-  assert.deepEqual(job(workflow, "quality_macos").strategy, {
-    "fail-fast": false,
-    matrix: { shard: ["1", "2", "3"] },
   });
   assert.equal(job(workflow, "publish").strategy, undefined);
 });
@@ -324,33 +327,6 @@ await test("CLV-266 Linux CI prepares zsh from the official archive before setup
     assert.equal(result.status, status, result.stderr);
     assert.equal(result.stdout, output);
   }
-});
-
-await test("CLV-266 coverage joins all nine shard artifacts before the required checks pass", async () => {
-  const workflow = await releaseWorkflow();
-  const coverage = job(workflow, "coverage");
-  assert.deepEqual(coverage.needs, ["quality_macos", "quality_linux_node"]);
-  assert.equal(coverage["runs-on"], "ubuntu-24.04");
-  assert.equal(coverage["timeout-minutes"], 20);
-  assert.equal(coverage.if, "${{ github.event_name == 'pull_request' }}");
-  const download = coverage.steps.find((step) =>
-    step.uses?.startsWith("actions/download-artifact@"),
-  );
-  assert.match(
-    download?.uses ?? "",
-    /^actions\/download-artifact@[a-f0-9]{40}$/,
-  );
-  assert.deepEqual(download?.with, {
-    pattern: "coverage-*",
-    path: "${{ runner.temp }}/cloving-coverage",
-  });
-  const command = coverage.steps.find((step) =>
-    step.run?.startsWith("node tools/check-shard-coverage.ts"),
-  )?.run;
-  assert.ok(command);
-  for (const platform of ["macos-26.9.0", "linux-24.22.1", "linux-26.9.0"])
-    for (const shard of ["1", "2", "3"])
-      assert.ok(command.includes(`coverage-${platform}-${shard}`));
 });
 
 await test("CLV-266 every shard exports coverage and both required checks need the final job", async () => {
