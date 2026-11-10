@@ -1,6 +1,7 @@
 import { record, type Fields } from "../protocol.ts";
 import type { TranscriptEntry } from "../turn-transcript.ts";
 import { component, element, type Shown } from "./watch-element.ts";
+import { counted } from "./watch-render.ts";
 import {
   EditLines,
   Gutter,
@@ -97,13 +98,28 @@ export function CutNote(props: { readonly entry: TranscriptEntry }): Shown {
 
 export function ToolResult(props: { readonly entry: TranscriptEntry }): Shown {
   const { entry } = props;
-  return component(Gutter, {
-    name: entry.error ? "entry tool-result error" : "entry tool-result",
+  const name = entry.error ? "entry tool-result error" : "entry tool-result";
+  const text = entry.text.replace(/\n+$/, "");
+  const cut = component(CutNote, { entry });
+  if (text.trim() === "")
+    return component(Gutter, {
+      name,
+      children: [element("pre", { children: "(No content)" }), cut],
+    });
+  const size = counted(text.split("\n").length, "line");
+  return element("details", {
+    class: name,
     children: [
-      entry.text.trim() === ""
-        ? element("pre", { children: "(No content)" })
-        : component(LongText, { text: entry.text, head: 4 }),
-      component(CutNote, { entry }),
+      element("summary", {
+        children: [
+          element("span", { class: "gutter", children: "⎿" }),
+          entry.error ? ` Error · ${size}` : ` ${size}`,
+        ],
+      }),
+      element("div", {
+        class: "output",
+        children: [element("pre", { children: text }), cut],
+      }),
     ],
   });
 }

@@ -521,7 +521,9 @@ The run list has the active runs and the runs of the last 7 days. The run detail
 
 #### Transcript of an agent turn
 
-Each agent turn in the run detail has a **Transcript** section. The section shows the turn as the terminal of Claude Code shows it, in a dark terminal panel. The panel is dark in each theme. It has its own color tokens (see the themes below). The panel of an open turn fills the height of the window below the header.
+The run detail has one tab bar above the agent turns, with the tabs **Transcript** and **Agent turn**. **Transcript** is selected by default. It shows a transcript for each agent turn. **Agent turn** shows the detail of each turn: the branch, the work tree, the harness, the tokens and the list of tool calls. The code review of each round shows under its turn in both tabs. The selected tab stays selected when the page refreshes, and a link with a turn selects **Transcript**.
+
+The head of each transcript names its turn with its state, its time and its cost, for example `Turn 2 · in work · 2 h 37 min · 4.10 USD`. The transcript shows the turn as the terminal of Claude Code shows it, in a dark terminal panel. The panel is dark in each theme. It has its own color tokens (see the themes below). The panel of an open turn fills the height of the window below the header.
 
 The turn in work is expanded and follows the stream while the agent works. When no turn is in work, the last agent turn (the turn that started last) is expanded. The other turns open with **Show**. The **Link** of a turn opens `#run=<run-id>&turn=<operation-id>`: the run detail with that turn expanded in place of the last turn. **Full screen** opens `#run=<run-id>&turn=<operation-id>&view=terminal`: only the panel of that turn, at the full size of the window. A transcript that you show or hide keeps that state until you leave the run detail.
 
@@ -531,7 +533,7 @@ The service reads the `turn.jsonl` file of the journal folder of the turn and ma
 - `assistant`: the text of the agent. The view shows `⏺` and the text with its line breaks.
 - `thinking`: the thinking of the agent. The view shows `✻ Thinking…`, closed until you open it.
 - `tool-call`: a tool call. The view shows `⏺ Tool(argument)` with the tool name in bold, and a click opens the full input. The argument is the first line of the command for `Bash` (at most 120 characters), the file path relative to the work tree for `Read`, `Write`, `Edit`, `MultiEdit` and `NotebookEdit`, the pattern and the path for `Grep`, the pattern for `Glob`, the URL for `WebFetch`, the query for `WebSearch` and the description for `Task` and `Agent`. For another tool, it is the first text field of the input.
-- `tool-result`: the output of a tool. The view shows it under its call after an indented `⎿`, in the dim color, with the first 4 lines. `… +N lines` opens the rest. An error result shows in red.
+- `tool-result`: the output of a tool. The view folds it under its call to one dim line: an indented `⎿` and the count of lines, for example `⎿ 42 lines`. A click on that line opens all the lines of the output. An error result shows `⎿ Error · N lines` in red. An empty output shows `⎿ (No content)` and does not fold.
 - `notice`: a system event, for example a started or ended background task, a retry or a rate limit. A line of another harness, or a line that the service cannot read, becomes a notice with its raw text. The view shows one dim line.
 - `result`: the end of the turn with its cost, its turns and its stop reason.
 

@@ -1,4 +1,8 @@
 export const transcriptStyle = `
+.run-tabs { display: flex; gap: 4px; margin: 22px 0 0; border-bottom: var(--shape-border) solid var(--color-line); }
+.run-tabs .run-tab { margin: 0 0 -1px; padding: 8px 16px; font: 600 14px/1.4 var(--font-ui); color: var(--color-muted); background: none; clip-path: none; border-bottom: 3px solid transparent; }
+.run-tabs .run-tab:hover { color: var(--color-ink); background: none; }
+.run-tabs .run-tab[aria-selected="true"] { color: var(--color-ink); border-bottom-color: var(--color-accent-strong); }
 .transcript { --terminal-edge: color-mix(in srgb, var(--color-terminal-text) 16%, var(--color-terminal-background)); margin: 12px 0; scroll-margin-top: 7rem; }
 .transcript.code-window { background: var(--color-terminal-background); color: var(--color-terminal-text); box-shadow: inset 0 0 0 var(--shape-border) var(--terminal-edge), var(--shadow); }
 .transcript .code-head { display: flex; gap: 10px; align-items: center; background: var(--color-terminal-background); color: var(--color-terminal-dim); border-bottom: var(--shape-border) solid var(--terminal-edge); }
@@ -24,6 +28,9 @@ export const transcriptStyle = `
 .transcript-lines .tool-input { margin: 2px 0 4px 2ch; color: var(--color-terminal-dim); }
 .transcript-lines .tool-result, .transcript-lines .detail { padding-left: 2ch; color: var(--color-terminal-dim); }
 .transcript-lines .gutter { flex: none; width: 3ch; }
+.transcript-lines details.tool-result { display: block; }
+.transcript-lines details.tool-result > summary { display: flex; }
+.transcript-lines details.tool-result > .output { margin: 2px 0 0 3ch; }
 .transcript-lines .output summary, .transcript-lines .entry.notice, .transcript-lines .entry.result { color: var(--color-terminal-dim); }
 .transcript-lines .tool-result.error, .transcript-lines .entry.error, .transcript-lines .removed { color: var(--color-terminal-red); }
 .transcript-lines .added { color: var(--color-terminal-green); }

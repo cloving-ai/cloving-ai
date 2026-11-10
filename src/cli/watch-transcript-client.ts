@@ -3,6 +3,7 @@ const transcripts = {};
 const transcriptWindow = 2000;
 let transcriptDrawing = false;
 let transcriptRound = 0;
+let transcriptTab = "transcript";
 function transcriptItem(target) {
   if (!Object.hasOwn(transcripts, target.operationId))
     transcripts[target.operationId] = { runId: target.runId, shown: null, entries: [], state: "loading", message: "", earlier: false, unseen: 0, following: true, detached: false, latest: 0, source: null };
@@ -115,6 +116,11 @@ function transcriptRetried(target) {
 function transcriptControls() {
   transcriptRound += 1;
   return {
+    tab: transcriptTab,
+    onTab(tab) {
+      transcriptTab = tab;
+      draw();
+    },
     view(target) {
       const item = transcriptItem(target);
       item.round = transcriptRound;
@@ -156,7 +162,11 @@ function transcriptsFollowed(selected) {
     if (item?.following && !item.detached) box.scrollTop = box.scrollHeight;
   }
   const { turnId } = watchLocation(selected);
-  if (turnId === null || turnId === undefined) { state.turnShown = null; return; }
+  if (turnId === null || turnId === undefined) { state.turnShown = null; state.turnTabbed = null; return; }
+  if (state.turnTabbed !== selected) {
+    state.turnTabbed = selected;
+    if (transcriptTab !== "transcript") { transcriptTab = "transcript"; transcriptRedraw(); return; }
+  }
   if (state.turnShown === selected) return;
   const section = [...(document.querySelectorAll?.("[data-turn]") ?? [])].find((node) => node.getAttribute("data-turn") === turnId);
   if (section === undefined) return;

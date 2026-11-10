@@ -2030,6 +2030,7 @@
     "test/watch-run-command-service.test.ts": "test",
     "test/watch-run-command-view.test.ts": "test",
     "test/watch-run-command.test.ts": "test",
+    "test/watch-run-tabs.test.ts": "test",
     "test/watch-sample.ts": "test",
     "test/watch-schedule-fixture.ts": "test",
     "test/watch-schedule.test.ts": "test",
