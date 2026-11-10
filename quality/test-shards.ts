@@ -146,6 +146,7 @@ function readMainOnlyGroups(
 export function selectChangedTests(
   directory: string,
   run: {
+    readonly inventory: readonly string[];
     readonly tests: readonly string[];
     readonly changedPaths: readonly string[] | undefined;
   },
@@ -153,7 +154,7 @@ export function selectChangedTests(
   if (run.changedPaths === undefined) return { tests: run.tests, leftOut: [] };
   const changed = run.changedPaths;
   const root = realpathSync(directory);
-  const inventory = run.tests.map((file) => relative(root, file));
+  const inventory = run.inventory.map((file) => relative(root, file));
   const leftOut: LeftOutTest[] = [];
   for (const { files, triggers } of readMainOnlyGroups(root, inventory)) {
     if (
@@ -162,7 +163,9 @@ export function selectChangedTests(
       )
     )
       continue;
-    for (const file of files)
+    for (const file of files.filter((name) =>
+      run.tests.includes(resolve(root, name)),
+    ))
       leftOut.push({
         file,
         reason: `no changed path matches its triggers: ${triggers.join(", ")}`,

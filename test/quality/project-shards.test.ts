@@ -72,6 +72,9 @@ await test("the platform set runs only the listed tests of its shard", async () 
     "b.test.ts": passing,
     "c.test.ts": passing.replace("value, 1", "value, 3"),
     "quality/platform-tests.json": '["b.test.ts"]',
+    "quality/main-only-tests.json": JSON.stringify([
+      { files: ["a.test.ts"], triggers: ["a.test.ts"] },
+    ]),
   };
   await withFiles(files, async (directory) => {
     const options = {
@@ -94,6 +97,12 @@ await test("the platform set runs only the listed tests of its shard", async () 
       testSet: "platform",
     });
     assert.deepEqual(result.completed, ["tests"]);
+    const changed = await checkProjectTestShard(directory, {
+      ...options,
+      testSet: "platform",
+      changedPaths: ["README.md"],
+    });
+    assert.deepEqual(changed.leftOut, []);
     await assert.rejects(
       checkProjectTestShard(directory, { ...options, testSet: "all" }),
       /test-report-failure/,

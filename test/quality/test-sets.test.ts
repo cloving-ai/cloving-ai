@@ -126,6 +126,7 @@ await test("a pull request leaves out each main-only test when no changed path m
   await withFiles(mainOnlyFiles, (directory) => {
     assert.deepEqual(
       selectChangedTests(directory, {
+        inventory: inventory(directory),
         tests: inventory(directory),
         changedPaths: ["src/cli/watch-view.ts", "README.md"],
       }),
@@ -161,6 +162,7 @@ for (const [changed, kept] of [
   await test(`a pull request that changes ${changed.join(" and ")} runs the main-only tests of the matched triggers`, async () => {
     await withFiles(mainOnlyFiles, (directory) => {
       const selected = selectChangedTests(directory, {
+        inventory: inventory(directory),
         tests: inventory(directory),
         changedPaths: changed,
       });
@@ -177,10 +179,35 @@ for (const [changed, kept] of [
     });
   });
 
+await test("a pull request checks the list against the whole inventory, and reports only the left-out files of the selected set", async () => {
+  await withFiles(mainOnlyFiles, (directory) => {
+    assert.deepEqual(
+      selectChangedTests(directory, {
+        inventory: inventory(directory),
+        tests: [
+          join(directory, "b.test.ts"),
+          join(directory, "test/c.test.ts"),
+        ],
+        changedPaths: ["README.md"],
+      }),
+      {
+        tests: [join(directory, "b.test.ts")],
+        leftOut: [
+          {
+            file: "test/c.test.ts",
+            reason: "no changed path matches its triggers: quality/, test/",
+          },
+        ],
+      },
+    );
+  });
+});
+
 await test("a run with no changed paths, as on main or in the merge queue, runs every test file and reads no list", async () => {
   await withFiles(projectFiles, (directory) => {
     assert.deepEqual(
       selectChangedTests(directory, {
+        inventory: inventory(directory),
         tests: inventory(directory),
         changedPaths: undefined,
       }),
@@ -235,6 +262,7 @@ for (const [list, message] of [
         assert.throws(
           () =>
             selectChangedTests(directory, {
+              inventory: inventory(directory),
               tests: inventory(directory),
               changedPaths: ["README.md"],
             }),
@@ -269,9 +297,11 @@ await test("the committed main-only list leaves out the packed install and the s
     "test/quality/worker-hooks.test.ts",
   ];
   const leftOut = (changedPaths: readonly string[] | undefined) =>
-    selectChangedTests(directory, { tests, changedPaths }).leftOut.map(
-      (entry) => entry.file,
-    );
+    selectChangedTests(directory, {
+      inventory: tests,
+      tests,
+      changedPaths,
+    }).leftOut.map((entry) => entry.file);
   assert.deepEqual(leftOut(["src/cli/watch-view.ts"]), [
     "test/packed-install.test.ts",
     ...gateTests,

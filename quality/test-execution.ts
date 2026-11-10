@@ -139,6 +139,7 @@ export async function checkTests(
   )
     throw new Error("mandatory-test-inventory-mismatch");
   const changed = selectChangedTests(directory, {
+    inventory,
     tests: selectTestSet(directory, { tests: inventory, set: options.testSet }),
     changedPaths: options.changedPaths,
   });
