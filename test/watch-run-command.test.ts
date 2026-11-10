@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import { test } from "node:test";
 import type { Reply, ServiceRequest } from "../src/protocol.ts";
 import { actionHeaders, pageToken, postCard } from "./watch-action-fixture.ts";
@@ -136,4 +137,22 @@ await test("CLV-335 with watch actions off, the page has no token and the run co
       assert.equal(requests.length, 0);
     },
   );
+});
+
+await test("CLV-335 the README describes the run controls of the watch page, the second click of Drop and the replies", async () => {
+  const readme = await readFile(
+    new URL("../README.md", import.meta.url),
+    "utf8",
+  );
+  for (const part of [
+    /the run detail of an active run has \*\*Pause\*\* and \*\*Drop\*\*/,
+    /\*\*Resume\*\* replaces \*\*Pause\*\*/,
+    /`cloving pause`, `cloving resume` and `cloving drop`, with the revision of the run/,
+    /`Drop this run\? Its work tree and pull request stay\.` with \*\*Drop the run\*\* and \*\*Keep it\*\*/,
+    /`Paused`, `Resumed` or `Dropped`/,
+    /`The run changed\. Look again and try again\.`/,
+    /`actions\/pause`, `actions\/resume` and `actions\/drop` use the write rules/,
+    /`CLOVING_WATCH_ACTIONS=off` removes the form control, the queue control, the loop controls, the run controls and their endpoints/,
+  ])
+    assert.match(readme, part);
 });

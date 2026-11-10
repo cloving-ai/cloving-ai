@@ -152,7 +152,7 @@ await test("CLV-328 the README describes the Loops panel, its controls, cloving 
   assert.match(readme, /^- `GET \/api\/v1\/schedules` gives the loops/m);
   assert.match(
     readme,
-    /the queue control, the loop controls and their endpoints/,
+    /the queue control, the loop controls, the run controls and their endpoints/,
   );
   assert.match(readme, /`manual from loop`/);
   assert.match(
