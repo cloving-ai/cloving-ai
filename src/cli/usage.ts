@@ -214,8 +214,9 @@ The restart keeps a drain of the queue and its failure count.
 The update fetches the default branch and needs a fast-forward.
 It runs npm ci --ignore-scripts when package-lock.json changed, and then npm run build.
 When a step fails, the checkout goes back to the old commit and the service starts on it. The command exits with status 1.
-While a workspace runs, cloving restart with no --repository restarts all repositories at a common gap.
-The workspace supervisor holds the queue runs of all repositories, waits until no repository has work,
+While a workspace runs, cloving restart with no --repository restarts all repositories at once,
+and each one keeps its turns running. With --at gap, it restarts them at a common gap.
+The workspace supervisor then holds the queue runs of all repositories, waits until no repository has work,
 and then restarts each repository at once. --at now does not wait for the gap.
 A workspace restart has no --update, --cancel or --within; use --repository <name> to restart one repository.
 `,

@@ -153,7 +153,7 @@ await test("CLV-312 cloving restart restarts the whole workspace through the sup
         settings,
       ]),
       [
-        ["restart", "gap", true, undefined],
+        ["restart", "keep", true, undefined],
         ["restart", "now", undefined, "files"],
       ],
     );
@@ -177,14 +177,14 @@ await test("CLV-312 a workspace restart refuses --update, --cancel and --within"
     assert.deepEqual(requests, []);
   }));
 
-await test("CLV-312 the restart help and the README describe the restart of a whole workspace at a common gap", async () => {
+await test("CLV-312 CLV-337 the restart help and the README describe the restart of a whole workspace at once with kept turns, or at a common gap", async () => {
   assert.match(
     String(commandUsage["restart"]).replaceAll("\n", " "),
-    /While a workspace runs, cloving restart with no --repository restarts all repositories at a common gap.*no --update, --cancel or --within/,
+    /While a workspace runs, cloving restart with no --repository restarts all repositories at once, and each one keeps its turns running\. With --at gap, it restarts them at a common gap\..*no --update, --cancel or --within/,
   );
   assert.match(
     await readFile(new URL("../README.md", import.meta.url), "utf8"),
-    /While a workspace runs, `cloving restart` with no `--repository` restarts all repositories of the workspace at a common gap\./,
+    /While a workspace runs, `cloving restart` with no `--repository` restarts all repositories of the workspace at once, and each repository keeps its turns running, as a restart of one repository does\. With `--at gap`, it restarts them at a common gap\./,
   );
 });
 

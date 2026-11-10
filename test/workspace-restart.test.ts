@@ -170,6 +170,19 @@ await test("CLV-312 a workspace restart keeps waiting while a repository does no
     assert.equal((await reply).kind, "result");
   }));
 
+await test("CLV-337 a workspace restart that keeps turns does not wait for a gap and asks each repository to keep its turns", () =>
+  withSupervisor(async ({ folder, members }) => {
+    const [alpha] = members;
+    assert.ok(alpha !== undefined);
+    alpha.active = true;
+    const kept = await restarted(folder, { commandId: "kept", at: "keep" });
+    assert.equal(kept.kind, "result");
+    assert.deepEqual(
+      members.map((member) => member.restarts.at(-1)?.["at"]),
+      ["keep", "keep"],
+    );
+  }));
+
 await test("CLV-312 a workspace restart sends the command ID of the request to each repository, also an ID of 128 characters", () =>
   withSupervisor(async ({ folder, members }) => {
     const commandId = "a".repeat(128);
