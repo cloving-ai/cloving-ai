@@ -101,7 +101,7 @@ await test("CLV-334 with the page token, the run detail and each card have Renam
   );
 });
 
-await test("CLV-334 the rename form holds the title and the label, Enter saves and Escape cancels", () => {
+await test("CLV-334 the rename form holds the title and the label, Enter saves, Escape cancels, and a pending save disables the rename buttons", () => {
   const recorded = calls();
   const open = renameControls(recorded, {
     open: "manual-run",
@@ -138,6 +138,17 @@ await test("CLV-334 the rename form holds the title and the label, Enter saves a
     "button",
   ).find((node) => node["type"] === "submit");
   assert.equal(busy?.["disabled"], true);
+  const waiting = found(
+    page("run=manual-run", renameControls(recorded, { busy: ["manual-run"] })),
+    "button",
+  ).filter((node) => String(node["class"]).startsWith("rename-"));
+  assert.deepEqual(
+    waiting.map((node) => [node["children"], node["disabled"]]),
+    [
+      ["Rename", true],
+      ["Use the automatic name", true],
+    ],
+  );
 });
 
 function answered(requests: ServiceRequest[]) {

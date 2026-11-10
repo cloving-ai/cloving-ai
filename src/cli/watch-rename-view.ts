@@ -115,10 +115,12 @@ export function RenameButtons(props: {
   readonly renaming: RenameControls;
 }): Shown {
   const { run, renaming } = props;
+  const waiting = renaming.busy.includes(run.runId) ? { disabled: true } : {};
   return [
     element("button", {
       type: "button",
       class: "rename-open",
+      ...waiting,
       onClick: () => {
         renaming.onOpen({
           runId: run.runId,
@@ -132,7 +134,7 @@ export function RenameButtons(props: {
       ? element("button", {
           type: "button",
           class: "rename-clear",
-          ...(renaming.busy.includes(run.runId) ? { disabled: true } : {}),
+          ...waiting,
           onClick: () => {
             renaming.onClear(run.runId);
           },
