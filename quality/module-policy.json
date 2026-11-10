@@ -2036,6 +2036,8 @@
     "test/watch-render.test.ts": "test",
     "test/watch-reply-deadline.test.ts": "test",
     "test/watch-restart.test.ts": "test",
+    "test/watch-run-back-browser.test.ts": "test",
+    "test/watch-run-back.test.ts": "test",
     "test/watch-run-command-browser.test.ts": "test",
     "test/watch-run-command-page.test.ts": "test",
     "test/watch-run-command-service.test.ts": "test",

@@ -73,7 +73,7 @@ await test("CLV-287 with no decision and no stopped run, the panel says that not
 await test("CLV-287 Answer opens the decision form of the run, and Open run opens the run detail with the stop reason", () => {
   const model = needsModel({ decision: 12, stopped: 51 });
   const answer = page(model, "run=draft");
-  assert.match(answer, /<a class="back" href="#">← Back to the floor<\/a>/);
+  assert.match(answer, /<a class="banner-back" href="#">← Floor<\/a>/);
   assert.match(
     answer,
     /<section class="decision" id="decision-draft\/review-1"><h3>Your decision · approval · waiting 12m<\/h3>[\s\S]*Approve the drafted issue\./,

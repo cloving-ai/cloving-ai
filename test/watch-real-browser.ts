@@ -132,6 +132,17 @@ const settledScroll = `new Promise((resolve) => {
   requestAnimationFrame(step);
 })`;
 
+async function pressTab(
+  command: ReturnType<typeof protocol>,
+  sessionId: unknown,
+): Promise<void> {
+  for (const type of ["rawKeyDown", "keyUp"])
+    await command("Input.dispatchKeyEvent", {
+      sessionId,
+      params: { type, key: "Tab", code: "Tab", windowsVirtualKeyCode: 9 },
+    });
+}
+
 async function browserPage(
   command: ReturnType<typeof protocol>,
   viewport: { readonly width: number; readonly height: number },
@@ -181,6 +192,7 @@ async function browserPage(
           params: { type, ...center, button: "left", clickCount: 1 },
         });
     },
+    pressTab: () => pressTab(command, sessionId),
     async scroll(expression: string) {
       const gesture = await evaluate(expression);
       await command("Input.synthesizeScrollGesture", {
