@@ -18,6 +18,7 @@ export interface TranscriptEntry {
   readonly kind: TranscriptKind;
   readonly text: string;
   readonly tool: string | null;
+  readonly callId: string | null;
   readonly summary: string;
   readonly error: boolean;
   readonly omittedBytes: number;
@@ -32,6 +33,7 @@ export interface TranscriptFiles {
   readonly text: string;
   readonly size: number;
   readonly attempts: readonly TranscriptAttempt[];
+  readonly prompts: readonly string[];
 }
 
 export interface ParsedTranscript {
@@ -42,7 +44,7 @@ export interface ParsedTranscript {
 
 export interface TranscriptSource extends Pick<
   TranscriptFiles,
-  "text" | "attempts"
+  "text" | "attempts" | "prompts"
 > {
   readonly open: boolean;
   readonly privateTexts: readonly string[];
@@ -91,6 +93,14 @@ function attemptDraft(
   };
 }
 
+function promptDrafts(
+  attempt: number,
+  prompts: readonly string[],
+): TranscriptDraft[] {
+  const prompt = prompts[attempt - 1] ?? "";
+  return prompt.trim() === "" ? [] : [{ kind: "prompt", text: prompt }];
+}
+
 function shownTool(
   draft: TranscriptDraft,
   privateTexts: readonly string[],
@@ -102,6 +112,14 @@ function shownTool(
     tool,
     summary: maskedText(`${tool}: ${summaryLine(input)}`, privateTexts),
   };
+}
+
+function shownCall(
+  draft: TranscriptDraft,
+  privateTexts: readonly string[],
+): string | null {
+  if (draft.callId === undefined || draft.callId === "") return null;
+  return maskedText(withoutControls(draft.callId), privateTexts);
 }
 
 function entryOf(
@@ -120,6 +138,7 @@ function entryOf(
     kind: draft.kind,
     text,
     tool,
+    callId: shownCall(draft, place.privateTexts),
     summary,
     error: draft.error ?? false,
     omittedBytes,
@@ -132,12 +151,7 @@ export function transcriptAppended(
 ): ParsedTranscript {
   const entries = [...parsed.entries];
   let { attempt } = parsed;
-  for (const line of completeLines(source)) {
-    const boundary = line.trim() === "";
-    if (boundary) attempt += 1;
-    const drafts = boundary
-      ? [attemptDraft(attempt, source.attempts)]
-      : lineDrafts(line);
+  const added = (drafts: readonly TranscriptDraft[]): void => {
     for (const draft of drafts)
       entries.push(
         entryOf(draft, {
@@ -146,6 +160,19 @@ export function transcriptAppended(
           privateTexts: source.privateTexts,
         }),
       );
+  };
+  if (entries.length === 0) added(promptDrafts(attempt, source.prompts));
+  for (const line of completeLines(source)) {
+    const boundary = line.trim() === "";
+    if (boundary) attempt += 1;
+    added(
+      boundary
+        ? [
+            attemptDraft(attempt, source.attempts),
+            ...promptDrafts(attempt, source.prompts),
+          ]
+        : lineDrafts(line),
+    );
   }
   const bytes = parsed.bytes + encoder.encode(consumedText(source)).length;
   return { bytes, attempt, entries };

@@ -21,6 +21,8 @@ ${fontFaces}
   --color-warn: #8A5A00; --color-bad: #C02B2B;
   --color-code-background: #0F1D16; --color-code-header: #15271E; --color-code-text: #D5E6DC;
   --color-code-line: #24392E; --color-code-muted: #86A394;
+  --color-terminal-background: #141414; --color-terminal-text: #E6E6E6; --color-terminal-dim: #8C8C8C;
+  --color-terminal-red: #FF7B72; --color-terminal-green: #56D364; --color-terminal-tool: #FFFFFF;
   --color-state-running: #1F9D55; --color-state-waiting: #D9A400; --color-state-attention: #0B5FB0;
   --color-state-completed: #1F7A4D; --color-state-failed: #C21F32;
   --shape-cut: 6px; --shape-radius: 14px; --shape-border: 1px;

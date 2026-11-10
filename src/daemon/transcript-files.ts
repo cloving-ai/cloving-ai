@@ -38,6 +38,27 @@ function merged(found: readonly TranscriptAttempt[]): TranscriptAttempt[] {
     }));
 }
 
+function promptOf(line: string): string {
+  try {
+    const value: unknown = JSON.parse(line);
+    if (typeof value !== "object" || value === null) return "";
+    const prompt: unknown = Reflect.get(value, "prompt");
+    return typeof prompt === "string" ? prompt : "";
+  } catch {
+    return "";
+  }
+}
+
+async function promptsOf(folder: string): Promise<string[]> {
+  const text = await readFile(join(folder, "turn-prompts.jsonl"), "utf8").catch(
+    (error: unknown) => {
+      if (absent(error)) return "";
+      throw error;
+    },
+  );
+  return text.split("\n").slice(0, -1).map(promptOf);
+}
+
 async function streamFrom(
   file: string,
   from: number,
@@ -71,6 +92,10 @@ export function transcriptFiles(
     const stream = names.includes("turn.jsonl")
       ? await streamFrom(join(folder, "turn.jsonl"), from)
       : { text: "", size: 0 };
-    return { ...stream, attempts: merged(records.flatMap(attemptOf)) };
+    return {
+      ...stream,
+      attempts: merged(records.flatMap(attemptOf)),
+      prompts: await promptsOf(folder),
+    };
   };
 }

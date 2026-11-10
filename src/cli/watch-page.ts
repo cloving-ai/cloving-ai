@@ -31,17 +31,7 @@ import {
 import { watchClient } from "./watch-client.ts";
 import { watchLoopsClient } from "./watch-loops-client.ts";
 import { watchTranscriptClient } from "./watch-transcript-client.ts";
-import {
-  CutNote,
-  ToolOutput,
-  Transcript,
-  TranscriptBody,
-  TranscriptButton,
-  TranscriptLine,
-  jumpLabel,
-  transcriptWanted,
-  waitingText,
-} from "./watch-transcript-view.ts";
+import { transcriptFunctions } from "./watch-transcript-view.ts";
 import { RunNotes } from "./watch-notes-view.ts";
 import { steerFunctions } from "./watch-steer-view.ts";
 import { watchPhoneClient } from "./watch-phone-client.ts";
@@ -177,7 +167,6 @@ import {
   PullRequest,
   Run,
   RunTotals,
-  RunTurns,
 } from "./watch-view.ts";
 import {
   BackLink,
@@ -326,21 +315,12 @@ const functions = [
   Command,
   Decision,
   Events,
-  CutNote,
-  ToolOutput,
-  TranscriptLine,
-  waitingText,
-  TranscriptButton,
-  jumpLabel,
-  TranscriptBody,
-  transcriptWanted,
-  Transcript,
+  ...transcriptFunctions,
   BannerDetail,
   Banner,
   Phases,
   PullRequest,
   Review,
-  RunTurns,
   Run,
   RunTotals,
   timeLeft,

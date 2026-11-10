@@ -118,6 +118,7 @@ const transcriptAfter = {
 };
 
 export const transcriptKinds = [
+  "prompt",
   "assistant",
   "thinking",
   "tool-call",
@@ -375,6 +376,7 @@ export const watchApiDocument = {
         kind: { type: "string", enum: transcriptKinds },
         text,
         tool: nullableText,
+        callId: nullableText,
         summary: text,
         error: flag,
         omittedBytes: integer,

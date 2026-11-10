@@ -5,6 +5,7 @@ export interface WatchLocation {
   readonly runId: string | null;
   readonly repository?: string | undefined;
   readonly turnId?: string | null;
+  readonly view?: "terminal";
 }
 
 export function watchLocation(hash: string): WatchLocation {
@@ -19,6 +20,7 @@ export function watchLocation(hash: string): WatchLocation {
       runId: fields.get("run") || null,
       ...(repository ? { repository } : {}),
       ...(turnId === null ? {} : { turnId }),
+      ...(fields.get("view") === "terminal" ? { view: "terminal" } : {}),
     };
   }
   try {
@@ -43,7 +45,8 @@ export function watchHash(location: WatchLocation): string {
     location.turnId === undefined || location.turnId === null
       ? ""
       : `turn=${encodeURIComponent(location.turnId)}`;
-  return `#${[workflow, repository, run, turn].filter((part) => part !== "").join("&")}`;
+  const view = location.view === "terminal" ? "view=terminal" : "";
+  return `#${[workflow, repository, run, turn, view].filter((part) => part !== "").join("&")}`;
 }
 
 export function boardWorkflow(

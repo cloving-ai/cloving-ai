@@ -51,10 +51,11 @@ export type { ContinueControls } from "./watch-needs-view.ts";
 import { Today } from "./watch-today-view.ts";
 import { LoopsPanel, type LoopControls } from "./watch-loops-view.ts";
 import type { ThemeControls } from "./watch-theme-view.ts";
-import { Decision, Events, Turn, PullRequest, Review } from "./watch-turn.ts";
+import { Decision, Events, PullRequest } from "./watch-turn.ts";
 import { Commands } from "./command-effects.ts";
 import {
-  Transcript,
+  RunTurns,
+  TerminalPage,
   type TranscriptControls,
 } from "./watch-transcript-view.ts";
 export { PullRequest, Review } from "./watch-turn.ts";
@@ -146,31 +147,6 @@ export function RunTotals(props: { readonly run: WatchRun }): Shown {
   });
 }
 
-export function RunTurns(
-  props: Timed & {
-    readonly transcripts: TranscriptControls | undefined;
-    readonly turnId: string | null;
-  },
-): Shown {
-  const { run, now } = props;
-  if (run.turns.length === 0)
-    return element("p", {
-      class: "meta",
-      children: "No agent turn for this run.",
-    });
-  return run.turns.map((item, index) => [
-    component(Turn, { key: item.key, turn: item, now }),
-    component(Transcript, {
-      key: `transcript-${item.key}`,
-      run,
-      turn: item,
-      turnId: props.turnId,
-      controls: props.transcripts,
-    }),
-    component(Review, { key: `review-${item.key}`, run, round: index + 1 }),
-  ]);
-}
-
 export function Run(
   props: Timed & {
     readonly copying: Copying;
@@ -256,6 +232,8 @@ export function Page(props: PageProps): Shown {
     "The Cloving service does not answer. The page shows the last known records.";
   const down = model.service === "up" ? null : text("down", lost);
   const location = watchLocation(selected);
+  if (location.view === "terminal")
+    return component(TerminalPage, { ...props, model, location });
   if (location.runId !== null) {
     const run = model.runs.find((item) => item.runId === location.runId);
     return [

@@ -6,6 +6,7 @@ import { codexStream } from "./codex-stream.ts";
 import { cursorStream } from "./cursor-stream.ts";
 import { opencodeStream } from "./opencode-stream.ts";
 import { textOutput } from "./text-output.ts";
+import { activityOutput } from "./turn-activity.ts";
 import { grokUsageWarnings } from "../grok-result.ts";
 import { geminiStream } from "./gemini-stream.ts";
 import {
@@ -215,15 +216,6 @@ function saveProgress(
       stream.failure = { error };
       input.failed();
     });
-}
-
-function activityOutput(start: TurnStart) {
-  const output = createWriteStream(
-    join(start.activityFolder ?? start.folder, "turn.jsonl"),
-    { flags: start.activityFolder === undefined ? "w" : "a" },
-  );
-  if (start.activityFolder !== undefined) output.write("\n");
-  return output;
 }
 
 function streamAdapter(
