@@ -92,7 +92,7 @@ test() {
 }
 curl() {
   [[ "\${*:1:10}" == '--fail --silent --show-error --location --retry 2 --connect-timeout 20 --max-time 60' && "\${11}" == -o ]] || exit 94
-  printf 'curl %s %s\\n' "\$(basename "\${12}")" "\${13}"
+  printf 'curl %s %s\\n' "$(basename "\${12}")" "\${13}"
   return "$CURL_STATUS"
 }
 sha256sum() {
@@ -103,7 +103,7 @@ sha256sum() {
 }
 sudo() {
   [[ "$1" == dpkg && "$2" == -i && $# == 4 ]] || exit 91
-  printf 'dpkg -i %s %s\\n' "\$(basename "$3")" "\$(basename "$4")"
+  printf 'dpkg -i %s %s\\n' "$(basename "$3")" "$(basename "$4")"
   return "$INSTALL_STATUS"
 }
 `;
