@@ -67,7 +67,7 @@ const launcher = [
   "const ending=(fields)=>{if(ended)return false;ended=true;",
   'writeFileSync(exit+".tmp",JSON.stringify({...fields,endedAt:new Date().toISOString()})+"\\n",{mode:0o600});',
   'renameSync(exit+".tmp",exit);return true;};',
-  'const stopped=(reason)=>{if(ending({exitCode:null,signal:"SIGKILL",reason}))process.kill(-process.pid,"SIGKILL");};',
+  'const stopped=(reason)=>{let first=true;try{first=ending({exitCode:null,signal:"SIGKILL",reason});}finally{if(first)process.kill(-process.pid,"SIGKILL");}};',
   'const child=spawn(command,rest,{stdio:"inherit",env});',
   'child.on("error",()=>undefined);',
   'child.on("close",(exitCode,signal)=>{ending({exitCode,signal});process.exit(0);});',

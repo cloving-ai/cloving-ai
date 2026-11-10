@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
@@ -222,6 +222,23 @@ await test("CLV-337 a kept command stops at its time limit while no worker runs"
     await second.recover([commandIntent()]);
     await until(() => scene.reports.length === 1);
     assert.equal(scene.reports[0]?.reason, "command-timeout");
+  }));
+
+await test("CLV-337 a kept command stops at its time limit also when its exit record cannot be written", () =>
+  withCommandScene(async (scene) => {
+    const holding =
+      'require("node:fs").writeFileSync("started", String(process.pid)); setInterval(() => {}, 1000);';
+    await keptCommand(scene, { source: holding, settings: { seconds: 3 } });
+    const folder = located(scene.journal, "operation-1").folder;
+    mkdirSync(join(folder, "command.exit.json.tmp"));
+    const command = Number(
+      readFileSync(join(scene.directory, "started"), "utf8"),
+    );
+    try {
+      await until(() => !processExists(command));
+    } finally {
+      if (processExists(command)) process.kill(command, "SIGKILL");
+    }
   }));
 
 await test("CLV-337 a kept command stops at its output limit while no worker runs", () =>
