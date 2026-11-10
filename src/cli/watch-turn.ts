@@ -1,11 +1,4 @@
-import {
-  attemptText,
-  continuedCostText,
-  priceText,
-  spendLimitText,
-  totalsSuffix,
-  usageText,
-} from "./usage-render.ts";
+import { priceText, usageText, attemptText } from "./usage-render.ts";
 import { component, element, type Shown } from "./watch-element.ts";
 import {
   clockTime,
@@ -13,7 +6,6 @@ import {
   groupActivity,
   turnTime,
   type Copying,
-  type WatchDecision,
   type WatchEvent,
   type WatchItem,
   type WatchRun,
@@ -50,6 +42,16 @@ export function Group(props: {
   });
 }
 
+export function turnHeading(
+  turn: WatchTurn,
+  shown: { readonly label: string; readonly now: string },
+): string {
+  const cost = priceText(turn.costUsd, turn.estimatedCostUsd);
+  return [shown.label, turn.outcome, turnTime(turn, shown.now), cost]
+    .filter((part) => part !== "")
+    .join(" · ");
+}
+
 export function Turn(props: {
   readonly turn: WatchTurn;
   readonly now: string;
@@ -57,8 +59,6 @@ export function Turn(props: {
   const { turn, now } = props;
   const groups = groupActivity(turn.activity);
   const working = turn.outcome === "in work";
-  const cost = priceText(turn.costUsd, turn.estimatedCostUsd);
-  const heading = ["Agent turn", turn.outcome, turnTime(turn, now), cost];
   const place = `Branch ${turn.branch} · work tree ${turn.worktree}`;
   const activity = groups.map((items, index) =>
     component(Group, { items, open: working && index === groups.length - 1 }),
@@ -68,7 +68,7 @@ export function Turn(props: {
     children: [
       element("h3", {
         class: "code-head",
-        children: heading.filter((part) => part !== "").join(" · "),
+        children: turnHeading(turn, { label: "Agent turn", now }),
       }),
       element("p", { class: "meta", children: place }),
       turn.harness === undefined
@@ -138,35 +138,6 @@ export function Command(props: {
       element("span", { class: "label code-head", children: label }),
       element("code", { children: command }),
       element("button", { type: "button", onClick, children: shown }),
-    ],
-  });
-}
-
-export function Decision(props: {
-  readonly decision: WatchDecision;
-  readonly turn: WatchTurn | undefined;
-  readonly copying: Copying;
-}): Shown {
-  const { decision, turn, copying } = props;
-  const request = element("details", {
-    open: turn === undefined,
-    children: [
-      element("summary", { children: "Full text of the request" }),
-      element("pre", { children: decision.prompt }),
-    ],
-  });
-  return element("section", {
-    class: "decision",
-    children: [
-      element("h3", { children: `Your decision · ${decision.type}` }),
-      turn === undefined ? null : component(Work, { turn }),
-      request,
-      component(Command, {
-        label: "Approve",
-        command: decision.approve,
-        copying,
-      }),
-      component(Command, { label: "Deny", command: decision.deny, copying }),
     ],
   });
 }
@@ -250,21 +221,14 @@ export function Review(props: {
   });
 }
 
-export function RunTotals(props: { readonly run: WatchRun }): Shown {
-  const { run } = props;
-  return element("section", {
-    class: "run-usage",
-    children: [
-      element("h3", { children: `Run totals${totalsSuffix(run.state)}` }),
-      element("p", { children: usageText(run.usage) }),
-      element("p", {
-        children: `${priceText(run.claudeCostUsd, run.estimatedCostUsd)}${spendLimitText(run.spendLimitUsd)}`,
-      }),
-      run.continuedCostUsd === undefined
-        ? null
-        : element("p", {
-            children: continuedCostText(run.continuedCostUsd),
-          }),
-    ],
-  });
-}
+export const turnFunctions = [
+  turnHeading,
+  Item,
+  Group,
+  Turn,
+  Work,
+  Command,
+  Events,
+  PullRequest,
+  Review,
+];

@@ -17,7 +17,8 @@ cloving reload applies changes of profiles, fallbackModels, tokenPrices, workflo
 `;
 
 export const commandUsage: Readonly<Record<string, string>> = {
-  mcp: `Usage: cloving mcp [--repository <directory>]
+  mcp: `Usage: cloving mcp [--repository <directory>] [--channel]
+       cloving mcp --workspace [--channel]
        cloving mcp --connection <name> [--state-dir <directory>]
 
 Serves cloving_status, cloving_questions and cloving_events as read tools over stdio.
@@ -26,7 +27,15 @@ cloving_resume, cloving_drop, cloving_continue, cloving_dismiss, cloving_steer a
 notes and names. Each of these tools
 needs a commandId. After a lost reply, send the same commandId again.
 The server binds to one repository at startup. It needs an existing Cloving service.
+With --workspace, one server serves each repository of the running workspace.
+It adds the read tool cloving_repositories, which lists the repositories, and
+a repository argument with the workspace names to each tool. A tool that
+changes state needs the repository argument when the workspace lists more than
+one repository. A read tool with no repository argument reads each repository.
 Standard output contains only JSON-RPC messages. Diagnostics use standard error.
+--channel tells a connected Claude Code session when a run needs you: a pending
+decision, a paused run, a failed or blocked run, or a stopped schedule.
+With --workspace, each channel message names its repository.
 --connection launches the encrypted remote bridge from the Cloving relay integration package.
 Pair the harness first with cloving integrations pair mcp --name <name>.
 On the workflow computer, use cloving integrations connect mcp, approve mcp and serve mcp.
@@ -205,6 +214,10 @@ The restart keeps a drain of the queue and its failure count.
 The update fetches the default branch and needs a fast-forward.
 It runs npm ci --ignore-scripts when package-lock.json changed, and then npm run build.
 When a step fails, the checkout goes back to the old commit and the service starts on it. The command exits with status 1.
+While a workspace runs, cloving restart with no --repository restarts all repositories at a common gap.
+The workspace supervisor holds the queue runs of all repositories, waits until no repository has work,
+and then restarts each repository at once. --at now does not wait for the gap.
+A workspace restart has no --update, --cancel or --within; use --repository <name> to restart one repository.
 `,
   watch: `Usage: cloving watch [--port <n>] [--workspace]
 
@@ -232,7 +245,11 @@ as with one start, and no watch page of its own. The start serves one watch
 page for all repositories on the watch port. While the workspace runs,
 cloving status lists each repository, and --repository <name> selects one.
 Control-C stops all repositories. When one repository stops with an error,
-Cloving stops the other repositories.
+Cloving stops the other repositories. The optional workspace fields lanes
+(1 to 64) and dailySpendLimitUsd (above 0) limit the queue runs of all
+repositories: a queue asks the supervisor before it starts a run, and the
+supervisor holds the run when the active queue runs fill the lanes or the
+spend of the last 24 hours is at 85 percent of the limit.
 
 The queue continues after unsuccessful runs and stops after three runs in a row
 without a successful handoff. A successful handoff resets the count; ordinary restarts preserve the count.
@@ -282,6 +299,7 @@ Settings files: .cloving/config.json in the repository and <config>/cloving/proj
   CLOVING_PHONE_RELAY              The phone relay child, which connects phones through cloving.ai. The value off starts no phone relay. The default is on.
   CLOVING_RELAY_ORIGIN             The origin of the phone relay server. Only https origins are accepted. The default is https://cloving.ai.
   CLOVING_OWNERSHIP_LEASE_SECONDS  The time in seconds of the ownership lease of a started workflow step. The default is 15.
+  CLOVING_WORKSPACE_PERMITS        The path of the permit socket of the workspace supervisor. A workspace start sets it for each repository; do not set it by hand. The queue asks the supervisor for a permit before each queue run.
   CLOVING_HOST_BOUND               The largest number of queue messages that the workflow host handles at one time, from 1 to 64. The default is 8.
   CLOVING_GH_COMMAND               A JSON list of a command and its arguments for the GitHub CLI, used by workflows for pull requests and issues. The watch board also uses it to read pull request status. The default is gh.
   CLOVING_CHECK_COMMAND            A JSON list of a command and its arguments that a workflow runs in the work tree before a merge. A merge does not occur if the command fails. The setting has no default, and with no setting the merge occurs with no check.

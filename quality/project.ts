@@ -15,6 +15,7 @@ export interface ProjectOptions extends SourceOptions {
   readonly commandOptions?: CommandOptions;
   readonly timeFactor?: number;
   readonly shard?: string;
+  readonly testSet?: TestSet;
   readonly coverage?: "on" | "off";
   readonly coverageDirectory?: string;
   readonly trustedCompilerConfiguration?: string;
@@ -180,6 +181,7 @@ async function checkProjectTests(
       : {}),
     timeFactor: options.timeFactor ?? 1,
     ...(options.shard === undefined ? {} : { shard: options.shard }),
+    ...(options.testSet === undefined ? {} : { testSet: options.testSet }),
     ...(options.coverageDirectory === undefined
       ? {}
       : { coverageDirectory: options.coverageDirectory }),
@@ -217,4 +219,5 @@ import {
   parseTestShard,
   type CheckTiming,
   type CommandOptions,
+  type TestSet,
 } from "./command.ts";

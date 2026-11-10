@@ -13,6 +13,11 @@ import { codexStream } from "./codex-stream.ts";
 import { cursorStream } from "./cursor-stream.ts";
 import { opencodeStream } from "./opencode-stream.ts";
 import { textOutput } from "./text-output.ts";
+import {
+  activityOutput,
+  recordPrompt,
+  type LaterAttempt,
+} from "./turn-activity.ts";
 import { grokUsageWarnings } from "../grok-result.ts";
 import { geminiStream } from "./gemini-stream.ts";
 import type { Worker, StreamResult } from "./claude-stream.ts";
@@ -61,7 +66,7 @@ export interface TurnStart {
   readonly command: readonly string[];
   readonly directory: string;
   readonly folder: string;
-  readonly activityFolder?: string;
+  readonly laterAttempt?: LaterAttempt;
   readonly prompt: string;
   readonly release?: AbortSignal;
   readonly attach?: TurnLaunch;
@@ -153,15 +158,6 @@ function spawnTurn(start: TurnStart): {
     rmSync(configuration, { recursive: true, force: true });
     throw error;
   }
-}
-
-function activityOutput(start: TurnStart) {
-  const output = createWriteStream(
-    join(start.activityFolder ?? start.folder, "turn.jsonl"),
-    { flags: start.activityFolder === undefined ? "w" : "a" },
-  );
-  if (start.activityFolder !== undefined) output.write("\n");
-  return output;
 }
 
 function streamAdapter(
@@ -305,6 +301,7 @@ function launchedTurn(start: TurnStart): StartedTurn | undefined {
 
 export function startTurn(start: TurnStart): StartedTurn {
   if (start.attach !== undefined) return attachedTurn(start, start.attach);
+  recordPrompt(start);
   const launched = detachable(start) ? launchedTurn(start) : undefined;
   return launched ?? pipedTurn(start);
 }

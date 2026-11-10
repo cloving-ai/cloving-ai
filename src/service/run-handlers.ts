@@ -1,5 +1,6 @@
 import { commandWaitDisplay } from "./command-waits.ts";
 import {
+  dismissalOf,
   scheduleMetadata,
   scheduledMetadata,
   metadataOf,
@@ -307,6 +308,7 @@ export async function status(
       ...(await turnRecordsOf(context, { ...view, totals })),
       ...(await commandFields(context, view.commandOperations)),
       outcome: await outcomeOf(context, view),
+      ...(await dismissalOf(context, view.runId)),
       decisions: await decidedOf(context, {
         state: current.state,
         runId: view.runId,

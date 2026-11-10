@@ -8,15 +8,15 @@ import {
 } from "./schedule-render.ts";
 import {
   LoopActions,
-  LoopRow,
-  LoopsPanel,
-  loopAmount,
+  LoopCell,
+  LoopLast,
+  lastRunText,
   loopLastText,
   loopMessage,
-  loopNextText,
   loopTime,
-  relativeText,
+  pastClock,
 } from "./watch-loops-view.ts";
+import { LineNext, nextRunText } from "./watch-line-next-view.ts";
 import * as waitDisplay from "./command-waits.ts";
 import { cardReply } from "./watch-card-reply.ts";
 import { record } from "../protocol.ts";
@@ -29,19 +29,10 @@ import {
   cardSubmitKey,
 } from "./watch-card-view.ts";
 import { watchClient } from "./watch-client.ts";
+import { watchDecisionClient } from "./watch-decision-client.ts";
 import { watchLoopsClient } from "./watch-loops-client.ts";
 import { watchTranscriptClient } from "./watch-transcript-client.ts";
-import {
-  CutNote,
-  ToolOutput,
-  Transcript,
-  TranscriptBody,
-  TranscriptButton,
-  TranscriptLine,
-  jumpLabel,
-  transcriptWanted,
-  waitingText,
-} from "./watch-transcript-view.ts";
+import { transcriptFunctions } from "./watch-transcript-view.ts";
 import { RunNotes } from "./watch-notes-view.ts";
 import { runActionFunctions } from "./watch-rename-view.ts";
 import { runCommandFunctions } from "./watch-run-command-view.ts";
@@ -93,26 +84,11 @@ import {
   Station,
   Token,
   lampLabel,
-  nextRunText,
   stepAge,
 } from "./watch-floor-view.ts";
 import { Demo, Shelf, Tile } from "./watch-shelf-view.ts";
-import {
-  ContinueAction,
-  ContinueForm,
-  DismissAction,
-  Need,
-  NeedMessage,
-  NeedsYou,
-  continuableNeed,
-  continuableRun,
-  decisionNeed,
-  decisionText,
-  needMeta,
-  needRepository,
-  needsOf,
-  stoppedNeed,
-} from "./watch-needs-view.ts";
+import { needsFunctions } from "./watch-needs-view.ts";
+import { decisionFunctions } from "./watch-decision-view.ts";
 import {
   DayChart,
   LaneLine,
@@ -141,6 +117,7 @@ import {
 } from "./watch-board-view.ts";
 import {
   boardWorkflow,
+  locationOptions,
   watchHash,
   watchLocation,
   watchTitle,
@@ -160,17 +137,7 @@ import {
   turnTime,
   waitingDetail,
 } from "./watch-render.ts";
-import {
-  Command,
-  Decision,
-  Events,
-  Group,
-  Review,
-  Item,
-  RunTotals,
-  Turn,
-  Work,
-} from "./watch-turn.ts";
+import { turnFunctions } from "./watch-turn.ts";
 import {
   Banner,
   BannerDetail,
@@ -178,9 +145,8 @@ import {
   FloorPage,
   Page,
   Phases,
-  PullRequest,
   Run,
-  RunTurns,
+  RunTotals,
 } from "./watch-view.ts";
 import {
   BackLink,
@@ -206,14 +172,13 @@ const functions = [
   shownScheduled,
   loopText,
   loopTime,
-  loopAmount,
-  relativeText,
-  loopNextText,
+  pastClock,
+  lastRunText,
   loopLastText,
   loopMessage,
   LoopActions,
-  LoopRow,
-  LoopsPanel,
+  LoopLast,
+  LoopCell,
   record,
   commandText,
   Commands,
@@ -253,6 +218,7 @@ const functions = [
   attemptText,
   totalsSuffix,
   watchHash,
+  locationOptions,
   watchLocation,
   boardWorkflow,
   watchTitle,
@@ -277,6 +243,7 @@ const functions = [
   Token,
   Station,
   ReadyCount,
+  LineNext,
   LineEnd,
   Legend,
   Line,
@@ -286,20 +253,7 @@ const functions = [
   Demo,
   Tile,
   Shelf,
-  decisionText,
-  decisionNeed,
-  stoppedNeed,
-  continuableRun,
-  continuableNeed,
-  needRepository,
-  needsOf,
-  needMeta,
-  ContinueAction,
-  ContinueForm,
-  DismissAction,
-  NeedMessage,
-  Need,
-  NeedsYou,
+  ...needsFunctions,
   dollars,
   spentText,
   unknownCostText,
@@ -323,28 +277,12 @@ const functions = [
   phaseTime,
   selectedRun,
   pageTitle,
-  Item,
-  Group,
-  Turn,
-  Work,
-  Command,
-  Decision,
-  Events,
-  CutNote,
-  ToolOutput,
-  TranscriptLine,
-  waitingText,
-  TranscriptButton,
-  jumpLabel,
-  TranscriptBody,
-  transcriptWanted,
-  Transcript,
+  ...turnFunctions,
+  ...decisionFunctions,
+  ...transcriptFunctions,
   BannerDetail,
   Banner,
   Phases,
-  PullRequest,
-  Review,
-  RunTurns,
   Run,
   RunTotals,
   timeLeft,
@@ -383,6 +321,7 @@ export function pageDocument(
     watchLoopsClient,
     watchRunCommandClient,
     watchTranscriptClient,
+    watchDecisionClient,
     watchClient,
   ].join("\n");
   return [

@@ -292,7 +292,17 @@ const tools: readonly Tool[] = [
   ...scheduleTools,
 ];
 
-function listing(tool: Tool): Fields {
+export interface McpListing extends Fields {
+  readonly name: string;
+  readonly inputSchema: {
+    readonly type: "object";
+    readonly properties: Readonly<Record<string, Fields>>;
+    readonly required?: readonly string[];
+    readonly additionalProperties: false;
+  };
+}
+
+function listing(tool: Tool): McpListing {
   return {
     name: tool.name,
     ...(tool.description === undefined

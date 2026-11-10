@@ -16,7 +16,9 @@ import { workspaceCommand } from "./workspace-status.ts";
 import type { RuntimeInvocation } from "./runtime-invocation.ts";
 import type { WorkspaceRecord } from "./workspace-record.ts";
 import { themesCommand } from "./themes-command.ts";
+import { channelSource, refusedPrivateTexts } from "./mcp-channel.ts";
 import { mcpServer } from "./mcp-server.ts";
+import { workspaceMcpServer } from "./mcp-workspace.ts";
 import { clientCommand, runtimeDirectory } from "./runtime-directory.ts";
 import {
   commandUsage,
@@ -87,15 +89,35 @@ export async function main(
       terminal,
     });
   } else if (invocation.kind === "mcp") {
-    process.exitCode = await mcpServer(
-      runtimeDirectory(process.env, repository),
-    );
+    process.exitCode = await mcpCommand(invocation, context);
   } else {
     process.exitCode = await serviceCommand(invocation, {
       ...context,
       environment,
     });
   }
+}
+
+function mcpCommand(
+  invocation: Extract<Invocation, { readonly kind: "mcp" }>,
+  context: {
+    readonly repository: string | undefined;
+    readonly workspace?: WorkspaceRecord | undefined;
+  },
+): Promise<number> {
+  if (invocation.workspace === true)
+    return workspaceMcpServer(context.workspace, invocation);
+  const { repository } = context;
+  const runtime = runtimeDirectory(process.env, repository);
+  if (invocation.channel === undefined || runtime === undefined)
+    return mcpServer(runtime);
+  const source = channelSource(process.env, {
+    runtimeDirectory: runtime,
+    repository,
+  });
+  return source === undefined
+    ? refusedPrivateTexts()
+    : mcpServer(runtime, { channel: [source] });
 }
 
 function serviceCommand(

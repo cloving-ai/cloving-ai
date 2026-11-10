@@ -141,7 +141,9 @@ async function launched(
       ...start,
       command: launchCommand(attempts, launch),
       folder,
-      ...(entry.attempt === 1 ? {} : { activityFolder: start.folder }),
+      ...(entry.attempt === 1
+        ? {}
+        : { laterAttempt: { folder: start.folder, attempt: entry.attempt } }),
       prompt: launchPrompt(launch, prompt),
     },
   });

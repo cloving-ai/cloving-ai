@@ -63,6 +63,7 @@ export function displayRun(run: WatchRun, home: string): WatchRun {
       prompt: shown(decision.prompt),
       approve: homePaths(decision.approve, home),
       deny: homePaths(decision.deny, home),
+      answer: homePaths(decision.answer, home),
     })),
     feedback: run.feedback.map((feedback) => ({
       ...feedback,

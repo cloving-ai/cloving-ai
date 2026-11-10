@@ -31,6 +31,8 @@ function shown(
 ) {
   const asked: unknown[] = [];
   const controls: TranscriptControls = {
+    tab: "transcript",
+    onTab: () => undefined,
     view: (target) => {
       asked.push(target);
       return {
@@ -57,6 +59,7 @@ function shown(
       run: { runId: "run-1", turns: [turn, ...(options.later ?? [])] },
       turn,
       turnId: options.turnId ?? null,
+      now: "2026-10-13T21:40:00.000Z",
       controls,
     }),
   );
@@ -80,34 +83,30 @@ await test("CLV-329 a transcript section shows assistant text as text, a tool ca
   );
   assert.match(
     html,
-    /<div class="entry assistant"><pre>\*\*Bold\*\* &lt;b&gt;tag&lt;\/b&gt;<\/pre><\/div>/,
+    /<div class="entry assistant"><span class="mark">⏺<\/span><pre>\*\*Bold\*\* &lt;b&gt;tag&lt;\/b&gt;<\/pre><\/div>/,
   );
   assert.match(
     html,
-    /<details class="entry tool-call"><summary>Bash: npm test<\/summary><pre>\{\n {2}&quot;command&quot;: &quot;npm test&quot;\n\}<\/pre><\/details>/,
+    /<details class="tool-line"><summary><span class="mark">⏺<\/span> <strong class="tool-name">Bash<\/strong>\(npm test\)<\/summary><pre class="tool-input">\{\n {2}&quot;command&quot;: &quot;npm test&quot;\n\}<\/pre><\/details>/,
   );
   assert.match(
     html,
-    /<details class="entry thinking"><summary>Thinking<\/summary><pre>Plan the test\.<\/pre><\/details>/,
+    /<details class="entry thinking"><summary>✻ Thinking…<\/summary><pre>Plan the test\.<\/pre><\/details>/,
   );
   assert.doesNotMatch(html, /<b>|open/);
 });
 
-await test("CLV-329 a tool result shows its first 20 lines and opens to the rest, with an error mark and the count of bytes that the cut left out", () => {
+await test("CLV-341 a tool result is folded to a line with an error mark and its line count, and opens to all its lines and the count of bytes that the cut left out", () => {
   const text = Array.from(
-    { length: 23 },
+    { length: 7 },
     (_, index) => `line ${String(index + 1)}`,
   ).join("\n");
   const html = entries(
     entry(1, { kind: "tool-result", text, error: true, omittedBytes: 512 }),
   );
-  const head = Array.from(
-    { length: 20 },
-    (_, index) => `line ${String(index + 1)}`,
-  ).join("\n");
   assert.ok(
     html.includes(
-      `<div class="entry tool-result error"><span class="entry-mark">Error</span><pre>${head}</pre><details><summary>3 more lines</summary><pre>line 21\nline 22\nline 23</pre></details><p class="entry-cut">The output is cut: 512 bytes are left out.</p></div>`,
+      `<details class="entry tool-result error"><summary><span class="gutter">⎿</span> Error · 7 lines</summary><div class="output"><pre>line 1\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7</pre><p class="entry-cut">The output is cut: 512 bytes are left out.</p></div></details>`,
     ),
     html,
   );
@@ -235,6 +234,8 @@ function handler(
 await test("CLV-329 the buttons and the scroll box of a transcript call their controls", () => {
   const calls: unknown[] = [];
   const controls: TranscriptControls = {
+    tab: "transcript",
+    onTab: () => undefined,
     view: () => ({
       shown: true,
       entries: [entry(1, { kind: "assistant", text: "a" })],
@@ -255,6 +256,7 @@ await test("CLV-329 the buttons and the scroll box of a transcript call their co
     run: { runId: "run-1", turns: [] },
     turn: turnOf("in work"),
     turnId: null,
+    now: "2026-10-13T21:40:00.000Z",
     controls,
   });
   for (const button of found(tree, "button")) handler(button, "onClick")({});
@@ -279,6 +281,7 @@ await test("CLV-329 the buttons and the scroll box of a transcript call their co
     run: { runId: "run-1", turns: [] },
     turn: turnOf("completed"),
     turnId: null,
+    now: "2026-10-13T21:40:00.000Z",
     controls: undefined,
   });
   handler(found(plain, "button")[0], "onClick")({});
@@ -289,6 +292,8 @@ await test("CLV-329 the buttons and the scroll box of a transcript call their co
 await test("CLV-329 the Retry button of a failed transcript read calls its control", () => {
   const calls: unknown[] = [];
   const controls: TranscriptControls = {
+    tab: "transcript",
+    onTab: () => undefined,
     view: () => ({
       shown: true,
       entries: [],
@@ -309,6 +314,7 @@ await test("CLV-329 the Retry button of a failed transcript read calls its contr
     run: { runId: "run-1", turns: [] },
     turn: turnOf("in work"),
     turnId: null,
+    now: "2026-10-13T21:40:00.000Z",
     controls,
   });
   const retry = found(failed, "button").find(

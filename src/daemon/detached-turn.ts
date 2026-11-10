@@ -3,6 +3,7 @@ import { open, type FileHandle } from "node:fs/promises";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import type { StreamResult } from "./claude-stream.ts";
+import type { LaterAttempt } from "./turn-activity.ts";
 import type { TurnLaunch } from "../turn-launch.ts";
 import {
   attachedProcess,
@@ -45,7 +46,7 @@ export interface DetachedStart extends FollowStart {
   readonly environment: NodeJS.ProcessEnv;
   readonly directory: string;
   readonly folder: string;
-  readonly activityFolder?: string | undefined;
+  readonly laterAttempt?: LaterAttempt | undefined;
   readonly standardInput: string | undefined;
   readonly configuration: string;
 }
@@ -161,9 +162,10 @@ function promptInput(start: DetachedStart): number | "ignore" {
 }
 
 function launchFiles(start: DetachedStart) {
-  const path = join(start.activityFolder ?? start.folder, "turn.jsonl");
-  const output = openSync(path, start.activityFolder === undefined ? "w" : "a");
-  if (start.activityFolder !== undefined) writeSync(output, "\n");
+  const { laterAttempt } = start;
+  const path = join(laterAttempt?.folder ?? start.folder, "turn.jsonl");
+  const output = openSync(path, laterAttempt === undefined ? "w" : "a");
+  if (laterAttempt !== undefined) writeSync(output, "\n");
   const offset = fstatSync(output).size;
   const error = openSync(join(start.folder, "turn.stderr.log"), "w");
   const exit = join(start.folder, "turn.exit.json");

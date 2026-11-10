@@ -22,25 +22,43 @@ function message(content: Fields): string {
   return JSON.stringify({ type: "assistant", message: { content: [content] } });
 }
 
-function commandError(item: Fields): string[] {
+function itemId(item: Fields, name: string): Fields {
+  const id = text(item["id"]);
+  return id === "" ? {} : { [name]: id };
+}
+
+function commandFailed(item: Fields): boolean {
   const code = item["exit_code"];
-  if (item["status"] !== "failed" && !(typeof code === "number" && code !== 0))
-    return [];
-  const fallback =
-    typeof code === "number" ? `exit code ${String(code)}` : "command failed";
-  const content = text(item["aggregated_output"]).slice(-2000) || fallback;
-  return [
-    JSON.stringify({
-      type: "user",
-      message: { content: [{ type: "tool_result", is_error: true, content }] },
-    }),
-  ];
+  return (
+    item["status"] === "failed" || (typeof code === "number" && code !== 0)
+  );
+}
+
+function failureText(item: Fields): string {
+  const code = item["exit_code"];
+  return typeof code === "number"
+    ? `exit code ${String(code)}`
+    : "command failed";
+}
+
+function commandOutput(item: Fields): string[] {
+  const failed = commandFailed(item);
+  if (!failed && typeof item["aggregated_output"] !== "string") return [];
+  const output = text(item["aggregated_output"]).slice(-2000);
+  const content = output === "" && failed ? failureText(item) : output;
+  const part = {
+    type: "tool_result",
+    ...itemId(item, "tool_use_id"),
+    is_error: failed,
+    content,
+  };
+  return [JSON.stringify({ type: "user", message: { content: [part] } })];
 }
 
 function completed(item: Fields): string[] {
   if (item["type"] === "agent_message")
     return [message({ type: "text", text: text(item["text"]) })];
-  if (item["type"] === "command_execution") return commandError(item);
+  if (item["type"] === "command_execution") return commandOutput(item);
   if (item["type"] !== "file_change" || !Array.isArray(item["changes"]))
     return [];
   return item["changes"].map((change: unknown) =>
@@ -104,6 +122,7 @@ function translated(event: Fields, state: State): string[] {
     return [
       message({
         type: "tool_use",
+        ...itemId(item, "id"),
         name: "Bash",
         input: { command: text(item["command"]) },
       }),

@@ -9,6 +9,14 @@ export function parseTestCoverage(value: string | undefined): "on" | "off" {
   throw new Error("CLOVING_TEST_COVERAGE must be on or off");
 }
 
+export type TestSet = "all" | "platform";
+
+export function parseTestSet(value: string | undefined): TestSet {
+  if (value === undefined || value === "all") return "all";
+  if (value === "platform") return "platform";
+  throw new Error("CLOVING_TEST_SET must be all or platform");
+}
+
 export function parseTestShard(
   value: string | undefined,
 ): TestShard | undefined {
@@ -139,6 +147,7 @@ function commandEnvironment(command: CheckCommand): NodeJS.ProcessEnv {
     PATH: process.env["PATH"],
     CLOVING_CHECK_TIME_FACTOR: process.env["CLOVING_CHECK_TIME_FACTOR"],
     CLOVING_TEST_CONCURRENCY: process.env["CLOVING_TEST_CONCURRENCY"],
+    CLOVING_TEST_PROGRESS_FILE: process.env["CLOVING_TEST_PROGRESS_FILE"],
     TZ: "UTC",
     CI: "true",
     NODE_DISABLE_COMPILE_CACHE: "1",

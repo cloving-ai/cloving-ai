@@ -68,7 +68,7 @@ function notification(value: unknown): value is Notification {
   const message = record(value);
   if (message === undefined) return false;
   return (
-    ["decision", "blocked", "failed", "schedule-stopped"].includes(
+    ["decision", "paused", "blocked", "failed", "schedule-stopped"].includes(
       String(message["event"]),
     ) &&
     ["event", "runId", "workflowId", "subject", "body"].every(

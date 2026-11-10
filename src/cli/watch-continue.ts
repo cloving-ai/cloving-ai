@@ -3,7 +3,8 @@ import type { IncomingMessage } from "node:http";
 import { isRecordKey } from "../authority/commands.ts";
 import { record, type Fields } from "../protocol.ts";
 import { send } from "./client.ts";
-import { runCommandRequest } from "./command-requests.ts";
+import { commandJson, runCommandRequest } from "./command-requests.ts";
+import { mcpToolCall } from "./mcp-tools.ts";
 import type { RunCommand } from "./runtime-invocation.ts";
 import {
   actionAllowed,
@@ -50,6 +51,27 @@ function runAction(operation: Operation): RunAction {
     );
   };
 }
+
+const decisionCommands = new Set(["answer", "approve", "deny"]);
+
+function pageText(text: unknown): boolean {
+  if (text === undefined) return true;
+  if (typeof text !== "string") return false;
+  const size = Array.from(text.trim()).length;
+  return size >= 1 && size <= 4000;
+}
+
+const decisionAction: RunAction = async (actions, request) => {
+  if (!actionAllowed(actions, request)) return null;
+  const { command, ...values } = record(await actionBody(request)) ?? {};
+  if (typeof command !== "string" || !decisionCommands.has(command))
+    return null;
+  if (!pageText(values["text"])) return null;
+  const call = mcpToolCall({ name: `cloving_${command}`, arguments: values });
+  if (call?.kind !== "mutation") return null;
+  const reply = await send(actions.runtimeDirectory, call.request);
+  return JSON.stringify(commandJson(reply, { commandId: call.commandId }));
+};
 
 function commandFields(body: Fields | undefined): Fields | null {
   if (body === undefined || Object.keys(body).length !== 3) return null;
@@ -108,6 +130,7 @@ const renameAction: RunAction = async (actions, request) => {
 
 const runActions: Readonly<Record<string, RunAction>> = {
   "/actions/continue": runAction("continue-run"),
+  "/actions/decision": decisionAction,
   "/actions/dismiss": runAction("dismiss-run"),
   "/actions/drop": commandAction("drop"),
   "/actions/pause": commandAction("pause"),

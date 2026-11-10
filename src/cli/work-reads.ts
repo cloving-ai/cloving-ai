@@ -1,6 +1,6 @@
 import { access, readdir } from "node:fs/promises";
 import { join } from "node:path";
-import { send } from "../cli/client.ts";
+import { send } from "./client.ts";
 import type { WorkReads } from "../work-gap.ts";
 
 function missing(error: unknown): boolean {

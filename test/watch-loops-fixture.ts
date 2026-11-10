@@ -125,6 +125,7 @@ export const loopEndedAt = "2026-11-16T12:30:00.000Z";
 
 export function loopModel(): WatchModel {
   return floorModel([], {
+    workflows: ["review-day", "docs-drift", "develop-issue"],
     schedules: [
       {
         workflowId: "review-day",

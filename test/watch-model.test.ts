@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   activityOf,
-  decisionCommands,
   turnActivity,
   turnOf,
   watchModel,
@@ -279,18 +278,6 @@ const decision = {
   generation: 2,
   subjectDigest: "sha256:abc",
 };
-
-await test("CLV-016 the watch model gives each pending decision its approve and deny commands", () => {
-  assert.deepEqual(decisionCommands(decision, "cloving"), {
-    decisionId: "run-1/review-1",
-    type: "approval",
-    prompt: "Review the work.",
-    openedAt: null,
-    approve:
-      "cloving approve run-1/review-1 --expected-revision 1 --generation 2 --subject-digest sha256:abc",
-    deny: 'cloving deny run-1/review-1 --text "<feedback>" --expected-revision 1 --generation 2 --subject-digest sha256:abc',
-  });
-});
 
 function run(runId: string, at: string): Record<string, unknown> {
   return {

@@ -8,6 +8,7 @@ import { failed, type ServiceContext } from "./replies.ts";
 import { renameRun } from "./rename-handler.ts";
 import { restartOperation } from "./restart-handler.ts";
 import { runCommand, status } from "./run-handlers.ts";
+import { spendRead } from "./queue-spend.ts";
 import { steerRun } from "./steer-handler.ts";
 import { scheduleHandler } from "./schedule-run.ts";
 import { transcript } from "./transcript-handler.ts";
@@ -34,6 +35,7 @@ export function dispatcher(
     ["run", (request) => run(request.parameters)],
     ["schedule", (request) => schedule(request.parameters)],
     ["queue", () => queueRead(context)],
+    ["spend", () => spendRead(context)],
     ["queue-command", (request) => queueCommand(context, request.parameters)],
     ["status", (request) => status(context, request.parameters)],
     ["questions", (request) => questions(context, request.parameters)],

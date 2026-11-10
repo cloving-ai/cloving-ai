@@ -5,6 +5,22 @@ export interface WatchLocation {
   readonly runId: string | null;
   readonly repository?: string | undefined;
   readonly turnId?: string | null;
+  readonly decisionId?: string | null;
+  readonly view?: "terminal";
+}
+
+export function locationOptions(
+  fields: URLSearchParams,
+): Pick<WatchLocation, "repository" | "turnId" | "decisionId" | "view"> {
+  const repository = fields.get("repository");
+  const turnId = fields.get("turn") || null;
+  const decisionId = fields.get("decision") || null;
+  return {
+    ...(repository ? { repository } : {}),
+    ...(turnId === null ? {} : { turnId }),
+    ...(decisionId === null ? {} : { decisionId }),
+    ...(fields.get("view") === "terminal" ? { view: "terminal" } : {}),
+  };
 }
 
 export function watchLocation(hash: string): WatchLocation {
@@ -12,13 +28,10 @@ export function watchLocation(hash: string): WatchLocation {
   if (value === "") return { workflowId: null, runId: null };
   if (/^(workflow|run)=/.test(value)) {
     const fields = new URLSearchParams(value);
-    const repository = fields.get("repository");
-    const turnId = fields.get("turn") || null;
     return {
       workflowId: fields.get("workflow") || null,
       runId: fields.get("run") || null,
-      ...(repository ? { repository } : {}),
-      ...(turnId === null ? {} : { turnId }),
+      ...locationOptions(fields),
     };
   }
   try {
@@ -29,21 +42,19 @@ export function watchLocation(hash: string): WatchLocation {
 }
 
 export function watchHash(location: WatchLocation): string {
-  const workflow =
-    location.workflowId === null
-      ? ""
-      : `workflow=${encodeURIComponent(location.workflowId)}`;
-  const repository =
-    location.repository === undefined
-      ? ""
-      : `repository=${encodeURIComponent(location.repository)}`;
-  const run =
-    location.runId === null ? "" : `run=${encodeURIComponent(location.runId)}`;
-  const turn =
-    location.turnId === undefined || location.turnId === null
-      ? ""
-      : `turn=${encodeURIComponent(location.turnId)}`;
-  return `#${[workflow, repository, run, turn].filter((part) => part !== "").join("&")}`;
+  const parts: readonly (readonly [string, string | null | undefined])[] = [
+    ["workflow", location.workflowId],
+    ["repository", location.repository],
+    ["run", location.runId],
+    ["turn", location.turnId],
+    ["decision", location.decisionId],
+    ["view", location.view],
+  ];
+  return `#${parts
+    .flatMap(([name, value]) =>
+      typeof value === "string" ? [`${name}=${encodeURIComponent(value)}`] : [],
+    )
+    .join("&")}`;
 }
 
 export function boardWorkflow(

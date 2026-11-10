@@ -89,6 +89,28 @@ await test("CLV-127 capacity then success completes one operation with retained 
     assert.equal(scene.turns().length, 2);
   }));
 
+await test("CLV-333 each attempt of a retried turn keeps its prompt with the number of its attempt", () =>
+  withScene(async (scene) => {
+    const worker = scene.worker("capacity-once", {
+      retryDelay: (_, waiting) => delay(0, undefined, { signal: waiting }),
+    });
+    await worker.deliver(intent(), signal);
+    await until(() => scene.reports.length === 1);
+    const folder = join(scene.journal, journalKey("operation-1"));
+    const prompts = readFileSync(join(folder, "turn-prompts.jsonl"), "utf8")
+      .split("\n")
+      .slice(0, -1)
+      .map((line): unknown => JSON.parse(line));
+    assert.deepEqual(
+      prompts.map((item) => field(item, "attempt")),
+      [1, 2],
+    );
+    assert.ok(
+      String(field(prompts[1], "prompt")).startsWith(continuation),
+      String(field(prompts[1], "prompt")),
+    );
+  }));
+
 await test("CLV-127 the Claude assistant overload type survives the final result and retries", () =>
   withScene(async (scene) => {
     const worker = scene.worker("overload-once", {
