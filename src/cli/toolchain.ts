@@ -5,7 +5,7 @@ import { dirname, join } from "node:path";
 import packageMetadata from "#package" with { type: "json" };
 import type { ToolchainIdentity } from "../workflow-admission.ts";
 
-export const supportedNodes = packageMetadata.engines.node;
+export const supportedNodes = packageMetadata.devEngines.runtime.version;
 export const clovingVersion = packageMetadata.version;
 
 export function supportedNode(version: string): boolean {
