@@ -3,6 +3,7 @@ import { scheduleInvocation } from "./schedule-arguments.ts";
 import { queueInvocation } from "./queue-arguments.ts";
 import { continueInvocation } from "./continue-arguments.ts";
 import { restartInvocation } from "./restart-arguments.ts";
+import { renameInvocation } from "./rename-arguments.ts";
 import {
   argumentRules,
   type DecisionCommand,
@@ -85,6 +86,15 @@ const shapes: ReadonlyMap<string, Shape> = new Map<string, Shape>([
       required: ["text"],
       allowed: () => ["text", "now", ...mutationOptions],
       build: steer,
+    },
+  ],
+  [
+    "rename",
+    {
+      subject: "required",
+      required: [],
+      allowed: () => ["title", "label", "clear", ...mutationOptions],
+      build: renameInvocation,
     },
   ],
   [

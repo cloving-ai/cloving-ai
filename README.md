@@ -406,6 +406,15 @@ The panel leaves out a failed or blocked run when its work is finished:
 
 With watch actions on, each failed or blocked run in the panel has a **Dismiss** button. The button sends the same command as `cloving dismiss <run-id>`. The service records the dismissal as the event `run.dismissed` of the run, so the run stays out of the panel after a restart. A dismissal does not change the state, the files or the pull request of the run. When the run did not end, the service refuses the dismissal with `run-active`.
 
+With watch actions on, the run detail of an active run has **Pause** and **Drop**. When the run is paused, **Resume** replaces **Pause**. The card of an active run on a board and the token of an active run on the floor have the same controls in a small menu (`⋯`). Each paused run in **Needs you** has **Resume** and **Drop**. A run that ended has no control. Each control is a button that you can reach and press with the keyboard.
+
+- **Pause**, **Resume** and **Drop** send the same request as `cloving pause`, `cloving resume` and `cloving drop`, with the revision of the run on the page.
+- **Drop** first shows the line `Drop this run? Its work tree and pull request stay.` with **Drop the run** and **Keep it**, and the focus moves to **Keep it**. **Keep it** sends nothing and moves the focus back to **Drop**. Only the control that you pressed shows the line. A dropped run ends as `cancelled`. Its work tree and its pull request stay.
+- After a click, the control shows the reply of the service in one line: `Paused`, `Resumed` or `Dropped`. A refusal shows its code and its detail. When the run changed after the page read it, the line says `The run changed. Look again and try again.`, and the page reads the run again. The reply of **Drop** stays after the run ends: the run detail shows it, and the board and the floor show it in one line with the title of the run.
+- Each click has its own random command ID. When the reply is lost or late (status 503), the next click of the same control sends the same command ID and the same revision again, so the service does the command only one time. When the page shows a new revision of the run, the next click gets a new command ID.
+
+The endpoints `actions/pause`, `actions/resume` and `actions/drop` use the write rules of the other watch actions.
+
 The header count and the panel use only the runs of the floor. When a link opens an older run, that run does not change the count.
 
 The watch reads the state of an issue and of a pull request with the GitHub command of `CLOVING_GH_COMMAND` (default `gh`). It reads one item at a time. It reads an open issue again after one minute, and it does not read a closed issue again. Until the first read of an issue completes, the panel shows the run.
@@ -428,7 +437,7 @@ Below the floor, the **Completed today** shelf shows the count of runs that comp
 
 Each workflow board with supported inputs has **+ Add a card** at the bottom of its first column, including an empty board. The form uses the string and ticket fields of the workflow's registered declaration. Ticket fields are labeled **Ticket ID**; other fields use their declared names, and optional fields can be left out. Unsupported inputs have no control. Select **Add card** or press Enter in a field to send. **Cancel** and Esc close the form. The service reply shows the admitted run ID or a refusal code; admitted cards arrive through the existing live stream.
 
-The form sends the same run request as the CLI and retains its random command ID for retries, including a lost reply. Retry the same form to avoid duplicate runs. The write endpoint accepts at most 16 KiB of JSON, requires the page's random token, matching Origin and a loopback/localhost Host with the bound port, and allows no cross-origin preflight. The switches and the **Run now** buttons of the Loops panel use the same write rules. `CLOVING_WATCH_ACTIONS=off` removes the form control, the queue control, the loop controls and their endpoints; actions are enabled by default. The Loops panel stays. Decisions and other run actions still use their displayed CLI commands.
+The form sends the same run request as the CLI and retains its random command ID for retries, including a lost reply. Retry the same form to avoid duplicate runs. The write endpoint accepts at most 16 KiB of JSON, requires the page's random token, matching Origin and a loopback/localhost Host with the bound port, and allows no cross-origin preflight. The switches and the **Run now** buttons of the Loops panel use the same write rules. `CLOVING_WATCH_ACTIONS=off` removes the form control, the queue control, the loop controls, the run controls and their endpoints; actions are enabled by default. The Loops panel stays. Decisions and other run actions still use their displayed CLI commands.
 
 `cloving start` reads its settings from the environment. `cloving start --help` gives the form and the default of each setting:
 
@@ -441,7 +450,7 @@ The form sends the same run request as the CLI and retains its random command ID
 - `CLOVING_PROFILES`: a JSON file of named turn profiles. The service reads it at the start and at each `cloving reload`.
 - `CLOVING_COMMANDS`: a JSON object mapping command names to argument arrays, such as `{"review-requests":["/opt/cloving/scan-reviews.mjs"]}`. Names contain 1–64 ASCII letters, digits or hyphens; the first argument must be an absolute executable path. Unset means no commands. Invalid values stop startup with `invalid-commands`. A command gets no GitHub login; use the methods of the `github` capability to read or change GitHub.
 - `CLOVING_COMMAND_SECONDS`: a whole number from 1 to 3600, default 60. Invalid values stop startup with `invalid-command-seconds`. A command exceeding the deadline fails with `command-timeout`.
-- `CLOVING_WATCH_ACTIONS`: `off` disables starting runs from the board, the queue control and the loop controls; default `on`.
+- `CLOVING_WATCH_ACTIONS`: `off` disables starting runs from the board, the queue control, the loop controls and the run controls; default `on`.
 - `CLOVING_WATCH_PORT`: the port of the watch page, or `off`.
 - `CLOVING_WATCH_REPOSITORY`: repository context for a separate watch process. `start` sets this from its service repository. The watch process uses its local origin and has no current-directory default.
 - `CLOVING_OWNERSHIP_LEASE_SECONDS` and `CLOVING_HOST_BOUND`: limits of the workflow host.
@@ -1246,6 +1255,49 @@ The service refuses these notes:
 `cloving status <run-id>`, the status JSON and the run detail of the watch page show each note with its time, its source and the turn that got it, for example `Note at 2026-11-08T10:00:00.000Z from steer, got by implement/claude-turn/1: Change only src/cli.ts.`.
 
 On the watch page, with watch actions on, the card of a run in work and the run detail have a **Steer** button. The button opens a form with a note field and the check box **Send to the turn in work now**. **Send** sends the same request as `cloving steer`, and Esc closes the form. The reply shows under the button. Until a turn gets the note, the card shows `1 note waiting`.
+
+### Name a run
+
+Each run card has a name with no setup. A ticket command is optional. The service picks the title of a run from the first of these sources that exists:
+
+1. A manual name from **Rename**, `cloving rename` or `cloving_rename`.
+2. The ticket title: the first line of the ticket text when it starts with `# `.
+3. The title of the pull request that the run opened.
+4. A field `title` in the run input.
+5. The first line of the prompt or the ticket text that is not empty, without a leading `# `, cut at 80 characters at a word end.
+6. The workflow ID and the task ID, for example `develop task-0123456789ab`.
+
+The result of the `open-pr` effect keeps the title of the pull request. Each later `open-pr` call of the run reads the current title on GitHub, so the run shows a new title after its next push.
+
+The service picks the label in this order:
+
+1. A manual label.
+2. The issue number, for example `#699`, or the ticket ID.
+3. A ticket key at the start of the title, for example `SID-4820` in `SID-4820: Filter and page Notion database files`. A key has two or more capital letters or digits with at least one letter, a hyphen and a number.
+4. No label.
+
+When the run has a pull request, the card also shows its number, for example `PR #686`. The station token, the card, the run detail, **Needs you**, the shelf, `cloving status <run-id>`, the status JSON and the read API show the same title and label. The status JSON and the read API also have `titleSource` (`manual`, `ticket`, `pull-request`, `input`, `prompt` or `fallback`) and `labelSource` (`manual`, `ticket`, `title` or `null`).
+
+To give a run a new name, use one of these:
+
+```sh
+cloving rename <run-id> --title "Fix the flaky retention test" --label SID-4820
+cloving rename <run-id> --clear
+```
+
+- **Watch page:** with watch actions on, the run detail and each card have a **Rename** action. It opens a form with the current title and a label field. Enter saves, and Esc cancels. When the run has a manual name, **Use the automatic name** removes it.
+- **MCP:** the tool `cloving_rename` takes `runId`, `commandId`, `title`, an optional `label` and an optional `clear`.
+
+A title has 1 to 200 characters after the spaces at its start and end are removed. It is on one line and has no control characters. A label has 1 to 32 characters from letters, digits and `# ! . _ / -`. `--clear` takes no title and no label. A rename works for an active run and for a run that ended. It is the event `run.renamed` of the run, so the name stays after `cloving restart`, and the newest rename wins. A rename does not change the pull request or the ticket.
+
+The service refuses these renames:
+
+- A blank or invalid title gets `invalid-title`.
+- An invalid label gets `invalid-label`.
+- A rename of an unknown run gets `unknown-run`.
+- A request with a known command ID and other values gets `conflicting-command`. The same request gets the stored receipt again.
+
+The watch page sends a rename with the page token, the same Origin and a loopback Host, in at most 16 KiB of JSON, like its other actions. Each save gets a random command ID, and a save again after a lost reply sends the same command ID. `CLOVING_WATCH_ACTIONS=off` removes the Rename action and its endpoint.
 
 ### Rescue stuck pull requests
 

@@ -312,7 +312,7 @@ export async function status(
         runId: view.runId,
       }),
       ...(await metadataOf(context, {
-        workflowId: view.workflowId,
+        ...view,
         digest: current.state.details[view.runId]?.input,
       })),
     },

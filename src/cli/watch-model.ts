@@ -23,7 +23,7 @@ import type {
   WatchTurn,
 } from "./watch-render.ts";
 import { boardsOf, currentStepOf, roundOf, stagesFor } from "./watch-board.ts";
-import { completedOf } from "./watch-floor.ts";
+import { completedOf, shownName } from "./watch-floor.ts";
 import { todayStart } from "./watch-today.ts";
 import { decisionOf, phasesOf } from "./watch-phases.ts";
 
@@ -291,6 +291,12 @@ function runLinksOf(status: Readonly<Record<string, unknown>>) {
   };
 }
 
+function revisionOf(status: Readonly<Record<string, unknown>>) {
+  return Number.isSafeInteger(status["revision"])
+    ? { revision: Number(status["revision"]) }
+    : {};
+}
+
 function runOf(inputs: WatchInputs, value: unknown): WatchRun {
   const status = record(record(value)["status"]);
   const runId = text(status["runId"]);
@@ -299,7 +305,7 @@ function runOf(inputs: WatchInputs, value: unknown): WatchRun {
     { records: inputs.githubRecords, repository: inputs.repository ?? null },
     runId,
   );
-  const ticketId = text(status["ticketId"]);
+  const ticketId = text(status["ticketId"]) || null;
   const issue = establishedIssue(
     inputs.repository ?? null,
     status["issueIdentity"],
@@ -307,13 +313,15 @@ function runOf(inputs: WatchInputs, value: unknown): WatchRun {
   return {
     runId,
     workflowId,
+    ...revisionOf(status),
     ...shownLoopMarks(status),
     ...runLinksOf(status),
     ...notesOf(status["notes"]),
     commandWaits: shownCommandWaits(status["commandWaits"]),
-    ticketId: ticketId === "" ? null : ticketId,
+    ticketId,
     ...(issue === null ? {} : { issueIdentity: issue }),
     title: stamp(status["title"]),
+    ...shownName(status, { ticketId, issue }),
     ...outcomeOf(status["outcome"]),
     latestAt: stamp(status["latestAt"]),
     ...budgetsOf(status),

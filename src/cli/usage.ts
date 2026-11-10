@@ -22,7 +22,8 @@ export const commandUsage: Readonly<Record<string, string>> = {
 
 Serves cloving_status, cloving_questions and cloving_events as read tools over stdio.
 Serves cloving_run, cloving_answer, cloving_approve, cloving_deny, cloving_pause,
-cloving_resume, cloving_drop, cloving_continue, cloving_dismiss and cloving_steer to submit runs, decisions and notes. Each of these tools
+cloving_resume, cloving_drop, cloving_continue, cloving_dismiss, cloving_steer and cloving_rename to submit runs, decisions,
+notes and names. Each of these tools
 needs a commandId. After a lost reply, send the same commandId again.
 The server binds to one repository at startup. It needs an existing Cloving service.
 Standard output contains only JSON-RPC messages. Diagnostics use standard error.
@@ -159,6 +160,13 @@ With --now, a Claude Code or Codex turn in work that recorded a session stops an
 with the note as the next message. A turn takes at most three such notes. In other cases the reply says
 queued with the reason, and the note waits for the next turn.
 `,
+  rename: `Usage: cloving rename <run-id> (--title <text> [--label <text>] | --clear) [--command-id <id>] [--json]
+
+Gives an active or ended run a manual title of 1 to 200 characters on one line, and with --label a label of
+1 to 32 letters, digits or the characters # ! . _ / -. The watch page, cloving status and the read API show it.
+--clear removes the manual name, and the run gets its automatic name again. The rename is an event of the run,
+so it stays after a restart. The newest rename wins. It does not change the pull request or the ticket.
+`,
   events: `Usage: cloving events [<run-id>] [--after <sequence>] [--limit <n>] [--follow] [--json]
 
 Prints the committed events after a sequence. With --json, each line is one event.
@@ -267,7 +275,7 @@ Settings files: .cloving/config.json in the repository and <config>/cloving/proj
   CLOVING_GEMINI_COMMAND           A JSON list of a command and its arguments for the gemini worker. The default is gemini --output-format stream-json --approval-mode yolo; Cloving appends -p and the turn text; turn text of 64 KiB or more in UTF-8 goes through standard input instead. No approval prompts or capacity retries.
   CLOVING_OPENCODE_COMMAND         A JSON list of a command and its arguments for opencode. The default is opencode run --format json; the turn text is appended as one argument. OPENCODE_PERMISSION permits unattended tools.
   CLOVING_WATCH_REPOSITORY         The service repository context for the watch board, set by start from --repository. Its local origin supplies the GitHub identity. There is no current-directory default.
-  CLOVING_WATCH_ACTIONS            The value off removes the board run form, the queue control, the loop controls and their write endpoints. The default is on.
+  CLOVING_WATCH_ACTIONS            The value off removes the board run form, the queue control, the loop controls, the run controls and their write endpoints. The default is on.
   CLOVING_WATCH_PORT               The port number of the watch page. The value off starts no watch page. The default is 3663.
   CLOVING_PHONE_RELAY              The phone relay child, which connects phones through cloving.ai. The value off starts no phone relay. The default is on.
   CLOVING_RELAY_ORIGIN             The origin of the phone relay server. Only https origins are accepted. The default is https://cloving.ai.
@@ -324,6 +332,7 @@ Commands:
   drop       Cancel a run and keep its files.
   dismiss    Remove a stopped run from Needs you.
   steer      Send a note to a run in work.
+  rename     Give a run a new title and label.
   events     Print the committed events.
   watch      Serve a page that shows the runs live.
   reload     Check and compile the workflow files again.

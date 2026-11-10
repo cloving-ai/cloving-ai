@@ -1,8 +1,8 @@
+import type { SteerControls } from "./watch-steer-view.ts";
 import {
-  SteerAction,
-  steerable,
-  type SteerControls,
-} from "./watch-steer-view.ts";
+  RunActions,
+  type RunCommandControls,
+} from "./watch-run-command-view.ts";
 import { RunNotes } from "./watch-notes-view.ts";
 import { loopText } from "./schedule-render.ts";
 import { CommandWaits, effectBudgetText } from "./command-waits.ts";
@@ -16,13 +16,6 @@ import {
   type QueueControls,
 } from "./watch-header-view.ts";
 export { clove, Header, type QueueControls } from "./watch-header-view.ts";
-import {
-  continuedCostText,
-  priceText,
-  spendLimitText,
-  usageText,
-  totalsSuffix,
-} from "./usage-render.ts";
 import { component, element, type Shown } from "./watch-element.ts";
 import {
   completedDetail,
@@ -51,7 +44,7 @@ export type { ContinueControls } from "./watch-needs-view.ts";
 import { Today } from "./watch-today-view.ts";
 import { LoopsPanel, type LoopControls } from "./watch-loops-view.ts";
 import type { ThemeControls } from "./watch-theme-view.ts";
-import { Decision, Events, PullRequest } from "./watch-turn.ts";
+import { Decision, Events, PullRequest, RunTotals } from "./watch-turn.ts";
 import { Commands } from "./command-effects.ts";
 import {
   RunTurns,
@@ -59,6 +52,7 @@ import {
   type TranscriptControls,
 } from "./watch-transcript-view.ts";
 export { PullRequest, Review } from "./watch-turn.ts";
+import { RunHeading, type RenameControls } from "./watch-rename-view.ts";
 
 interface Timed {
   readonly run: WatchRun;
@@ -128,29 +122,12 @@ export function Phases(props: {
   return element("ol", { class: "phases", children: steps });
 }
 
-export function RunTotals(props: { readonly run: WatchRun }): Shown {
-  const { run } = props;
-  return element("section", {
-    class: "run-usage",
-    children: [
-      element("h3", { children: `Run totals${totalsSuffix(run.state)}` }),
-      element("p", { children: usageText(run.usage) }),
-      element("p", {
-        children: `${priceText(run.claudeCostUsd, run.estimatedCostUsd)}${spendLimitText(run.spendLimitUsd)}`,
-      }),
-      run.continuedCostUsd === undefined
-        ? null
-        : element("p", {
-            children: continuedCostText(run.continuedCostUsd),
-          }),
-    ],
-  });
-}
-
 export function Run(
   props: Timed & {
     readonly copying: Copying;
     readonly steering?: SteerControls | undefined;
+    readonly controlling?: RunCommandControls | undefined;
+    readonly renaming?: RenameControls | undefined;
     readonly transcripts?: TranscriptControls | undefined;
     readonly turnId?: string | null | undefined;
   },
@@ -169,14 +146,17 @@ export function Run(
   ];
   return [
     component(Banner, { run, now }),
+    component(RunHeading, { run, renaming: props.renaming }),
     loopText(run) === ""
       ? null
       : element("p", { class: "meta", children: loopText(run) }),
     component(HandoffLinks, { run }),
     component(RunNotes, { notes: run.notes }),
-    steerable(run.state)
-      ? component(SteerAction, { runId: run.runId, steering: props.steering })
-      : null,
+    component(RunActions, {
+      run,
+      steering: props.steering,
+      controlling: props.controlling,
+    }),
     component(CommandWaits, { waits: run.commandWaits ?? [] }),
     component(RunTotals, { run }),
     component(Phases, { phases: run.phases, now }),
@@ -216,6 +196,8 @@ export interface PageProps {
   readonly continuing?: ContinueControls | undefined;
   readonly loops?: LoopControls | undefined;
   readonly steering?: SteerControls | undefined;
+  readonly controlling?: RunCommandControls | undefined;
+  readonly renaming?: RenameControls | undefined;
   readonly theme?: ThemeControls | undefined;
   readonly transcripts?: TranscriptControls | undefined;
 }
@@ -253,6 +235,8 @@ export function Page(props: PageProps): Shown {
             now,
             copying,
             steering: props.steering,
+            controlling: props.controlling,
+            renaming: props.renaming,
             transcripts: props.transcripts,
             turnId: location.turnId,
           }),
@@ -272,7 +256,7 @@ export function Page(props: PageProps): Shown {
 export function FloorPage(
   props: PageProps & { readonly model: WatchModel; readonly down: Shown },
 ): Shown {
-  const { model, down, now, stale, theme } = props;
+  const { model, down, now, stale, theme, controlling } = props;
   const words = theme?.shown.theme?.words;
   return element("div", {
     class: "floor-page",
@@ -295,12 +279,13 @@ export function FloorPage(
           element("div", {
             class: "floor-main",
             children: [
-              component(Floor, { model, now, words }),
+              component(Floor, { model, now, words, controlling }),
               component(NeedsYou, {
                 runs: model.runs,
                 now,
                 words,
                 continuing: props.continuing,
+                controlling,
               }),
             ],
           }),
@@ -359,6 +344,8 @@ export function BoardPage(
           observationNow: props.observationNow,
           controls: props.columns,
           steering: props.steering,
+          controlling: props.controlling,
+          renaming: props.renaming,
           cardForm: model.cardForms?.find(
             (form) => form.workflowId === workflow.workflowId,
           ),

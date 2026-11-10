@@ -37,6 +37,7 @@ const permitted: Readonly<Record<Principal, readonly string[]>> = {
     "cancel-run",
     "dismiss-run",
     "note-run",
+    "rename-run",
   ],
   worker: [
     "open-command-wait",

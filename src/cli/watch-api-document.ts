@@ -1,4 +1,5 @@
 import type { RunStatus } from "../authority/transitions.ts";
+import { labelSources, titleSources } from "../run-name.ts";
 import {
   closed,
   flag,
@@ -132,6 +133,9 @@ const runSummary = {
   workflowId: text,
   ticketId: nullableText,
   title: nullableText,
+  titleSource: { enum: [...titleSources, null] },
+  label: nullableText,
+  labelSource: { enum: [...labelSources, null] },
   state: { type: "string", enum: runStates },
   outcome: nullableText,
   currentStep: closed({ name: text, startedAt: nullableText }),

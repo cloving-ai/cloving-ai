@@ -1,5 +1,5 @@
 export const watchClient = `
-const state = { model: null, receivedAt: 0, stale: false, copied: "", label: "", run: "", loading: false, again: false, columns: {}, cards: {}, hovered: null, focused: null, phonePairing: null, phoneBusy: false, phoneMessage: "", phone: null, phoneLoadedAt: 0, phoneAccepted: null, phoneSequence: 0, phoneApplied: 0, queueBusy: false, queueMessage: "", continueBusy: [], continueMessages: {}, continueOpen: null, continueNote: "", steerOpen: null, steerNote: "", steerNow: false, steerBusy: [], steerMessages: {}, themeChoice: null, loopBusy: [], loopMessages: {}, loopCommands: {} };
+const state = { model: null, receivedAt: 0, stale: false, copied: "", label: "", run: "", loading: false, again: false, columns: {}, cards: {}, hovered: null, focused: null, phonePairing: null, phoneBusy: false, phoneMessage: "", phone: null, phoneLoadedAt: 0, phoneAccepted: null, phoneSequence: 0, phoneApplied: 0, queueBusy: false, queueMessage: "", continueBusy: [], continueMessages: {}, continueOpen: null, continueNote: "", steerOpen: null, steerNote: "", steerNow: false, steerBusy: [], steerMessages: {}, renameOpen: null, renameDrafts: {}, renameBusy: [], renameMessages: {}, renameCommands: {}, themeChoice: null, loopBusy: [], loopMessages: {}, loopCommands: {}, runCommandBusy: [], runCommandMessages: {}, runCommandSent: {}, runCommandAsking: null };
 function readPreference(key) {
   try { return JSON.parse(localStorage.getItem(key)); }
   catch { return null; }
@@ -172,6 +172,70 @@ function steerControls() {
   if (actionToken === null) return undefined;
   return { open: state.steerOpen, note: state.steerNote, now: state.steerNow, busy: state.steerBusy, messages: state.steerMessages, onOpen: steerOpen, onClose: steerClose, onNote: steerNote, onNow: steerNow, onSend: steerPost };
 }
+function renameMessage(reply) {
+  if (reply.error) return reply.error.code + ": " + reply.error.detail;
+  return "The run has the title " + reply.title + ".";
+}
+function renameOpen(target) {
+  const draft = state.renameDrafts[target.runId] ?? { title: target.title, label: target.label };
+  state.renameOpen = target.runId;
+  state.renameDrafts = { ...state.renameDrafts, [target.runId]: draft };
+  draw();
+  document.querySelector(".rename-form input")?.focus();
+}
+function renameDropped(runId) {
+  const { [runId]: dropped, ...kept } = state.renameDrafts;
+  return kept;
+}
+function renameClose() {
+  state.renameDrafts = renameDropped(state.renameOpen);
+  state.renameOpen = null;
+  draw();
+  document.querySelector(".rename-open")?.focus();
+}
+function renameEdit(change) {
+  const runId = state.renameOpen;
+  state.renameDrafts = { ...state.renameDrafts, [runId]: { ...state.renameDrafts[runId], ...change } };
+}
+const renameLate = { message: "The watch tool does not answer. Save again to send the same command.", answered: false, saved: false };
+async function renameReply(body) {
+  try {
+    const response = await fetch("actions/rename", { method: "POST", headers: { "content-type": "application/json", "x-cloving-token": actionToken }, body });
+    if (response.status === 503) return renameLate;
+    if (!response.ok) return { message: refusedRequest, answered: true, saved: false };
+    const reply = await response.json();
+    return { message: renameMessage(reply), answered: true, saved: !reply.error };
+  } catch {
+    return renameLate;
+  }
+}
+async function renamePost(runId, fields) {
+  if (state.renameBusy.includes(runId)) return;
+  const control = JSON.stringify([runId, fields]);
+  const commandId = state.renameCommands[control] ?? crypto.randomUUID();
+  state.renameCommands = { ...state.renameCommands, [control]: commandId };
+  state.renameOpen = null;
+  state.renameBusy = [...state.renameBusy, runId];
+  draw();
+  const outcome = await renameReply(JSON.stringify({ runId, ...fields, commandId }));
+  const { [control]: answered, ...others } = state.renameCommands;
+  if (outcome.answered) state.renameCommands = others;
+  if (outcome.saved) state.renameDrafts = renameDropped(runId);
+  if (!outcome.saved && fields.title !== undefined && state.renameOpen === null) state.renameOpen = runId;
+  state.renameBusy = state.renameBusy.filter((busy) => busy !== runId);
+  state.renameMessages = { ...state.renameMessages, [runId]: outcome.message };
+  await load();
+}
+function renameSave(runId) {
+  const draft = state.renameDrafts[runId];
+  const label = draft.label.trim();
+  return renamePost(runId, label === "" ? { title: draft.title } : { title: draft.title, label });
+}
+function renameControls() {
+  if (actionToken === null) return undefined;
+  const draft = state.renameDrafts[state.renameOpen] ?? { title: "", label: "" };
+  return { open: state.renameOpen, title: draft.title, label: draft.label, busy: state.renameBusy, messages: state.renameMessages, onOpen: renameOpen, onClose: renameClose, onTitle(text) { renameEdit({ title: text }); }, onLabel(text) { renameEdit({ label: text }); }, onSave: renameSave, onClear(runId) { return renamePost(runId, { clear: true }); } };
+}
 function moved(next, followed) {
   const arrived = next === "waiting_gate" && next !== state.run;
   state.run = next;
@@ -202,10 +266,12 @@ function draw() {
   const queue = queueControls();
   const continuing = continueControls();
   const steering = steerControls();
+  const controlling = runCommandControls();
+  const renaming = renameControls();
   const theme = themeControls();
   const loops = loopControls();
   const transcripts = transcriptControls();
-  const page = component(Page, { model, selected, now, observationNow, stale, copying, columns, cards, phone, queue, continuing, steering, loops, theme, transcripts });
+  const page = component(Page, { model, selected, now, observationNow, stale, copying, columns, cards, phone, queue, continuing, steering, controlling, renaming, loops, theme, transcripts });
   render(page, document.getElementById("app"));
   if (model === null) return;
   transcriptsFollowed(selected);

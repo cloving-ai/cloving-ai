@@ -1,43 +1,66 @@
 import { readFile } from "node:fs/promises";
-import { createServer } from "node:http";
+import {
+  createServer,
+  type IncomingMessage,
+  type ServerResponse,
+} from "node:http";
 import { once } from "node:events";
 import assert from "node:assert/strict";
 import { pageDocument } from "../src/cli/watch-page.ts";
 import type { WatchModel } from "../src/cli/watch-render.ts";
 import type { WatchThemes } from "../src/cli/watch-themes.ts";
 
-export async function watchPageServer(
-  shown: WatchModel,
-  options: {
-    readonly hash?: string;
-    readonly themes?: WatchThemes;
-    readonly files?: Readonly<
-      Record<string, { readonly type: string; readonly body: Uint8Array }>
-    >;
-  } = {},
+interface PageFile {
+  readonly type: string;
+  readonly body: Uint8Array;
+}
+
+interface PageServerOptions {
+  readonly hash?: string;
+  readonly token?: string;
+  readonly themes?: WatchThemes;
+  readonly files?: Readonly<Record<string, PageFile>>;
+  readonly actions?: Readonly<
+    Record<string, { readonly reply: unknown; readonly next: WatchModel }>
+  >;
+}
+
+function sendJson(response: ServerResponse, body: string): void {
+  response.writeHead(200, { "content-type": "application/json" }).end(body);
+}
+
+function pageHandler(
+  options: PageServerOptions,
+  sources: {
+    readonly shown: WatchModel;
+    readonly page: string;
+    readonly preact: Uint8Array;
+  },
 ) {
-  const preact = await readFile(new URL(import.meta.resolve("preact")));
-  const page = pageDocument(null, options.themes);
-  const model = JSON.stringify(shown);
-  const server = createServer((request, response) => {
-    const file = options.files?.[request.url ?? ""];
+  let model = JSON.stringify(sources.shown);
+  const files: Partial<Record<string, PageFile>> = {
+    "/preact.mjs": { type: "text/javascript", body: sources.preact },
+    ...options.files,
+  };
+  return (request: IncomingMessage, response: ServerResponse) => {
+    const path = request.url ?? "";
+    const action =
+      request.method === "POST" ? options.actions?.[path] : undefined;
+    if (action !== undefined) {
+      model = JSON.stringify(action.next);
+      sendJson(response, JSON.stringify(action.reply));
+      return;
+    }
+    const file = files[path];
     if (file !== undefined) {
       response.writeHead(200, { "content-type": file.type }).end(file.body);
       return;
     }
-    if (request.url === "/preact.mjs") {
-      response
-        .writeHead(200, { "content-type": "text/javascript" })
-        .end(preact);
+    if (path === "/data.json") {
+      sendJson(response, model);
       return;
     }
-    if (request.url === "/data.json") {
-      response
-        .writeHead(200, { "content-type": "application/json" })
-        .end(model);
-      return;
-    }
-    if (request.url === "/events") {
+    if (path === "/events") {
       response.writeHead(200, { "content-type": "text/event-stream" });
       response.write("data: ready\n\n");
       return;
@@ -47,8 +70,17 @@ export async function watchPageServer(
         "content-type": "text/html",
         "content-security-policy": "default-src 'self' 'unsafe-inline' data:",
       })
-      .end(page);
-  });
+      .end(sources.page);
+  };
+}
+
+export async function watchPageServer(
+  shown: WatchModel,
+  options: PageServerOptions = {},
+) {
+  const preact = await readFile(new URL(import.meta.resolve("preact")));
+  const page = pageDocument(options.token ?? null, options.themes);
+  const server = createServer(pageHandler(options, { shown, page, preact }));
   server.listen(0, "127.0.0.1");
   await once(server, "listening");
   const address = server.address();
