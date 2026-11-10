@@ -97,3 +97,35 @@ await test("CLV-148 automatic analysis notifications keep question text private 
   assert.match(notification.message.body, /--subject-digest subject/);
   assert.match(notification.message.body, /cloving answer Q1/);
 });
+
+await test("CLV-338 a paused run notifies with its reason and status command", () => {
+  const paused = outcomeNotification({
+    runId: "run-paused",
+    workflowId: "develop-ticket",
+    state: "paused",
+    reason: { code: "paused", detail: "The operator paused the run." },
+  });
+  assert.ok(paused);
+  assert.equal(paused.key, "paused:run-paused");
+  assert.equal(paused.message.event, "paused");
+  assert.equal(paused.message.subject, "Cloving: develop-ticket paused");
+  assert.equal(
+    paused.message.body,
+    "Reason: paused: The operator paused the run.\ncloving status run-paused",
+  );
+});
+
+await test("CLV-338 a continued or dismissed failed run gives no notification", () => {
+  const failed = {
+    runId: "run-failed",
+    workflowId: "develop-ticket",
+    state: "failed",
+    reason: { code: "turn-failed", detail: "The turn failed." },
+  };
+  assert.equal(outcomeNotification(failed)?.key, "failed:run-failed");
+  assert.equal(
+    outcomeNotification({ ...failed, continuedBy: "run-next" }),
+    undefined,
+  );
+  assert.equal(outcomeNotification({ ...failed, dismissed: true }), undefined);
+});

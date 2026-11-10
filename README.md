@@ -443,7 +443,7 @@ The form sends the same run request as the CLI and retains its random command ID
 
 - `CLOVING_RUNTIME_DIR`: the runtime directory.
 - `CLOVING_TICKET_COMMAND`: the ticket command (see "Daily development").
-- `CLOVING_NOTIFY_COMMAND`: a JSON list naming a command to notify the operator about pending decisions, blocked runs, failed runs and stopped schedules. It has no default.
+- `CLOVING_NOTIFY_COMMAND`: a JSON list naming a command to notify the operator about pending decisions, paused runs, blocked runs, failed runs and stopped schedules. It has no default.
 - `CLOVING_NEXT_COMMAND`: a JSON list of a command and its arguments that prints the next ready ticket ID for `--next`. It has no default.
 - `CLOVING_READY_COMMAND`: a JSON list of a command and its arguments that prints the list of ready tickets for the watch page (see "Daily development"). It has no default.
 - `CLOVING_CLAUDE_COMMAND`: a replacement of the `claude` command of the worker.
@@ -458,7 +458,7 @@ The form sends the same run request as the CLI and retains its random command ID
 
 A command setting is a JSON list of texts, for example `CLOVING_CHECK_COMMAND='["npm", "test"]'`.
 
-The notify command receives no added argument. Its standard input receives one JSON object with `event`, `runId`, `workflowId`, `subject` and `body`. The body contains the decision or outcome text already shown by `cloving questions` or `cloving status`, with complete response commands, up to 4000 characters. The daemon checks every 15 seconds. The first check with no notification record only records existing events.
+The notify command receives no added argument. Its standard input receives one JSON object with `event` (`decision`, `paused`, `blocked`, `failed` or `schedule-stopped`), `runId`, `workflowId`, `subject` and `body`. A failed or blocked run that has a continuation or that you dismissed gives no notification. `cloving mcp --channel` uses the same events (see "Get alerts in Claude Code"). The body contains the decision or outcome text already shown by `cloving questions` or `cloving status`, with complete response commands, up to 4000 characters. The daemon checks every 15 seconds. The first check with no notification record only records existing events.
 
 The private `notify-events.json` journal records a notification as `pending` before calling the command and as `sent` after exit code 0. A failed command retries the same message after 1, 5, 15 and 60 minutes, with five attempts in total and a 30-second limit per attempt. The journal records attempt times and fixed failure reasons without command arguments or output. Pending and retryable failed entries resume after restart. Exhausted delivery logs one line naming its key. Old key-only records migrate as sent without sending them again.
 
@@ -741,6 +741,32 @@ The server has seventeen tools:
 Each of the eleven tools that admit a command requires a `commandId`. `cloving_schedule_pause` and `cloving_schedule_resume` need no command ID, because a second pause or resume changes nothing. The server never makes a command ID. After a lost reply (`outcome-unknown`), send the same request with the same `commandId` again. The service then gives the stored receipt, also when the first request came from the CLI. A tool gives the same JSON object as the CLI command with `--json`. A refusal of the service gives `isError: true`, and an argument that is not valid gives the JSON-RPC error `-32602`. A cancel of a tool call stops the wait for the reply, but it does not cancel a command that the service admitted.
 
 A tool call cannot start the service and cannot select a different repository. The server binds to one repository when it starts.
+
+### Get alerts in Claude Code
+
+`cloving mcp --channel` tells a connected Claude Code session when a run needs you. The server sends one message for each new pending decision, paused run, failed or blocked run with no continuation, and stopped schedule. These are the same events as the events of `CLOVING_NOTIFY_COMMAND`. The message gets to the agent on its next turn, also when the session is idle, and the terminal shows a one-line summary.
+
+Register the server for the current repository, then start Claude Code with the channel:
+
+```sh
+claude mcp add --scope local --transport stdio cloving-local -- cloving mcp --repository "$PWD" --channel
+claude --dangerously-load-development-channels server:cloving-local
+```
+
+A message has one or two sentences with the run title and the next step, for example `Run run-60c4… (#701 CLV-336: Answer decisions in the browser) waits for your approval: Approve the change? Answer with cloving_questions and cloving_approve or cloving_deny.` Its attributes are `run_id`, `kind` (`decision`, `paused`, `failed`, `blocked` or `schedule_stopped`), `workflow`, and `ticket` and `decision_id` when they exist. The agent answers with the tools of the server, not over the channel. The `initialize` result gives instructions that explain the messages and the tools that answer them.
+
+The text of a message comes from the run, so it is not trusted. The server uses the run title and fixed sentences, cuts each text at 300 characters, and hides token patterns and the private texts (`privateTexts`). A private question, for example of `analyze-chats`, shows only its preview, as on the watch page.
+
+The server sends each event one time. The private file `channel-events.json` in the runtime directory records the sent events. After a restart, the server sends only the open items that it did not send before. The server learns of changes from the event stream of the service, and it reads the stopped schedules every 15 seconds.
+
+Claude Code first asks a server for MCP protocol revision `2026-07-28` (`server/discover`). Claude Code does not register a channel on that revision. The Cloving server refuses that request, and Claude Code then connects on the earlier handshake with revision `2025-11-25`, where the channel registers. You do not need `MCP_PROTOCOL_NEGOTIATION=legacy`.
+
+Limits of the channels research preview of Claude Code:
+
+- Channels work only in an interactive session. A session with `-p` or the Agent SDK does not register the channel.
+- `--dangerously-load-development-channels` shows a confirmation dialog at the start.
+- On Team and Enterprise plans, an admin must turn on channels (the `channelsEnabled` setting).
+- A channel message gives no desktop alert. Use `CLOVING_NOTIFY_COMMAND` for a desktop alert.
 
 ### Answer decisions from a phone
 
