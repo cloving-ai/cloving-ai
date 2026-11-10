@@ -1,11 +1,4 @@
-import {
-  attemptText,
-  continuedCostText,
-  priceText,
-  spendLimitText,
-  totalsSuffix,
-  usageText,
-} from "./usage-render.ts";
+import { priceText, usageText, attemptText } from "./usage-render.ts";
 import { component, element, type Shown } from "./watch-element.ts";
 import {
   clockTime,
@@ -13,7 +6,6 @@ import {
   groupActivity,
   turnTime,
   type Copying,
-  type WatchDecision,
   type WatchEvent,
   type WatchItem,
   type WatchRun,
@@ -142,35 +134,6 @@ export function Command(props: {
   });
 }
 
-export function Decision(props: {
-  readonly decision: WatchDecision;
-  readonly turn: WatchTurn | undefined;
-  readonly copying: Copying;
-}): Shown {
-  const { decision, turn, copying } = props;
-  const request = element("details", {
-    open: turn === undefined,
-    children: [
-      element("summary", { children: "Full text of the request" }),
-      element("pre", { children: decision.prompt }),
-    ],
-  });
-  return element("section", {
-    class: "decision",
-    children: [
-      element("h3", { children: `Your decision · ${decision.type}` }),
-      turn === undefined ? null : component(Work, { turn }),
-      request,
-      component(Command, {
-        label: "Approve",
-        command: decision.approve,
-        copying,
-      }),
-      component(Command, { label: "Deny", command: decision.deny, copying }),
-    ],
-  });
-}
-
 export function Events(props: {
   readonly events: readonly WatchEvent[];
 }): Shown {
@@ -250,21 +213,13 @@ export function Review(props: {
   });
 }
 
-export function RunTotals(props: { readonly run: WatchRun }): Shown {
-  const { run } = props;
-  return element("section", {
-    class: "run-usage",
-    children: [
-      element("h3", { children: `Run totals${totalsSuffix(run.state)}` }),
-      element("p", { children: usageText(run.usage) }),
-      element("p", {
-        children: `${priceText(run.claudeCostUsd, run.estimatedCostUsd)}${spendLimitText(run.spendLimitUsd)}`,
-      }),
-      run.continuedCostUsd === undefined
-        ? null
-        : element("p", {
-            children: continuedCostText(run.continuedCostUsd),
-          }),
-    ],
-  });
-}
+export const turnFunctions = [
+  Item,
+  Group,
+  Turn,
+  Work,
+  Command,
+  Events,
+  PullRequest,
+  Review,
+];

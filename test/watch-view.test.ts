@@ -9,6 +9,7 @@ import {
   at,
   noCopy,
   phases,
+  sampleDecision,
   sampleModel,
   sampleRun,
   sampleTurn,
@@ -57,16 +58,16 @@ function banner(run: Partial<WatchRun>): string {
   return html.slice(start, html.indexOf("</section>", start));
 }
 
-await test("CLV-016 the watch page shows the state of the selected run first, as a banner with a tone, an icon and plain words, then the steps of the run, its pending decision, its turn, its folded events and its identifiers", () => {
+await test("CLV-016 the watch page shows the state of the selected run first, as a banner with a tone, an icon and plain words, then the its pending decision, the steps of the run, its turn, its folded events and its identifiers", () => {
   const found = positions(page(model, "run-1"), [
     `<span>updated ${shownClock("21:34:41")}</span></div></header>`,
     '<a class="back" href="#">← Back to the floor</a>',
     '<section class="banner attention"><span class="icon">!</span><div><h2>Needs your decision <span class="name">clv-016-a6f7ef47</span></h2><p>A decision waits for you for 1 min 0 s. Examine the work, then approve or deny.</p></div></section>',
+    '<section class="decision" id="decision-run-1/review-1">',
     `<ol class="phases"><li class="phase done"><span class="mark">✓</span><span class="name">Admitted</span><span class="time">${shownClock("21:26:00")}</span></li>`,
     '<li class="phase done"><span class="mark">✓</span><span class="name">Agent turn</span><span class="time">7 min 38 s</span></li>',
     '<li class="phase active"><span class="mark">●</span><span class="name">Your review</span><span class="time">1 min 0 s</span></li>',
     '<li class="phase pending"><span class="mark">○</span><span class="name">Completed</span><span class="time"></span></li></ol>',
-    '<section class="decision">',
     '<section class="turn code-window">',
     '<details class="events code-window"><summary class="code-head">All events (2)</summary>',
     '<p class="meta foot">develop-ticket · run-1 · 1 of 8 effect units<br>policy-approval: A person must approve.</p>',
@@ -139,16 +140,28 @@ await test("CLV-016 the banner of a run at its end shows the time and the cost o
     /^<section class="banner idle"><span class="icon">✕<\/span><div><h2>Denied .*<p>You denied the work\. The run completed in 7 min 41 s · cost 1\.03 USD\.<\/p>/,
   );
   const reason = { code: "world-run-failed", detail: "It failed & stopped." };
-  for (const [state, shown] of [
-    ["failed", 'banner bad"><span class="icon">✕</span><div><h2>Failed '],
-    ["cancelled", 'banner bad"><span class="icon">✕</span><div><h2>Dropped '],
-    ["paused", 'banner attention"><span class="icon">Ⅱ</span><div><h2>Paused '],
-    ["<new>", 'banner idle"><span class="icon">○</span><div><h2>&lt;new&gt; '],
+  for (const [state, shown, why] of [
+    ["failed", 'banner bad"><span class="icon">✕</span><div><h2>Failed ', ""],
+    [
+      "cancelled",
+      'banner bad"><span class="icon">✕</span><div><h2>Dropped ',
+      "",
+    ],
+    [
+      "paused",
+      'banner attention"><span class="icon">Ⅱ</span><div><h2>Paused ',
+      "Why it paused: ",
+    ],
+    [
+      "<new>",
+      'banner idle"><span class="icon">○</span><div><h2>&lt;new&gt; ',
+      "",
+    ],
   ] as const) {
     const html = banner({ ...ended, ...reason, state });
     positions(html, [
       shown,
-      "<p>world-run-failed: It failed &amp; stopped.</p>",
+      `<p>${why}world-run-failed: It failed &amp; stopped.</p>`,
     ]);
   }
 });
@@ -205,10 +218,9 @@ await test("CLV-062 the watch page shows each turn and each review of a run in o
         ],
         decisions: [
           {
+            ...sampleDecision,
             decisionId: "run-1/review-2",
-            type: "approval",
             prompt: "Review round 2.",
-            openedAt: null,
             approve: "cloving approve run-1/review-2",
             deny: 'cloving deny run-1/review-2 --text "<feedback>"',
           },
@@ -229,7 +241,7 @@ await test("CLV-062 the watch page shows each turn and each review of a run in o
   const second =
     '<section class="review pending"><h3>Review 2 · waits for your decision</h3></section>';
   const found = [
-    html.indexOf('<section class="decision">'),
+    html.indexOf('<section class="decision" '),
     html.indexOf(turn),
     html.indexOf(first),
     html.lastIndexOf(turn),
