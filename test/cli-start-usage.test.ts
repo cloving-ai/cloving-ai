@@ -211,13 +211,13 @@ await test("the watch and start help texts say the worker, because the worker ca
   assert.match(String(commandUsage["start"]), /the worker and the watch page/);
 });
 
-await test("CLV-286 CLV-328 start help says that CLOVING_WATCH_ACTIONS=off also removes the queue control and the loop controls of the watch page", () => {
+await test("CLV-286 CLV-328 CLV-335 start help says that CLOVING_WATCH_ACTIONS=off also removes the queue control, the loop controls and the run controls of the watch page", () => {
   const help = String(commandUsage["start"])
     .split("\n")
     .find((line) => line.trim().startsWith("CLOVING_WATCH_ACTIONS"));
   assert.match(
     help ?? "",
-    /run form, the queue control, the loop controls and their write endpoints/,
+    /run form, the queue control, the loop controls, the run controls and their write endpoints/,
   );
 });
 

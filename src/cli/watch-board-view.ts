@@ -1,8 +1,8 @@
+import { NoteMark, type SteerControls } from "./watch-steer-view.ts";
 import {
-  NoteMark,
-  SteerAction,
-  type SteerControls,
-} from "./watch-steer-view.ts";
+  CardActions,
+  type RunCommandControls,
+} from "./watch-run-command-view.ts";
 import { loopText, scheduleStatusLine } from "./schedule-render.ts";
 import { CommandWaits, effectBudgetText } from "./command-waits.ts";
 import { AddCard, type CardControls } from "./watch-card-view.ts";
@@ -147,6 +147,7 @@ export function cardTotals(
 interface CardProps {
   readonly card: WatchCard;
   readonly steering?: SteerControls | undefined;
+  readonly controlling?: RunCommandControls | undefined;
   readonly workflowId: string;
   readonly repository?: string | undefined;
   readonly now: string;
@@ -156,7 +157,6 @@ interface CardProps {
 
 export function Card(props: CardProps): Shown {
   const { card, workflowId, now, words } = props;
-  const steering = card.endedAt === null ? props.steering : undefined;
   return element("article", {
     class: "card",
     children: [
@@ -193,7 +193,11 @@ export function Card(props: CardProps): Shown {
           element("small", { children: card.runId.slice(0, 12) }),
         ],
       }),
-      component(SteerAction, { runId: card.runId, steering }),
+      component(CardActions, {
+        card,
+        steering: props.steering,
+        controlling: props.controlling,
+      }),
       completionMark(card, { ...props, now: props.observationNow ?? now }),
       element("span", {
         class: "meta",
@@ -268,6 +272,7 @@ interface ColumnProps {
   readonly observationNow?: string | undefined;
   readonly controls?: ColumnControls | undefined;
   readonly steering?: SteerControls | undefined;
+  readonly controlling?: RunCommandControls | undefined;
   readonly words?: WatchWords | undefined;
 }
 
@@ -324,6 +329,7 @@ export function Board(props: {
   readonly observationNow?: string | undefined;
   readonly controls?: ColumnControls | undefined;
   readonly steering?: SteerControls | undefined;
+  readonly controlling?: RunCommandControls | undefined;
   readonly words?: WatchWords | undefined;
 }): Shown {
   const { workflow, now, words } = props;
@@ -352,6 +358,7 @@ export function Board(props: {
             observationNow: props.observationNow,
             controls: props.controls,
             steering: props.steering,
+            controlling: props.controlling,
             words,
             addCard:
               index === 0

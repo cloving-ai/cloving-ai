@@ -307,6 +307,9 @@ function runOf(inputs: WatchInputs, value: unknown): WatchRun {
   return {
     runId,
     workflowId,
+    ...(Number.isSafeInteger(status["revision"])
+      ? { revision: Number(status["revision"]) }
+      : {}),
     ...shownLoopMarks(status),
     ...runLinksOf(status),
     ...notesOf(status["notes"]),

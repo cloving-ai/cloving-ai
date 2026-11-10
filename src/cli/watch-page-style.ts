@@ -155,6 +155,13 @@ h2, h3 { font-family: var(--font-heading); font-weight: 700; }
 .steer-form label:has(input) { display: flex; align-items: center; gap: 6px; }
 .steer-form textarea { padding: 6px 8px; border: var(--shape-border) solid var(--color-line); border-radius: calc(var(--shape-radius) / 2); background: var(--color-surface); color: var(--color-ink); font: inherit; }
 .steer-message { margin: 0; font-size: 12px; }
+.run-command { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 6px 0; }
+.run-command-message { flex-basis: 100%; margin: 0; font-size: 12px; }
+.drop-question { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0; font-size: 13px; }
+.run-menu summary { width: fit-content; padding: 0 8px; cursor: pointer; list-style: none; color: var(--color-muted); font: 700 16px/1.2 var(--font-ui); }
+.run-menu summary::-webkit-details-marker { display: none; }
+.tokens li { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; }
+.run-menu[open] { flex-basis: 100%; }
 .run-notes ul { margin: 0; padding: 0; list-style: none; }
 .note-text { margin: 4px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
 .need-action { flex-shrink: 0; padding: 8px 18px; border: 0; cursor: pointer; background: var(--color-panel); color: var(--color-ink); font: 600 14px/1.4 var(--font-ui); text-decoration: none; white-space: nowrap; clip-path: var(--angled); }

@@ -1,5 +1,9 @@
 import { component, element, type Shown } from "./watch-element.ts";
 import { cardKey, type CardKeyEvent } from "./watch-card-view.ts";
+import {
+  RunCommandAction,
+  type RunCommandControls,
+} from "./watch-run-command-view.ts";
 import { stepAge } from "./watch-floor-view.ts";
 import { watchHash } from "./watch-navigation.ts";
 import type { WatchDecision, WatchRun } from "./watch-render.ts";
@@ -217,8 +221,10 @@ export function Need(props: {
   readonly need: WatchNeed;
   readonly now: string;
   readonly continuing?: ContinueControls | undefined;
+  readonly controlling?: RunCommandControls | undefined;
 }): Shown {
   const { need, now, continuing } = props;
+  const paused = need.kind === "stopped" && need.continuable !== true;
   const decision = need.kind === "decision";
   return element("li", {
     class: `need need-${need.kind}`,
@@ -234,6 +240,13 @@ export function Need(props: {
           element("p", { class: "need-text", children: need.text }),
           element("p", { class: "need-meta", children: needMeta(need, now) }),
           component(NeedMessage, { need, continuing }),
+          paused
+            ? component(RunCommandAction, {
+                runId: need.runId,
+                paused,
+                controlling: props.controlling,
+              })
+            : null,
         ],
       }),
       component(ContinueAction, { need, continuing }),
@@ -252,8 +265,9 @@ export function NeedsYou(props: {
   readonly now: string;
   readonly words?: WatchWords | undefined;
   readonly continuing?: ContinueControls | undefined;
+  readonly controlling?: RunCommandControls | undefined;
 }): Shown {
-  const { now, continuing } = props;
+  const { now, continuing, controlling } = props;
   const needs = needsOf(props.runs);
   return element("section", {
     class: "needs",
@@ -280,7 +294,13 @@ export function NeedsYou(props: {
         : element("ol", {
             class: "needs-list",
             children: needs.map((need) =>
-              component(Need, { key: need.key, need, now, continuing }),
+              component(Need, {
+                key: need.key,
+                need,
+                now,
+                continuing,
+                controlling,
+              }),
             ),
           }),
     ],

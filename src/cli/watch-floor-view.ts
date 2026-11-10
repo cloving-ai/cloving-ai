@@ -2,6 +2,10 @@ import type { ShownSchedule } from "./schedule-render.ts";
 import { component, element, type Shown } from "./watch-element.ts";
 import { watchHash } from "./watch-navigation.ts";
 import {
+  RunCommandMenu,
+  type RunCommandControls,
+} from "./watch-run-command-view.ts";
+import {
   countText,
   labelWord,
   wordText,
@@ -61,6 +65,7 @@ export function Station(props: {
   readonly station: WatchStation;
   readonly now: string;
   readonly words?: WatchWords | undefined;
+  readonly controlling?: RunCommandControls | undefined;
 }): Shown {
   const { station, now } = props;
   const lamp = station.lamp ?? "empty";
@@ -82,7 +87,14 @@ export function Station(props: {
             children: station.tokens.map((token) =>
               element("li", {
                 key: token.runId,
-                children: component(Token, { token, now }),
+                children: [
+                  component(Token, { token, now }),
+                  component(RunCommandMenu, {
+                    runId: token.runId,
+                    paused: token.lamp === "stopped",
+                    controlling: props.controlling,
+                  }),
+                ],
               }),
             ),
           }),
@@ -193,8 +205,9 @@ export function Line(props: {
   readonly workflow: WatchWorkflow;
   readonly now: string;
   readonly words?: WatchWords | undefined;
+  readonly controlling?: RunCommandControls | undefined;
 }): Shown {
-  const { workflow, now, words } = props;
+  const { workflow, now, words, controlling } = props;
   return element("li", {
     class: "line",
     children: [
@@ -222,7 +235,13 @@ export function Line(props: {
         children: element("ol", {
           class: "stations",
           children: workflow.stations.map((station) =>
-            component(Station, { key: station.name, station, now, words }),
+            component(Station, {
+              key: station.name,
+              station,
+              now,
+              words,
+              controlling,
+            }),
           ),
         }),
       }),
@@ -235,8 +254,9 @@ export function Floor(props: {
   readonly model: WatchModel;
   readonly now: string;
   readonly words?: WatchWords | undefined;
+  readonly controlling?: RunCommandControls | undefined;
 }): Shown {
-  const { model, now, words } = props;
+  const { model, now, words, controlling } = props;
   return element("section", {
     class: "floor",
     "aria-labelledby": "floor-title",
@@ -255,7 +275,12 @@ export function Floor(props: {
         ],
       }),
       model.repositories === undefined
-        ? component(Lines, { workflows: model.workflows, now, words })
+        ? component(Lines, {
+            workflows: model.workflows,
+            now,
+            words,
+            controlling,
+          })
         : element("ol", {
             class: "repositories",
             children: model.repositories.map((repository) =>
@@ -278,8 +303,9 @@ export function Lines(props: {
   readonly workflows: readonly WatchWorkflow[];
   readonly now: string;
   readonly words?: WatchWords | undefined;
+  readonly controlling?: RunCommandControls | undefined;
 }): Shown {
-  const { workflows, now, words } = props;
+  const { workflows, now, words, controlling } = props;
   if (workflows.length === 0)
     return element("p", {
       class: "meta",
@@ -288,7 +314,13 @@ export function Lines(props: {
   return element("ol", {
     class: "lines",
     children: workflows.map((workflow) =>
-      component(Line, { key: workflow.workflowId, workflow, now, words }),
+      component(Line, {
+        key: workflow.workflowId,
+        workflow,
+        now,
+        words,
+        controlling,
+      }),
     ),
   });
 }
