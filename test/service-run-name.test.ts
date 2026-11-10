@@ -25,6 +25,7 @@ const titled = {
   deliver: async (intent) => {
     const outcome = await destination.deliver(intent);
     const round = JSON.parse(intent.operationId)[1];
+    if (globalThis.currentRun === "untitled") return { ...outcome, result: round === 1 ? JSON.stringify({ number: 686, url: "https://github.com/acme/demo/pull/686" }) : "not json" };
     return { ...outcome, result: JSON.stringify({ number: 686, url: "https://github.com/acme/demo/pull/686", title: titles[round] }) };
   },
 };
@@ -38,7 +39,8 @@ const resolver = {
 };
 const service = await hosted({ destination: titled, registrations: [{ ...registration, resolver, effectLimit: 5, manifest: { ...registration.manifest, capabilities: ["fake-harness"] } }] });
 const names = {};
-for (const name of ["plain", "ticket"]) {
+for (const name of ["plain", "ticket", "untitled"]) {
+  globalThis.currentRun = name;
   const runId = await submitted(name);
   await until(async () => (await stateOf(runId)) === "completed");
   const run = (await asked("status", { runId })).run;
@@ -56,5 +58,6 @@ await service.close();
         "title",
       ],
       ticket: ["CLV-261: Run the daemon tests", "ticket", "CLV-261", "ticket"],
+      untitled: ["task of untitled", "prompt", null, null],
     });
   }));

@@ -2,7 +2,6 @@ import { issueIdentity } from "../issue-identity.ts";
 import { record, type Fields } from "../protocol.ts";
 import type { RunView } from "../authority/status.ts";
 import { nameOf, ticketOf } from "./run-names.ts";
-import type { RunName } from "../run-name.ts";
 import {
   invalidRequest,
   isIdentifier,
@@ -182,17 +181,13 @@ export async function submittedInput(
 export async function currentName(
   context: ServiceContext,
   runId: string,
-): Promise<RunName> {
-  const state = await context.authority.state();
-  const details = state.details[runId];
+): Promise<Fields> {
+  const details = (await context.authority.state()).details[runId];
   const workflowIds = await context.authority.queries.workflowIds([runId]);
-  const document = details?.input
-    ? await context.authority.queries.document(details.input)
-    : undefined;
-  return nameOf(context, {
+  return metadataOf(context, {
     runId,
-    workflowId: workflowIds[runId] ?? state.runs[runId]?.workflow ?? "",
-    stored: record(JSON.parse(document ?? "null")),
-    submission: await submittedInput(context, details?.submission),
+    workflowId: String(workflowIds[runId]),
+    digest: details?.input,
+    input: await submittedInput(context, details?.submission),
   });
 }

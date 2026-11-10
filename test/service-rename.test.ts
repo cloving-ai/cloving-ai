@@ -123,6 +123,13 @@ await test("CLV-334 a rename stays after a restart, the newest rename wins, a cl
       "AB-7",
       "title",
     ]);
+    for (let index = 0; index < 101; index += 1)
+      await rename(harness, {
+        runId,
+        commandId: `many-${String(index)}`,
+        title: `Name ${String(index)}`,
+      });
+    assert.equal(field(await view(harness, runId), "title"), "Name 100");
     const failed = await service.worker.submit({
       kind: "fail-run",
       commandId: "named-failed",
