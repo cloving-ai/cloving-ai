@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
 import { spawnSync, type SpawnSyncReturns } from "node:child_process";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { test } from "node:test";
 import {
   job,
@@ -310,7 +313,7 @@ await test("CLV-097 publish uses same-revision successful quality and only versi
   assert.deepEqual(release?.env, { GH_TOKEN: "${{ github.token }}" });
 });
 
-await test("CLV-266 Linux CI prepares zsh from the official archive before setup and propagates failures", async () => {
+await test("CLV-266 Linux CI installs two pinned zsh packages from the official archive before setup and propagates failures", async () => {
   const workflow = await releaseWorkflow();
   const linuxSteps = steps(workflow, "quality_linux_node");
   const prepare = linuxSteps.findIndex((step) => step.id === "prepare-shells");
@@ -318,21 +321,37 @@ await test("CLV-266 Linux CI prepares zsh from the official archive before setup
     (step) => step.run === "npm run check:setup",
   );
   assert.ok(prepare >= 0 && prepare < setup, "Prepare zsh before setup");
-  for (const [zshStatus, updateStatus, installStatus, status, output] of [
-    ["0", "0", "0", 0, ""],
-    ["1", "0", "0", 0, "update --error-on=any\ninstall -y zsh\n"],
-    ["1", "9", "0", 9, "update --error-on=any\n"],
-    ["1", "0", "8", 8, "update --error-on=any\ninstall -y zsh\n"],
+  const base = "https://archive.ubuntu.com/ubuntu/pool/main/z/zsh";
+  const common = "zsh-common_5.9-6ubuntu2_all.deb";
+  const shell = "zsh_5.9-6ubuntu2_amd64.deb";
+  const first = `curl ${common} ${base}/${common}\n`;
+  const checked = `${first}curl ${shell} ${base}/${shell}\nsha256sum\n`;
+  const installed = `${checked}dpkg -i ${common} ${shell}\n`;
+  const folder = await mkdtemp(join(tmpdir(), "clv-266-zsh-"));
+  const checkFile = join(folder, "checked");
+  for (const [zsh, download, check, install, status, output] of [
+    ["0", "0", "0", "0", 0, ""],
+    ["1", "0", "0", "0", 0, installed],
+    ["1", "22", "0", "0", 22, first],
+    ["1", "0", "1", "0", 1, checked],
+    ["1", "0", "0", "8", 8, installed],
   ] as const) {
     const result = prepareShellAttempt(workflow, {
-      ZSH_STATUS: zshStatus,
-      UPDATE_STATUS: updateStatus,
-      INSTALL_STATUS: installStatus,
+      ZSH_STATUS: zsh,
+      CURL_STATUS: download,
+      CHECK_STATUS: check,
+      INSTALL_STATUS: install,
+      CHECK_FILE: checkFile,
     });
     assert.equal(result.error, undefined);
     assert.equal(result.status, status, result.stderr);
     assert.equal(result.stdout, output);
   }
+  assert.match(
+    await readFile(checkFile, "utf8"),
+    /^56d160585b417af0cc04d7372f74a3b734609d7cc43ef8ea6e92bfdfc27f77c3 {2}\/\S+\/zsh-common_5\.9-6ubuntu2_all\.deb\nbd5cc8dd3a01a6db38c0a815d75202c356a9c7f378674ba7bed9bc86dcba8af0 {2}\/\S+\/zsh_5\.9-6ubuntu2_amd64\.deb\n$/,
+  );
+  await rm(folder, { recursive: true, force: true });
 });
 
 await test("CLV-266 every shard exports coverage and both required checks need the final job", async () => {
