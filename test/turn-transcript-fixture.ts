@@ -41,6 +41,7 @@ export function entry(
     position,
     attempt: 1,
     tool: null,
+    callId: null,
     summary: "",
     error: false,
     omittedBytes: 0,
@@ -56,6 +57,7 @@ export function read(
     text,
     open: options.open === true,
     attempts: [],
+    prompts: [],
     privateTexts: [],
   });
 }

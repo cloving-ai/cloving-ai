@@ -1,7 +1,13 @@
 import type { TranscriptEntry } from "../turn-transcript.ts";
 import { component, element, type Shown } from "./watch-element.ts";
-import { watchHash } from "./watch-navigation.ts";
-import { counted, type WatchRun, type WatchTurn } from "./watch-render.ts";
+import { watchHash, type WatchLocation } from "./watch-navigation.ts";
+import type { WatchModel, WatchRun, WatchTurn } from "./watch-render.ts";
+import {
+  terminalFunctions,
+  terminalGroups,
+  TerminalGroupView,
+} from "./watch-terminal-view.ts";
+import { Review, Turn } from "./watch-turn.ts";
 
 export interface TranscriptView {
   readonly shown: boolean;
@@ -35,67 +41,6 @@ export interface TranscriptControls {
   readonly onRetry: (target: TranscriptTarget) => void;
 }
 
-export function CutNote(props: { readonly entry: TranscriptEntry }): Shown {
-  const { omittedBytes } = props.entry;
-  if (omittedBytes === 0) return null;
-  return element("p", {
-    class: "entry-cut",
-    children: `The output is cut: ${String(omittedBytes)} bytes are left out.`,
-  });
-}
-
-export function ToolOutput(props: { readonly entry: TranscriptEntry }): Shown {
-  const { entry } = props;
-  const lines = entry.text.split("\n");
-  const rest = lines.slice(20);
-  const more =
-    rest.length === 0
-      ? null
-      : element("details", {
-          children: [
-            element("summary", { children: counted(rest.length, "more line") }),
-            element("pre", { children: rest.join("\n") }),
-          ],
-        });
-  return element("div", {
-    class: entry.error ? "entry tool-result error" : "entry tool-result",
-    children: [
-      entry.error
-        ? element("span", { class: "entry-mark", children: "Error" })
-        : null,
-      element("pre", { children: lines.slice(0, 20).join("\n") }),
-      more,
-      component(CutNote, { entry }),
-    ],
-  });
-}
-
-export function TranscriptLine(props: {
-  readonly entry: TranscriptEntry;
-}): Shown {
-  const { entry } = props;
-  if (entry.kind === "tool-result") return component(ToolOutput, { entry });
-  const body = [
-    element("pre", { children: entry.text }),
-    component(CutNote, { entry }),
-  ];
-  if (entry.kind === "thinking" || entry.kind === "tool-call")
-    return element("details", {
-      class: `entry ${entry.kind}`,
-      children: [
-        element("summary", {
-          children: entry.kind === "thinking" ? "Thinking" : entry.summary,
-        }),
-        body,
-      ],
-    });
-  const tone = entry.error ? " error" : "";
-  return element("div", {
-    class: `entry ${entry.kind}${tone}`,
-    children: body,
-  });
-}
-
 export function waitingText(state: TranscriptView["state"]): string {
   return state === "loading"
     ? "The transcript loads."
@@ -120,10 +65,37 @@ export function jumpLabel(unseen: number): string {
   return `Jump to the end · ${String(unseen)} new ${unseen === 1 ? "entry" : "entries"}`;
 }
 
+export function TranscriptLines(props: {
+  readonly target: TranscriptTarget;
+  readonly view: TranscriptView;
+  readonly controls: TranscriptControls;
+  readonly worktree: string;
+}): Shown {
+  const { target, view, controls, worktree } = props;
+  return element("div", {
+    class: "transcript-lines",
+    "data-transcript": target.operationId,
+    onScroll: (event: { readonly currentTarget: TranscriptBox }) => {
+      controls.onScroll(target.operationId, event.currentTarget);
+    },
+    children:
+      view.entries.length === 0
+        ? element("p", { class: "meta", children: waitingText(view.state) })
+        : terminalGroups(view.entries).map((group) =>
+            component(TerminalGroupView, {
+              key: String(group.entry.position),
+              group,
+              worktree,
+            }),
+          ),
+  });
+}
+
 export function TranscriptBody(props: {
   readonly target: TranscriptTarget;
   readonly view: TranscriptView;
   readonly controls: TranscriptControls;
+  readonly worktree: string;
 }): Shown {
   const { target, view, controls } = props;
   if (view.state === "not-kept")
@@ -142,19 +114,6 @@ export function TranscriptBody(props: {
         },
       }),
     ];
-  const lines = element("div", {
-    class: "transcript-lines",
-    "data-transcript": target.operationId,
-    onScroll: (event: { readonly currentTarget: TranscriptBox }) => {
-      controls.onScroll(target.operationId, event.currentTarget);
-    },
-    children:
-      view.entries.length === 0
-        ? element("p", { class: "meta", children: waitingText(view.state) })
-        : view.entries.map((entry) =>
-            component(TranscriptLine, { key: String(entry.position), entry }),
-          ),
-  });
   return [
     view.earlier
       ? component(TranscriptButton, {
@@ -165,7 +124,7 @@ export function TranscriptBody(props: {
           },
         })
       : null,
-    lines,
+    component(TranscriptLines, props),
     view.unseen === 0 && !view.detached
       ? null
       : component(TranscriptButton, {
@@ -196,28 +155,30 @@ export function transcriptWanted(props: {
   return last.operationId === turn.operationId;
 }
 
-export function Transcript(props: {
-  readonly run: Pick<WatchRun, "runId" | "turns">;
-  readonly turn: WatchTurn;
-  readonly turnId: string | null;
+export function TranscriptHead(props: {
+  readonly target: TranscriptTarget;
+  readonly view: TranscriptView | undefined;
   readonly controls: TranscriptControls | undefined;
+  readonly layout: "detail" | "terminal";
 }): Shown {
-  const { run, turn, turnId, controls } = props;
-  const { runId } = run;
-  const { operationId } = turn;
-  const target = {
-    runId,
-    operationId,
-    wanted: transcriptWanted({ turns: run.turns, turn, turnId }),
+  const { target, view, controls, layout } = props;
+  const place = {
+    workflowId: null,
+    runId: target.runId,
+    turnId: target.operationId,
   };
-  const view = controls?.view(target);
   const link = element("a", {
     class: "transcript-link",
-    href: watchHash({ workflowId: null, runId, turnId: operationId }),
+    href: watchHash(place),
     onClick: () => {
       controls?.onLink(target);
     },
-    children: "Link",
+    children: layout === "terminal" ? "Run detail" : "Link",
+  });
+  const full = element("a", {
+    class: "transcript-full",
+    href: watchHash({ ...place, view: "terminal" }),
+    children: "Full screen",
   });
   const toggle = element("button", {
     type: "button",
@@ -227,17 +188,115 @@ export function Transcript(props: {
     },
     children: view?.shown === true ? "Hide" : "Show",
   });
-  return element("section", {
-    class: "transcript code-window",
-    "data-turn": operationId,
+  return element("div", {
+    class: "code-head",
     children: [
-      element("div", {
-        class: "code-head",
-        children: ["Transcript ", toggle, " ", link],
-      }),
-      controls === undefined || view?.shown !== true
-        ? null
-        : component(TranscriptBody, { target, view, controls }),
+      "Transcript ",
+      toggle,
+      " ",
+      link,
+      layout === "terminal" ? null : [" ", full],
     ],
   });
 }
+
+export function Transcript(props: {
+  readonly run: Pick<WatchRun, "runId" | "turns">;
+  readonly turn: WatchTurn;
+  readonly turnId: string | null;
+  readonly controls: TranscriptControls | undefined;
+  readonly layout?: "terminal";
+}): Shown {
+  const { run, turn, turnId, controls } = props;
+  const target = {
+    runId: run.runId,
+    operationId: turn.operationId,
+    wanted: transcriptWanted({ turns: run.turns, turn, turnId }),
+  };
+  const view = controls?.view(target);
+  return element("section", {
+    class: "transcript code-window",
+    "data-turn": turn.operationId,
+    children: [
+      component(TranscriptHead, {
+        target,
+        view,
+        controls,
+        layout: props.layout ?? "detail",
+      }),
+      controls === undefined || view?.shown !== true
+        ? null
+        : component(TranscriptBody, {
+            target,
+            view,
+            controls,
+            worktree: turn.worktree,
+          }),
+    ],
+  });
+}
+
+export function TerminalPage(props: {
+  readonly model: WatchModel;
+  readonly location: WatchLocation;
+  readonly transcripts?: TranscriptControls | undefined;
+}): Shown {
+  const { model, location } = props;
+  const run = model.runs.find((item) => item.runId === location.runId);
+  const turn = run?.turns.find((item) => item.operationId === location.turnId);
+  return element("div", {
+    class: "terminal-page",
+    children:
+      run === undefined || turn === undefined
+        ? element("p", {
+            class: "meta",
+            children: "This turn is not available.",
+          })
+        : component(Transcript, {
+            run,
+            turn,
+            turnId: turn.operationId,
+            controls: props.transcripts,
+            layout: "terminal",
+          }),
+  });
+}
+
+export function RunTurns(props: {
+  readonly run: WatchRun;
+  readonly now: string;
+  readonly transcripts: TranscriptControls | undefined;
+  readonly turnId: string | null;
+}): Shown {
+  const { run, now } = props;
+  if (run.turns.length === 0)
+    return element("p", {
+      class: "meta",
+      children: "No agent turn for this run.",
+    });
+  return run.turns.map((item, index) => [
+    component(Turn, { key: item.key, turn: item, now }),
+    component(Transcript, {
+      key: `transcript-${item.key}`,
+      run,
+      turn: item,
+      turnId: props.turnId,
+      controls: props.transcripts,
+    }),
+    component(Review, { key: `review-${item.key}`, run, round: index + 1 }),
+  ]);
+}
+
+export const transcriptFunctions = [
+  ...terminalFunctions,
+  waitingText,
+  TranscriptButton,
+  jumpLabel,
+  TranscriptLines,
+  TranscriptBody,
+  transcriptWanted,
+  TranscriptHead,
+  Transcript,
+  TerminalPage,
+  RunTurns,
+];

@@ -2,11 +2,11 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { component } from "../src/cli/watch-element.ts";
 import type { WatchTurn } from "../src/cli/watch-render.ts";
-import type {
-  TranscriptControls,
-  TranscriptTarget,
+import {
+  RunTurns,
+  type TranscriptControls,
+  type TranscriptTarget,
 } from "../src/cli/watch-transcript-view.ts";
-import { RunTurns } from "../src/cli/watch-view.ts";
 import { rendered } from "./watch-dom.ts";
 import {
   at,

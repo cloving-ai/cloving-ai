@@ -530,20 +530,31 @@ The run list has the active runs and the runs of the last 7 days. The run detail
 
 #### Transcript of an agent turn
 
-Each agent turn in the run detail has a **Transcript** section. The section shows the conversation of the turn like the terminal of the agent: monospaced text on the theme colors, one block for each entry.
+Each agent turn in the run detail has a **Transcript** section. The section shows the turn as the terminal of Claude Code shows it, in a dark terminal panel. The panel is dark in each theme. It has its own color tokens (see the themes below). The panel of an open turn fills the height of the window below the header.
 
-The turn in work is expanded and follows the stream while the agent works. When no turn is in work, the last agent turn (the turn that started last) is expanded. The other turns open with **Show**. The **Link** of a turn opens `#run=<run-id>&turn=<operation-id>`: the run detail with that turn expanded in place of the last turn. A transcript that you show or hide keeps that state until you leave the run detail.
+The turn in work is expanded and follows the stream while the agent works. When no turn is in work, the last agent turn (the turn that started last) is expanded. The other turns open with **Show**. The **Link** of a turn opens `#run=<run-id>&turn=<operation-id>`: the run detail with that turn expanded in place of the last turn. **Full screen** opens `#run=<run-id>&turn=<operation-id>&view=terminal`: only the panel of that turn, at the full size of the window. A transcript that you show or hide keeps that state until you leave the run detail.
 
-The service reads the `turn.jsonl` file of the journal folder of the turn and makes one entry from each line. The watch page does not read the journal. An entry has one of these kinds:
+The service reads the `turn.jsonl` file of the journal folder of the turn and makes one entry from each line. The worker also keeps the prompt of each attempt in the file `turn-prompts.jsonl` of the same folder, with mode 600 and the same retention as `turn.jsonl`. The file has one line for each attempt, with the number of the attempt and its prompt. The watch page does not read the journal. An entry has one of these kinds:
 
-- `assistant`: the text of the agent.
-- `thinking`: the thinking of the agent, closed until you open it.
-- `tool-call`: the tool name and its command or input in one line. The line opens to the full input.
-- `tool-result`: the output of a tool, with an error mark when the tool failed. The view shows the first 20 lines, and the rest opens on a click.
-- `notice`: a system event, for example a started or ended background task, a retry or a rate limit. A line of another harness, or a line that the service cannot read, becomes a notice with its raw text.
+- `prompt`: the prompt of an attempt. It is the first entry of the attempt, after the `Attempt N` notice of a later attempt. The view shows `> ` and the first 12 lines of the prompt, and `… +N lines` opens the rest. An attempt from before Cloving kept the prompt has no `prompt` entry, also when a later attempt of the same turn has one.
+- `assistant`: the text of the agent. The view shows `⏺` and the text with its line breaks.
+- `thinking`: the thinking of the agent. The view shows `✻ Thinking…`, closed until you open it.
+- `tool-call`: a tool call. The view shows `⏺ Tool(argument)` with the tool name in bold, and a click opens the full input. The argument is the first line of the command for `Bash` (at most 120 characters), the file path relative to the work tree for `Read`, `Write`, `Edit`, `MultiEdit` and `NotebookEdit`, the pattern and the path for `Grep`, the pattern for `Glob`, the URL for `WebFetch`, the query for `WebSearch` and the description for `Task` and `Agent`. For another tool, it is the first text field of the input.
+- `tool-result`: the output of a tool. The view shows it under its call after an indented `⎿`, in the dim color, with the first 4 lines. `… +N lines` opens the rest. An error result shows in red.
+- `notice`: a system event, for example a started or ended background task, a retry or a rate limit. A line of another harness, or a line that the service cannot read, becomes a notice with its raw text. The view shows one dim line.
 - `result`: the end of the turn with its cost, its turns and its stop reason.
 
-Cloving reads Claude stream JSON. The worker translates the stream of another harness to Claude stream JSON before it writes `turn.jsonl`, so the transcript shows what that translation keeps. For a Codex turn, that is the agent messages, the commands, the changed files and the last 2000 characters of the output of a failed command. The journal keeps no Codex reasoning and no output of a successful command. Each attempt of a resumed turn starts with a line such as `Attempt 2 (resumed after a restart)`. The service leaves out frequent status events, for example the token counts of thinking and the progress of a tool.
+Each `tool-call` and `tool-result` entry has the field `callId`: the `tool_use` ID of Claude stream JSON, or the item ID of a Codex command. The field is `null` for the other kinds. The view shows each result directly under its call, also when the agent runs several calls at the same time. A result with no matching call shows alone.
+
+Some tools have their own form under the call:
+
+- `Edit` and `MultiEdit`: `⎿ Updated <path> with N additions and M removals`, then the changed lines of the call input. Removed lines show in red with `-`, and added lines show in green with `+`.
+- `Write`: `⎿ Wrote N lines to <path>`, then the first 4 lines of the content.
+- `TodoWrite`: `⏺ Update Todos`, then one line for each item. A pending item has `☐`, the item in progress has `☐` in bold, and a completed item has `☒` and a line through its text.
+
+The view shows these forms after the tool gives a successful result. Before the result, the view shows only the call. When one of these tools fails, the view shows the error result in place of its form. When the input of an edit does not give the old and the new text, the view shows `⎿ Updated <path>` with no counts and no changed lines.
+
+Cloving reads Claude stream JSON. The worker translates the stream of another harness to Claude stream JSON before it writes `turn.jsonl`, so the transcript shows what that translation keeps. For a Codex turn, that is the agent messages, the commands with the last 2000 characters of their output, and the changed files. A Codex command shows as `⏺ Bash(<command>)` with its output after `⎿`, and a changed file shows as `⏺ Edit(<path>)`. The journal keeps no Codex reasoning. The lines of other harnesses keep their notice lines. Each attempt of a resumed turn starts with a line such as `Attempt 2 (resumed after a restart)`. The service leaves out frequent status events, for example the token counts of thinking and the progress of a tool.
 
 The view scrolls with new entries while you are at the end. When you scroll up, it stops, and **Jump to the end** shows the count of new entries. The page keeps at most 2000 entries, and **Load earlier entries** loads the entries before them.
 
@@ -636,6 +647,7 @@ A theme can set only these token names. All tokens are optional.
 | `color.page`, `color.surface`, `color.panel`, `color.ink`, `color.muted`, `color.line` | `color` | A color |
 | `color.accent`, `color.accent-strong`, `color.on-accent`, `color.warn`, `color.bad` | `color` | A color |
 | `color.code.background`, `color.code.header`, `color.code.text`, `color.code.line`, `color.code.muted` | `color` | A color |
+| `color.terminal.background`, `color.terminal.text`, `color.terminal.dim`, `color.terminal.red`, `color.terminal.green`, `color.terminal.tool` | `color` | A color |
 | `color.state.running`, `color.state.waiting`, `color.state.attention`, `color.state.completed`, `color.state.failed` | `color` | A color |
 | `shape.cut`, `shape.radius` | `dimension` | 0 to 32 px |
 | `shape.border` | `dimension` | 0 to 8 px |

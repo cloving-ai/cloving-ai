@@ -6,11 +6,12 @@ export interface WatchLocation {
   readonly repository?: string | undefined;
   readonly turnId?: string | null;
   readonly decisionId?: string | null;
+  readonly view?: "terminal";
 }
 
 export function locationOptions(
   fields: URLSearchParams,
-): Pick<WatchLocation, "repository" | "turnId" | "decisionId"> {
+): Pick<WatchLocation, "repository" | "turnId" | "decisionId" | "view"> {
   const repository = fields.get("repository");
   const turnId = fields.get("turn") || null;
   const decisionId = fields.get("decision") || null;
@@ -18,6 +19,7 @@ export function locationOptions(
     ...(repository ? { repository } : {}),
     ...(turnId === null ? {} : { turnId }),
     ...(decisionId === null ? {} : { decisionId }),
+    ...(fields.get("view") === "terminal" ? { view: "terminal" } : {}),
   };
 }
 
@@ -46,6 +48,7 @@ export function watchHash(location: WatchLocation): string {
     ["run", location.runId],
     ["turn", location.turnId],
     ["decision", location.decisionId],
+    ["view", location.view],
   ];
   return `#${parts
     .flatMap(([name, value]) =>

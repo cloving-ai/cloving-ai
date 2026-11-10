@@ -80,34 +80,30 @@ await test("CLV-329 a transcript section shows assistant text as text, a tool ca
   );
   assert.match(
     html,
-    /<div class="entry assistant"><pre>\*\*Bold\*\* &lt;b&gt;tag&lt;\/b&gt;<\/pre><\/div>/,
+    /<div class="entry assistant"><span class="mark">⏺<\/span><pre>\*\*Bold\*\* &lt;b&gt;tag&lt;\/b&gt;<\/pre><\/div>/,
   );
   assert.match(
     html,
-    /<details class="entry tool-call"><summary>Bash: npm test<\/summary><pre>\{\n {2}&quot;command&quot;: &quot;npm test&quot;\n\}<\/pre><\/details>/,
+    /<details class="tool-line"><summary><span class="mark">⏺<\/span> <strong class="tool-name">Bash<\/strong>\(npm test\)<\/summary><pre class="tool-input">\{\n {2}&quot;command&quot;: &quot;npm test&quot;\n\}<\/pre><\/details>/,
   );
   assert.match(
     html,
-    /<details class="entry thinking"><summary>Thinking<\/summary><pre>Plan the test\.<\/pre><\/details>/,
+    /<details class="entry thinking"><summary>✻ Thinking…<\/summary><pre>Plan the test\.<\/pre><\/details>/,
   );
   assert.doesNotMatch(html, /<b>|open/);
 });
 
-await test("CLV-329 a tool result shows its first 20 lines and opens to the rest, with an error mark and the count of bytes that the cut left out", () => {
+await test("CLV-329 a tool result shows its first lines and opens to the rest, with an error mark and the count of bytes that the cut left out", () => {
   const text = Array.from(
-    { length: 23 },
+    { length: 7 },
     (_, index) => `line ${String(index + 1)}`,
   ).join("\n");
   const html = entries(
     entry(1, { kind: "tool-result", text, error: true, omittedBytes: 512 }),
   );
-  const head = Array.from(
-    { length: 20 },
-    (_, index) => `line ${String(index + 1)}`,
-  ).join("\n");
   assert.ok(
     html.includes(
-      `<div class="entry tool-result error"><span class="entry-mark">Error</span><pre>${head}</pre><details><summary>3 more lines</summary><pre>line 21\nline 22\nline 23</pre></details><p class="entry-cut">The output is cut: 512 bytes are left out.</p></div>`,
+      `<div class="entry tool-result error"><span class="gutter">⎿</span><div class="output"><pre>line 1\nline 2\nline 3\nline 4</pre><details><summary>… +3 lines</summary><pre>line 5\nline 6\nline 7</pre></details><p class="entry-cut">The output is cut: 512 bytes are left out.</p></div></div>`,
     ),
     html,
   );

@@ -51,6 +51,7 @@ await test("CLV-329 a Claude stream gives assistant text, thinking, a tool call,
     entry(3, {
       kind: "tool-call",
       tool: "Bash",
+      callId: "tool-1",
       summary: "Bash: npm test",
       text: JSON.stringify(
         { command: "npm test", description: "Run the tests" },
@@ -58,7 +59,12 @@ await test("CLV-329 a Claude stream gives assistant text, thinking, a tool call,
         2,
       ),
     }),
-    entry(4, { kind: "tool-result", text: "1 test failed", error: true }),
+    entry(4, {
+      kind: "tool-result",
+      callId: "tool-1",
+      text: "1 test failed",
+      error: true,
+    }),
     entry(5, {
       kind: "notice",
       text: "Background task started: Watch the gate",
@@ -92,6 +98,7 @@ await test("CLV-329 a turn with two attempts gives the entries of both, with the
       { attempt: 1, resumed: false },
       { attempt: 2, resumed: true },
     ],
+    prompts: [],
     privateTexts: [],
   });
   assert.deepEqual(found, [
@@ -127,6 +134,7 @@ await test("CLV-329 the entries mask GitHub tokens and private texts, remove ter
     text: lines(toolResult(output)),
     open: false,
     attempts: [],
+    prompts: [],
     privateTexts: ["acme secret", " "],
   });
   assert.equal(
@@ -191,6 +199,7 @@ await test("CLV-329 an append read parses only the text after its byte offset an
   const second = `\n${lines(assistant({ type: "text", text: "Again." }))}`;
   const source = {
     attempts: [{ attempt: 2, resumed: true }],
+    prompts: [],
     privateTexts: [],
   };
   const opened = transcriptAppended(emptyTranscript, {
@@ -225,6 +234,7 @@ await test("CLV-329 a summary masks a private text before the cut to 200 charact
     ),
     open: false,
     attempts: [],
+    prompts: [],
     privateTexts: [secret],
   });
   assert.equal(found?.summary, `Bash: ${"a".repeat(180)} [hidden] done`);
@@ -241,6 +251,7 @@ await test("CLV-329 a tool name masks a private text and has no terminal control
     ),
     open: false,
     attempts: [],
+    prompts: [],
     privateTexts: ["acme_secret"],
   });
   assert.equal(found?.tool, "mcp__[hidden]__read");

@@ -32,6 +32,7 @@ function entryAt(position: number): Fields {
     kind: "assistant",
     text: `Entry ${String(position)}`,
     tool: null,
+    callId: null,
     summary: "",
     error: false,
     omittedBytes: 0,
@@ -73,6 +74,27 @@ function transcriptService(turn: Turn) {
   };
   return { asked, answer, turn };
 }
+
+await test("CLV-333 the transcript route gives the prompt kind and the call ID of tool calls and tool results", async () => {
+  const entries = [
+    { ...entryAt(1), kind: "prompt", text: "Fix CLV-333." },
+    {
+      ...entryAt(2),
+      kind: "tool-call",
+      tool: "Bash",
+      callId: "toolu_1",
+      summary: "Bash: npm test",
+    },
+  ];
+  const service = transcriptService({ entries, open: false });
+  await withWatchService(service.answer, async (watch) => {
+    const response = await fetch(`${watch.address}${turnPath}/transcript`);
+    assert.deepEqual(
+      await contractBody(watchApiDocument, { response, path: pagePath }),
+      { entries, nextAfter: 2, open: false },
+    );
+  });
+});
 
 function positions(messages: readonly string[]): string[] {
   return messages.map((message) => message.split("\n")[0] ?? "");
