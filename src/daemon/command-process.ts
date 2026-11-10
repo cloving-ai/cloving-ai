@@ -16,10 +16,11 @@ import type { TurnLaunch } from "../turn-launch.ts";
 import {
   attachedProcess,
   inputDescriptor,
-  intervals,
   launchedProcess,
   type DetachedProcess,
+  type Ending,
   type LaunchedProcess,
+  type LauncherLimits,
   type LauncherStart,
   type Watch,
 } from "./detached-process.ts";
@@ -35,10 +36,7 @@ export interface CommandStart {
   readonly deadline?: string;
 }
 
-export interface KeptCommand extends Pick<
-  CommandStart,
-  "folder" | "seconds" | "deadline"
-> {
+export interface KeptCommand extends Pick<CommandStart, "folder" | "deadline"> {
   readonly launch: TurnLaunch;
   readonly startedAt: number;
 }
@@ -65,12 +63,17 @@ export interface CommandClock {
   }) => () => void;
 }
 
+interface Judged {
+  readonly at: number;
+  readonly durationMilliseconds: number;
+}
+
 interface Following {
   readonly process: DetachedProcess;
-  readonly stop: () => void;
+  readonly stop: () => "stopped" | "stopping";
   readonly configuration: string;
-  readonly elapsed: number;
-  readonly clock: CommandClock;
+  readonly judged: (ending: Ending | undefined) => Judged;
+  readonly timer?: (fail: (reason: string) => void) => () => void;
   readonly launch: Promise<TurnLaunch | null>;
 }
 
@@ -101,14 +104,6 @@ function size(path: string): number {
   }
 }
 
-function overLimit(folder: string): boolean {
-  const files = commandFiles(folder);
-  return (
-    size(files.output) > commandLimits.stdoutBytes ||
-    size(files.errors) > commandLimits.stderrBytes
-  );
-}
-
 function leadingText(path: string): string {
   const buffer = Buffer.alloc(commandLimits.stdoutBytes);
   let descriptor: number | undefined;
@@ -128,7 +123,9 @@ function commandOutput(folder: string): {
   readonly reason?: string;
 } {
   const files = commandFiles(folder);
-  const over = overLimit(folder);
+  const over =
+    size(files.output) > commandLimits.stdoutBytes ||
+    size(files.errors) > commandLimits.stderrBytes;
   if (size(files.errors) > commandLimits.stderrBytes)
     truncateSync(files.errors, commandLimits.stderrBytes);
   const stdout = leadingText(files.output);
@@ -172,7 +169,7 @@ function journalFiles(
   | { readonly descriptors: LauncherStart["descriptors"] } {
   const files = commandFiles(start.folder);
   const errors = openSync(files.errors, "w", 0o600);
-  const reason = deadlineRefusal(start, clock);
+  const reason = deadlineRefusal(start, clock.now());
   if (reason !== undefined) {
     closeSync(errors);
     return { reason };
@@ -207,6 +204,11 @@ function launchedCommand(
     directory: start.directory,
     descriptors: opened.descriptors,
     exit: commandFiles(start.folder).exit,
+    limits: {
+      ...timeLimit(start, setup.clock),
+      outputBytes: commandLimits.stdoutBytes,
+      errorBytes: commandLimits.stderrBytes,
+    },
   });
   return { process, configuration: setup.configuration };
 }
@@ -239,77 +241,80 @@ function refusedCommand(reason: string): RunningCommand {
 
 function deadlineRefusal(
   start: Pick<CommandStart, "deadline">,
-  clock: CommandClock,
+  at: number,
 ): string | undefined {
   if (start.deadline !== undefined && !isInstant(start.deadline))
     return "invalid-command-deadline";
-  if (start.deadline !== undefined && Date.parse(start.deadline) <= clock.now())
+  if (start.deadline !== undefined && Date.parse(start.deadline) <= at)
     return "command-wait-timeout";
   return undefined;
 }
 
 function timeLimit(
   start: Pick<CommandStart, "seconds" | "deadline">,
-  timing: {
-    readonly following: Following;
-    readonly fail: (reason: string) => void;
-  },
-) {
-  const { clock, elapsed } = timing.following;
+  clock: CommandClock,
+): Pick<LauncherLimits, "milliseconds" | "reason"> {
   const remaining =
     start.deadline === undefined
       ? Infinity
       : Date.parse(start.deadline) - clock.now();
-  const execution = start.seconds * 1000 - elapsed;
+  const execution = start.seconds * 1000;
   return {
-    expired: () => {
-      timing.fail(
-        remaining <= execution ? "command-wait-timeout" : "command-timeout",
-      );
-    },
+    reason: remaining <= execution ? "command-wait-timeout" : "command-timeout",
     milliseconds: Math.max(0, Math.min(execution, remaining)),
   };
 }
 
+function commandEnd(
+  start: Pick<CommandStart, "folder" | "deadline">,
+  finish: {
+    readonly ending: Ending | undefined;
+    readonly judged: Judged;
+    readonly reason: string | undefined;
+  },
+): CommandEnd {
+  const output = commandOutput(start.folder);
+  const exitCode = finish.ending?.exitCode ?? null;
+  const reason =
+    finish.reason ??
+    finish.ending?.reason ??
+    output.reason ??
+    deadlineRefusal(start, finish.judged.at) ??
+    (exitCode === 0 ? undefined : "command-exit");
+  return {
+    stdout: output.stdout,
+    exitCode,
+    durationMilliseconds: finish.judged.durationMilliseconds,
+    ...(reason === undefined ? {} : { reason }),
+  };
+}
+
 function followedCommand(
-  start: Pick<CommandStart, "folder" | "seconds" | "deadline">,
+  start: Pick<CommandStart, "folder" | "deadline">,
   following: Following,
 ): RunningCommand {
-  const began = performance.now() - following.elapsed;
   let reason: string | undefined;
   const watching = new AbortController();
   const settled = Promise.withResolvers<Watch | "failed">();
   const fail = (failure = "command-exit"): void => {
     reason ??= failure;
-    following.stop();
-    settled.resolve("failed");
+    if (following.stop() === "stopped") settled.resolve("failed");
   };
   following.process.ending(watching.signal).then(settled.resolve, () => {
     settled.resolve("gone");
   });
-  const limits = setInterval(() => {
-    if (overLimit(start.folder)) fail("command-output-limit");
-  }, intervals.output);
-  const cancelTimer = following.clock.timer(
-    timeLimit(start, { following, fail }),
-  );
+  const cancelTimer = following.timer?.(fail) ?? (() => undefined);
   return {
     ended: settled.promise.then((watch) => {
-      clearInterval(limits);
       cancelTimer();
       if (watch === "released") throw new Error("command-released");
       rmSync(following.configuration, { recursive: true, force: true });
-      const output = commandOutput(start.folder);
-      const exitCode =
-        watch === "failed" || watch === "gone" ? null : watch.exitCode;
-      reason ??= output.reason ?? deadlineRefusal(start, following.clock);
-      reason ??= exitCode === 0 ? undefined : "command-exit";
-      return {
-        stdout: output.stdout,
-        exitCode,
-        durationMilliseconds: Math.round(performance.now() - began),
-        ...(reason === undefined ? {} : { reason }),
-      };
+      const ending = typeof watch === "object" ? watch : undefined;
+      return commandEnd(start, {
+        ending,
+        judged: following.judged(ending),
+        reason,
+      });
     }),
     stop: fail,
     launch: following.launch,
@@ -323,20 +328,33 @@ export function startCommand(
   start: CommandStart,
   clock: CommandClock = commandClock,
 ): RunningCommand {
-  const reason = deadlineRefusal(start, clock);
+  const reason = deadlineRefusal(start, clock.now());
   if (reason !== undefined) return refusedCommand(reason);
   const prepared = prepareCommand(start, clock);
   if ("reason" in prepared) return refusedCommand(prepared.reason);
   const { process: launched, configuration } = prepared;
   const output = commandFiles(start.folder).output;
+  const began = performance.now();
   return followedCommand(start, {
     process: launched,
     stop: () => {
       stopLaunched(launched.child);
+      return "stopped";
     },
     configuration,
-    elapsed: 0,
-    clock,
+    judged: () => ({
+      at: clock.now(),
+      durationMilliseconds: Math.round(performance.now() - began),
+    }),
+    timer: (fail) => {
+      const limit = timeLimit(start, clock);
+      return clock.timer({
+        milliseconds: limit.milliseconds,
+        expired: () => {
+          fail(limit.reason);
+        },
+      });
+    },
     launch: launched.launch.then((recorded) =>
       recorded === null
         ? null
@@ -345,19 +363,22 @@ export function startCommand(
   });
 }
 
-export function attachedCommand(
-  kept: KeptCommand,
-  clock: CommandClock = commandClock,
-): RunningCommand {
+export function attachedCommand(kept: KeptCommand): RunningCommand {
   const process = attachedProcess(kept.launch);
   return followedCommand(kept, {
     process,
     stop: () => {
       process.signal("SIGKILL");
+      return "stopping";
     },
     configuration: kept.launch.configuration,
-    elapsed: Math.max(0, clock.now() - kept.startedAt),
-    clock,
+    judged: (ending) => {
+      const at = ending?.endedAt ?? Date.now();
+      return {
+        at,
+        durationMilliseconds: Math.max(0, Math.round(at - kept.startedAt)),
+      };
+    },
     launch: Promise.resolve(kept.launch),
   });
 }

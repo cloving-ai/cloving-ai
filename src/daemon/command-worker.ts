@@ -142,16 +142,12 @@ function attached(
   const fields = record(kept.started);
   const startedAt = Date.parse(String(fields?.["startedAt"]));
   const deadline = fields?.["deadline"];
-  const running = attachedCommand(
-    {
-      folder: kept.folder,
-      seconds: parts.settings.seconds ?? 60,
-      ...(typeof deadline === "string" ? { deadline } : {}),
-      launch: kept.launch,
-      startedAt: Number.isFinite(startedAt) ? startedAt : Date.now(),
-    },
-    parts.settings.commandClock,
-  );
+  const running = attachedCommand({
+    folder: kept.folder,
+    ...(typeof deadline === "string" ? { deadline } : {}),
+    launch: kept.launch,
+    startedAt: Number.isFinite(startedAt) ? startedAt : Date.now(),
+  });
   watched(parts, { ...kept, running, recorded: Promise.resolve(true) });
   parts.settings.recovered?.({ runId: kept.intent.runId, way: "command" });
   return { kind: "accepted", receipt: kept.key, worker: "command" };

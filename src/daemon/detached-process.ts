@@ -19,6 +19,8 @@ export type LaunchState = "running" | "ended" | "gone";
 
 export interface Ending {
   readonly exitCode: number | null;
+  readonly reason?: string;
+  readonly endedAt?: number;
 }
 
 export type Watch = Ending | "gone" | "released";
@@ -41,23 +43,40 @@ export interface LauncherStart {
   readonly directory: string;
   readonly descriptors: readonly [number | "ignore", number, number];
   readonly exit: string;
+  readonly limits?: LauncherLimits;
 }
+
+export interface LauncherLimits {
+  readonly milliseconds: number;
+  readonly reason: string;
+  readonly outputBytes: number;
+  readonly errorBytes: number;
+}
+
+export const intervals = { output: 100, process: 250, identity: 16 } as const;
 
 const launcher = [
   'const{spawn}=require("node:child_process");',
-  'const{renameSync,writeFileSync}=require("node:fs");',
-  "const[exit,,coverage,command,...rest]=process.argv.slice(1);",
+  'const{fstatSync,renameSync,writeFileSync}=require("node:fs");',
+  "const[exit,,coverage,limitText,command,...rest]=process.argv.slice(1);",
+  "const limits=JSON.parse(limitText);",
   'for(const name of["SIGTERM","SIGINT","SIGHUP"])process.on(name,()=>undefined);',
   "const env={...process.env};",
   'if(coverage!=="")env.NODE_V8_COVERAGE=coverage;',
+  "let ended=false;",
+  "const ending=(fields)=>{if(ended)return false;ended=true;",
+  'writeFileSync(exit+".tmp",JSON.stringify({...fields,endedAt:new Date().toISOString()})+"\\n",{mode:0o600});',
+  'renameSync(exit+".tmp",exit);return true;};',
+  'const stopped=(reason)=>{if(ending({exitCode:null,signal:"SIGKILL",reason}))process.kill(-process.pid,"SIGKILL");};',
   'const child=spawn(command,rest,{stdio:"inherit",env});',
   'child.on("error",()=>undefined);',
-  'child.on("close",(exitCode,signal)=>{',
-  'writeFileSync(exit+".tmp",JSON.stringify({exitCode,signal,endedAt:new Date().toISOString()})+"\\n",{mode:0o600});',
-  'renameSync(exit+".tmp",exit);process.exit(0);});',
+  'child.on("close",(exitCode,signal)=>{ending({exitCode,signal});process.exit(0);});',
+  "if(limits.milliseconds!==undefined)setTimeout(()=>{stopped(limits.reason);},limits.milliseconds);",
+  "const over=(descriptor,bytes)=>fstatSync(descriptor).size>bytes;",
+  "if(limits.outputBytes!==undefined)setInterval(()=>{",
+  'if(over(1,limits.outputBytes)||over(2,limits.errorBytes))stopped("command-output-limit");',
+  `},${String(intervals.output)});`,
 ].join("");
-
-export const intervals = { output: 100, process: 250, identity: 16 } as const;
 
 function parsedJson(text: string): unknown {
   try {
@@ -71,8 +90,13 @@ async function exitRecord(path: string): Promise<Ending | undefined> {
   const text = await readFile(path, "utf8").catch(() => undefined);
   const fields = record(parsedJson(text ?? ""));
   if (fields === undefined) return undefined;
-  const { exitCode } = fields;
-  return { exitCode: typeof exitCode === "number" ? exitCode : null };
+  const { exitCode, reason, endedAt } = fields;
+  const ended = typeof endedAt === "string" ? Date.parse(endedAt) : NaN;
+  return {
+    exitCode: typeof exitCode === "number" ? exitCode : null,
+    ...(typeof reason === "string" ? { reason } : {}),
+    ...(Number.isFinite(ended) ? { endedAt: ended } : {}),
+  };
 }
 
 export async function launchState(launch: ProcessLaunch): Promise<LaunchState> {
@@ -124,6 +148,7 @@ function spawnedLauncher(
         start.exit,
         start.marker,
         coverage,
+        JSON.stringify(start.limits ?? {}),
         start.executable,
         ...start.arguments,
       ],
@@ -167,8 +192,13 @@ export function launchedProcess(start: LauncherStart): LaunchedProcess {
     child,
     processId,
     launch,
-    ending: (signal) =>
-      Promise.race([childEnding(child, start.exit), released(signal)]),
+    ending: (signal) => {
+      child.ref();
+      const release = released(signal).finally(() => {
+        child.unref();
+      });
+      return Promise.race([childEnding(child, start.exit), release]);
+    },
     signal: (name) => {
       if (child.exitCode !== null || child.signalCode !== null) return;
       if (processId !== null) signalGroup(processId, name);

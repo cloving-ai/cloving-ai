@@ -4,6 +4,8 @@ import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
+import type { DeliveryIntent } from "../src/broker/actor/delivery-intents.ts";
+import type { CommandWorkerSettings } from "../src/daemon/command-worker.ts";
 import { located } from "../src/daemon/operation-journal.ts";
 import {
   processExists,
@@ -23,6 +25,9 @@ type Scene = Parameters<Parameters<typeof withCommandScene>[0]>[0];
 const waiting =
   'const fs = require("node:fs"); process.stdout.write("first "); fs.writeFileSync("started", ""); const wait = setInterval(() => { if (!fs.existsSync("go")) return; clearInterval(wait); process.stdout.write("done"); }, 20);';
 
+const flooding =
+  'const fs = require("node:fs"); fs.writeFileSync("started", ""); const wait = setInterval(() => { if (!fs.existsSync("go")) return; clearInterval(wait); process.stdout.write("x".repeat(2_000_000)); setInterval(() => {}, 1000); }, 20);';
+
 const operation = located("", "operation-1").key;
 
 function launchOf(scene: Scene): TurnLaunch {
@@ -33,10 +38,14 @@ function launchOf(scene: Scene): TurnLaunch {
 
 async function keptCommand(
   scene: Scene,
-  settings: { readonly seconds?: number } = {},
+  options: {
+    readonly settings?: Partial<CommandWorkerSettings>;
+    readonly source?: string;
+    readonly intent?: DeliveryIntent;
+  } = {},
 ): Promise<TurnLaunch> {
-  const first = scene.worker(waiting, settings);
-  await first.deliver(commandIntent(), signal);
+  const first = scene.worker(options.source ?? waiting, options.settings);
+  await first.deliver(options.intent ?? commandIntent(), signal);
   await until(() => existsSync(join(scene.directory, "started")));
   await first.close({ turns: "keep" });
   return launchOf(scene);
@@ -98,7 +107,7 @@ await test("CLV-337 a command whose process is gone with no exit file is interru
 
 await test("CLV-337 the time limit of a kept command counts from its start, not from the new connection", () =>
   withCommandScene(async (scene) => {
-    const launch = await keptCommand(scene, { seconds: 1 });
+    const launch = await keptCommand(scene, { settings: { seconds: 1 } });
     await delay(1100);
     const second = scene.worker('throw new Error("must not run")', {
       seconds: 1,
@@ -195,4 +204,87 @@ await test("CLV-337 a close that keeps work stops a command whose process identi
     assert.equal(scene.reports[0]?.outcome, "stopped");
     const folder = located(scene.journal, "operation-1").folder;
     assert.equal(existsSync(join(folder, "launch.json")), false);
+  }));
+
+function exitRecord(scene: Scene): unknown {
+  return JSON.parse(scene.recorded("command.exit.json"));
+}
+
+await test("CLV-337 a kept command stops at its time limit while no worker runs", () =>
+  withCommandScene(async (scene) => {
+    const launch = await keptCommand(scene, { settings: { seconds: 1 } });
+    await until(() => !processExists(launch.processId));
+    assert.equal(
+      Reflect.get(Object(exitRecord(scene)), "reason"),
+      "command-timeout",
+    );
+    const second = scene.worker('throw new Error("must not run")');
+    await second.recover([commandIntent()]);
+    await until(() => scene.reports.length === 1);
+    assert.equal(scene.reports[0]?.reason, "command-timeout");
+  }));
+
+await test("CLV-337 a kept command stops at its output limit while no worker runs", () =>
+  withCommandScene(async (scene) => {
+    const launch = await keptCommand(scene, { source: flooding });
+    writeFileSync(join(scene.directory, "go"), "");
+    await until(() => !processExists(launch.processId));
+    assert.equal(
+      Reflect.get(Object(exitRecord(scene)), "reason"),
+      "command-output-limit",
+    );
+    const second = scene.worker('throw new Error("must not run")');
+    await second.recover([commandIntent()]);
+    await until(() => scene.reports.length === 1);
+    assert.equal(scene.reports[0]?.reason, "command-output-limit");
+  }));
+
+await test("CLV-337 a kept command that ended before its limits completes when a new worker starts after them", () =>
+  withCommandScene(async (scene) => {
+    const deadline = Date.now() + 2000;
+    const launch = await keptCommand(scene, {
+      settings: { seconds: 2 },
+      intent: commandIntent({
+        commandDeadline: new Date(deadline).toISOString(),
+      }),
+    });
+    writeFileSync(join(scene.directory, "go"), "");
+    await until(() => !processExists(launch.processId));
+    await delay(Math.max(0, deadline - Date.now()) + 100);
+    const second = scene.worker('throw new Error("must not run")', {
+      seconds: 2,
+    });
+    await second.recover([commandIntent()]);
+    await until(() => scene.reports.length === 1);
+    assert.equal(scene.reports[0]?.outcome, "completed");
+    assert.equal(scene.reports[0].result, "first done");
+  }));
+
+await test("CLV-337 a stop of a connected command waits until its process is gone when its identity cannot be read", () =>
+  withCommandScene(async (scene) => {
+    const launch = await keptCommand(scene);
+    const second = scene.worker('throw new Error("must not run")');
+    await second.recover([commandIntent()]);
+    const tools = join(scene.directory, "tools");
+    mkdirSync(tools);
+    writeFileSync(join(tools, "ps"), "#!/bin/sh\nexit 2\n", { mode: 0o700 });
+    const path = process.env["PATH"] ?? "";
+    process.env["PATH"] = `${tools}:${path}`;
+    const stops: string[] = [];
+    let stopping: ReturnType<typeof second.stop> | undefined;
+    try {
+      stopping = second.stop(commandIntent(), signal);
+      stopping.then(
+        (result) => stops.push(result.kind),
+        () => undefined,
+      );
+      await delay(600);
+      assert.deepEqual(stops, []);
+      assert.equal(processExists(launch.processId), true);
+      assert.equal(existsSync(resultFile(scene)), false);
+    } finally {
+      process.env["PATH"] = path;
+    }
+    assert.equal((await stopping).kind, "stopped");
+    assert.equal(processExists(launch.processId), false);
   }));
