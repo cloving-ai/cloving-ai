@@ -3,7 +3,11 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { test } from "node:test";
 import { loopRows, loopRunsOf } from "../src/cli/watch-loops.ts";
-import { loopLastText, relativeText } from "../src/cli/watch-loops-view.ts";
+import {
+  lastRunText,
+  loopLastText,
+  loopTime,
+} from "../src/cli/watch-loops-view.ts";
 
 const hourly = {
   workflowId: "hourly",
@@ -76,21 +80,31 @@ await test("CLV-328 when the service does not answer the status of the last run,
   );
 });
 
-await test("CLV-328 a relative time is now, minutes, hours or days, before or after now", () => {
-  const now = "2026-11-16T13:00:00.000Z";
-  const at = (minutes: number): string =>
-    new Date(Date.parse(now) + minutes * 60000).toISOString();
-  assert.equal(relativeText(now, now), "now");
-  assert.equal(relativeText(at(30), now), "in 30 min");
-  assert.equal(relativeText(at(-90), now), "2 h ago");
-  assert.equal(relativeText(at(3 * 1440), now), "in 3 d");
+await test("CLV-340 the last run of a loop shows a short end time with a mark, and a run that did not end shows in work", () => {
+  const now = "2026-11-16T20:00:00.000Z";
+  const run = (state: string, endedAt: string | null) => ({
+    runId: "run-1",
+    state,
+    outcome: null,
+    endedAt,
+  });
+  const clock = (at: string): string =>
+    new Date(at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  const today = "2026-11-16T18:00:00.000Z";
+  const yesterday = "2026-11-15T20:00:00.000Z";
+  const older = "2026-11-10T20:00:00.000Z";
   assert.equal(
-    loopLastText({
-      runId: "run-1",
-      state: "running",
-      outcome: null,
-      endedAt: null,
-    }),
-    "running",
+    lastRunText(run("completed", today), now),
+    `last run ${clock(today)} ✓`,
   );
+  assert.equal(
+    lastRunText(run("failed", yesterday), now),
+    `last run ${clock(yesterday)} yesterday · failed`,
+  );
+  assert.equal(
+    lastRunText(run("cancelled", older), now),
+    `last run ${loopTime(older)} · cancelled`,
+  );
+  assert.equal(lastRunText(run("running", null), now), "last run in work");
+  assert.equal(loopLastText(run("running", null)), "running");
 });

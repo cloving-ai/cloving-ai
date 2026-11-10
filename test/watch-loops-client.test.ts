@@ -21,7 +21,7 @@ const press = async (node, type) => {
   node.dispatch(type);
   for (let turn = 0; turn < 5; turn++) await settled();
 };
-const rows = () => app.all("li").filter((node) => (node.getAttribute("class") ?? "").startsWith("loop "));
+const rows = () => app.all("div").filter((node) => (node.getAttribute("class") ?? "").startsWith("line-loop "));
 const toggle = (row) => row.all("input")[0];
 const runNow = (row) => row.all("button").find((node) => node.text === "Run now");
 location.hash = "";
@@ -96,7 +96,7 @@ globalThis.fetch = (address, options) => {
 };
 const press = async (pick, type) => {
   replies.push(model);
-  const row = app.all("li").find((node) => (node.getAttribute("class") ?? "").startsWith("loop "));
+  const row = app.all("div").find((node) => (node.getAttribute("class") ?? "").startsWith("line-loop "));
   pick(row).dispatch(type);
   for (let turn = 0; turn < 5; turn++) await settled();
 };
@@ -107,7 +107,7 @@ await load();
 await press(runNow, "click");
 await press((row) => row.all("input")[0], "change");
 await press(runNow, "click");
-const late = app.all("li").find((node) => (node.getAttribute("class") ?? "").startsWith("loop ")).text;
+const late = app.all("div").find((node) => (node.getAttribute("class") ?? "").startsWith("line-loop ")).text;
 await press(runNow, "click");
 await press(runNow, "click");
 console.log(JSON.stringify({ posts, late }));

@@ -133,12 +133,16 @@ await test("CLV-328 schedule run arguments refuse a missing workflow, a bad comm
     );
 });
 
-await test("CLV-328 the README describes the Loops panel, its controls, cloving schedule run, the MCP tools and the schedules route", async () => {
+await test("CLV-328 the README describes the loops on the floor, their controls, cloving schedule run, the MCP tools and the schedules route", async () => {
   const readme = await readFile(
     new URL("../README.md", import.meta.url),
     "utf8",
   );
-  assert.match(readme, /The \*\*Loops\*\* panel at the side of the floor/);
+  assert.match(
+    readme,
+    /The floor shows each loop in the right cell of the line of its workflow/,
+  );
+  assert.doesNotMatch(readme, /Loops\*\* panel|Loops panel/);
   assert.match(readme, /\*\*Run now\*\*.*`cloving schedule run <workflowId>`/);
   assert.match(readme, /`cloving schedule pause <workflowId>`.*switch/s);
   assert.match(
