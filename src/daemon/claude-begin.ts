@@ -83,6 +83,7 @@ export async function begun(
       ...start.turnSettings,
       ...(start.resume === undefined ? {} : { resume: start.resume }),
       ...(start.attach === undefined ? {} : { attach: start.attach }),
+      runId: intent.runId,
       stopping: stopping.controller,
       metadata: turnMetadata(start),
     },

@@ -35,7 +35,7 @@ await test("CLV-127 an attempt end refuses an invalid saved start time", () =>
           folder,
           prompt: "private prompt",
         },
-        { metadata: {} },
+        { metadata: {}, runId: "run-1" },
       );
       try {
         await until(() => scene.turns().length === index + 1);

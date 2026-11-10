@@ -1,5 +1,4 @@
 import {
-  startTurn,
   type RunningTurn,
   type TurnEnd,
   type TurnStart,
@@ -7,7 +6,7 @@ import {
 import { turnHead, retryEvidence, indexFailure } from "./retry-worktree.ts";
 import { readRecord, writeRecord } from "./operation-journal.ts";
 import { resumeWorktree } from "./resume-worktree.ts";
-import { stopLeftProcesses } from "./worktree-processes.ts";
+import { controlledTurn } from "./controlled-turn.ts";
 import { readResume, resumedCommand, resumePrompt } from "./claude-recovery.ts";
 import {
   attemptCommand,
@@ -51,38 +50,6 @@ function written(
   entry: { readonly name: string; readonly value: unknown },
 ): Promise<void> {
   return writeRecord(folder, { ...entry, permissions: "private" });
-}
-
-async function leftProcesses(attempts: Attempts, since: number): Promise<void> {
-  await stopLeftProcesses({
-    directory: attempts.start.directory,
-    seconds: Math.ceil((Date.now() - since) / 1000) + 2,
-    signal: new AbortController().signal,
-    stopMilliseconds: attempts.grace.milliseconds,
-    log: attempts.options.log,
-  }).catch(() => undefined);
-}
-
-function controlled(
-  attempts: Attempts,
-  launch: { readonly start: TurnStart; readonly since: number },
-): RunningTurn {
-  const turn = startTurn(launch.start);
-  const stop = () => {
-    turn.stop(attempts.grace.milliseconds);
-  };
-  attempts.stopping.signal.addEventListener("abort", stop, { once: true });
-  const cleaned = turn.exited.then((exit) =>
-    exit === "released" ? undefined : leftProcesses(attempts, launch.since),
-  );
-  return {
-    ...turn,
-    ended: turn.ended
-      .finally(() => cleaned)
-      .finally(() => {
-        attempts.stopping.signal.removeEventListener("abort", stop);
-      }),
-  };
 }
 
 async function promptOf(attempts: Attempts): Promise<string> {
@@ -160,7 +127,7 @@ async function watchedAttempt(
   const { steering } = attempts;
   const { entry, steered } = attempt;
   const journal = attemptJournal(attempts, entry);
-  const turn = controlled(attempts, {
+  const turn = controlledTurn(attempts, {
     start: {
       ...attempt.start,
       progress: (progress) => {
@@ -265,6 +232,7 @@ async function resumedChild(attempts: Attempts): Promise<TurnEnd> {
     folder: attempts.start.folder,
     signal: attempts.stopping.signal,
     stopMilliseconds: attempts.grace.milliseconds,
+    log: attempts.options.log,
   });
   if (locked !== null) return { ...combined(attempts), reason: locked.reason };
   const started = await readRecord(attempts.start.folder, "started.json");

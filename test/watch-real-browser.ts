@@ -132,10 +132,20 @@ const settledScroll = `new Promise((resolve) => {
   requestAnimationFrame(step);
 })`;
 
-async function browserPage(
+async function pressTab(
   command: ReturnType<typeof protocol>,
-  viewport: { readonly width: number; readonly height: number },
-) {
+  sessionId: string,
+): Promise<void> {
+  for (const type of ["rawKeyDown", "keyUp"])
+    await command("Input.dispatchKeyEvent", {
+      sessionId,
+      params: { type, key: "Tab", code: "Tab", windowsVirtualKeyCode: 9 },
+    });
+}
+
+async function attachedSession(
+  command: ReturnType<typeof protocol>,
+): Promise<string> {
   const created = await command("Target.createTarget", {
     params: { url: "about:blank" },
   });
@@ -143,6 +153,15 @@ async function browserPage(
     params: { targetId: created["targetId"], flatten: true },
   });
   const sessionId = attached["sessionId"];
+  assert.ok(typeof sessionId === "string");
+  return sessionId;
+}
+
+async function browserPage(
+  command: ReturnType<typeof protocol>,
+  viewport: { readonly width: number; readonly height: number },
+) {
+  const sessionId = await attachedSession(command);
   await command("Emulation.setDeviceMetricsOverride", {
     sessionId,
     params: {
@@ -181,6 +200,7 @@ async function browserPage(
           params: { type, ...center, button: "left", clickCount: 1 },
         });
     },
+    pressTab: () => pressTab(command, sessionId),
     async scroll(expression: string) {
       const gesture = await evaluate(expression);
       await command("Input.synthesizeScrollGesture", {

@@ -50,6 +50,7 @@ export interface TurnAttach {
 }
 
 export interface RetryOptions extends RetrySettings {
+  readonly runId: string;
   readonly resume?: TurnResume;
   readonly attach?: TurnAttach;
   readonly stopping?: AbortController;
