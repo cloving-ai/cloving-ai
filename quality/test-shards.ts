@@ -19,10 +19,15 @@ export function selectTestShard(
   const shard = parseTestShard(run.shard);
   if (!shard) return ordered;
   if (shard.count > ordered.length) throw new Error("empty test shard");
-  const totals = Array.from({ length: shard.count }, () => 0);
   const fallback = Math.max(1, ...Object.values(run.durations));
+  const totals = Array.from({ length: shard.count }, (_, index) =>
+    index === 0 ? fallback : 0,
+  );
   const selected: string[] = [];
-  for (const file of ordered) {
+  for (const file of [
+    ...ordered.filter((file) => Number.isFinite(seconds(file))),
+    ...ordered.filter((file) => !Number.isFinite(seconds(file))),
+  ]) {
     const index = totals.indexOf(Math.min(...totals));
     totals[index] =
       (totals[index] ?? 0) +
