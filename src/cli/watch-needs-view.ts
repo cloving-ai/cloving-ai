@@ -1,6 +1,10 @@
 import { component, element, type Shown } from "./watch-element.ts";
 import { cardKey, type CardKeyEvent } from "./watch-card-view.ts";
 import { ReplyButtons, type DecisionControls } from "./watch-decision-view.ts";
+import {
+  RunCommandAction,
+  type RunCommandControls,
+} from "./watch-run-command-view.ts";
 import { stepAge } from "./watch-floor-view.ts";
 import { watchHash } from "./watch-navigation.ts";
 import type { WatchDecision, WatchRun } from "./watch-render.ts";
@@ -254,13 +258,30 @@ export function NeedMessage(props: {
   return element("p", { class: "need-message", children: message });
 }
 
+export function NeedTitle(props: { readonly need: WatchNeed }): Shown {
+  const { need } = props;
+  return element("h3", {
+    class: "need-title",
+    children:
+      need.label === undefined
+        ? need.title
+        : [
+            element("span", { class: "need-label", children: need.label }),
+            " ",
+            need.title,
+          ],
+  });
+}
+
 export function Need(props: {
   readonly need: WatchNeed;
   readonly now: string;
   readonly continuing?: ContinueControls | undefined;
   readonly deciding?: DecisionControls | undefined;
+  readonly controlling?: RunCommandControls | undefined;
 }): Shown {
   const { need, now, continuing, deciding } = props;
+  const paused = need.kind === "stopped" && need.continuable !== true;
   const decision = need.kind === "decision";
   return element("li", {
     class: `need need-${need.kind}`,
@@ -272,26 +293,21 @@ export function Need(props: {
       element("div", {
         class: "need-body",
         children: [
-          element("h3", {
-            class: "need-title",
-            children:
-              need.label === undefined
-                ? need.title
-                : [
-                    element("span", {
-                      class: "need-label",
-                      children: need.label,
-                    }),
-                    " ",
-                    need.title,
-                  ],
-          }),
+          component(NeedTitle, { need }),
           element("p", { class: "need-text", children: need.text }),
           need.reason === undefined
             ? null
             : element("p", { class: "need-reason", children: need.reason }),
           element("p", { class: "need-meta", children: needMeta(need, now) }),
           component(NeedMessage, { need, continuing, deciding }),
+          paused
+            ? component(RunCommandAction, {
+                runId: need.runId,
+                place: "need",
+                paused,
+                controlling: props.controlling,
+              })
+            : null,
         ],
       }),
       component(ContinueAction, { need, continuing }),
@@ -312,8 +328,9 @@ export function NeedsYou(props: {
   readonly words?: WatchWords | undefined;
   readonly continuing?: ContinueControls | undefined;
   readonly deciding?: DecisionControls | undefined;
+  readonly controlling?: RunCommandControls | undefined;
 }): Shown {
-  const { now, continuing, deciding } = props;
+  const { now, continuing, deciding, controlling } = props;
   const needs = needsOf(props.runs);
   return element("section", {
     class: "needs",
@@ -346,6 +363,7 @@ export function NeedsYou(props: {
                 now,
                 continuing,
                 deciding,
+                controlling,
               }),
             ),
           }),
@@ -370,6 +388,7 @@ export const needsFunctions = [
   NeedDecision,
   needLink,
   NeedMessage,
+  NeedTitle,
   Need,
   NeedsYou,
 ];

@@ -237,6 +237,7 @@ function cardOf(run: WatchRun, runs: readonly WatchRun[]): WatchCard {
     currentStep: activeRun(run.state) ? run.currentStep : null,
     endedAt: activeRun(run.state) ? null : run.latestAt,
     decisionWaiting: run.decisions.length > 0,
+    ...(run.state === "paused" ? { paused: true } : {}),
     ...notesWaitingOf(run),
     ...pullRequestCardDetails(run),
   };

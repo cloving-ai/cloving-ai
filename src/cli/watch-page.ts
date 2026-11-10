@@ -45,6 +45,8 @@ import {
 } from "./watch-transcript-view.ts";
 import { RunNotes } from "./watch-notes-view.ts";
 import { runActionFunctions } from "./watch-rename-view.ts";
+import { runCommandFunctions } from "./watch-run-command-view.ts";
+import { watchRunCommandClient } from "./watch-run-command-client.ts";
 import { watchPhoneClient } from "./watch-phone-client.ts";
 import {
   PhoneAsk,
@@ -73,6 +75,7 @@ import type { WatchThemes } from "./watch-themes.ts";
 import {
   countText,
   labelWord,
+  noThemes,
   shownTheme,
   themeName,
   themeReason,
@@ -243,6 +246,7 @@ const functions = [
   HandoffLinks,
   RunNotes,
   ...runActionFunctions,
+  ...runCommandFunctions,
   Column,
   columnCollapsed,
   Board,
@@ -318,13 +322,6 @@ const functions = [
   Page,
 ];
 
-const noThemes: WatchThemes = {
-  setting: "auto",
-  style: "",
-  themes: [],
-  failure: null,
-};
-
 function scriptData(value: WatchThemes): string {
   return JSON.stringify(value).replaceAll("<", "\\u003c");
 }
@@ -343,6 +340,7 @@ export function pageDocument(
     watchCardClient,
     watchPhoneClient,
     watchLoopsClient,
+    watchRunCommandClient,
     watchTranscriptClient,
     watchDecisionClient,
     watchClient,

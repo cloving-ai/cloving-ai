@@ -5,6 +5,13 @@ import type { WatchTheme, WatchThemes } from "./watch-themes.ts";
 
 export type WatchWords = Readonly<Record<string, ThemeWord>>;
 
+export const noThemes: WatchThemes = {
+  setting: "auto",
+  style: "",
+  themes: [],
+  failure: null,
+};
+
 export interface ShownTheme {
   readonly choice: string;
   readonly theme: WatchTheme | null;

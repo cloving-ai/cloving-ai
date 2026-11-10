@@ -94,6 +94,7 @@ export interface WatchStep {
 }
 
 export interface WatchCard {
+  readonly paused?: true;
   readonly notesWaiting?: number;
   readonly scheduled?: { readonly slot: number };
   readonly manualFromLoop?: true;
@@ -188,6 +189,7 @@ export type WatchFinished =
   | "retention-expired";
 
 export interface WatchRun {
+  readonly revision?: number;
   readonly repository?: string;
   readonly finished?: WatchFinished;
   readonly linked?: true;

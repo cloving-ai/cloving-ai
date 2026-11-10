@@ -273,6 +273,12 @@ function runLinksOf(status: Readonly<Record<string, unknown>>) {
   };
 }
 
+function revisionOf(status: Readonly<Record<string, unknown>>) {
+  return Number.isSafeInteger(status["revision"])
+    ? { revision: Number(status["revision"]) }
+    : {};
+}
+
 function runOf(inputs: WatchInputs, value: unknown): WatchRun {
   const status = record(record(value)["status"]);
   const runId = text(status["runId"]);
@@ -289,6 +295,7 @@ function runOf(inputs: WatchInputs, value: unknown): WatchRun {
   return {
     runId,
     workflowId,
+    ...revisionOf(status),
     ...shownLoopMarks(status),
     ...runLinksOf(status),
     ...notesOf(status["notes"]),
