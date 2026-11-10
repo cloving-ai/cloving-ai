@@ -2017,6 +2017,7 @@
     "test/watch-stream.test.ts": "test",
     "test/watch-style-fixture.ts": "test",
     "test/watch-style.test.ts": "test",
+    "test/watch-terminal-fixture.ts": "test",
     "test/watch-terminal-page.test.ts": "test",
     "test/watch-terminal-view.test.ts": "test",
     "test/watch-theme-browser.test.ts": "test",

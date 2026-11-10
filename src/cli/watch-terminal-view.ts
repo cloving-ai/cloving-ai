@@ -202,15 +202,24 @@ export function inputList(input: Fields, name: string): Fields[] {
   return Array.isArray(value) ? value.map((item) => record(item) ?? {}) : [];
 }
 
+export function knownEdits(entry: TranscriptEntry, input: Fields): Fields[] {
+  const edits =
+    entry.tool === "MultiEdit" ? inputList(input, "edits") : [input];
+  const known = edits.every(
+    (edit) =>
+      typeof edit["old_string"] === "string" &&
+      typeof edit["new_string"] === "string",
+  );
+  return known ? edits : [];
+}
+
 export function EditLines(props: {
   readonly entry: TranscriptEntry;
   readonly input: Fields;
   readonly worktree: string;
 }): Shown {
   const { entry, input, worktree } = props;
-  const edits =
-    entry.tool === "MultiEdit" ? inputList(input, "edits") : [input];
-  const changes = edits.map((edit) =>
+  const changes = knownEdits(entry, input).map((edit) =>
     changedLines(inputText(edit, "old_string"), inputText(edit, "new_string")),
   );
   const added = changes.reduce((sum, change) => sum + change.added.length, 0);
@@ -219,23 +228,26 @@ export function EditLines(props: {
     0,
   );
   const path = shownPath(inputText(input, "file_path"), worktree);
+  const counts = ` with ${counted(added, "addition")} and ${counted(removed, "removal")}`;
   return component(Gutter, {
     name: "detail",
     children: [
       element("pre", {
-        children: `Updated ${path} with ${counted(added, "addition")} and ${counted(removed, "removal")}`,
+        children: `Updated ${path}${changes.length === 0 ? "" : counts}`,
       }),
-      element("div", {
-        class: "diff",
-        children: changes.flatMap((change) => [
-          ...change.removed.map((line) =>
-            element("div", { class: "removed", children: `- ${line}` }),
-          ),
-          ...change.added.map((line) =>
-            element("div", { class: "added", children: `+ ${line}` }),
-          ),
-        ]),
-      }),
+      changes.length === 0
+        ? null
+        : element("div", {
+            class: "diff",
+            children: changes.flatMap((change) => [
+              ...change.removed.map((line) =>
+                element("div", { class: "removed", children: `- ${line}` }),
+              ),
+              ...change.added.map((line) =>
+                element("div", { class: "added", children: `+ ${line}` }),
+              ),
+            ]),
+          }),
     ],
   });
 }
@@ -289,7 +301,8 @@ export function CallDetail(props: {
   const input = toolInput(entry);
   const tool = entry.tool ?? "";
   const special = ["Edit", "MultiEdit", "Write", "TodoWrite"].includes(tool);
-  if (input === undefined || !special || results.some((item) => item.error))
+  const succeeded = results.length > 0 && !results.some((item) => item.error);
+  if (input === undefined || !special || !succeeded)
     return results.map((item) =>
       component(ToolResult, { key: String(item.position), entry: item }),
     );
@@ -375,6 +388,7 @@ export const terminalFunctions = [
   ToolLine,
   changedLines,
   inputList,
+  knownEdits,
   EditLines,
   WriteLines,
   TodoLines,

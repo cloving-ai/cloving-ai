@@ -1,85 +1,19 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { component } from "../src/cli/watch-element.ts";
-import { Transcript } from "../src/cli/watch-transcript-view.ts";
+import { codexStream } from "../src/daemon/codex-stream.ts";
 import {
   transcriptEntries,
   type TranscriptEntry,
 } from "../src/turn-transcript.ts";
-import { rendered } from "./watch-dom.ts";
 import { entry } from "./turn-transcript-fixture.ts";
-import { sampleTurn } from "./watch-sample.ts";
-
-const worktree = "clv-333";
-const tree = `/work/trees/${worktree}`;
-
-function terminal(...entries: readonly TranscriptEntry[]): string {
-  const turn = sampleTurn({ worktree, outcome: "in work" });
-  return rendered(
-    component(Transcript, {
-      run: { runId: "run-1", turns: [turn] },
-      turn,
-      turnId: null,
-      controls: {
-        view: () => ({
-          shown: true,
-          entries,
-          state: "open",
-          message: "",
-          earlier: false,
-          unseen: 0,
-          detached: false,
-        }),
-        onToggle: () => undefined,
-        onLink: () => undefined,
-        onScroll: () => undefined,
-        onJump: () => undefined,
-        onEarlier: () => undefined,
-        onRetry: () => undefined,
-      },
-    }),
-  );
-}
-
-function numbered(from: number, to: number): string {
-  return Array.from(
-    { length: to - from + 1 },
-    (_, index) => `line ${String(from + index)}`,
-  ).join("\n");
-}
-
-function call(
-  position: number,
-  fields: {
-    readonly tool: string;
-    readonly input: unknown;
-    readonly callId?: string;
-  },
-): TranscriptEntry {
-  return entry(position, {
-    kind: "tool-call",
-    tool: fields.tool,
-    callId: fields.callId ?? `call-${String(position)}`,
-    summary: `${fields.tool}: x`,
-    text: JSON.stringify(fields.input, null, 2),
-  });
-}
-
-function result(
-  position: number,
-  fields: {
-    readonly callId: string;
-    readonly text: string;
-    readonly error?: true;
-  },
-): TranscriptEntry {
-  return entry(position, {
-    kind: "tool-result",
-    callId: fields.callId,
-    text: fields.text,
-    error: fields.error === true,
-  });
-}
+import {
+  call,
+  numbered,
+  result,
+  terminal,
+  tree,
+  visible,
+} from "./watch-terminal-fixture.ts";
 
 await test("CLV-333 a Bash call with 30 lines of output shows the call with the command, then its output after the gutter with 4 lines and a count of 26 more lines that opens the rest", () => {
   const html = terminal(
@@ -98,19 +32,6 @@ await test("CLV-333 a Bash call with 30 lines of output shows the call with the 
     html,
   );
 });
-
-function visible(html: string): string[] {
-  return html
-    .replaceAll(/<\/summary>[\s\S]*?<\/details>/g, "</summary>")
-    .replaceAll(/<\/(div|summary|pre|p)>/g, "\n")
-    .replaceAll(/<[^>]+>/g, "")
-    .replaceAll("&lt;", "<")
-    .replaceAll("&gt;", ">")
-    .replaceAll("&quot;", '"')
-    .replaceAll("&amp;", "&")
-    .split("\n")
-    .filter((line) => line.trim() !== "");
-}
 
 const fullTurn: readonly TranscriptEntry[] = [
   entry(1, { kind: "prompt", text: "Fix CLV-333." }),
@@ -297,16 +218,13 @@ await test("CLV-333 a Write call shows the count of lines and the first 4 lines,
           edits: [
             { old_string: "a", new_string: "b" },
             { old_string: "", new_string: "c\nd" },
-            "not an edit",
           ],
         },
       }),
+      result(2, { callId: "call-1", text: "Done." }),
     ),
   );
-  assert.ok(
-    multi.includes("⎿Updated a.ts with 3 additions and 1 removal"),
-    multi.join("\n"),
-  );
+  assert.ok(multi.includes("⎿Updated a.ts with 3 additions and 1 removal"));
   const failed = visible(
     terminal(
       call(1, {
@@ -321,12 +239,106 @@ await test("CLV-333 a Write call shows the count of lines and the first 4 lines,
   const empty = visible(
     terminal(
       call(1, { tool: "Write", input: { file_path: "e.md", content: "" } }),
-      call(2, { tool: "Bash", input: { command: "true" } }),
-      result(3, { callId: "call-2", text: "\n" }),
+      result(2, { callId: "call-1", text: "Done." }),
+      call(3, { tool: "Bash", input: { command: "true" } }),
+      result(4, { callId: "call-3", text: "\n" }),
     ),
   );
   assert.ok(empty.includes("⎿Wrote 0 lines to e.md"), empty.join("\n"));
   assert.ok(empty.includes("⎿(No content)"), empty.join("\n"));
+});
+
+function markedLines(html: string): string[] {
+  return visible(html).filter((line) => /^[⏺⎿+-]/.test(line));
+}
+
+const changeCalls: readonly TranscriptEntry[] = [
+  call(1, {
+    tool: "Edit",
+    input: { file_path: `${tree}/a.ts`, old_string: "a", new_string: "b" },
+  }),
+  call(2, {
+    tool: "MultiEdit",
+    input: {
+      file_path: `${tree}/b.ts`,
+      edits: [{ old_string: "a", new_string: "b" }],
+    },
+  }),
+  call(3, {
+    tool: "Write",
+    input: { file_path: `${tree}/c.md`, content: "c" },
+  }),
+  call(4, {
+    tool: "TodoWrite",
+    input: { todos: [{ content: "Run the gate", status: "pending" }] },
+  }),
+];
+
+await test("CLV-333 an Edit, a MultiEdit, a Write or a todo list call shows no detail before its result, so a call that has not ended does not look done", () => {
+  assert.deepEqual(markedLines(terminal(...changeCalls)), [
+    "⏺ Edit(a.ts)",
+    "⏺ MultiEdit(b.ts)",
+    "⏺ Write(c.md)",
+    "⏺ Update Todos",
+  ]);
+  const results = [1, 2, 3, 4].map((place) =>
+    result(place + 4, { callId: `call-${String(place)}`, text: "Done." }),
+  );
+  assert.deepEqual(markedLines(terminal(...changeCalls, ...results)), [
+    "⏺ Edit(a.ts)",
+    "⎿Updated a.ts with 1 addition and 1 removal",
+    "- a",
+    "+ b",
+    "⏺ MultiEdit(b.ts)",
+    "⎿Updated b.ts with 1 addition and 1 removal",
+    "- a",
+    "+ b",
+    "⏺ Write(c.md)",
+    "⎿Wrote 1 line to c.md",
+    "⏺ Update Todos",
+    "⎿☐ Run the gate",
+  ]);
+});
+
+await test("CLV-333 an edit whose input does not give the old and the new text, as a Codex file change, shows the updated path with no counts and no diff", () => {
+  const html = terminal(
+    call(1, { tool: "Edit", input: { file_path: `${tree}/a.ts` } }),
+    result(2, { callId: "call-1", text: "Done." }),
+    call(3, {
+      tool: "MultiEdit",
+      input: {
+        file_path: `${tree}/b.ts`,
+        edits: [{ old_string: "a", new_string: "b" }, "not an edit"],
+      },
+    }),
+    result(4, { callId: "call-3", text: "Done." }),
+  );
+  assert.deepEqual(markedLines(html), [
+    "⏺ Edit(a.ts)",
+    "⎿Updated a.ts",
+    "⏺ MultiEdit(b.ts)",
+    "⎿Updated b.ts",
+  ]);
+  assert.doesNotMatch(html, /class="diff"/);
+});
+
+await test("CLV-333 a changed file of a Codex turn shows only its call, with no counts", () => {
+  const change = { path: `${tree}/a.ts`, kind: "update" };
+  const item = { id: "item_1", type: "file_change", changes: [change] };
+  const lines = codexStream().line(
+    JSON.stringify({
+      type: "item.completed",
+      item: { ...item, status: "completed" },
+    }),
+  );
+  const entries = transcriptEntries({
+    text: `${lines.join("\n")}\n`,
+    open: false,
+    attempts: [],
+    prompts: [],
+    privateTexts: [],
+  });
+  assert.deepEqual(markedLines(terminal(...entries)), ["⏺ Edit(a.ts)"]);
 });
 
 await test("CLV-333 a prompt shows its first 12 lines and a count of the other lines that opens the rest, and an error result line shows its error class", () => {

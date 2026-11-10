@@ -89,7 +89,7 @@ assert.match(prompt, /Check the work/);
 const { folder } = located(directory + "/journal", turn.operationId);
 const file = folder + "/turn-prompts.jsonl";
 assert.equal(statSync(file).mode & 0o777, 0o600);
-assert.deepEqual(readFileSync(file, "utf8"), JSON.stringify({ prompt }) + "\\n");
+assert.deepEqual(readFileSync(file, "utf8"), JSON.stringify({ attempt: 1, prompt }) + "\\n");
 const page = await asked("transcript", { runId: accepted.runId, operationId: turn.operationId });
 assert.deepEqual(page.entries.map((entry) => [entry.kind, entry.text]), [
   ["prompt", prompt],

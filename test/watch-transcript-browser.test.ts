@@ -241,7 +241,7 @@ await test("CLV-333 the open turn shows the prompt and each new entry of a turn 
     const turn = await liveTurn(harness);
     await writeFile(
       join(turn.folder, "turn-prompts.jsonl"),
-      `${JSON.stringify({ prompt: "Fix CLV-333." })}\n`,
+      `${JSON.stringify({ attempt: 1, prompt: "Fix CLV-333." })}\n`,
     );
     const watch = await directWatch(harness.runtimeDirectory);
     try {

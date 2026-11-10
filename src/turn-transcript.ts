@@ -29,11 +29,16 @@ export interface TranscriptAttempt {
   readonly resumed: boolean;
 }
 
+export interface TranscriptPrompt {
+  readonly attempt: number;
+  readonly prompt: string;
+}
+
 export interface TranscriptFiles {
   readonly text: string;
   readonly size: number;
   readonly attempts: readonly TranscriptAttempt[];
-  readonly prompts: readonly string[];
+  readonly prompts: readonly TranscriptPrompt[];
 }
 
 export interface ParsedTranscript {
@@ -95,9 +100,10 @@ function attemptDraft(
 
 function promptDrafts(
   attempt: number,
-  prompts: readonly string[],
+  prompts: readonly TranscriptPrompt[],
 ): TranscriptDraft[] {
-  const prompt = prompts[attempt - 1] ?? "";
+  const found = prompts.find((item) => item.attempt === attempt);
+  const prompt = found?.prompt ?? "";
   return prompt.trim() === "" ? [] : [{ kind: "prompt", text: prompt }];
 }
 

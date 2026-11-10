@@ -62,7 +62,10 @@ await test("CLV-333 the prompt of each attempt comes first in its attempt with t
     text: `${turn}\n${turn}`,
     open: false,
     attempts: [{ attempt: 2, resumed: true }],
-    prompts: ["Fix CLV-333 with ghp_secret1.", "Go on after the restart."],
+    prompts: [
+      { attempt: 1, prompt: "Fix CLV-333 with ghp_secret1." },
+      { attempt: 2, prompt: "Go on after the restart." },
+    ],
     privateTexts: [],
   });
   assert.deepEqual(
@@ -78,7 +81,7 @@ await test("CLV-333 the prompt of each attempt comes first in its attempt with t
   const source = {
     open: true,
     attempts: [],
-    prompts: ["Fix CLV-333."],
+    prompts: [{ attempt: 1, prompt: "Fix CLV-333." }],
     privateTexts: [],
   };
   const opened = transcriptAppended(emptyTranscript, { ...source, text: "" });
@@ -101,6 +104,26 @@ await test("CLV-333 a turn from before the prompt file gives no prompt entry", (
   assert.deepEqual(
     found.map((item) => item.kind),
     ["assistant"],
+  );
+});
+
+await test("CLV-333 a turn that started before the prompt file and resumed after it shows the prompt only in the attempt of the same number", () => {
+  const turn = lines(assistant({ type: "text", text: "Work." }));
+  const found = transcriptEntries({
+    text: `${turn}\n${turn}`,
+    open: false,
+    attempts: [{ attempt: 2, resumed: true }],
+    prompts: [{ attempt: 2, prompt: "Go on after the restart." }],
+    privateTexts: [],
+  });
+  assert.deepEqual(
+    found.map((item) => [item.attempt, item.kind, item.text]),
+    [
+      [1, "assistant", "Work."],
+      [2, "notice", "Attempt 2 (resumed after a restart)"],
+      [2, "prompt", "Go on after the restart."],
+      [2, "assistant", "Work."],
+    ],
   );
 });
 

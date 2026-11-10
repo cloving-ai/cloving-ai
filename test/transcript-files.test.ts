@@ -115,23 +115,28 @@ await test("CLV-329 the transcript read gives the stream after a byte offset and
     });
   }));
 
-await test("CLV-333 the transcript read gives the complete prompt lines of the attempts, and a turn without a prompt file gives no prompts", () =>
+await test("CLV-333 the transcript read gives the complete prompt lines of the attempts with their attempt numbers, and a turn without a prompt file gives no prompts", () =>
   withJournal(async (directory, folder) => {
     await mkdir(folder, { recursive: true });
     await writeFile(join(folder, "turn.jsonl"), "");
     const read = transcriptFiles(directory);
     assert.deepEqual((await read(operationId, 0))?.prompts, []);
+    const lines = [
+      { attempt: 2, prompt: "Go on." },
+      { attempt: 3, prompt: 3 },
+      { prompt: "No attempt." },
+      { attempt: "4", prompt: "Text attempt." },
+      { attempt: 0, prompt: "Zero." },
+      { attempt: 1.5, prompt: "Half." },
+      { attempt: 5, prompt: "Again." },
+    ].map((line) => JSON.stringify(line));
     await writeFile(
       join(folder, "turn-prompts.jsonl"),
-      `${JSON.stringify({ prompt: "Fix it." })}\n${JSON.stringify({ prompt: 3 })}\nnot json\nnull\n7\n${JSON.stringify({ prompt: "Go on." })}\n{"prompt":"cut`,
+      `${lines.join("\n")}\nnot json\nnull\n7\n{"attempt":6,"prompt":"cut`,
     );
     assert.deepEqual((await read(operationId, 0))?.prompts, [
-      "Fix it.",
-      "",
-      "",
-      "",
-      "",
-      "Go on.",
+      { attempt: 2, prompt: "Go on." },
+      { attempt: 5, prompt: "Again." },
     ]);
     await rm(join(folder, "turn-prompts.jsonl"));
     await mkdir(join(folder, "turn-prompts.jsonl"));
