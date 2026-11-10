@@ -11,6 +11,7 @@ export interface WatchNeed {
   readonly key: string;
   readonly runId: string;
   readonly title: string;
+  readonly label?: string;
   readonly text: string;
   readonly workflowId: string;
   readonly since: string | null;
@@ -46,6 +47,7 @@ export function decisionNeed(
     key: `decision:${decision.decisionId}`,
     runId: run.runId,
     title: run.title ?? run.runId,
+    ...(run.label == null ? {} : { label: run.label }),
     text: decisionText(decision.type),
     workflowId: run.workflowId,
     since: decision.openedAt,
@@ -59,6 +61,7 @@ export function stoppedNeed(run: WatchRun): WatchNeed {
     key: `stopped:${run.runId}`,
     runId: run.runId,
     title: run.title ?? run.runId,
+    ...(run.label == null ? {} : { label: run.label }),
     text: [run.detail, "Examine the run, then resume or drop it."]
       .filter((part) => part !== "")
       .join(" "),
@@ -79,6 +82,7 @@ export function continuableNeed(run: WatchRun): WatchNeed {
     key: `continue:${run.runId}`,
     runId: run.runId,
     title: run.title ?? run.runId,
+    ...(run.label == null ? {} : { label: run.label }),
     text: [run.detail, "Examine the run, then continue it or take it over."]
       .filter((part) => part !== "")
       .join(" "),
@@ -230,7 +234,20 @@ export function Need(props: {
       element("div", {
         class: "need-body",
         children: [
-          element("h3", { class: "need-title", children: need.title }),
+          element("h3", {
+            class: "need-title",
+            children:
+              need.label === undefined
+                ? need.title
+                : [
+                    element("span", {
+                      class: "need-label",
+                      children: need.label,
+                    }),
+                    " ",
+                    need.title,
+                  ],
+          }),
           element("p", { class: "need-text", children: need.text }),
           element("p", { class: "need-meta", children: needMeta(need, now) }),
           component(NeedMessage, { need, continuing }),

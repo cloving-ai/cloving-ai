@@ -102,6 +102,26 @@ export function steerRequest(request: {
   };
 }
 
+export function renameRequest(request: {
+  readonly runId: string;
+  readonly title: string | null;
+  readonly label: string | null;
+  readonly clear: boolean;
+  readonly commandId: string;
+}): ServiceRequest {
+  const { runId, commandId, title, label } = request;
+  return {
+    operation: "rename-run",
+    parameters: {
+      runId,
+      commandId,
+      ...(title === null ? {} : { title }),
+      ...(label === null ? {} : { label }),
+      ...(request.clear ? { clear: true } : {}),
+    },
+  };
+}
+
 export function dismissRequest(request: {
   readonly runId: string;
   readonly commandId: string;

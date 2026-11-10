@@ -22,24 +22,24 @@ const cases = [
     ticket: { id: "7", text: "No heading" },
     ticketId: "7",
     issueIdentity: null,
-    title: "Cloving task task-0123456789ab",
+    title: "declared",
   },
   {
     ticket: { id: 7, text: 7 },
     ticketId: null,
-    title: null,
+    title: "declared",
     issueIdentity: undefined,
   },
   {
     ticket: "plain text",
     ticketId: null,
-    title: null,
+    title: "declared",
     issueIdentity: undefined,
   },
   {
     ticket: { id: "8", text: "No heading" },
     ticketId: "8",
-    title: "Cloving task task-0123456789ab",
+    title: "declared",
     issueIdentity: null,
   },
 ];

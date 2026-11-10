@@ -134,11 +134,11 @@ await test("CLV-286 a token shows the worker initial, the ticket number and the 
       token.startedAt,
     ]),
     [
-      ["person", "Y", "Draft", minutesBefore(3)],
+      ["person", "Y", null, minutesBefore(3)],
       ["claude", "C", "#583", minutesBefore(38)],
       ["grok", "G", "DEMO-4", minutesBefore(6)],
       ["issue", "·", "#7", minutesBefore(2)],
-      ["unknown", "·", "Draft", minutesBefore(1)],
+      ["unknown", "·", null, minutesBefore(1)],
     ],
   );
 });

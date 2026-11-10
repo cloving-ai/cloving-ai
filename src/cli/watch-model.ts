@@ -23,7 +23,7 @@ import type {
   WatchTurn,
 } from "./watch-render.ts";
 import { boardsOf, currentStepOf, roundOf, stagesFor } from "./watch-board.ts";
-import { completedOf } from "./watch-floor.ts";
+import { completedOf, shownName } from "./watch-floor.ts";
 import { todayStart } from "./watch-today.ts";
 import { decisionOf, phasesOf } from "./watch-phases.ts";
 
@@ -299,7 +299,7 @@ function runOf(inputs: WatchInputs, value: unknown): WatchRun {
     { records: inputs.githubRecords, repository: inputs.repository ?? null },
     runId,
   );
-  const ticketId = text(status["ticketId"]);
+  const ticketId = text(status["ticketId"]) || null;
   const issue = establishedIssue(
     inputs.repository ?? null,
     status["issueIdentity"],
@@ -311,9 +311,10 @@ function runOf(inputs: WatchInputs, value: unknown): WatchRun {
     ...runLinksOf(status),
     ...notesOf(status["notes"]),
     commandWaits: shownCommandWaits(status["commandWaits"]),
-    ticketId: ticketId === "" ? null : ticketId,
+    ticketId,
     ...(issue === null ? {} : { issueIdentity: issue }),
     title: stamp(status["title"]),
+    ...shownName(status, { ticketId, issue }),
     ...outcomeOf(status["outcome"]),
     latestAt: stamp(status["latestAt"]),
     ...budgetsOf(status),

@@ -43,7 +43,7 @@ import {
   waitingText,
 } from "./watch-transcript-view.ts";
 import { RunNotes } from "./watch-notes-view.ts";
-import { steerFunctions } from "./watch-steer-view.ts";
+import { runActionFunctions } from "./watch-rename-view.ts";
 import { watchPhoneClient } from "./watch-phone-client.ts";
 import {
   PhoneAsk,
@@ -263,7 +263,7 @@ const functions = [
   Card,
   HandoffLinks,
   RunNotes,
-  ...steerFunctions,
+  ...runActionFunctions,
   Column,
   columnCollapsed,
   Board,
