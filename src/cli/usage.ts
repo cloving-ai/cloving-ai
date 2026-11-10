@@ -22,7 +22,8 @@ export const commandUsage: Readonly<Record<string, string>> = {
 
 Serves cloving_status, cloving_questions and cloving_events as read tools over stdio.
 Serves cloving_run, cloving_answer, cloving_approve, cloving_deny, cloving_pause,
-cloving_resume, cloving_drop, cloving_continue, cloving_dismiss and cloving_steer to submit runs, decisions and notes. Each of these tools
+cloving_resume, cloving_drop, cloving_continue, cloving_dismiss, cloving_steer and cloving_rename to submit runs, decisions,
+notes and names. Each of these tools
 needs a commandId. After a lost reply, send the same commandId again.
 The server binds to one repository at startup. It needs an existing Cloving service.
 Standard output contains only JSON-RPC messages. Diagnostics use standard error.
@@ -158,6 +159,13 @@ Records a note of 1 to 4000 characters for an active run. The next agent turn of
 With --now, a Claude Code or Codex turn in work that recorded a session stops and resumes the same session
 with the note as the next message. A turn takes at most three such notes. In other cases the reply says
 queued with the reason, and the note waits for the next turn.
+`,
+  rename: `Usage: cloving rename <run-id> (--title <text> [--label <text>] | --clear) [--command-id <id>] [--json]
+
+Gives an active or ended run a manual title of 1 to 200 characters on one line, and with --label a label of
+1 to 32 letters, digits or the characters # ! . _ / -. The watch page, cloving status and the read API show it.
+--clear removes the manual name, and the run gets its automatic name again. The rename is an event of the run,
+so it stays after a restart. The newest rename wins. It does not change the pull request or the ticket.
 `,
   events: `Usage: cloving events [<run-id>] [--after <sequence>] [--limit <n>] [--follow] [--json]
 
@@ -324,6 +332,7 @@ Commands:
   drop       Cancel a run and keep its files.
   dismiss    Remove a stopped run from Needs you.
   steer      Send a note to a run in work.
+  rename     Give a run a new title and label.
   events     Print the committed events.
   watch      Serve a page that shows the runs live.
   reload     Check and compile the workflow files again.

@@ -59,3 +59,18 @@ export function continuationLines(run: unknown): readonly string[] {
       : [`Continued by: ${visible(continuedBy)}`]),
   ];
 }
+
+export function runRenamedLines(result: Fields): readonly string[] {
+  return [
+    `Run ${show(result["runId"])} has the title ${visible(result["title"])} (${show(result["titleSource"])}).`,
+    `Label: ${visible(result["label"] ?? "none")}`,
+    ...receiptLines(result),
+  ];
+}
+
+export function nameLines(run: unknown): readonly string[] {
+  return [
+    `Title: ${visible(part(run, "title") ?? "none")}`,
+    `Label: ${visible(part(run, "label") ?? "none")}`,
+  ];
+}
