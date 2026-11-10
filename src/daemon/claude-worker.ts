@@ -163,8 +163,7 @@ async function begun(
     readonly signal: AbortSignal;
   },
 ): Promise<void> {
-  const { intent, key, folder, tree, prompt } = start;
-  const { harness } = start;
+  const { intent, key, folder, tree, prompt, harness } = start;
   const stopping = { requested: false, controller: new AbortController() };
   const cancel = () => {
     stopping.controller.abort();
@@ -186,6 +185,7 @@ async function begun(
       ...parts.settings,
       ...start.turnSettings,
       ...(start.resume === undefined ? {} : { resume: start.resume }),
+      runId: intent.runId,
       stopping: stopping.controller,
       metadata: {
         ...noteMetadata(start),

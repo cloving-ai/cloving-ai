@@ -9,6 +9,7 @@ import { turnHead, retryEvidence, indexFailure } from "./retry-worktree.ts";
 import { readRecord, writeRecord } from "./operation-journal.ts";
 import { resumeWorktree } from "./resume-worktree.ts";
 import { stopLeftProcesses } from "./worktree-processes.ts";
+import { ownTurn } from "./turn-owners.ts";
 import { readResume, resumedCommand, resumePrompt } from "./claude-recovery.ts";
 import {
   attemptCommand,
@@ -61,17 +62,28 @@ async function leftProcesses(
     signal: new AbortController().signal,
     stopMilliseconds: attempts.grace.milliseconds,
     log: attempts.options.log,
+    runId: attempts.options.runId,
   }).catch(() => undefined);
 }
 
 function controlled(attempts: Attempts, start: TurnStart): RunningTurn {
   const startedAt = performance.now();
   const turn = startTurn(start);
+  const owned =
+    turn.processId === null
+      ? undefined
+      : ownTurn(start.directory, {
+          runId: attempts.options.runId,
+          processId: turn.processId,
+        });
   const stop = () => {
     turn.stop(attempts.grace.milliseconds);
   };
   attempts.stopping.signal.addEventListener("abort", stop, { once: true });
-  const cleaned = turn.exited.then(() => leftProcesses(attempts, startedAt));
+  const cleaned = turn.exited.then(() => {
+    owned?.();
+    return leftProcesses(attempts, startedAt);
+  });
   return {
     ...turn,
     ended: turn.ended
@@ -260,6 +272,7 @@ async function resumedChild(attempts: Attempts): Promise<TurnEnd> {
     folder: attempts.start.folder,
     signal: attempts.stopping.signal,
     stopMilliseconds: attempts.grace.milliseconds,
+    log: attempts.options.log,
   });
   if (locked !== null) return { ...combined(attempts), reason: locked.reason };
   const started = await readRecord(attempts.start.folder, "started.json");

@@ -4,6 +4,7 @@ import { resolve, sep } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { promisify } from "node:util";
 import { writeRecord } from "./operation-journal.ts";
+import { activeOwners, ownedProcesses, type TurnOwner } from "./turn-owners.ts";
 
 const execute = promisify(execFile);
 const limits = {
@@ -12,8 +13,9 @@ const limits = {
   maxBuffer: 8 * 1024 * 1024,
 } as const;
 
-interface TreeProcess {
+export interface TreeProcess {
   readonly processId: number;
+  readonly parent: number;
   readonly group: number;
   readonly user: number;
   readonly seconds: number;
@@ -95,7 +97,10 @@ export function elapsedSeconds(text: string): number {
 }
 
 async function table(): Promise<readonly TreeProcess[]> {
-  const text = await output("ps", ["-axo", "pid=,pgid=,uid=,etime=,comm="]);
+  const text = await output("ps", [
+    "-axo",
+    "pid=,pgid=,uid=,ppid=,etime=,comm=",
+  ]);
   return text
     .trim()
     .split("\n")
@@ -104,6 +109,7 @@ async function table(): Promise<readonly TreeProcess[]> {
         processId = "0",
         group = "0",
         user = "-1",
+        parent = "0",
         elapsed = "",
         ...command
       ] = line.trim().split(/\s+/);
@@ -111,6 +117,7 @@ async function table(): Promise<readonly TreeProcess[]> {
         processId: Number(processId),
         group: Number(group),
         user: Number(user),
+        parent: Number(parent),
         seconds: elapsedSeconds(elapsed),
         command: command.join(" "),
       };
@@ -174,29 +181,63 @@ export async function recordedProcessDirectory(
     ?.directory;
 }
 
-function terminate(
+export function signalTargets(
   entries: readonly TreeProcess[],
-  request: { readonly directory: string; readonly signal: NodeJS.Signals },
-): TreeProcess[] {
-  const { directory, signal } = request;
+  request: {
+    readonly directory: string;
+    readonly user: number | undefined;
+    readonly owned: ReadonlyMap<number, string>;
+  },
+): { readonly found: TreeProcess[]; readonly targets: readonly number[] } {
   const maySignal = (entry: TreeProcess) =>
-    entry.user === process.getuid?.() && inTree(entry, directory);
+    entry.user === request.user &&
+    inTree(entry, request.directory) &&
+    !request.owned.has(entry.processId);
   const found = entries.filter(maySignal);
-  const groups = new Set<number>();
+  const targets: number[] = [];
   for (const entry of found) {
     const safeGroup =
       entry.group > 1 &&
       entries.filter((other) => other.group === entry.group).every(maySignal);
     const target = safeGroup ? -entry.group : entry.processId;
-    if (groups.has(target)) continue;
-    groups.add(target);
+    if (!targets.includes(target)) targets.push(target);
+  }
+  return { found, targets };
+}
+
+function terminate(
+  entries: readonly TreeProcess[],
+  request: {
+    readonly directory: string;
+    readonly signal: NodeJS.Signals;
+    readonly owners: readonly TurnOwner[];
+  },
+): TreeProcess[] {
+  const { found, targets } = signalTargets(entries, {
+    directory: request.directory,
+    user: process.getuid?.(),
+    owned: ownedProcesses(entries, request.owners),
+  });
+  for (const target of targets)
     try {
-      process.kill(target, signal);
+      process.kill(target, request.signal);
     } catch {
       continue;
     }
-  }
   return found;
+}
+
+function stoppable(
+  entries: readonly TreeProcess[],
+  request: {
+    readonly directory: string;
+    readonly owners: readonly TurnOwner[];
+  },
+): readonly TreeProcess[] {
+  const owned = ownedProcesses(entries, request.owners);
+  return entries.filter(
+    (entry) => inTree(entry, request.directory) && !owned.has(entry.processId),
+  );
 }
 
 interface StopRequest {
@@ -204,12 +245,14 @@ interface StopRequest {
   readonly folder: string;
   readonly signal: AbortSignal;
   readonly stopMilliseconds?: number;
+  readonly log?: ((line: string) => void) | undefined;
 }
 
 type TreeRequest = Omit<StopRequest, "folder">;
 
 type ScannedRequest = TreeRequest & {
   readonly scan: () => Promise<readonly TreeProcess[] | undefined>;
+  readonly owners: readonly TurnOwner[];
 };
 
 interface Cleanup {
@@ -219,7 +262,7 @@ interface Cleanup {
 
 async function treeSnapshot(request: ScannedRequest) {
   const entries = await request.scan();
-  return entries?.some((entry) => inTree(entry, request.directory)) === false
+  return entries !== undefined && stoppable(entries, request).length === 0
     ? request.scan()
     : entries;
 }
@@ -229,7 +272,7 @@ async function waitForTree(request: ScannedRequest, deadline: number) {
     const entries = await treeSnapshot(request);
     if (
       entries === undefined ||
-      !entries.some((entry) => inTree(entry, request.directory)) ||
+      stoppable(entries, request).length === 0 ||
       performance.now() >= deadline
     )
       return entries;
@@ -243,7 +286,11 @@ export async function stopTreeProcesses(
 ): Promise<boolean> {
   const directory = await realpath(request.directory).catch(() => undefined);
   if (directory === undefined) return false;
-  const canonical = { ...request, directory };
+  const canonical = {
+    ...request,
+    directory,
+    owners: await activeOwners(directory),
+  };
   const cleanup = await stopCanonicalTree({ ...canonical, scan: processes });
   return cleanup === undefined ? false : recordCleanup(canonical, cleanup);
 }
@@ -251,7 +298,7 @@ export async function stopTreeProcesses(
 export async function stopLeftProcesses(
   request: TreeRequest & {
     readonly seconds: number;
-    readonly log: ((line: string) => void) | undefined;
+    readonly runId: string;
   },
 ): Promise<void> {
   const directory = await realpath(request.directory).catch(() => undefined);
@@ -263,11 +310,33 @@ export async function stopLeftProcesses(
     );
   const found = await scan();
   if (found?.some((entry) => inTree(entry, directory)) !== true) return;
-  const cleanup = await stopCanonicalTree({ ...request, directory, scan });
+  const owners = await activeOwners(directory);
+  const cleanup = await stopCanonicalTree({
+    ...request,
+    directory,
+    scan,
+    owners,
+  });
   for (const entry of distinct(cleanup?.stopped ?? []).values())
     request.log?.(
-      `turn: stopped process ${String(entry.processId)} (${entry.command}) left in the work tree ${directory}\n`,
+      `turn: stopped process ${String(entry.processId)} (${entry.command}) that run ${request.runId} left in the work tree ${directory}\n`,
     );
+}
+
+function logKept(
+  entries: readonly TreeProcess[],
+  request: ScannedRequest,
+): void {
+  const owned = ownedProcesses(entries, request.owners);
+  for (const entry of entries)
+    if (
+      entry.user === process.getuid?.() &&
+      inTree(entry, request.directory) &&
+      owned.has(entry.processId)
+    )
+      request.log?.(
+        `turn: kept process ${String(entry.processId)} (${entry.command}) of the active run ${String(owned.get(entry.processId))} in the work tree ${request.directory}\n`,
+      );
 }
 
 async function stopCanonicalTree(
@@ -276,9 +345,11 @@ async function stopCanonicalTree(
   const entries = await treeSnapshot(request);
   const aborted = () => request.signal.aborted;
   if (entries === undefined || aborted()) return undefined;
+  logKept(entries, request);
   const stopped = terminate(entries, {
     directory: request.directory,
     signal: "SIGTERM",
+    owners: request.owners,
   });
   let remaining =
     stopped.length === 0
@@ -291,6 +362,7 @@ async function stopCanonicalTree(
   const killed = terminate(remaining, {
     directory: request.directory,
     signal: "SIGKILL",
+    owners: request.owners,
   });
   stopped.push(...killed);
   if (killed.length > 0)
@@ -305,12 +377,13 @@ function distinct(
 }
 
 async function recordCleanup(
-  request: StopRequest,
+  request: StopRequest & { readonly owners: readonly TurnOwner[] },
   cleanup: Cleanup,
 ): Promise<boolean> {
-  const remainingProcessIds = cleanup.remaining
-    ?.filter((entry) => inTree(entry, request.directory))
-    .map((entry) => entry.processId);
+  const remainingProcessIds =
+    cleanup.remaining === undefined
+      ? undefined
+      : stoppable(cleanup.remaining, request).map((entry) => entry.processId);
   await writeRecord(request.folder, {
     name: "resume-processes.json",
     value: {

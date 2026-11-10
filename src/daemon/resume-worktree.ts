@@ -12,6 +12,7 @@ export async function resumeWorktree(request: {
   readonly folder: string;
   readonly signal: AbortSignal;
   readonly stopMilliseconds?: number;
+  readonly log?: ((line: string) => void) | undefined;
 }): Promise<IndexFailure | null> {
   const aborted = () => request.signal.aborted;
   const before = await indexFailure(request);

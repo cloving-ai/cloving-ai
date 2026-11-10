@@ -33,6 +33,7 @@ export interface RetrySettings {
 }
 
 export interface RetryOptions extends RetrySettings {
+  readonly runId: string;
   readonly resume?: TurnResume;
   readonly stopping?: AbortController;
   readonly stopMilliseconds?: number;
