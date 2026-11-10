@@ -1,7 +1,11 @@
 import { open, readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { located } from "./operation-journal.ts";
-import type { TranscriptAttempt, TranscriptFiles } from "../turn-transcript.ts";
+import type {
+  TranscriptAttempt,
+  TranscriptFiles,
+  TranscriptPrompt,
+} from "../turn-transcript.ts";
 
 const attemptName = /^attempt-\d+\.json$/;
 
@@ -38,6 +42,30 @@ function merged(found: readonly TranscriptAttempt[]): TranscriptAttempt[] {
     }));
 }
 
+function promptOf(line: string): TranscriptPrompt[] {
+  try {
+    const value: unknown = JSON.parse(line);
+    if (typeof value !== "object" || value === null) return [];
+    const attempt: unknown = Reflect.get(value, "attempt");
+    const prompt: unknown = Reflect.get(value, "prompt");
+    if (typeof prompt !== "string") return [];
+    if (!Number.isSafeInteger(attempt) || Number(attempt) < 1) return [];
+    return [{ attempt: Number(attempt), prompt }];
+  } catch {
+    return [];
+  }
+}
+
+async function promptsOf(folder: string): Promise<TranscriptPrompt[]> {
+  const text = await readFile(join(folder, "turn-prompts.jsonl"), "utf8").catch(
+    (error: unknown) => {
+      if (absent(error)) return "";
+      throw error;
+    },
+  );
+  return text.split("\n").slice(0, -1).flatMap(promptOf);
+}
+
 async function streamFrom(
   file: string,
   from: number,
@@ -71,6 +99,10 @@ export function transcriptFiles(
     const stream = names.includes("turn.jsonl")
       ? await streamFrom(join(folder, "turn.jsonl"), from)
       : { text: "", size: 0 };
-    return { ...stream, attempts: merged(records.flatMap(attemptOf)) };
+    return {
+      ...stream,
+      attempts: merged(records.flatMap(attemptOf)),
+      prompts: await promptsOf(folder),
+    };
   };
 }

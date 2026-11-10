@@ -1,5 +1,7 @@
-import type { ShownSchedule } from "./schedule-render.ts";
 import { component, element, type Shown } from "./watch-element.ts";
+import type { WatchLoop } from "./watch-loops.ts";
+import type { LoopControls } from "./watch-loops-view.ts";
+import { LineNext, type LineLoop } from "./watch-line-next-view.ts";
 import { watchHash } from "./watch-navigation.ts";
 import { steerable } from "./watch-steer-view.ts";
 import {
@@ -113,30 +115,6 @@ export function Station(props: {
   });
 }
 
-export function nextRunText(
-  schedule: ShownSchedule | undefined,
-  now: string,
-): string {
-  if (schedule === undefined) return "";
-  if (schedule.state !== "active") return `schedule ${schedule.state}`;
-  if (schedule.nextAt === null) return "";
-  const next = new Date(schedule.nextAt);
-  const today = new Date(now);
-  const tomorrow = new Date(
-    today.getFullYear(),
-    today.getMonth(),
-    today.getDate() + 1,
-  );
-  const clock = next.toLocaleTimeString([], {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-  if (next.toDateString() === today.toDateString()) return `next run ${clock}`;
-  if (next.toDateString() === tomorrow.toDateString())
-    return `next run ${clock} tomorrow`;
-  return `next run ${next.toLocaleString()}`;
-}
-
 export function ReadyCount(props: {
   readonly ready: WatchReady;
   readonly now: string;
@@ -170,22 +148,27 @@ export function ReadyCount(props: {
   ];
 }
 
-export function LineEnd(props: {
-  readonly workflow: WatchWorkflow;
-  readonly now: string;
-  readonly words?: WatchWords | undefined;
-}): Shown {
-  const { ready, schedule } = props.workflow;
-  const next = nextRunText(schedule, props.now);
+export function LineEnd(
+  props: LineLoop & {
+    readonly workflow: WatchWorkflow;
+    readonly now: string;
+    readonly words?: WatchWords | undefined;
+  },
+): Shown {
+  const { workflow, now } = props;
+  const { ready } = workflow;
   return element("div", {
     class: "line-end",
     children: [
       ready === undefined
         ? null
-        : component(ReadyCount, { ready, now: props.now, words: props.words }),
-      next === ""
-        ? null
-        : element("span", { class: "line-next", children: next }),
+        : component(ReadyCount, { ready, now, words: props.words }),
+      component(LineNext, {
+        workflow,
+        now,
+        loop: props.loop,
+        looping: props.looping,
+      }),
     ],
   });
 }
@@ -212,12 +195,14 @@ export function Legend(): Shown {
   });
 }
 
-export function Line(props: {
-  readonly workflow: WatchWorkflow;
-  readonly now: string;
-  readonly words?: WatchWords | undefined;
-  readonly controlling?: RunCommandControls | undefined;
-}): Shown {
+export function Line(
+  props: LineLoop & {
+    readonly workflow: WatchWorkflow;
+    readonly now: string;
+    readonly words?: WatchWords | undefined;
+    readonly controlling?: RunCommandControls | undefined;
+  },
+): Shown {
   const { workflow, now, words, controlling } = props;
   return element("li", {
     class: "line",
@@ -256,7 +241,13 @@ export function Line(props: {
           ),
         }),
       }),
-      component(LineEnd, { workflow, now, words }),
+      component(LineEnd, {
+        workflow,
+        now,
+        words,
+        loop: props.loop,
+        looping: props.looping,
+      }),
     ],
   });
 }
@@ -266,6 +257,7 @@ export function Floor(props: {
   readonly now: string;
   readonly words?: WatchWords | undefined;
   readonly controlling?: RunCommandControls | undefined;
+  readonly looping?: LoopControls | undefined;
 }): Shown {
   const { model, now, words, controlling } = props;
   return element("section", {
@@ -295,6 +287,8 @@ export function Floor(props: {
             now,
             words,
             controlling,
+            loops: model.loops,
+            looping: props.looping,
           })
         : element("ol", {
             class: "repositories",
@@ -319,6 +313,8 @@ export function Lines(props: {
   readonly now: string;
   readonly words?: WatchWords | undefined;
   readonly controlling?: RunCommandControls | undefined;
+  readonly loops?: readonly WatchLoop[] | undefined;
+  readonly looping?: LoopControls | undefined;
 }): Shown {
   const { workflows, now, words, controlling } = props;
   if (workflows.length === 0)
@@ -335,6 +331,10 @@ export function Lines(props: {
         now,
         words,
         controlling,
+        loop: props.loops?.find(
+          (loop) => loop.workflowId === workflow.workflowId,
+        ),
+        looping: props.looping,
       }),
     ),
   });

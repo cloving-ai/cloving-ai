@@ -184,12 +184,16 @@ await test("CLV-266 shards cover each test once in stable balanced duration orde
     ),
   );
   assert.deepEqual(shards, [
-    ["/project/a.test.ts", "/project/d.test.ts", "/project/e.test.ts"],
-    ["/project/b.test.ts", "/project/c.test.ts", "/project/f.test.ts"],
+    ["/project/b.test.ts", "/project/e.test.ts", "/project/f.test.ts"],
+    ["/project/a.test.ts", "/project/c.test.ts", "/project/d.test.ts"],
   ]);
   assert.deepEqual(shards.flat().sort(), [...tests].sort());
-  const seconds = shards.map((files) =>
-    files.reduce((total, file) => total + (durations[file.slice(9)] ?? 0), 0),
+  const staticChecks = [10, 0];
+  const seconds = shards.map((files, index) =>
+    files.reduce(
+      (total, file) => total + (durations[file.slice(9)] ?? 0),
+      staticChecks[index] ?? 0,
+    ),
   );
   assert.ok(Math.max(...seconds) <= Math.min(...seconds) * 1.2);
   for (const [index, shard] of ["1/2", "2/2"].entries())
@@ -201,6 +205,98 @@ await test("CLV-266 shards cover each test once in stable balanced duration orde
       }).arguments.filter((argument) => argument.endsWith(".test.ts")),
       shards[index],
     );
+});
+
+await test("CLV-333 shard 1 also runs the static checks, so the slowest recorded test file runs in another shard for each count of unrecorded test files", () => {
+  const durations = {
+    "slow.test.ts": 20,
+    "b.test.ts": 9,
+    "c.test.ts": 8,
+    "d.test.ts": 7,
+    "e.test.ts": 6,
+    "f.test.ts": 5,
+    "g.test.ts": 4,
+  };
+  for (const count of [0, 1, 2, 3, 4, 5]) {
+    const tests = [
+      ...Object.keys(durations),
+      ...Array.from({ length: count }, (_, index) => `new-${String(index)}`),
+    ].map((name) => `/project/${name.replace(/(?<!\.test\.ts)$/, ".test.ts")}`);
+    const shards = ["1/3", "2/3", "3/3"].map((shard) =>
+      testCommand("/project", { tests, durations, shard }).arguments.filter(
+        (argument) => argument.endsWith(".test.ts"),
+      ),
+    );
+    assert.deepEqual(shards.flat().sort(), [...tests].sort());
+    assert.ok(
+      shards.every((files) => files.length > 0),
+      JSON.stringify(shards),
+    );
+    assert.ok(
+      !shards[0]?.includes("/project/slow.test.ts"),
+      JSON.stringify(shards),
+    );
+  }
+});
+
+await test("CLV-333 the static check share of shard 1 leaves no shard empty when one test file is much slower than the others", () => {
+  const shardsOf = ({
+    names,
+    durations,
+    count,
+  }: {
+    readonly names: readonly string[];
+    readonly durations: Readonly<Record<string, number>>;
+    readonly count: number;
+  }): string[][] => {
+    const tests = names.map((name) => `/project/${name}.test.ts`);
+    const shards = Array.from({ length: count }, (_, index) =>
+      testCommand("/project", {
+        tests,
+        durations,
+        shard: `${String(index + 1)}/${String(count)}`,
+      }).arguments.filter((argument) => argument.endsWith(".test.ts")),
+    );
+    assert.deepEqual(shards.flat().sort(), [...tests].sort());
+    assert.ok(
+      shards.every((files) => files.length > 0),
+      JSON.stringify(shards),
+    );
+    return shards;
+  };
+  assert.deepEqual(
+    shardsOf({
+      names: ["a", "b", "c"],
+      durations: { "a.test.ts": 100, "b.test.ts": 1, "c.test.ts": 1 },
+      count: 3,
+    }),
+    [["/project/c.test.ts"], ["/project/a.test.ts"], ["/project/b.test.ts"]],
+  );
+  shardsOf({
+    names: ["a", "b", "c", "d"],
+    durations: {
+      "a.test.ts": 100,
+      "b.test.ts": 1,
+      "c.test.ts": 1,
+      "d.test.ts": 1,
+    },
+    count: 3,
+  });
+  shardsOf({
+    names: ["a", "b", "c", "d"],
+    durations: {
+      "a.test.ts": 100,
+      "b.test.ts": 50,
+      "c.test.ts": 1,
+      "d.test.ts": 1,
+    },
+    count: 4,
+  });
+  shardsOf({
+    names: ["a", "b", "new"],
+    durations: { "a.test.ts": 100, "b.test.ts": 1 },
+    count: 3,
+  });
 });
 
 await test("CLV-266 rejects malformed and empty shards before execution", () => {

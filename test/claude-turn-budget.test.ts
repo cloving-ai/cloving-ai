@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
-import { mkdirSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
+import { setTimeout as delay } from "node:timers/promises";
 import {
   field,
   alive,
@@ -14,6 +15,7 @@ import {
 } from "./claude-worker-fixture.ts";
 import { networkCommand } from "./network-worker-fixture.ts";
 import { startTurn } from "../src/daemon/claude-turn.ts";
+import { testMilliseconds } from "./test-timing.ts";
 
 const signal = new AbortController().signal;
 const operation = intent({ method: "run-turn:budgeted" });
@@ -254,5 +256,36 @@ await test("CLV-239 a progress journal failure stops a live process and rejects 
     } finally {
       turn.stop(0);
       await ending;
+    }
+  }));
+
+const earlyWorker = `require("node:fs").writeFileSync(process.argv[1], String(process.pid)); setTimeout(() => undefined, 60000);`;
+
+function stopEarlyWorker(marker: string): void {
+  if (!existsSync(marker)) return;
+  const processId = Number(readFileSync(marker, "utf8"));
+  if (alive(processId)) process.kill(processId, "SIGKILL");
+}
+
+await test("CLV-333 a prompt record that cannot be written stops the launch before the worker starts", () =>
+  withScene(async (scene) => {
+    const folder = join(scene.directory, "prompt-failure");
+    const marker = join(scene.directory, "early-worker.pid");
+    mkdirSync(join(folder, "turn-prompts.jsonl"), { recursive: true });
+    try {
+      assert.throws(
+        () =>
+          startTurn({
+            command: [process.execPath, "-e", earlyWorker, marker],
+            directory: scene.repository,
+            folder,
+            prompt: "Save the session",
+          }),
+        { code: "EISDIR" },
+      );
+      await delay(testMilliseconds(1500));
+      assert.equal(existsSync(marker), false);
+    } finally {
+      stopEarlyWorker(marker);
     }
   }));
