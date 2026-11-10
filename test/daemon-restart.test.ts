@@ -17,7 +17,7 @@ try {
   const startedAt = Date.parse(status.serviceStartedAt);
   assert.ok(startedAt >= before && startedAt <= Date.now(), status.serviceStartedAt);
   assert.equal(status.restart, null);
-  assert.deepEqual(status.turnRecovery, { state: "done", connected: [], resumed: [] });
+  assert.deepEqual(status.turnRecovery, { state: "done", connected: [], resumed: [], commands: [] });
   const reply = await asked("restart", { at: "gap", commandId: "restart-one" });
   assert.equal(reply.restart.state, "pending", JSON.stringify(reply));
   const { readdirSync } = await import("node:fs");

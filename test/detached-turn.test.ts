@@ -11,11 +11,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
-import {
-  attachedTurn,
-  detachedTurn,
-  launchState,
-} from "../src/daemon/detached-turn.ts";
+import { attachedTurn, detachedTurn } from "../src/daemon/detached-turn.ts";
+import { launchState } from "../src/daemon/detached-process.ts";
 import { recordedLaunch, type TurnLaunch } from "../src/turn-launch.ts";
 import {
   processExists,

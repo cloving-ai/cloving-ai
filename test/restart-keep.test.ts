@@ -77,12 +77,12 @@ async function withFolder(
 
 function keepReads(flags: {
   readonly heldTurn?: true;
-  readonly openCommand?: true;
+  readonly heldCommand?: true;
   readonly pendingSubmission?: true;
 }): KeepReads {
   return {
     heldTurn: () => Promise.resolve(flags.heldTurn === true),
-    openCommand: () => Promise.resolve(flags.openCommand === true),
+    heldCommand: () => Promise.resolve(flags.heldCommand === true),
     pendingSubmission: () => Promise.resolve(flags.pendingSubmission === true),
   };
 }
@@ -105,25 +105,25 @@ await test("CLV-337 cloving restart keeps turns by default and accepts --at keep
   );
 });
 
-await test("CLV-337 only a turn that cannot keep running, an open command or a pending submission holds a restart that keeps turns", async () => {
+await test("CLV-337 only a turn or a command that cannot keep running, or a pending submission, holds a restart that keeps work", async () => {
   assert.deepEqual(await heldWork(keepReads({})), []);
   assert.deepEqual(
     await heldWork(
-      keepReads({ heldTurn: true, openCommand: true, pendingSubmission: true }),
+      keepReads({ heldTurn: true, heldCommand: true, pendingSubmission: true }),
     ),
     [
       "A worker turn cannot keep running.",
-      "A command effect is open.",
+      "A command effect cannot keep running.",
       "A queue submission is pending.",
     ],
   );
 });
 
-await test("CLV-337 the host holds the restart for an open turn with no launch, a waiting turn, an ended attempt and an open command", () =>
+await test("CLV-337 the host holds the restart for an open turn with no launch, a waiting turn, an ended attempt and an open command with no launch", () =>
   withFolder(async (directory) => {
     const reads = hostWorkReads({ directory, runtimeDirectory: directory });
     assert.equal(await reads.heldTurn(), false);
-    assert.equal(await reads.openCommand(), false);
+    assert.equal(await reads.heldCommand(), false);
     await turnFolder(directory, keptTurn);
     await turnFolder(directory, {
       name: "ended",
@@ -152,11 +152,19 @@ await test("CLV-337 the host holds the restart for an open turn with no launch, 
     }
     const command = join(directory, "commands", "command-one");
     await mkdir(command, { recursive: true });
-    assert.equal(await reads.openCommand(), false);
+    assert.equal(await reads.heldCommand(), false);
     await writeFile(join(command, "started.json"), "{}");
-    assert.equal(await reads.openCommand(), true);
+    assert.equal(await reads.heldCommand(), true);
+    await writeFile(
+      join(command, "launch.json"),
+      JSON.stringify({ processId: 1 }),
+    );
+    assert.equal(await reads.heldCommand(), true);
+    await writeFile(join(command, "launch.json"), JSON.stringify(launch));
+    assert.equal(await reads.heldCommand(), false);
+    await rm(join(command, "launch.json"));
     await writeFile(join(command, "result.json"), "{}");
-    assert.equal(await reads.openCommand(), false);
+    assert.equal(await reads.heldCommand(), false);
   }));
 
 await test("CLV-337 the self-update waits only for a turn that cannot keep running", () =>
@@ -299,7 +307,7 @@ await test("CLV-337 a restart that keeps turns checks the work again before the 
     assert.deepEqual(calls, ["children", "resume", "children", "stop"]);
   }));
 
-await test("CLV-337 the status shows the turns that the new service connected to and the turns that it resumed", () =>
+await test("CLV-337 the status shows the turns that the new service connected to, the turns that it resumed and the commands that it connected to", () =>
   withHarness(async (harness) => {
     const recoveries = turnRecoveries();
     await harness.start({ turnRecovery: recoveries });
@@ -308,16 +316,19 @@ await test("CLV-337 the status shows the turns that the new service connected to
       state: "recovering",
       connected: [],
       resumed: [],
+      commands: [],
     });
     recoveries.note({ runId: "run-b", way: "connected" });
     recoveries.note({ runId: "run-a", way: "connected" });
     recoveries.note({ runId: "run-c", way: "resumed" });
     recoveries.note({ runId: "run-a", way: "connected" });
+    recoveries.note({ runId: "run-d", way: "command" });
     recoveries.finish();
     assert.deepEqual((await call(harness, status))["turnRecovery"], {
       state: "done",
       connected: ["run-a", "run-b"],
       resumed: ["run-c"],
+      commands: ["run-d"],
     });
   }));
 
@@ -326,11 +337,11 @@ function recovery(state: string, connected: readonly string[]) {
     ...fresh,
     restart: null,
     workflows: ["develop", "nightly"],
-    turnRecovery: { state, connected, resumed: ["run-c"] },
+    turnRecovery: { state, connected, resumed: ["run-c"], commands: ["run-d"] },
   };
 }
 
-await test("CLV-337 the restart waits for the end of the turn recovery and lists the turns that the new service connected to and resumed", async () => {
+await test("CLV-337 the restart waits for the end of the turn recovery and lists the turns and commands that the new service connected to and the turns that resumed", async () => {
   const recovering = recovery("recovering", ["run-a"]);
   const done = recovery("done", ["run-a", "run-b"]);
   const result = await scripted({
@@ -347,6 +358,7 @@ await test("CLV-337 the restart waits for the end of the turn recovery and lists
       "Workflow nightly: admitted",
       "Turns connected again: run-a, run-b",
       "Turns resumed: run-c",
+      "Commands connected again: run-d",
       "",
     ].join("\n"),
   );
@@ -361,6 +373,7 @@ await test("CLV-337 the restart waits for the end of the turn recovery and lists
   assert.deepEqual(restarted?.["turns"], {
     connected: ["run-a", "run-b"],
     resumed: ["run-c"],
+    commands: ["run-d"],
   });
 });
 

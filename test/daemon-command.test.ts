@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
+import { processExists } from "../src/daemon/process-identity.ts";
+import { recordedLaunch } from "../src/turn-launch.ts";
+import { until } from "./claude-worker-fixture.ts";
 import { queuePrelude } from "./daemon-queue-fixture.ts";
 import { withConsumer } from "./world-host-fixture.ts";
 
@@ -32,14 +35,31 @@ const output = async () => {
 };
 `;
 
-function stopCommand(directory: string): void {
-  const path = join(directory, "command-pid");
-  if (!existsSync(path)) return;
+function killed(processId: number): void {
   try {
-    process.kill(Number(readFileSync(path, "utf8")), "SIGKILL");
+    process.kill(processId, "SIGKILL");
   } catch (error) {
     if (Reflect.get(Object(error), "code") !== "ESRCH") throw error;
   }
+}
+
+function launchGroups(directory: string): readonly number[] {
+  const commands = join(directory, "commands");
+  if (!existsSync(commands)) return [];
+  return readdirSync(commands).flatMap((name) => {
+    const file = join(commands, name, "launch.json");
+    if (!existsSync(file)) return [];
+    const launch = recordedLaunch(JSON.parse(readFileSync(file, "utf8")));
+    return launch === undefined ? [] : [launch.processId];
+  });
+}
+
+async function stopCommand(directory: string): Promise<void> {
+  const groups = launchGroups(directory);
+  for (const group of groups) killed(-group);
+  const path = join(directory, "command-pid");
+  if (existsSync(path)) killed(Number(readFileSync(path, "utf8")));
+  await until(() => groups.every((group) => !processExists(group)));
 }
 
 await test("CLV-178 invalid UTF-8 at the stdout byte limit remains a completed replayable text result", () =>
@@ -97,20 +117,76 @@ process.exit(0);
     assert.equal(restarted.status, 0, restarted.stderr);
   }));
 
-await test("CLV-178 a daemon crash after a real command starts yields command-interrupted on Local World recovery without running it again", () =>
-  withConsumer(workflow, async (consumer) => {
-    try {
-      const crashed = await consumer.runUntil(
-        "command-started",
-        `${commandPrelude}
-writeFileSync("scan.mjs", 'import { appendFileSync, writeFileSync } from "node:fs"; appendFileSync("calls", "one\\\\n"); writeFileSync("command-pid", String(process.pid)); setInterval(() => {}, 1000);');
+const crashScene = `${commandPrelude}
+writeFileSync("scan.mjs", 'import { appendFileSync, existsSync, writeFileSync } from "node:fs"; appendFileSync("calls", "one\\\\n"); writeFileSync("command-pid", String(process.pid)); const wait = setInterval(() => { if (!existsSync("go")) return; clearInterval(wait); process.stdout.write("done"); }, 20);');
 await launch();
 const admission = await submit();
 await until(() => existsSync("command-pid"));
 await halt("command-started", { runId: admission.runId });
-`,
-      );
+`;
+
+await test("CLV-337 after a daemon crash, the restarted daemon connects to the command that still runs and the run completes with its result", () =>
+  withConsumer(workflow, async (consumer) => {
+    try {
+      const crashed = await consumer.runUntil("command-started", crashScene);
       assert.equal(crashed.status, null);
+      const restarted = await consumer.run(`${commandPrelude}
+const daemon = await launch();
+try {
+  const runId = (await asked("status")).runs[0].runId;
+  writeFileSync("go", "");
+  await until(async () => (await commandShown(runId)).state === "completed");
+  const result = await output();
+  assert.equal(result.command.kind, "completed", JSON.stringify(result.command));
+  assert.equal(result.command.result, "done");
+  assert.equal(readFileSync("calls", "utf8"), "one\\n");
+} finally { await daemon.close(); }
+process.exit(0);
+`);
+      assert.equal(restarted.status, 0, restarted.stderr);
+    } finally {
+      await stopCommand(consumer.directory);
+    }
+  }));
+
+await test("CLV-337 a daemon close that keeps work keeps a real command running, and the next daemon connects to it and the run completes with its result", () =>
+  withConsumer(workflow, async (consumer) => {
+    try {
+      const kept = await consumer.run(`${commandPrelude}
+writeFileSync("scan.mjs", 'import { appendFileSync, existsSync, writeFileSync } from "node:fs"; appendFileSync("calls", "one\\\\n"); writeFileSync("command-pid", String(process.pid)); const wait = setInterval(() => { if (!existsSync("go")) return; clearInterval(wait); process.stdout.write("done"); }, 20);');
+const daemon = await launch();
+await submit();
+await until(() => existsSync("command-pid"));
+await daemon.close({ turns: "keep" });
+process.kill(Number(readFileSync("command-pid", "utf8")), 0);
+process.exit(0);
+`);
+      assert.equal(kept.status, 0, kept.stderr);
+      const restarted = await consumer.run(`${commandPrelude}
+const daemon = await launch();
+try {
+  const runId = (await asked("status")).runs[0].runId;
+  writeFileSync("go", "");
+  await until(async () => (await commandShown(runId)).state === "completed");
+  const result = await output();
+  assert.equal(result.command.kind, "completed", JSON.stringify(result.command));
+  assert.equal(result.command.result, "done");
+  assert.equal(readFileSync("calls", "utf8"), "one\\n");
+} finally { await daemon.close(); }
+process.exit(0);
+`);
+      assert.equal(restarted.status, 0, restarted.stderr);
+    } finally {
+      await stopCommand(consumer.directory);
+    }
+  }));
+
+await test("CLV-178 a daemon crash after a real command starts yields command-interrupted on Local World recovery when the command process is gone, without running it again", () =>
+  withConsumer(workflow, async (consumer) => {
+    try {
+      const crashed = await consumer.runUntil("command-started", crashScene);
+      assert.equal(crashed.status, null);
+      await stopCommand(consumer.directory);
       const restarted = await consumer.run(`${commandPrelude}
 const daemon = await launch();
 try {
@@ -125,7 +201,7 @@ process.exit(0);
 `);
       assert.equal(restarted.status, 0, restarted.stderr);
     } finally {
-      stopCommand(consumer.directory);
+      await stopCommand(consumer.directory);
     }
   }));
 
@@ -143,6 +219,7 @@ await halt("command-started");
 `,
       );
       assert.equal(crashed.status, null);
+      await stopCommand(consumer.directory);
       const restarted = await consumer.run(`${commandPrelude}
 import filesystem from "node:fs/promises";
 import { syncBuiltinESMExports } from "node:module";
@@ -176,6 +253,6 @@ process.exit(0);
 `);
       assert.equal(restarted.status, 0, restarted.stderr);
     } finally {
-      stopCommand(consumer.directory);
+      await stopCommand(consumer.directory);
     }
   }));

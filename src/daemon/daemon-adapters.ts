@@ -16,7 +16,11 @@ import {
 } from "./workflow-generations.ts";
 import { claudeWorker, type ClaudeWorker } from "./claude-worker.ts";
 import { githubWorker, type GithubWorker } from "./github-worker.ts";
-import { commandWorker, type CommandWorker } from "./command-worker.ts";
+import {
+  commandWorker,
+  type CommandWorker,
+  type CommandWorkerSettings,
+} from "./command-worker.ts";
 import { handoffWorker } from "./handoff-worker.ts";
 import type { EffectDelivery } from "./delivery-router.ts";
 import type { TurnProfiles } from "../turn-profile.ts";
@@ -187,15 +191,25 @@ export function adapters(
         ?.workflow,
   });
   const handoff = handoffOf(settings, given);
-  const commands = commandWorker({
-    repository,
-    journal: join(directory, "commands"),
-    commands: settings.commands ?? {},
-    seconds: settings.commandSeconds ?? 60,
+  const commands = commandsOf(settings, {
     document,
     report,
+    recovered: recoveries.note,
   });
   return { worker, github, runs, handoff, commands, turnSettings, recoveries };
+}
+
+function commandsOf(
+  settings: DaemonSettings,
+  effects: Pick<CommandWorkerSettings, "document" | "report" | "recovered">,
+): CommandWorker {
+  return commandWorker({
+    repository: settings.repository,
+    journal: join(settings.directory, "commands"),
+    commands: settings.commands ?? {},
+    seconds: settings.commandSeconds ?? 60,
+    ...effects,
+  });
 }
 
 function handoffOf(

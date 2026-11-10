@@ -98,10 +98,9 @@ function updateLines(update: Fields | undefined): readonly string[] {
   ];
 }
 
-function recoveredRuns(
-  after: Fields,
-  way: "connected" | "resumed",
-): readonly string[] {
+type RecoveryList = "connected" | "resumed" | "commands";
+
+function recoveredRuns(after: Fields, way: RecoveryList): readonly string[] {
   const runs = record(after["turnRecovery"])?.[way];
   return Array.isArray(runs)
     ? runs.filter((runId) => typeof runId === "string")
@@ -111,10 +110,11 @@ function recoveredRuns(
 const recoveryHeadings = {
   connected: "Turns connected again",
   resumed: "Turns resumed",
+  commands: "Commands connected again",
 } as const;
 
 function recoveryLines(after: Fields): readonly string[] {
-  return (["connected", "resumed"] as const).flatMap((way) => {
+  return (["connected", "resumed", "commands"] as const).flatMap((way) => {
     const runs = recoveredRuns(after, way);
     return runs.length === 0
       ? []
@@ -128,6 +128,7 @@ function recoveredTurns(after: Fields): Fields {
     turns: {
       connected: recoveredRuns(after, "connected"),
       resumed: recoveredRuns(after, "resumed"),
+      commands: recoveredRuns(after, "commands"),
     },
   };
 }

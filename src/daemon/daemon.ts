@@ -346,7 +346,7 @@ async function closeWorkers(
   await Promise.all([
     resources.worker.close(options),
     resources.github.close(),
-    resources.commands.close(),
+    resources.commands.close(options),
   ]);
 }
 

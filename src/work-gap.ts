@@ -57,17 +57,17 @@ export function gapLines(work: Work): readonly string[] {
 
 export interface KeepReads {
   readonly heldTurn: () => Promise<boolean>;
-  readonly openCommand: () => Promise<boolean>;
+  readonly heldCommand: () => Promise<boolean>;
   readonly pendingSubmission: () => Promise<boolean>;
 }
 
 export async function heldWork(reads: KeepReads): Promise<readonly string[]> {
   const heldTurn = await reads.heldTurn();
-  const openCommand = await reads.openCommand();
+  const heldCommand = await reads.heldCommand();
   const pendingSubmission = await reads.pendingSubmission();
   return [
     ...(heldTurn ? ["A worker turn cannot keep running."] : []),
-    ...(openCommand ? ["A command effect is open."] : []),
+    ...(heldCommand ? ["A command effect cannot keep running."] : []),
     ...(pendingSubmission ? ["A queue submission is pending."] : []),
   ];
 }

@@ -3,7 +3,11 @@ import { execFile } from "node:child_process";
 import { extname, join } from "node:path";
 import { promisify } from "node:util";
 import { record, type Fields } from "../src/protocol.ts";
-import { attemptNumber, connectableTurn } from "../src/turn-launch.ts";
+import {
+  attemptNumber,
+  connectableTurn,
+  recordedLaunch,
+} from "../src/turn-launch.ts";
 import { heldWork, type KeepReads, type WorkReads } from "../src/work-gap.ts";
 
 interface ActivitySettings {
@@ -46,8 +50,7 @@ export function hostWorkReads(
     runPage: (after) => runPage(settings, after),
     openTurn: () => workerTurnActive(directory),
     heldTurn: () => heldTurnActive(directory),
-    openCommand: async () =>
-      (await openEntries(join(directory, "commands"))).length > 0,
+    heldCommand: () => heldCommandActive(directory),
     pendingSubmission: () => present(join(directory, "queue-submission")),
   };
 }
@@ -131,5 +134,12 @@ async function keptTurn(folder: string): Promise<boolean> {
 async function heldTurnActive(directory: string): Promise<boolean> {
   for (const folder of await openEntries(join(directory, "journal")))
     if (!(await keptTurn(folder))) return true;
+  return false;
+}
+
+async function heldCommandActive(directory: string): Promise<boolean> {
+  for (const folder of await openEntries(join(directory, "commands")))
+    if (recordedLaunch(await jsonIn(join(folder, "launch.json"))) === undefined)
+      return true;
   return false;
 }

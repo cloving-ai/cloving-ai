@@ -1,24 +1,16 @@
-import { spawn, type ChildProcess } from "node:child_process";
-import { randomUUID } from "node:crypto";
-import {
-  closeSync,
-  fstatSync,
-  openSync,
-  rmSync,
-  writeFileSync,
-  writeSync,
-} from "node:fs";
-import { open, readFile, type FileHandle } from "node:fs/promises";
+import { fstatSync, openSync, rmSync, writeSync } from "node:fs";
+import { open, type FileHandle } from "node:fs/promises";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
-import { record } from "../protocol.ts";
 import type { StreamResult } from "./claude-stream.ts";
 import type { TurnLaunch } from "../turn-launch.ts";
 import {
-  processExists,
-  processIdentity,
-  processMatch,
-} from "./process-identity.ts";
+  attachedProcess,
+  inputDescriptor,
+  intervals,
+  launchedProcess,
+  type Watch,
+} from "./detached-process.ts";
 import {
   receivedLines,
   receivedText,
@@ -28,8 +20,6 @@ import {
 } from "./turn-stream.ts";
 
 export type TurnExit = "exited" | "released";
-
-export type LaunchState = "running" | "ended" | "gone";
 
 export interface FollowedTurn {
   readonly processId: number | null;
@@ -60,62 +50,12 @@ export interface DetachedStart extends FollowStart {
   readonly configuration: string;
 }
 
-interface Ending {
-  readonly exitCode: number | null;
-}
-
-type Watch = Ending | "gone" | "released";
-
 interface Followed {
   readonly processId: number | null;
   readonly launch: Promise<TurnLaunch | null>;
   readonly files: Pick<TurnLaunch, "output" | "offset" | "configuration">;
   readonly ending: (signal: AbortSignal) => Promise<Watch>;
   readonly signal: (name: NodeJS.Signals) => void;
-}
-
-const launcher = [
-  'const{spawn}=require("node:child_process");',
-  'const{renameSync,writeFileSync}=require("node:fs");',
-  "const[exit,,command,...rest]=process.argv.slice(1);",
-  'for(const name of["SIGTERM","SIGINT","SIGHUP"])process.on(name,()=>undefined);',
-  'const child=spawn(command,rest,{stdio:"inherit"});',
-  'child.on("error",(error)=>process.stderr.write(error.message+"\\n"));',
-  'child.on("close",(exitCode,signal)=>{',
-  'writeFileSync(exit+".tmp",JSON.stringify({exitCode,signal,endedAt:new Date().toISOString()})+"\\n",{mode:0o600});',
-  'renameSync(exit+".tmp",exit);process.exit(0);});',
-].join("");
-
-const intervals = { output: 100, process: 250, identity: 16 } as const;
-
-function parsedJson(text: string): unknown {
-  try {
-    return JSON.parse(text);
-  } catch {
-    return undefined;
-  }
-}
-
-async function exitRecord(path: string): Promise<Ending | undefined> {
-  const text = await readFile(path, "utf8").catch(() => undefined);
-  const fields = record(parsedJson(text ?? ""));
-  if (fields === undefined) return undefined;
-  const { exitCode } = fields;
-  return { exitCode: typeof exitCode === "number" ? exitCode : null };
-}
-
-export async function launchState(launch: TurnLaunch): Promise<LaunchState> {
-  if ((await exitRecord(launch.exit)) !== undefined) return "ended";
-  if ((await processMatch(launch)) !== "other") return "running";
-  return (await exitRecord(launch.exit)) === undefined ? "gone" : "ended";
-}
-
-function signalGroup(processId: number, name: NodeJS.Signals): void {
-  try {
-    process.kill(-processId, name);
-  } catch {
-    return;
-  }
 }
 
 function outputReader(
@@ -161,15 +101,6 @@ async function pumped(
     await reader.close();
     return next;
   }
-}
-
-function released(signal: AbortSignal): Promise<Watch> {
-  return new Promise((settle) => {
-    if (signal.aborted) settle("released");
-    signal.addEventListener("abort", () => {
-      settle("released");
-    });
-  });
 }
 
 function followed(start: FollowStart, parts: Followed) {
@@ -223,11 +154,10 @@ function followed(start: FollowStart, parts: Followed) {
 
 function promptInput(start: DetachedStart): number | "ignore" {
   if (start.standardInput === undefined) return "ignore";
-  const path = join(start.folder, "turn.prompt");
-  writeFileSync(path, start.standardInput, { mode: 0o600 });
-  const descriptor = openSync(path, "r");
-  rmSync(path);
-  return descriptor;
+  return inputDescriptor({
+    path: join(start.folder, "turn.prompt"),
+    text: start.standardInput,
+  });
 }
 
 function launchFiles(start: DetachedStart) {
@@ -237,7 +167,6 @@ function launchFiles(start: DetachedStart) {
   const offset = fstatSync(output).size;
   const error = openSync(join(start.folder, "turn.stderr.log"), "w");
   const exit = join(start.folder, "turn.exit.json");
-  rmSync(exit, { force: true });
   return {
     path,
     offset,
@@ -246,133 +175,44 @@ function launchFiles(start: DetachedStart) {
   };
 }
 
-function spawnedLauncher(
-  start: DetachedStart,
-  files: ReturnType<typeof launchFiles> & { readonly marker: string },
-): ChildProcess {
-  const [input, output, error] = files.descriptors;
-  try {
-    return spawn(
-      process.execPath,
-      [
-        "-e",
-        launcher,
-        files.exit,
-        files.marker,
-        start.executable,
-        ...start.arguments,
-      ],
-      {
-        cwd: start.directory,
-        env: start.environment,
-        stdio: [input, output, error],
-        detached: true,
-      },
-    );
-  } finally {
-    for (const descriptor of files.descriptors)
-      if (typeof descriptor === "number") closeSync(descriptor);
-  }
-}
-
-function childEnding(child: ChildProcess, exit: string): Promise<Watch> {
-  return new Promise<void>((settle) => {
-    child.once("exit", () => {
-      settle();
-    });
-    child.once("error", () => {
-      settle();
-    });
-  }).then(async () => (await exitRecord(exit)) ?? { exitCode: null });
-}
-
 export function detachedTurn(start: DetachedStart): FollowedTurn {
-  const files = {
-    ...launchFiles(start),
-    marker: `cloving-turn-${randomUUID()}`,
-  };
-  const child = spawnedLauncher(start, files);
-  child.unref();
-  const processId = child.pid ?? null;
-  const launch = (
-    processId === null ? Promise.resolve(undefined) : processIdentity(processId)
-  ).then((identity) =>
-    identity === undefined || processId === null
+  const files = launchFiles(start);
+  const detached = launchedProcess({
+    executable: start.executable,
+    arguments: start.arguments,
+    environment: start.environment,
+    directory: start.directory,
+    descriptors: files.descriptors,
+    exit: files.exit,
+  });
+  const launch = detached.launch.then((recorded) =>
+    recorded === null
       ? null
       : {
-          processId,
-          processStart: identity.start,
-          marker: files.marker,
+          ...recorded,
           output: files.path,
           offset: files.offset,
-          exit: files.exit,
           configuration: start.configuration,
         },
   );
   return followed(start, {
-    processId,
+    ...detached,
     launch,
-    files: { ...files, output: files.path, configuration: start.configuration },
-    ending: (signal) =>
-      Promise.race([childEnding(child, files.exit), released(signal)]),
-    signal: (name) => {
-      if (child.exitCode !== null || child.signalCode !== null) return;
-      if (processId !== null) signalGroup(processId, name);
+    files: {
+      output: files.path,
+      offset: files.offset,
+      configuration: start.configuration,
     },
   });
-}
-
-async function running(launch: TurnLaunch, poll: number): Promise<boolean> {
-  if (!processExists(launch.processId)) return false;
-  if (poll % intervals.identity !== 0) return true;
-  return (await processMatch(launch)) !== "other";
-}
-
-async function launchEnding(
-  launch: TurnLaunch,
-  signal: AbortSignal,
-): Promise<Watch> {
-  for (let poll = 0; ; poll += 1) {
-    const ending = await exitRecord(launch.exit);
-    if (ending !== undefined) return ending;
-    if (!(await running(launch, poll)))
-      return (await exitRecord(launch.exit)) ?? "gone";
-    const waited = await delay(intervals.process, true, { signal }).catch(
-      () => false,
-    );
-    if (!waited) return "released";
-  }
-}
-
-async function sameSignalled(
-  launch: TurnLaunch,
-  request: { readonly name: NodeJS.Signals; readonly watching: AbortSignal },
-): Promise<void> {
-  for (;;) {
-    const match = await processMatch(launch);
-    if (match === "same") signalGroup(launch.processId, request.name);
-    if (match !== "unknown") return;
-    await delay(intervals.process, undefined, { signal: request.watching });
-  }
 }
 
 export function attachedTurn(
   start: FollowStart,
   launch: TurnLaunch,
 ): FollowedTurn {
-  const watching = new AbortController();
   return followed(start, {
-    processId: launch.processId,
+    ...attachedProcess(launch),
     launch: Promise.resolve(launch),
     files: launch,
-    ending: (signal) =>
-      launchEnding(launch, signal).finally(() => {
-        watching.abort();
-      }),
-    signal: (name) => {
-      sameSignalled(launch, { name, watching: watching.signal }).catch(
-        () => undefined,
-      );
-    },
   });
 }

@@ -9,7 +9,7 @@ import {
   recordedTexts,
   recordedTree,
 } from "./claude-recovery.ts";
-import { launchState } from "./detached-turn.ts";
+import { launchState } from "./detached-process.ts";
 import { attemptNumber, keptLaunch, type TurnLaunch } from "../turn-launch.ts";
 import type { TurnAttach } from "./turn-attempts.ts";
 import { selectedProfile, type WorkerProfiles } from "./worker-profile.ts";

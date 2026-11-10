@@ -16,6 +16,7 @@ import {
   type Located,
 } from "./operation-journal.ts";
 import {
+  attachedCommand,
   startCommand,
   type RunningCommand,
   type CommandEnd,
@@ -26,6 +27,11 @@ import {
   commandStarted,
   recordCommandResult,
 } from "./command-journal.ts";
+import type { CloseOptions } from "./claude-worker.ts";
+import { launchState } from "./detached-process.ts";
+import { record } from "../protocol.ts";
+import { recordedLaunch, type TurnLaunch } from "../turn-launch.ts";
+import type { TurnRecovery } from "../turn-recovery.ts";
 
 export interface CommandWorkerSettings {
   readonly repository: string;
@@ -35,18 +41,20 @@ export interface CommandWorkerSettings {
   readonly commandClock?: CommandClock;
   readonly document: (digest: string) => Promise<string | undefined>;
   readonly report: (report: WorkerReport) => Promise<unknown>;
+  readonly recovered?: (recovery: TurnRecovery) => void;
 }
 
 export interface CommandWorker extends Delivery {
   readonly recover: (intents: readonly DeliveryIntent[]) => Promise<void>;
   readonly stop: NonNullable<Delivery["stop"]>;
-  readonly close: () => Promise<void>;
+  readonly close: (options?: CloseOptions) => Promise<void>;
 }
 
 interface Active {
   readonly command: RunningCommand;
   readonly concluded: Promise<void>;
   readonly stopping: { requested: boolean };
+  readonly recorded: Promise<boolean>;
 }
 
 interface Parts {
@@ -84,7 +92,10 @@ async function reconciled(
   if (inFlight()) return { kind: "accepted", receipt: key, worker: "command" };
   if (!(await commandStarted(folder))) return { kind: "absent" };
   const started = await readRecord(folder, "started.json");
+  const launch = await keptLaunch(folder);
   if (inFlight()) return { kind: "accepted", receipt: key, worker: "command" };
+  if (launch !== undefined && commandIntent(intent))
+    return attached(parts, { intent, key, folder, started, launch });
   const duration =
     Date.now() - Date.parse(String(Reflect.get(Object(started), "startedAt")));
   await recordCommandResult(folder, {
@@ -114,9 +125,54 @@ function ending(end: CommandEnd, stopping: Active["stopping"]): Recorded {
   return { outcome: "completed", result: end.stdout, endedAt };
 }
 
+async function keptLaunch(folder: string): Promise<TurnLaunch | undefined> {
+  const launch = recordedLaunch(await readRecord(folder, "launch.json"));
+  if (launch === undefined) return undefined;
+  return (await launchState(launch)) === "gone" ? undefined : launch;
+}
+
+function attached(
+  parts: Parts,
+  kept: Located & {
+    readonly intent: ProtectedIntent;
+    readonly started: unknown;
+    readonly launch: TurnLaunch;
+  },
+): AdapterOutcome {
+  const fields = record(kept.started);
+  const startedAt = Date.parse(String(fields?.["startedAt"]));
+  const deadline = fields?.["deadline"];
+  const running = attachedCommand(
+    {
+      folder: kept.folder,
+      seconds: parts.settings.seconds ?? 60,
+      ...(typeof deadline === "string" ? { deadline } : {}),
+      launch: kept.launch,
+      startedAt: Number.isFinite(startedAt) ? startedAt : Date.now(),
+    },
+    parts.settings.commandClock,
+  );
+  watched(parts, { ...kept, running, recorded: Promise.resolve(true) });
+  parts.settings.recovered?.({ runId: kept.intent.runId, way: "command" });
+  return { kind: "accepted", receipt: kept.key, worker: "command" };
+}
+
+function launchRecorded(
+  folder: string,
+  running: RunningCommand,
+): Promise<boolean> {
+  return running.launch
+    .then(async (launch) => {
+      if (launch === null) return false;
+      await writeRecord(folder, { name: "launch.json", value: launch });
+      return true;
+    })
+    .catch(() => false);
+}
+
 function begun(parts: Parts, start: Started): void {
   const { settings } = parts;
-  const { intent, key, folder, payload, command } = start;
+  const { intent, folder, payload, command } = start;
   const running = startCommand(
     {
       command,
@@ -132,6 +188,23 @@ function begun(parts: Parts, start: Started): void {
     },
     settings.commandClock,
   );
+  watched(parts, {
+    ...start,
+    running,
+    recorded: launchRecorded(folder, running),
+  });
+}
+
+function watched(
+  parts: Parts,
+  watch: Located & {
+    readonly intent: ProtectedIntent;
+    readonly running: RunningCommand;
+    readonly recorded: Promise<boolean>;
+  },
+): void {
+  const { settings } = parts;
+  const { intent, key, folder, running, recorded } = watch;
   const stopping = { requested: false };
   const concluded = running.ended
     .then(async (end) => {
@@ -150,7 +223,7 @@ function begun(parts: Parts, start: Started): void {
     })
     .catch(() => undefined)
     .finally(() => parts.active.delete(key));
-  parts.active.set(key, { command: running, concluded, stopping });
+  parts.active.set(key, { command: running, concluded, stopping, recorded });
 }
 
 async function delivered(
@@ -225,6 +298,15 @@ async function recovered(
   }
 }
 
+function keptOnClose(running: Active, options: CloseOptions): Promise<boolean> {
+  return options.turns === "keep" ? running.recorded : Promise.resolve(false);
+}
+
+function stoppedOnClose(running: Active): void {
+  running.stopping.requested = true;
+  running.command.stop();
+}
+
 export function commandWorker(settings: CommandWorkerSettings): CommandWorker {
   const parts: Parts = { settings, active: new Map(), pending: new Map() };
   const closing = new AbortController();
@@ -260,14 +342,20 @@ export function commandWorker(settings: CommandWorkerSettings): CommandWorker {
       await active?.concluded;
       return reconciled(parts, { intent });
     },
-    close: async () => {
+    close: async (options = {}) => {
+      const openings = () =>
+        Promise.all([...pending.values()].map((entry) => entry.opening));
+      if (options.turns === "keep") await openings();
       closing.abort();
-      await Promise.all([...pending.values()].map((entry) => entry.opening));
+      await openings();
       const active = [...parts.active.values()];
-      for (const running of active) {
-        running.stopping.requested = true;
-        running.command.stop();
-      }
+      const kept = await Promise.all(
+        active.map((running) => keptOnClose(running, options)),
+      );
+      active.forEach((running, index) => {
+        if (kept[index] === true) running.command.release();
+        else stoppedOnClose(running);
+      });
       await Promise.all(active.map((running) => running.concluded));
     },
   };
