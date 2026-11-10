@@ -1,7 +1,7 @@
 import { activeSchedule, scheduleModel } from "./watch-schedule-fixture.ts";
 import { boardTime } from "./watch-board-fixture.ts";
 import { exampleCardForms, multilineCardForm } from "./watch-action-fixture.ts";
-import { browserExecutable } from "./watch-real-browser.ts";
+import { browserArguments, browserExecutable } from "./watch-real-browser.ts";
 import assert from "node:assert/strict";
 import { once } from "node:events";
 import { readFile } from "node:fs/promises";
@@ -280,4 +280,11 @@ await test("CLV-247 the browser board refreshes schedule states and marks schedu
     }, 20);
   })`);
   assert.match(String(detail["text"]), /scheduled 12/);
+});
+
+await test("the test browser uses a mock keychain, so macOS shows no keychain dialog", () => {
+  const options = browserArguments("/private/var/folders/browser");
+  assert.ok(options.includes("--use-mock-keychain"));
+  assert.ok(options.includes("--headless"));
+  assert.ok(options.includes("--user-data-dir=/private/var/folders/browser"));
 });
