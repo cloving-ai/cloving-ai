@@ -314,6 +314,16 @@ await test("the committed main-only list leaves out the packed install and the s
   assert.deepEqual(leftOut([".github/workflows/ci.yml"]), [
     "test/packed-install.test.ts",
   ]);
+  for (const packed of [
+    "assets/watch-fonts/manifest.json",
+    "templates/develop/template.json",
+    "themes/floor/theme.json",
+  ])
+    assert.deepEqual(leftOut([packed]), gateTests, packed);
+  assert.deepEqual(leftOut(["eslint.config.mjs"]), [
+    "test/packed-install.test.ts",
+  ]);
+  assert.deepEqual(leftOut(["tsconfig.json"]), []);
   assert.deepEqual(leftOut(["tools/check-quality.ts"]), []);
   assert.deepEqual(leftOut(undefined), []);
 });

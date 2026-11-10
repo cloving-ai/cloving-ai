@@ -2,12 +2,16 @@
   {
     "files": ["test/packed-install.test.ts"],
     "triggers": [
+      "assets/watch-fonts/",
       "bin/",
       "package-lock.json",
       "package.json",
+      "templates/",
       "test/packed-",
+      "themes/",
       "tools/",
-      "tsconfig.build.json"
+      "tsconfig.build.json",
+      "tsconfig.json"
     ]
   },
   {
@@ -19,10 +23,12 @@
     ],
     "triggers": [
       ".github/workflows/",
+      "eslint.config.mjs",
       "quality/",
       "test/quality/",
       "test/test-timing.ts",
-      "tools/"
+      "tools/",
+      "tsconfig.json"
     ]
   }
 ]

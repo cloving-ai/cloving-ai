@@ -2221,8 +2221,8 @@ CI runs three duration-balanced shards for each Linux Node version on each pull 
 
 A pull request runs a slow test file of `quality/main-only-tests.json` only when it changes a trigger path of that file. The list has groups of `files` and `triggers`. A trigger is a path prefix. A listed file runs when a changed path starts with a trigger of its group.
 
-- `test/packed-install.test.ts` runs for a change to `bin/`, `package-lock.json`, `package.json`, `test/packed-`, `tools/` or `tsconfig.build.json`.
-- The gate tests `test/quality/coverage-volume.test.ts`, `test/quality/project.test.ts`, `test/quality/quality-output.test.ts` and `test/quality/worker-hooks.test.ts` run for a change to `.github/workflows/`, `quality/`, `test/quality/`, `test/test-timing.ts` or `tools/`.
+- `test/packed-install.test.ts` runs for a change to `assets/watch-fonts/`, `bin/`, `package-lock.json`, `package.json`, `templates/`, `test/packed-`, `themes/`, `tools/`, `tsconfig.build.json` or `tsconfig.json`.
+- The gate tests `test/quality/coverage-volume.test.ts`, `test/quality/project.test.ts`, `test/quality/quality-output.test.ts` and `test/quality/worker-hooks.test.ts` run for a change to `.github/workflows/`, `eslint.config.mjs`, `quality/`, `test/quality/`, `test/test-timing.ts`, `tools/` or `tsconfig.json`.
 
 On a pull request, each shard job checks out the merge commit with `fetch-depth: 2`. A step writes the output of `git diff --name-only --no-renames -z HEAD^1 HEAD` to a file and sets `CLOVING_CHANGED_PATHS` to that file. The gate leaves out each listed file that no changed path matches. For each file that it leaves out, the gate prints a `Left out` line with the reason and adds an entry to `leftOut` in its JSON report. A push to `main`, a merge group and a manual run set no `CLOVING_CHANGED_PATHS`, so they run every test file. The coverage job of a pull request joins the coverage of the tests that ran.
 
