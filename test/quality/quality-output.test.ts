@@ -3,71 +3,14 @@ import { spawnSync } from "node:child_process";
 import { readFile, readdir } from "node:fs/promises";
 import { resolve } from "node:path";
 import { test } from "node:test";
-import { pathToFileURL } from "node:url";
 import { testMilliseconds } from "../test-timing.ts";
 import { withFiles } from "./files-fixture.ts";
-
-function moduleUrl(file: string): string {
-  return JSON.stringify(pathToFileURL(resolve(file)).href);
-}
-
-async function failingGate(stage: string): Promise<Record<string, string>> {
-  const command = moduleUrl("quality/command.ts");
-  const project = moduleUrl("quality/project.ts");
-  return {
-    "package.json": JSON.stringify({
-      type: "module",
-      scripts: { build: "node -e 0" },
-    }),
-    "tools/check-quality.ts": await readFile("tools/check-quality.ts", "utf8"),
-    "quality/command.ts": `
-      export * from ${command};
-      import { runCommand as execute } from ${command};
-      export function runCommand(command, options) {
-        let tick = 0;
-        return execute(command, command.check === "test-build"
-          ? { ...options, clock: () => { tick += 100; return tick; } }
-          : options);
-      }
-    `,
-    "quality/test-execution.ts": `export { parseCheckTimeFactor } from ${moduleUrl("quality/test-execution.ts")};`,
-    "quality/generated-output.ts":
-      "export async function inspectGenerated() { return { outputs: {} }; }",
-    "quality/module-policy.ts":
-      "export function proposedModulePolicy() { return {}; }",
-    "quality/product-steps.ts":
-      "export async function productStepExports() { return {}; }",
-    "quality/npm-inputs.ts": `
-      import { runCommand } from ${command};
-      export async function checkNpmInputs(directory, options) {
-        let tick = 0;
-        runCommand({ check: "npm-inputs", executable: process.execPath,
-          arguments: ["-e", ${JSON.stringify(stage === "npm-inputs" ? "process.exitCode = 7" : "")}],
-          directory, timeoutMilliseconds: 60000 },
-          { ...options, clock: () => { tick += 100; return tick; } });
-      }
-    `,
-    "quality/project.ts": `
-      export { writeProjectReport, assertCheckCoverage } from ${project};
-      export { checkProjectTestShard } from ${project};
-      import { runCommand } from ${command};
-      export async function checkProject(directory, options) {
-        const timeout = ${JSON.stringify(stage === "tests")};
-        let tick = 0;
-        runCommand({ check: "tests", executable: process.execPath,
-          arguments: ["-e", timeout ? "setInterval(() => {}, 1000)" : ""],
-          directory, timeoutMilliseconds: timeout ? 50 : 600000 },
-          { ...options.commandOptions,
-            clock: () => { tick += timeout ? 70 : 520000; return tick; } });
-        runCommand({ check: "coverage", executable: process.execPath,
-          arguments: ["-e", "process.exitCode = 7"],
-          directory, timeoutMilliseconds: 60000 },
-          { ...options.commandOptions,
-            clock: () => { tick += 100; return tick; } });
-      }
-    `,
-  };
-}
+import {
+  failingGate,
+  moduleUrl,
+  runtimeGate,
+  shardGate,
+} from "./gate-fixture.ts";
 
 function shortCheck(check: string) {
   return { check, elapsedMilliseconds: 100, timeoutMilliseconds: 60000 };
@@ -136,96 +79,29 @@ for (const scenario of [
   });
 }
 
-async function runtimeGate(): Promise<Record<string, string>> {
-  return {
-    ...(await failingGate("coverage")),
-    "tools/check-quality-sources.ts": await readFile(
-      "tools/check-quality-sources.ts",
-      "utf8",
-    ),
-    "quality/production-inventory.ts":
-      "export function productionInventory() { return []; }",
-    "package.json": JSON.stringify({
-      type: "module",
-      scripts: { build: "node build.mjs" },
-    }),
-    "build.mjs": `
-      import { mkdirSync, writeFileSync } from "node:fs";
-      mkdirSync("dist/src", { recursive: true });
-      writeFileSync("dist/src/main.d.ts", "export declare const value: number;");
-    `,
-    "quality/generated-output.ts": `
-      import assert from "node:assert/strict";
-      import { existsSync } from "node:fs";
-      export async function inspectGenerated() {
-        assert.equal(existsSync("dist/src/main.d.ts"), true);
-        return { outputs: {} };
-      }
-    `,
-    "quality/project.ts": `
-      export { writeProjectReport, assertCheckCoverage } from ${moduleUrl("quality/project.ts")};
-      import { requiredChecks } from ${moduleUrl("quality/project.ts")};
-      export async function checkProjectSources() {
-        return { program: {}, files: [], completed: requiredChecks.slice(0, -1) };
-      }
-      export async function checkProjectTestShard(directory, options) {
-        const { writeFileSync } = await import("node:fs");
-        writeFileSync("coverage-options.json", JSON.stringify([options.coverage ?? null, options.coverageDirectory ?? null]));
-        return { files: [], completed: ["tests"], timings: options.commandOptions.timings, warnings: [] };
-      }
-      export async function checkProject(directory, options) {
-        return { timings: options.commandOptions.timings, warnings: [] };
-      }
-    `,
-  };
-}
-
-function recordedOptions(text: string): readonly (string | null)[] {
-  const value: unknown = JSON.parse(text);
-  assert.ok(Array.isArray(value));
-  return value.map((item: unknown) => (typeof item === "string" ? item : null));
-}
-
-async function coverageGate(
-  shard: string | undefined,
-  setting: string | undefined,
-) {
-  return await withFiles(await runtimeGate(), async (directory) => {
-    const result = spawnSync(process.execPath, ["tools/check-quality.ts"], {
-      cwd: directory,
-      env: {
-        ...process.env,
-        CLOVING_TEST_SHARD: shard,
-        CLOVING_TEST_COVERAGE: setting,
-      },
-      encoding: "utf8",
-      timeout: testMilliseconds(10_000),
-    });
-    const recorded = await readFile(
-      resolve(directory, "coverage-options.json"),
-      "utf8",
-    ).then(recordedOptions, () => null);
-    return { status: result.status, stderr: result.stderr, recorded };
-  });
-}
-
 for (const [setting, options] of [
   [undefined, ["on", "coverage/shard"]],
   ["on", ["on", "coverage/shard"]],
   ["off", ["off", null]],
 ] as const)
   await test(`a shard takes its coverage from CLOVING_TEST_COVERAGE=${String(setting)}`, async () => {
-    const result = await coverageGate("2/2", setting);
+    const result = await shardGate({
+      CLOVING_TEST_SHARD: "2/2",
+      CLOVING_TEST_COVERAGE: setting,
+    });
     assert.equal(result.status, 0, result.stderr);
     assert.deepEqual(result.recorded, options);
   });
 
 await test("a shard refuses an unknown CLOVING_TEST_COVERAGE value, and the local gate ignores it", async () => {
-  const shard = await coverageGate("2/2", "no");
+  const shard = await shardGate({
+    CLOVING_TEST_SHARD: "2/2",
+    CLOVING_TEST_COVERAGE: "no",
+  });
   assert.equal(shard.status, 1);
   assert.match(shard.stderr, /CLOVING_TEST_COVERAGE must be on or off/);
   assert.equal(shard.recorded, null);
-  const local = await coverageGate(undefined, "no");
+  const local = await shardGate({ CLOVING_TEST_COVERAGE: "no" });
   assert.equal(local.status, 0, local.stderr);
 });
 

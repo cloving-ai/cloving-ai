@@ -1552,6 +1552,7 @@
     "test/quality/file-lines.test.ts": "test",
     "test/quality/files-fixture.ts": "test",
     "test/quality/function-size.test.ts": "test",
+    "test/quality/gate-fixture.ts": "test",
     "test/quality/generated-output.test.ts": "test",
     "test/quality/graph-fixture.ts": "test",
     "test/quality/installed-check.test.ts": "test",
