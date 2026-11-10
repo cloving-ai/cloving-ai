@@ -1,27 +1,41 @@
 import { turnCommand } from "./turn-command.ts";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
-import { createWriteStream, mkdtempSync, rmSync } from "node:fs";
-import { join } from "node:path";
+import {
+  accessSync,
+  constants,
+  createWriteStream,
+  mkdtempSync,
+  rmSync,
+  statSync,
+} from "node:fs";
+import { delimiter, join, resolve } from "node:path";
 import { codexStream } from "./codex-stream.ts";
 import { cursorStream } from "./cursor-stream.ts";
 import { opencodeStream } from "./opencode-stream.ts";
 import { textOutput } from "./text-output.ts";
 import { grokUsageWarnings } from "../grok-result.ts";
 import { geminiStream } from "./gemini-stream.ts";
+import type { Worker, StreamResult } from "./claude-stream.ts";
 import {
-  parsed,
-  textOf,
-  streamResult,
-  type Worker,
-  type StreamResult,
-} from "./claude-stream.ts";
+  receivedLines,
+  receivedText,
+  streamEnd,
+  streamState,
+  type TurnProgress,
+} from "./turn-stream.ts";
 import { usageOf, type ResumeReason, type RetryKind } from "../worker-usage.ts";
 export { streamResult, capacityRefusal, retryKind } from "./claude-stream.ts";
 export type { Worker, StreamResult } from "./claude-stream.ts";
-import { commandModel } from "../token-prices.ts";
+export type { TurnProgress } from "./turn-stream.ts";
 import { shellTurnScript } from "../agent-harness-shell.ts";
 import type { TurnRunner } from "../turn-runner.ts";
 import { runnerLaunch, type RunnerLaunch } from "./turn-runner-spawn.ts";
+import {
+  attachedTurn,
+  detachedTurn,
+  type TurnExit,
+  type TurnLaunch,
+} from "./detached-turn.ts";
 import {
   githubTokens,
   passedVariables,
@@ -53,31 +67,19 @@ export interface TurnStart {
   readonly folder: string;
   readonly activityFolder?: string;
   readonly prompt: string;
-}
-
-export interface TurnProgress {
-  readonly sessionId: string | null;
-  readonly result: StreamResult | undefined;
+  readonly release?: AbortSignal;
+  readonly attach?: TurnLaunch;
 }
 
 export interface RunningTurn {
   readonly processId: number | null;
+  readonly launch?: Promise<TurnLaunch | null>;
   readonly ended: Promise<TurnEnd>;
   readonly stop: (graceMilliseconds: number) => void;
 }
 
 export interface StartedTurn extends RunningTurn {
-  readonly exited: Promise<void>;
-}
-
-interface Stream {
-  failure: { readonly error: unknown } | undefined;
-  sessionId: string | null;
-  saved: Promise<void>;
-  errorType: string | null;
-  model: string | null;
-  pending: string;
-  result: StreamResult | undefined;
+  readonly exited: Promise<TurnExit>;
 }
 
 export function succeeded(end: TurnEnd): boolean {
@@ -157,66 +159,6 @@ function spawnTurn(start: TurnStart): {
   }
 }
 
-function streamMetadata(stream: Stream, event: unknown): boolean {
-  if (typeof event !== "object" || event === null) return false;
-  const field = (name: string): unknown => Reflect.get(event, name);
-  const type = field("type");
-  const sessionId = textOf(field("session_id"));
-  const discovered = stream.sessionId === null && sessionId !== null;
-  if (discovered) stream.sessionId = sessionId;
-  if (type === "assistant" && field("parent_tool_use_id") == null)
-    stream.errorType = textOf(field("error"));
-  if (type === "system" || type === "result")
-    stream.model = textOf(field("model")) ?? stream.model;
-  return discovered;
-}
-
-function receivedLines(
-  stream: Stream,
-  input: {
-    readonly lines: readonly string[];
-    readonly worker?: Worker;
-    readonly progress?: TurnStart["progress"];
-    readonly failed: () => void;
-  },
-): void {
-  const { lines, worker } = input;
-  for (const line of lines) {
-    const discovered = streamMetadata(stream, parsed(line));
-    const result = streamResult(line, worker);
-    if (result !== undefined) {
-      const errorType = result.errorType ?? stream.errorType;
-      stream.result = {
-        ...result,
-        sessionId: result.sessionId ?? stream.sessionId,
-        ...(errorType === null ? {} : { errorType }),
-      };
-    }
-    if (discovered || result !== undefined) {
-      saveProgress(stream, input);
-    }
-  }
-}
-
-function saveProgress(
-  stream: Stream,
-  input: {
-    readonly progress?: TurnStart["progress"];
-    readonly failed: () => void;
-  },
-): void {
-  const progress = { sessionId: stream.sessionId, result: stream.result };
-  stream.saved = stream.saved
-    .then(() => {
-      if (stream.failure === undefined) return input.progress?.(progress);
-      return undefined;
-    })
-    .catch((error: unknown) => {
-      stream.failure = { error };
-      input.failed();
-    });
-}
-
 function activityOutput(start: TurnStart) {
   const output = createWriteStream(
     join(start.activityFolder ?? start.folder, "turn.jsonl"),
@@ -242,18 +184,6 @@ function streamAdapter(
   return undefined;
 }
 
-function streamState(): Stream {
-  return {
-    failure: undefined,
-    sessionId: null,
-    saved: Promise.resolve(),
-    pending: "",
-    result: undefined,
-    model: null,
-    errorType: null,
-  };
-}
-
 function turnOutput(
   start: TurnStart,
   child: ChildProcessWithoutNullStreams,
@@ -267,30 +197,27 @@ function turnOutput(
   const { stdout, stderr } = child;
   const adapter = streamAdapter(start.worker, stderr);
   const stream = streamState();
-  const received = (lines: readonly string[]): void => {
-    receivedLines(stream, {
-      lines,
-      progress: start.progress,
-      failed: () => {
-        signalTurn({ child, start }, "SIGKILL");
-      },
-      ...(start.worker === undefined ? {} : { worker: start.worker }),
-    });
+  const input = {
+    progress: start.progress,
+    worker: start.worker,
+    failed: () => {
+      signalTurn({ child, start }, "SIGKILL");
+    },
   };
   const written = (lines: readonly string[]): void => {
     for (const line of lines) output.write(`${line}\n`);
-    received(lines);
+    receivedLines(stream, { ...input, lines });
   };
   stdout.setEncoding("utf8");
   stdout.on("data", (chunk: string) => {
-    if (adapter === undefined) output.write(chunk);
-    const lines = `${stream.pending}${chunk}`.split("\n");
-    stream.pending = lines.pop() ?? "";
-    if (adapter !== undefined) {
-      written(lines.flatMap(adapter.line));
+    if (adapter === undefined) {
+      output.write(chunk);
+      receivedText(stream, { ...input, text: chunk });
       return;
     }
-    received(lines);
+    const lines = `${stream.pending}${chunk}`.split("\n");
+    stream.pending = lines.pop() ?? "";
+    written(lines.flatMap(adapter.line));
   });
   return async (exitCode, close) => {
     if (adapter !== undefined) {
@@ -298,16 +225,9 @@ function turnOutput(
       written(close.refused ? [] : [adapter.result(exitCode)]);
     }
     await ended(output);
-    if (adapter === undefined) received([stream.pending]);
-    await stream.saved;
-    if (stream.failure !== undefined) throw stream.failure.error;
-    const result = stream.result;
-    return result === undefined
-      ? undefined
-      : {
-          ...result,
-          model: result.model ?? stream.model ?? commandModel(start.command),
-        };
+    if (adapter === undefined)
+      receivedLines(stream, { ...input, lines: [stream.pending] });
+    return streamEnd(stream, start.command);
   };
 }
 
@@ -332,7 +252,68 @@ function signalTurn(
   }
 }
 
+function detachable(start: TurnStart): boolean {
+  return (
+    (start.worker ?? "claude") === "claude" &&
+    start.output !== "text" &&
+    start.shell === undefined &&
+    (start.runner === undefined || start.runner.kind === "host")
+  );
+}
+
+function executableFile(path: string): boolean {
+  try {
+    accessSync(path, constants.X_OK);
+    return statSync(path).isFile();
+  } catch {
+    return false;
+  }
+}
+
+function commandFound(
+  executable: string,
+  place: { readonly directory: string; readonly path: string | undefined },
+): boolean {
+  if (executable === "") return false;
+  if (executable.includes("/"))
+    return executableFile(resolve(place.directory, executable));
+  return (place.path ?? "")
+    .split(delimiter)
+    .filter((folder) => folder !== "")
+    .some((folder) => executableFile(join(folder, executable)));
+}
+
+function launchedTurn(start: TurnStart): StartedTurn | undefined {
+  const { parts, standardInput } = turnCommand(start);
+  const [executable = "", ...rest] = parts;
+  const configuration = mkdtempSync(join(start.folder, "gh-config-"));
+  const environment = turnEnvironment(configuration, start);
+  try {
+    if (!commandFound(executable, { ...start, path: environment["PATH"] })) {
+      rmSync(configuration, { recursive: true, force: true });
+      return undefined;
+    }
+    return detachedTurn({
+      ...start,
+      executable,
+      arguments: rest,
+      environment,
+      standardInput,
+      configuration,
+    });
+  } catch (error) {
+    rmSync(configuration, { recursive: true, force: true });
+    throw error;
+  }
+}
+
 export function startTurn(start: TurnStart): StartedTurn {
+  if (start.attach !== undefined) return attachedTurn(start, start.attach);
+  const launched = detachable(start) ? launchedTurn(start) : undefined;
+  return launched ?? pipedTurn(start);
+}
+
+function pipedTurn(start: TurnStart): StartedTurn {
   const { child, configuration, standardInput, launch } = spawnTurn(start);
   const refused = launch.refusal(child.stderr);
   const output = turnOutput(start, child);
@@ -348,12 +329,12 @@ export function startTurn(start: TurnStart): StartedTurn {
     child.once("error", () => undefined);
     child.once("close", settle);
   });
-  const exited = new Promise<void>((settle) => {
+  const exited = new Promise<TurnExit>((settle) => {
     child.once("exit", () => {
-      settle();
+      settle("exited");
     });
     child.once("close", () => {
-      settle();
+      settle("exited");
     });
   });
   const timers: NodeJS.Timeout[] = [];

@@ -1,14 +1,12 @@
 import { turnHarness } from "../harness-defaults.ts";
-import { turnStartEnvironment } from "./turn-variables.ts";
-import { profileCommand, type TurnProfile } from "../turn-profile.ts";
 import type {
   AdapterOutcome,
   Delivery,
   DeliveryIntent,
 } from "../broker/actor/delivery-intents.ts";
-import { type RunningTurn } from "./claude-turn.ts";
-import { turnOutcome } from "./turn-report.ts";
-import { startRetriedTurn } from "./retrying-turn.ts";
+import { begun } from "./claude-begin.ts";
+import { attachableLaunch, attachPlan } from "./claude-attach.ts";
+import type { TurnLaunch } from "./detached-turn.ts";
 import {
   located,
   readRecord as read,
@@ -27,12 +25,11 @@ import {
   resumePlan,
   recordedField,
   resumableHarness,
-  type TurnResume,
   recoverTurn,
   turnIntent,
 } from "./claude-recovery.ts";
 import { checkedProfiles, selectedProfile } from "./worker-profile.ts";
-import { noteDesk, noteMetadata } from "./turn-notes.ts";
+import { noteDesk } from "./turn-notes.ts";
 import {
   queued,
   type SteerAnswer,
@@ -43,7 +40,6 @@ import {
   type Active,
   type ClaudeWorkerSettings,
   type Parts,
-  type Started,
 } from "./claude-worker-parts.ts";
 
 export {
@@ -56,7 +52,11 @@ export interface ClaudeWorker extends Delivery {
   readonly harness: (operationId: string) => Promise<string | undefined>;
   readonly stop: NonNullable<Delivery["stop"]>;
   readonly steer: (request: SteerRequest) => Promise<SteerAnswer>;
-  readonly close: () => Promise<void>;
+  readonly close: (options?: CloseOptions) => Promise<void>;
+}
+
+export interface CloseOptions {
+  readonly turns?: "keep" | "stop";
 }
 
 const worker = "claude";
@@ -93,9 +93,26 @@ async function reconcileOperation(
   if (parts.active.has(key)) return { kind: "accepted", receipt: key, worker };
   const started = await read(folder, "started.json");
   if (started === undefined) return { kind: "absent" };
-  if (await uncertainProcess(started))
+  const launch = await recordedLaunchOf({ folder, started, result });
+  if (launch === undefined && (await uncertainProcess(started)))
     return { kind: "unknown", evidence: `claude-turn:${key}` };
-  return resumed(parts, { intent, key, folder, started, signal });
+  return resumed(parts, {
+    intent,
+    key,
+    folder,
+    started,
+    signal,
+    ...(launch === undefined || launch === "gone" ? {} : { launch }),
+  });
+}
+
+function recordedLaunchOf(journal: {
+  readonly folder: string;
+  readonly started: unknown;
+  readonly result: unknown;
+}): Promise<TurnLaunch | "gone" | undefined> {
+  if (journal.result !== undefined) return Promise.resolve(undefined);
+  return attachableLaunch(journal.folder, journal.started);
 }
 
 async function resumed(
@@ -104,18 +121,19 @@ async function resumed(
     readonly intent: DeliveryIntent;
     readonly started: unknown;
     readonly signal: AbortSignal;
+    readonly launch?: TurnLaunch;
   },
 ): Promise<AdapterOutcome> {
-  const { intent, started, key, folder, signal } = request;
+  const { intent, started, key, folder, signal, launch } = request;
   const aborted = () => signal.aborted;
   if (!turnIntent(intent))
     return interruptedReply(request, "claude-turn-interrupted");
   if (aborted()) return failure("claude-start-aborted");
   const current = parts.settings.turnSettings();
-  const plan = await resumePlan(
-    { ...parts.settings, ...current },
-    { folder, started, intent, signal },
-  );
+  const settings = { ...parts.settings, ...current };
+  const plan = await (launch === undefined
+    ? resumePlan(settings, { folder, started, intent, signal })
+    : attachPlan(settings, { folder, started, intent, launch }));
   if (aborted()) return failure("claude-start-aborted");
   if (typeof plan === "string") return interruptedReply(request, plan);
   const prompt = await parts.settings.document(intent.payload);
@@ -133,86 +151,6 @@ async function resumed(
     turnSettings: current,
   });
   return { kind: "accepted", receipt: key, worker };
-}
-
-async function concluded(
-  parts: Parts,
-  running: Started & {
-    readonly turn: RunningTurn;
-    readonly stopping: Active["stopping"];
-  },
-): Promise<void> {
-  const { intent, key } = running;
-  const recorded = await turnOutcome(
-    { ...running, limits: claudeLimits },
-    await running.turn.ended,
-  );
-  await written(running.folder, { name: "result.json", value: recorded });
-  if (recorded.stoppedBy === "daemon-shutdown") return;
-  await parts.settings.report(
-    reportOf({ intent, commandId: `claude-turn:${key}`, worker }, recorded),
-  );
-}
-
-async function begun(
-  parts: Parts,
-  start: Started & {
-    readonly prompt: string;
-    readonly profile: TurnProfile;
-    readonly resume?: TurnResume;
-    readonly signal: AbortSignal;
-  },
-): Promise<void> {
-  const { intent, key, folder, tree, prompt } = start;
-  const { harness } = start;
-  const stopping = { requested: false, controller: new AbortController() };
-  const cancel = () => {
-    stopping.controller.abort();
-  };
-  start.signal.addEventListener("abort", cancel, { once: true });
-  if (start.signal.aborted) cancel();
-  const turn = startRetriedTurn(
-    {
-      ...harness,
-      resultBytes: claudeLimits.resultBytes,
-      command: profileCommand(harness.command, start.profile),
-      environment: await turnStartEnvironment(parts.settings, start),
-      turnId: `${intent.runId}-${key}`,
-      directory: tree.path,
-      folder,
-      prompt,
-    },
-    {
-      ...parts.settings,
-      ...start.turnSettings,
-      ...(start.resume === undefined ? {} : { resume: start.resume }),
-      stopping: stopping.controller,
-      metadata: {
-        ...noteMetadata(start),
-        harness: harness.worker,
-        operationId: intent.operationId,
-        target: intent.target,
-        branch: tree.branch,
-        worktree: tree.path,
-        startCommit: tree.startCommit,
-      },
-    },
-  );
-  parts.active.set(key, {
-    worker: harness.worker,
-    intent,
-    turn,
-    stopping,
-    concluded: turn
-      .then((running) =>
-        concluded(parts, { ...start, turn: running, stopping }),
-      )
-      .catch(() => undefined)
-      .finally(() => parts.active.delete(key)),
-  });
-  await turn.finally(() => {
-    start.signal.removeEventListener("abort", cancel);
-  });
 }
 
 function failure(reason: string): AdapterOutcome {
@@ -342,6 +280,7 @@ export function claudeWorker(settings: ClaudeWorkerSettings): ClaudeWorker {
     active: new Map(),
     reconciling: new Map(),
     stopping: new AbortController(),
+    release: new AbortController(),
     notes: noteDesk(settings),
   };
   const guarded = <T>(intent: DeliveryIntent, run: () => Promise<T>) =>
@@ -373,7 +312,8 @@ export function claudeWorker(settings: ClaudeWorkerSettings): ClaudeWorker {
       ),
     stop: (intent) => guarded(intent, () => stoppingOperation(parts, intent)),
     steer: (request) => steered(parts, request),
-    close: async () => {
+    close: async (options = {}) => {
+      if (options.turns === "keep") parts.release.abort();
       parts.stopping.abort();
       await Promise.all(
         [...parts.active.values()].map((active) => {

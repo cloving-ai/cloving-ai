@@ -1,4 +1,5 @@
 import { join } from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import { mkdir } from "node:fs/promises";
 import { readRecord, writeRecord } from "./operation-journal.ts";
 import type { ResumeReason } from "../worker-usage.ts";
@@ -7,11 +8,13 @@ import {
   type TurnEnd,
   type TurnProgress,
 } from "./claude-turn.ts";
+import type { TurnLaunch } from "./detached-turn.ts";
 import {
   attemptCommand,
   attemptUsage,
   attemptCost,
   attemptMetadata,
+  type AttemptEntry,
   type Attempts,
 } from "./turn-attempts.ts";
 
@@ -98,19 +101,18 @@ function progressFields(
   };
 }
 
-export function attemptJournal(
-  attempts: Attempts,
-  entry: ReturnType<typeof attemptEntry>,
-) {
+export function attemptJournal(attempts: Attempts, entry: AttemptEntry) {
   let saved = Promise.resolve();
   let progress: TurnProgress | undefined;
   let processId: number | null = null;
+  let launch: TurnLaunch | null = null;
   const save = () => {
     const value = {
       ...entry,
       ...attemptMetadata(attempts),
       phase: "running",
       processId,
+      ...(launch === null ? {} : { launch }),
       ...progressFields(attempts, progress),
     };
     saved = saved.then(() =>
@@ -126,8 +128,12 @@ export function attemptJournal(
       progress = snapshot;
       return save();
     },
-    running: async (identifier: number | null) => {
-      processId = identifier;
+    running: async (started: {
+      readonly processId: number | null;
+      readonly launch: TurnLaunch | null;
+    }) => {
+      processId = started.processId;
+      launch = started.launch;
       await written(attempts.start.folder, {
         name: "started.json",
         value: {
@@ -136,6 +142,7 @@ export function attemptJournal(
           startedAt: attempts.startedAt,
           phase: "running",
           processId,
+          ...(launch === null ? {} : { launch }),
         },
       });
       await save();
@@ -176,5 +183,31 @@ export async function recordedEnd(
       sessionCostUsd: end.result?.costUsd ?? null,
       turns: end.result?.turns ?? null,
     },
+  });
+}
+
+export async function waited(
+  attempts: Attempts,
+  milliseconds: number,
+): Promise<void> {
+  const { start, options, stopping, ends } = attempts;
+  await written(start.folder, {
+    name: "started.json",
+    value: {
+      ...attemptMetadata(attempts),
+      turnStartCommit: attempts.turnStartCommit,
+      startedAt: attempts.startedAt,
+      attempt: ends.length,
+      phase: "waiting",
+      processId: null,
+      waitMilliseconds: milliseconds,
+      waitingAt: new Date().toISOString(),
+    },
+  });
+  const wait =
+    options.retryDelay ??
+    ((duration, signal) => delay(duration, undefined, { signal }));
+  await wait(milliseconds, stopping.signal).catch((error: unknown) => {
+    if (!stopping.signal.aborted) throw error;
   });
 }

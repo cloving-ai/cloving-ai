@@ -55,6 +55,7 @@ import { defaultRetention } from "../record-retention.ts";
 import { threadPoolWatch, type ThreadPoolWatch } from "../cli/thread-pool.ts";
 import { stalledLine } from "../thread-pool-check.ts";
 import { retentionLoop } from "./daemon-retention.ts";
+import type { CloseOptions } from "./claude-worker.ts";
 import {
   daemonRegistrations,
   queueWorkflowId,
@@ -63,7 +64,7 @@ import {
 
 export interface Daemon {
   readonly socket: string;
-  readonly close: () => Promise<void>;
+  readonly close: (options?: CloseOptions) => Promise<void>;
 }
 
 export type DaemonOpening =
@@ -335,10 +336,13 @@ async function recoverWorkers(
   }
 }
 
-async function closeWorkers(resources: Workers): Promise<void> {
+async function closeWorkers(
+  resources: Workers,
+  options: CloseOptions = {},
+): Promise<void> {
   resources.pool.stop();
   await Promise.all([
-    resources.worker.close(),
+    resources.worker.close(options),
     resources.github.close(),
     resources.commands.close(),
   ]);
@@ -373,10 +377,10 @@ async function runningDaemon(
   });
   return {
     socket: service.socket,
-    close: async () => {
+    close: async (options = {}) => {
       await retention.stop();
       await loops.stop();
-      await closeWorkers(resources);
+      await closeWorkers(resources, options);
       await service.close();
     },
   };

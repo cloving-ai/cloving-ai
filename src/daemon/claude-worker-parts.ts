@@ -46,6 +46,7 @@ export interface Parts {
   readonly settings: ClaudeWorkerSettings;
   readonly active: Map<string, Active>;
   readonly stopping: AbortController;
+  readonly release: AbortController;
   readonly notes: NoteDesk;
 }
 

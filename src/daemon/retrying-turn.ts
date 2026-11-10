@@ -1,4 +1,3 @@
-import { setTimeout as delay } from "node:timers/promises";
 import {
   startTurn,
   type RunningTurn,
@@ -12,11 +11,13 @@ import { stopLeftProcesses } from "./worktree-processes.ts";
 import { readResume, resumedCommand, resumePrompt } from "./claude-recovery.ts";
 import {
   attemptCommand,
-  attemptMetadata,
   combined,
   kindOf,
+  attemptSince,
+  type AttemptEntry,
   type Attempts,
   type RetryOptions,
+  type TurnAttach,
 } from "./turn-attempts.ts";
 import {
   queued,
@@ -31,6 +32,7 @@ import {
   prepareAttempt,
   attemptJournal,
   recordedEnd,
+  waited,
 } from "./turn-attempt-journal.ts";
 export type { RetrySettings } from "./turn-attempts.ts";
 
@@ -51,27 +53,28 @@ function written(
   return writeRecord(folder, { ...entry, permissions: "private" });
 }
 
-async function leftProcesses(
-  attempts: Attempts,
-  startedAt: number,
-): Promise<void> {
+async function leftProcesses(attempts: Attempts, since: number): Promise<void> {
   await stopLeftProcesses({
     directory: attempts.start.directory,
-    seconds: Math.ceil((performance.now() - startedAt) / 1000) + 2,
+    seconds: Math.ceil((Date.now() - since) / 1000) + 2,
     signal: new AbortController().signal,
     stopMilliseconds: attempts.grace.milliseconds,
     log: attempts.options.log,
   }).catch(() => undefined);
 }
 
-function controlled(attempts: Attempts, start: TurnStart): RunningTurn {
-  const startedAt = performance.now();
-  const turn = startTurn(start);
+function controlled(
+  attempts: Attempts,
+  launch: { readonly start: TurnStart; readonly since: number },
+): RunningTurn {
+  const turn = startTurn(launch.start);
   const stop = () => {
     turn.stop(attempts.grace.milliseconds);
   };
   attempts.stopping.signal.addEventListener("abort", stop, { once: true });
-  const cleaned = turn.exited.then(() => leftProcesses(attempts, startedAt));
+  const cleaned = turn.exited.then((exit) =>
+    exit === "released" ? undefined : leftProcesses(attempts, launch.since),
+  );
   return {
     ...turn,
     ended: turn.ended
@@ -130,25 +133,50 @@ async function launched(
     return undefined;
   const { start } = attempts;
   const { entry, folder } = prepared;
-  const journal = attemptJournal(attempts, entry);
   const launch = { ...prepared, steered };
-  const turn = controlled(attempts, {
-    ...start,
-    command: launchCommand(attempts, launch),
-    progress: (progress) => {
-      if (steering.child !== undefined)
-        steering.child.sessionId = progress.sessionId;
-      return journal.progress(progress);
+  return watchedAttempt(attempts, {
+    entry,
+    steered,
+    start: {
+      ...start,
+      command: launchCommand(attempts, launch),
+      folder,
+      ...(entry.attempt === 1 ? {} : { activityFolder: start.folder }),
+      prompt: launchPrompt(launch, prompt),
     },
-    folder,
-    ...(entry.attempt === 1 ? {} : { activityFolder: start.folder }),
-    prompt: launchPrompt(launch, prompt),
+  });
+}
+
+async function watchedAttempt(
+  attempts: Attempts,
+  attempt: {
+    readonly entry: AttemptEntry;
+    readonly steered?: Launch["steered"];
+    readonly start: TurnStart;
+  },
+): Promise<RunningTurn> {
+  const { steering } = attempts;
+  const { entry, steered } = attempt;
+  const journal = attemptJournal(attempts, entry);
+  const turn = controlled(attempts, {
+    start: {
+      ...attempt.start,
+      progress: (progress) => {
+        if (steering.child !== undefined)
+          steering.child.sessionId = progress.sessionId;
+        return journal.progress(progress);
+      },
+    },
+    since: attemptSince(attempt),
   });
   steering.child = { turn, sessionId: null };
   if (steered !== undefined && turn.processId !== null)
     steering.delivered.push(...steered.notes);
   try {
-    await journal.running(turn.processId);
+    await journal.running({
+      processId: turn.processId,
+      launch: (await turn.launch) ?? null,
+    });
     return {
       ...turn,
       ended: turn.ended.then((end) => ({
@@ -163,29 +191,6 @@ async function launched(
     await turn.ended;
     throw error;
   }
-}
-
-async function waited(attempts: Attempts, milliseconds: number): Promise<void> {
-  const { start, options, stopping, ends } = attempts;
-  await written(start.folder, {
-    name: "started.json",
-    value: {
-      ...attemptMetadata(attempts),
-      turnStartCommit: attempts.turnStartCommit,
-      startedAt: attempts.startedAt,
-      attempt: ends.length,
-      phase: "waiting",
-      processId: null,
-      waitMilliseconds: milliseconds,
-      waitingAt: new Date().toISOString(),
-    },
-  });
-  const wait =
-    options.retryDelay ??
-    ((duration, signal) => delay(duration, undefined, { signal }));
-  await wait(milliseconds, stopping.signal).catch((error: unknown) => {
-    if (!stopping.signal.aborted) throw error;
-  });
 }
 
 async function preparedRetry(attempts: Attempts): Promise<string | TurnEnd> {
@@ -319,29 +324,48 @@ function resumable(start: TurnStart): boolean {
   );
 }
 
+function attachedAttempt(
+  attempts: Attempts,
+  attach: TurnAttach,
+): Promise<RunningTurn> {
+  return watchedAttempt(attempts, {
+    entry: attach.entry,
+    start: { ...attempts.start, attach: attach.launch },
+  });
+}
+
+async function startCommit(
+  start: TurnStart,
+  options: RetryOptions & { readonly stopping: AbortController },
+): Promise<string | null> {
+  const recorded = options.attach ?? options.resume;
+  if (recorded !== undefined) return recorded.turnStartCommit;
+  return turnHead({
+    directory: start.directory,
+    signal: options.stopping.signal,
+  });
+}
+
 export async function startRetriedTurn(
   start: TurnStart,
   options: RetryOptions,
 ): Promise<RetriedTurn> {
   const stopping = options.stopping ?? new AbortController();
-  const turnStartCommit =
-    options.resume === undefined
-      ? await turnHead({
-          directory: start.directory,
-          signal: stopping.signal,
-        })
-      : options.resume.turnStartCommit;
+  const recorded = options.attach ?? options.resume;
   const attempts: Attempts = {
-    turnStartCommit,
+    turnStartCommit: await startCommit(start, { ...options, stopping }),
     start,
-    startedAt: options.resume?.startedAt ?? new Date().toISOString(),
+    startedAt: recorded?.startedAt ?? new Date().toISOString(),
     options,
     stopping,
-    ends: [...(options.resume?.ends ?? [])],
+    ends: [...(recorded?.ends ?? [])],
     grace: { milliseconds: options.stopMilliseconds ?? 15_000 },
-    steering: steeringOf(options.resume),
+    steering: steeringOf(recorded),
   };
-  const turn = await launched(attempts);
+  const turn =
+    options.attach === undefined
+      ? await launched(attempts)
+      : await attachedAttempt(attempts, options.attach);
   if (turn === undefined)
     return {
       processId: null,

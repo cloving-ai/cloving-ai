@@ -2,6 +2,7 @@ import { readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { operationScope } from "../operation-identity.ts";
 import { readRecord } from "./operation-journal.ts";
+import { attachableLaunch } from "./claude-attach.ts";
 import {
   readResume,
   recordedField,
@@ -16,6 +17,8 @@ function noEntries(error: unknown): readonly string[] {
 
 async function resumable(folder: string, started: unknown): Promise<boolean> {
   if (!resumableHarness(recordedField(started, "harness"))) return false;
+  const launch = await attachableLaunch(folder, started);
+  if (launch !== undefined && launch !== "gone") return true;
   return (await readResume(folder, started)) !== undefined;
 }
 

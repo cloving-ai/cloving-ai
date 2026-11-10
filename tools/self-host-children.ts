@@ -65,17 +65,31 @@ function launched(
   return { name: settings.name, child, ended };
 }
 
+export const turnKeepingSignal = "SIGUSR2";
+
+export interface ProgramStop {
+  readonly milliseconds: number;
+  readonly turns?: "keep";
+}
+
+function stopSignal(program: Program, stop: ProgramStop): NodeJS.Signals {
+  return stop.turns === "keep" && program.name === "daemon"
+    ? turnKeepingSignal
+    : "SIGTERM";
+}
+
 export async function stopped(
   programs: readonly Program[],
-  milliseconds: number,
+  stop: ProgramStop,
 ): Promise<void> {
+  const { milliseconds } = stop;
   for (const program of programs)
     if (
       !program.child.killed &&
       program.child.exitCode === null &&
       program.child.signalCode === null
     )
-      program.child.kill("SIGTERM");
+      program.child.kill(stopSignal(program, stop));
   await Promise.all(
     programs.map(async (program) => {
       const timer = setTimeout(() => {

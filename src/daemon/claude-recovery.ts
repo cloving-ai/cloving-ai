@@ -157,7 +157,7 @@ export async function resumePlan(
   return { resume, tree, profile, harness };
 }
 
-function priorEnd(record: unknown): TurnEnd {
+export function priorEnd(record: unknown): TurnEnd {
   const field = (name: string): unknown => recordedField(record, name);
   const sessionId = field("sessionId");
   const model = field("model");

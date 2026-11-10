@@ -136,8 +136,12 @@ export async function hostedPrograms(settings: HostProcesses): Promise<number> {
     stopped: () => shutdown !== undefined || stopping.signal.aborted,
     held: pause.held,
   });
-  const stop = (): Promise<void> =>
-    (shutdown ??= stopped(programs, settings.stopMilliseconds ?? 60000));
+  const milliseconds = settings.stopMilliseconds ?? 60000;
+  const stop = (turns?: "keep"): Promise<void> =>
+    (shutdown ??= stopped(programs, {
+      milliseconds,
+      ...(turns === undefined ? {} : { turns }),
+    }));
   const signal = (signal: NodeJS.Signals): void => {
     stopping.abort();
     for (const program of programs) program.child.kill(signal);
@@ -156,7 +160,7 @@ export async function hostedPrograms(settings: HostProcesses): Promise<number> {
     stopChildren: pause.stop,
     stop: async () => {
       updating = true;
-      await stop();
+      await stop("keep");
     },
   });
   try {

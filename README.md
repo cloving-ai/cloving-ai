@@ -1438,7 +1438,15 @@ cloving restart --at now
 
 - `cloving restart` waits for the next gap, stops the service and starts it again. A gap has no run of any workflow that has not ended, no open turn and no pending queue submission. The queue drain and the self-update use the same rule.
 - `cloving restart --update` waits for the next gap, stops the service, updates the product checkout and starts the service on the new commit.
-- `cloving restart --at now` stops the service at once. Claude and Codex turns resume after the start, as after Control-C. The reply lists the runs with a turn that cannot resume: a turn of another harness, a turn that waits for a retry, or a turn with no recorded session. `--json` shows them in `restart.unresumableRuns`.
+- `cloving restart --at now` stops the service at once. A Claude turn keeps running, and the new service connects to it again (see below). A Codex turn resumes its session after the start, as after Control-C. The reply lists the runs with a turn that cannot go on: a turn of another harness, a turn that waits for a retry, or a turn that does not keep running and has no recorded session. `--json` shows them in `restart.unresumableRuns`.
+
+A Claude turn on the `host` runner keeps running through a restart. A small start program starts the turn in its own process group and session. The turn writes its output directly to `turn.jsonl` and its errors to `turn.stderr.log` in the journal folder, with no pipe to the service. When the turn ends, the start program writes the exit code and the end time to `turn.exit.json`. `started.json` records the process ID of the start program, the start time of the process and a turn marker. The restart and the self-update stop the service with the signal `SIGUSR2`, and the service then does not stop its Claude turns and their tool processes. A stop with Control-C or `SIGTERM` stops each turn, as before. After the start, the new service finds each Claude turn that has a start record and no result:
+
+- When the same process still runs, with the same process ID, start time and turn marker, the service reads `turn.jsonl` from the start of the attempt, follows the new lines and waits for the exit file.
+- When the process ended during the restart, the service reads the rest of the output and the exit file, and ends the turn normally.
+- When the process is gone and left no exit file, for example after a crash or a reboot, the service resumes the session, as before.
+
+The service never connects to a process with a different start time or turn marker, and never sends it a signal, also when the system gives its process ID to a new process. The cost, the budget and the steer notes of the turn go on through the restart, and the transcript shows each line one time. Command effects, the turns of other harnesses, the turns of the `seatbelt` and `container` runners and a turn that waits for a retry still stop at a restart.
 
 `--within <duration>` limits the wait for a gap, for example `--within 30m` or `--within 6h`. A duration is a whole number with `s`, `m` or `h`, up to `720h`. The default is `12h`. At the deadline, the service cancels the restart, the queue hold ends, and the command prints `restart-deadline` with the runs that were active. `--cancel` cancels a pending restart. When the restart already started, the cancel prints `Restart: started, cannot cancel`, and the restart continues.
 
@@ -1446,7 +1454,7 @@ The restart does these steps in this order:
 
 1. After each passed build, the restart writes the record `dist/.restart-build`. When this record is missing or older than the sources of the commit, the restart runs `npm run build` while the old service runs. When the build fails, the command prints `restart-build-failed` with the output. Nothing starts, and the old service keeps running. A failed build writes no record, so the next restart builds again, also when the failed build wrote new files into `dist`.
 2. The restart stops the watch server and the phone relay, and waits up to 60 seconds for them to end. When a child process still runs after 60 seconds, the command prints `restart-children-alive` with the process ID and the name of each child. The old service keeps running, and the watch server starts again.
-3. The restart stops the service. The service stops its command and turn processes.
+3. The restart stops the service. The service stops its command processes and each turn that cannot keep running. A Claude turn keeps running.
 4. With `--update`, the update starts after the stop:
    - When the checkout has local changes, the update does not run. The command prints `Update skipped: the checkout has local changes.` and the changed files, and the restart goes on with the current commit.
    - The update fetches the default branch and needs a fast-forward. It runs `npm ci --ignore-scripts` when `package-lock.json` changed, and then `npm run build`.
