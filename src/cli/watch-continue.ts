@@ -3,6 +3,8 @@ import type { IncomingMessage } from "node:http";
 import { isRecordKey } from "../authority/commands.ts";
 import { record, type Fields } from "../protocol.ts";
 import { send } from "./client.ts";
+import { runCommandRequest } from "./command-requests.ts";
+import type { RunCommand } from "./runtime-invocation.ts";
 import {
   actionAllowed,
   actionBody,
@@ -49,6 +51,36 @@ function runAction(operation: Operation): RunAction {
   };
 }
 
+function commandFields(body: Fields | undefined): Fields | null {
+  if (body === undefined || Object.keys(body).length !== 3) return null;
+  const { runId, expectedRevision, commandId } = body;
+  if (!isRecordKey(runId) || !isRecordKey(commandId)) return null;
+  if (!Number.isSafeInteger(expectedRevision)) return null;
+  return Number(expectedRevision) >= 1
+    ? { runId, expectedRevision, commandId }
+    : null;
+}
+
+function commandAction(command: RunCommand): RunAction {
+  return async (actions, request) => {
+    if (!actionAllowed(actions, request)) return null;
+    const fields = commandFields(record(await actionBody(request)));
+    if (fields === null) return null;
+    const reply = await send(
+      actions.runtimeDirectory,
+      runCommandRequest({
+        command,
+        runId: String(fields["runId"]),
+        expectedRevision: Number(fields["expectedRevision"]),
+        commandId: String(fields["commandId"]),
+      }),
+    );
+    return JSON.stringify(
+      reply.kind === "result" ? reply.result : { error: reply.error },
+    );
+  };
+}
+
 function renameFields(body: Fields): Fields | null {
   const { runId, commandId, title, label, clear } = body;
   if (!isRecordKey(runId) || !isRecordKey(commandId)) return null;
@@ -77,8 +109,11 @@ const renameAction: RunAction = async (actions, request) => {
 const runActions: Readonly<Record<string, RunAction>> = {
   "/actions/continue": runAction("continue-run"),
   "/actions/dismiss": runAction("dismiss-run"),
-  "/actions/steer": runAction("steer-run"),
+  "/actions/drop": commandAction("drop"),
+  "/actions/pause": commandAction("pause"),
   "/actions/rename": renameAction,
+  "/actions/resume": commandAction("resume"),
+  "/actions/steer": runAction("steer-run"),
 };
 
 export function routedRunAction(path: string): RunAction | null {

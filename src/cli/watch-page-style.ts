@@ -155,6 +155,14 @@ h2, h3 { font-family: var(--font-heading); font-weight: 700; }
 .steer-form label:has(input) { display: flex; align-items: center; gap: 6px; }
 .steer-form textarea { padding: 6px 8px; border: var(--shape-border) solid var(--color-line); border-radius: calc(var(--shape-radius) / 2); background: var(--color-surface); color: var(--color-ink); font: inherit; }
 .steer-message { margin: 0; font-size: 12px; }
+.run-command { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 6px 0; }
+.run-command-message { flex-basis: 100%; margin: 0; font-size: 12px; }
+.board > .run-command-message, .floor > .run-command-message { flex: none; padding: 6px 20px 0; }
+.drop-question { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0; font-size: 13px; }
+.run-menu summary { width: fit-content; padding: 0 8px; cursor: pointer; list-style: none; color: var(--color-muted); font: 700 16px/1.2 var(--font-ui); }
+.run-menu summary::-webkit-details-marker { display: none; }
+.tokens li { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; }
+.run-menu[open] { flex-basis: 100%; }
 .rename, .rename-form { display: grid; gap: 6px; }
 .rename-open, .rename-clear { width: fit-content; }
 .rename-form label { display: grid; gap: 4px; font-size: 12px; color: var(--color-muted); }

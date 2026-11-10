@@ -1,4 +1,11 @@
-import { priceText, usageText, attemptText } from "./usage-render.ts";
+import {
+  attemptText,
+  continuedCostText,
+  priceText,
+  spendLimitText,
+  totalsSuffix,
+  usageText,
+} from "./usage-render.ts";
 import { component, element, type Shown } from "./watch-element.ts";
 import {
   clockTime,
@@ -240,5 +247,24 @@ export function Review(props: {
     children: element("h3", {
       children: `Review ${String(round)} · waits for your decision`,
     }),
+  });
+}
+
+export function RunTotals(props: { readonly run: WatchRun }): Shown {
+  const { run } = props;
+  return element("section", {
+    class: "run-usage",
+    children: [
+      element("h3", { children: `Run totals${totalsSuffix(run.state)}` }),
+      element("p", { children: usageText(run.usage) }),
+      element("p", {
+        children: `${priceText(run.claudeCostUsd, run.estimatedCostUsd)}${spendLimitText(run.spendLimitUsd)}`,
+      }),
+      run.continuedCostUsd === undefined
+        ? null
+        : element("p", {
+            children: continuedCostText(run.continuedCostUsd),
+          }),
+    ],
   });
 }
