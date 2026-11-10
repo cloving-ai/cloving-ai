@@ -134,7 +134,7 @@ const settledScroll = `new Promise((resolve) => {
 
 async function pressTab(
   command: ReturnType<typeof protocol>,
-  sessionId: unknown,
+  sessionId: string,
 ): Promise<void> {
   for (const type of ["rawKeyDown", "keyUp"])
     await command("Input.dispatchKeyEvent", {
@@ -143,10 +143,9 @@ async function pressTab(
     });
 }
 
-async function browserPage(
+async function attachedSession(
   command: ReturnType<typeof protocol>,
-  viewport: { readonly width: number; readonly height: number },
-) {
+): Promise<string> {
   const created = await command("Target.createTarget", {
     params: { url: "about:blank" },
   });
@@ -154,6 +153,15 @@ async function browserPage(
     params: { targetId: created["targetId"], flatten: true },
   });
   const sessionId = attached["sessionId"];
+  assert.ok(typeof sessionId === "string");
+  return sessionId;
+}
+
+async function browserPage(
+  command: ReturnType<typeof protocol>,
+  viewport: { readonly width: number; readonly height: number },
+) {
+  const sessionId = await attachedSession(command);
   await command("Emulation.setDeviceMetricsOverride", {
     sessionId,
     params: {

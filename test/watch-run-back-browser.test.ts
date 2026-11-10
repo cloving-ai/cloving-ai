@@ -42,7 +42,7 @@ const focused = `(() => {
   const node = document.activeElement;
   const style = getComputedStyle(node);
   return {
-    name: node.getAttribute("class"),
+    name: node.getAttribute("class") ?? node.localName,
     visible: node.matches(":focus-visible"),
     outline: style.outlineStyle + " " + style.outlineWidth,
   };
@@ -90,12 +90,14 @@ await test("CLV-342 the keyboard reaches the back link in the run banner with Ta
   const page = await browser.page({ width: 1280, height: 600 });
   await page.navigate(fixture.url);
   await page.evaluate(ready);
-  const reached: unknown[] = [];
+  const reached: string[] = [];
   for (let press = 0; press < 5; press += 1) {
     await page.pressTab();
     const shown = await page.evaluate(focused);
-    reached.push(shown["name"]);
-    if (shown["name"] !== "banner-back") continue;
+    const name = shown["name"];
+    assert.ok(typeof name === "string");
+    reached.push(name);
+    if (name !== "banner-back") continue;
     assert.deepEqual(shown, {
       name: "banner-back",
       visible: true,
