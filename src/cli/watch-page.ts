@@ -8,15 +8,15 @@ import {
 } from "./schedule-render.ts";
 import {
   LoopActions,
-  LoopRow,
-  LoopsPanel,
-  loopAmount,
+  LoopCell,
+  LoopLast,
+  lastRunText,
   loopLastText,
   loopMessage,
-  loopNextText,
   loopTime,
-  relativeText,
+  pastClock,
 } from "./watch-loops-view.ts";
+import { LineNext, nextRunText } from "./watch-line-next-view.ts";
 import * as waitDisplay from "./command-waits.ts";
 import { cardReply } from "./watch-card-reply.ts";
 import { record } from "../protocol.ts";
@@ -84,7 +84,6 @@ import {
   Station,
   Token,
   lampLabel,
-  nextRunText,
   stepAge,
 } from "./watch-floor-view.ts";
 import { Demo, Shelf, Tile } from "./watch-shelf-view.ts";
@@ -173,14 +172,13 @@ const functions = [
   shownScheduled,
   loopText,
   loopTime,
-  loopAmount,
-  relativeText,
-  loopNextText,
+  pastClock,
+  lastRunText,
   loopLastText,
   loopMessage,
   LoopActions,
-  LoopRow,
-  LoopsPanel,
+  LoopLast,
+  LoopCell,
   record,
   commandText,
   Commands,
@@ -245,6 +243,7 @@ const functions = [
   Token,
   Station,
   ReadyCount,
+  LineNext,
   LineEnd,
   Legend,
   Line,

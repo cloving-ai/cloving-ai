@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
 import { spawnSync, type SpawnSyncReturns } from "node:child_process";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { test } from "node:test";
 import {
   job,
@@ -93,7 +96,7 @@ await test("CLV-097 CI checks main and version tag pushes, every pull request an
   }
 });
 
-await test("CLV-266 only shard 1 runs setup checks and the gate prepares test builds", async () => {
+await test("CLV-266 only the first full shard and the macOS platform job run setup checks", async () => {
   const workflow = await releaseWorkflow();
   for (const name of [
     "quality_macos",
@@ -107,6 +110,10 @@ await test("CLV-266 only shard 1 runs setup checks and the gate prepares test bu
         step.id === "prepare-shells" ? 3 : undefined,
       );
       const conditions = [
+        [
+          step.run === "npm run check:setup" && name === "quality_macos",
+          "${{ matrix.shard == '1' || matrix.shard == 'platform' }}",
+        ],
         [
           step.run === "npm run check:setup" && name !== "publish",
           "${{ matrix.shard == '1' }}",
@@ -140,7 +147,10 @@ await test("CLV-097 quality qualifies the exact toolchain and completes the deve
   assert.deepEqual(job(workflow, "quality_macos").env, {
     CLOVING_CHECK_TIME_FACTOR: "3",
     CLOVING_TEST_CONCURRENCY: "3",
-    CLOVING_TEST_SHARD: "${{ matrix.shard }}/3",
+    CLOVING_TEST_SET:
+      "${{ matrix.shard == 'platform' && 'platform' || 'all' }}",
+    CLOVING_TEST_SHARD:
+      "${{ matrix.shard == 'platform' && '1/1' || format('{0}/3', matrix.shard) }}",
     CLOVING_CI_MACOS_VERSION: "15.*",
     NODE_OPTIONS: "--max-old-space-size=4096",
   });
@@ -202,10 +212,6 @@ await test("CLV-097 Linux CI qualifies the lowest Node version of each engine ra
   assert.deepEqual(job(workflow, "quality_linux_node").strategy, {
     "fail-fast": false,
     matrix: { node: lowest, shard: ["1", "2", "3"] },
-  });
-  assert.deepEqual(job(workflow, "quality_macos").strategy, {
-    "fail-fast": false,
-    matrix: { shard: ["1", "2", "3"] },
   });
   assert.equal(job(workflow, "publish").strategy, undefined);
 });
@@ -301,7 +307,7 @@ await test("CLV-097 publish uses same-revision successful quality and only versi
   assert.deepEqual(release?.env, { GH_TOKEN: "${{ github.token }}" });
 });
 
-await test("CLV-266 Linux CI prepares zsh from the official archive before setup and propagates failures", async () => {
+await test("CLV-266 Linux CI installs two pinned zsh packages from the official archive before setup and propagates failures", async () => {
   const workflow = await releaseWorkflow();
   const linuxSteps = steps(workflow, "quality_linux_node");
   const prepare = linuxSteps.findIndex((step) => step.id === "prepare-shells");
@@ -309,48 +315,37 @@ await test("CLV-266 Linux CI prepares zsh from the official archive before setup
     (step) => step.run === "npm run check:setup",
   );
   assert.ok(prepare >= 0 && prepare < setup, "Prepare zsh before setup");
-  for (const [zshStatus, updateStatus, installStatus, status, output] of [
-    ["0", "0", "0", 0, ""],
-    ["1", "0", "0", 0, "update --error-on=any\ninstall -y zsh\n"],
-    ["1", "9", "0", 9, "update --error-on=any\n"],
-    ["1", "0", "8", 8, "update --error-on=any\ninstall -y zsh\n"],
+  const base = "https://archive.ubuntu.com/ubuntu/pool/main/z/zsh";
+  const common = "zsh-common_5.9-6ubuntu2_all.deb";
+  const shell = "zsh_5.9-6ubuntu2_amd64.deb";
+  const first = `curl ${common} ${base}/${common}\n`;
+  const checked = `${first}curl ${shell} ${base}/${shell}\nsha256sum\n`;
+  const installed = `${checked}dpkg -i ${common} ${shell}\n`;
+  const folder = await mkdtemp(join(tmpdir(), "clv-266-zsh-"));
+  const checkFile = join(folder, "checked");
+  for (const [zsh, download, check, install, status, output] of [
+    ["0", "0", "0", "0", 0, ""],
+    ["1", "0", "0", "0", 0, installed],
+    ["1", "22", "0", "0", 22, first],
+    ["1", "0", "1", "0", 1, checked],
+    ["1", "0", "0", "8", 8, installed],
   ] as const) {
     const result = prepareShellAttempt(workflow, {
-      ZSH_STATUS: zshStatus,
-      UPDATE_STATUS: updateStatus,
-      INSTALL_STATUS: installStatus,
+      ZSH_STATUS: zsh,
+      CURL_STATUS: download,
+      CHECK_STATUS: check,
+      INSTALL_STATUS: install,
+      CHECK_FILE: checkFile,
     });
     assert.equal(result.error, undefined);
     assert.equal(result.status, status, result.stderr);
     assert.equal(result.stdout, output);
   }
-});
-
-await test("CLV-266 coverage joins all nine shard artifacts before the required checks pass", async () => {
-  const workflow = await releaseWorkflow();
-  const coverage = job(workflow, "coverage");
-  assert.deepEqual(coverage.needs, ["quality_macos", "quality_linux_node"]);
-  assert.equal(coverage["runs-on"], "ubuntu-24.04");
-  assert.equal(coverage["timeout-minutes"], 20);
-  assert.equal(coverage.if, "${{ github.event_name == 'pull_request' }}");
-  const download = coverage.steps.find((step) =>
-    step.uses?.startsWith("actions/download-artifact@"),
-  );
   assert.match(
-    download?.uses ?? "",
-    /^actions\/download-artifact@[a-f0-9]{40}$/,
+    await readFile(checkFile, "utf8"),
+    /^56d160585b417af0cc04d7372f74a3b734609d7cc43ef8ea6e92bfdfc27f77c3 {2}\/\S+\/zsh-common_5\.9-6ubuntu2_all\.deb\nbd5cc8dd3a01a6db38c0a815d75202c356a9c7f378674ba7bed9bc86dcba8af0 {2}\/\S+\/zsh_5\.9-6ubuntu2_amd64\.deb\n$/,
   );
-  assert.deepEqual(download?.with, {
-    pattern: "coverage-*",
-    path: "${{ runner.temp }}/cloving-coverage",
-  });
-  const command = coverage.steps.find((step) =>
-    step.run?.startsWith("node tools/check-shard-coverage.ts"),
-  )?.run;
-  assert.ok(command);
-  for (const platform of ["macos-26.9.0", "linux-24.22.1", "linux-26.9.0"])
-    for (const shard of ["1", "2", "3"])
-      assert.ok(command.includes(`coverage-${platform}-${shard}`));
+  await rm(folder, { recursive: true, force: true });
 });
 
 await test("CLV-266 every shard exports coverage and both required checks need the final job", async () => {

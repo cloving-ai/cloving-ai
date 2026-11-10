@@ -12,19 +12,31 @@ export interface ActivityFiles {
   readonly prompt: string;
 }
 
-export function activityOutput(start: ActivityFiles): WriteStream {
+function activityPlace(start: ActivityFiles): {
+  readonly folder: string;
+  readonly attempt: number;
+  readonly flags: "w" | "a";
+} {
   const { laterAttempt } = start;
   const { folder, attempt } = laterAttempt ?? {
     folder: start.folder,
     attempt: 1,
   };
-  const flags = laterAttempt === undefined ? "w" : "a";
+  return { folder, attempt, flags: laterAttempt === undefined ? "w" : "a" };
+}
+
+export function recordPrompt(start: ActivityFiles): void {
+  const { folder, attempt, flags } = activityPlace(start);
   const prompt = `${JSON.stringify({ attempt, prompt: start.prompt })}\n`;
   writeFileSync(join(folder, "turn-prompts.jsonl"), prompt, {
     flag: flags,
     mode: 0o600,
   });
+}
+
+export function activityOutput(start: ActivityFiles): WriteStream {
+  const { folder, flags } = activityPlace(start);
   const output = createWriteStream(join(folder, "turn.jsonl"), { flags });
-  if (laterAttempt !== undefined) output.write("\n");
+  if (start.laterAttempt !== undefined) output.write("\n");
   return output;
 }

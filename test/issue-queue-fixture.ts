@@ -5,6 +5,7 @@ import { issueQueue } from "../src/daemon/issue-queue.ts";
 import { record } from "../src/protocol.ts";
 import type { QueueDrain } from "../src/queue-state.ts";
 import type { HostSignals, RoomLimits } from "../src/queue-room.ts";
+import type { Permit } from "../src/cli/workspace-permit.ts";
 import { listen, type Handle } from "../src/service/transport.ts";
 import { withHarness } from "./service-fixture.ts";
 
@@ -35,6 +36,7 @@ interface QueueOptions {
     readonly limits: () => RoomLimits;
     readonly signals: () => Promise<HostSignals>;
   };
+  readonly permit?: () => Promise<Permit>;
 }
 
 function savedJournal(options: QueueOptions): unknown {
@@ -104,6 +106,7 @@ export async function withQueue(
         ? {}
         : { readyCommand: options.readyCommand }),
       ...(options.room === undefined ? {} : { signals: options.room.signals }),
+      ...(options.permit === undefined ? {} : { permit: options.permit }),
     });
     try {
       await body({

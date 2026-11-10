@@ -46,7 +46,7 @@ import {
 } from "./watch-needs-view.ts";
 export type { ContinueControls } from "./watch-needs-view.ts";
 import { Today } from "./watch-today-view.ts";
-import { LoopsPanel, type LoopControls } from "./watch-loops-view.ts";
+import type { LoopControls } from "./watch-loops-view.ts";
 import type { ThemeControls } from "./watch-theme-view.ts";
 import { Events, PullRequest } from "./watch-turn.ts";
 import { RunDecisions, type DecisionControls } from "./watch-decision-view.ts";
@@ -259,7 +259,13 @@ export function FloorPage(
           element("div", {
             class: "floor-main",
             children: [
-              component(Floor, { model, now, words, controlling }),
+              component(Floor, {
+                model,
+                now,
+                words,
+                controlling,
+                looping: props.loops,
+              }),
               component(NeedsYou, {
                 runs: model.runs,
                 now,
@@ -274,11 +280,6 @@ export function FloorPage(
             class: "side-panels",
             children: [
               component(Today, { model, words }),
-              component(LoopsPanel, {
-                loops: model.loops ?? [],
-                now,
-                controls: props.loops,
-              }),
               component(Queue, { model, words }),
               component(RefusedWorkflows, { model }),
             ],
