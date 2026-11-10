@@ -162,6 +162,7 @@ function commandEnvironment(command: CheckCommand): NodeJS.ProcessEnv {
     PATH: process.env["PATH"],
     CLOVING_CHECK_TIME_FACTOR: process.env["CLOVING_CHECK_TIME_FACTOR"],
     CLOVING_TEST_CONCURRENCY: process.env["CLOVING_TEST_CONCURRENCY"],
+    CLOVING_TEST_PROGRESS_FILE: process.env["CLOVING_TEST_PROGRESS_FILE"],
     TZ: "UTC",
     CI: "true",
     NODE_DISABLE_COMPILE_CACHE: "1",

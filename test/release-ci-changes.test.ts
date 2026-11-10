@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { test } from "node:test";
 import { parseChangedPaths } from "../quality/command.ts";
-import { releaseWorkflow, steps } from "./release-fixture.ts";
+import { gateRun, releaseWorkflow, steps } from "./release-fixture.ts";
 import { withFiles } from "./quality/files-fixture.ts";
 import { testMilliseconds } from "./test-timing.ts";
 
@@ -19,9 +19,7 @@ await test("a pull request gives the gate the list of its changed paths, and oth
     );
     assert.equal(checkout?.with?.["fetch-depth"], 2, name);
     const listed = jobSteps.findIndex((step) => step.id === "changed-paths");
-    const gate = jobSteps.findIndex(
-      (step) => step.run === "npm run check:quality",
-    );
+    const gate = jobSteps.findIndex((step) => step.run === gateRun);
     assert.ok(listed >= 0 && listed < gate, name);
     assert.equal(jobSteps[listed]?.if, pullRequest);
     assert.equal(jobSteps[listed].env, undefined);

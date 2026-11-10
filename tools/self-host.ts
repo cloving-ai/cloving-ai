@@ -140,6 +140,7 @@ interface Commands extends HarnessSettings {
   readonly ticketCommand: readonly string[] | undefined;
   readonly nextCommand: readonly string[] | undefined;
   readonly readyCommand: readonly string[] | undefined;
+  readonly workspacePermits: string | undefined;
   readonly notifyCommand: readonly string[] | undefined;
   readonly githubCommand: readonly string[] | undefined;
   readonly requiredChecks: readonly string[] | null;
@@ -325,6 +326,7 @@ await launchers(
     ticketCommand,
     nextCommand,
     readyCommand,
+    workspacePermits: environment["CLOVING_WORKSPACE_PERMITS"],
     queueMilliseconds,
     queueLanes: queueRoom.lanes,
     queueLimits: queueRoom,

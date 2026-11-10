@@ -112,11 +112,11 @@ await test("CLV-286 a legend names the four lamp colors, and lamps and tokens ca
   );
 });
 
-await test("CLV-286 the line end of a scheduled workflow shows its next run time", () => {
+await test("CLV-286 the line end of a scheduled workflow with no loop row shows its next run time", () => {
   const clock = (at: number) =>
     new Date(at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   const end = (schedule: ShownSchedule) => {
-    const html = page(scheduleModel(schedule));
+    const html = page({ ...scheduleModel(schedule), loops: [] });
     const [scheduled = "", manual = ""] = lines(html);
     assert.match(manual, /<div class="line-end"><\/div>/);
     return /<div class="line-end">([\s\S]*?)<\/div>/.exec(scheduled)?.[1];
@@ -220,12 +220,14 @@ await test("CLV-286 selecting a token opens the run detail of that run, with a w
     )?.[1];
   assert.equal(href, "run=pr-583");
   const detail = page(model, href);
-  assert.match(detail, /<a class="back" href="#">← Back to the floor<\/a>/);
-  assert.match(detail, /<section class="banner working">[\s\S]*pr-583/);
+  assert.match(
+    detail,
+    /<section class="banner working"><a class="banner-back" href="#">← Floor<\/a>[\s\S]*pr-583/,
+  );
   assert.doesNotMatch(detail, /class="floor"/);
   assert.match(
     page(model, "workflow=idea&run=draft-run"),
-    /<a class="back" href="#workflow=idea">← Back to idea<\/a>/,
+    /<a class="banner-back" href="#workflow=idea">← idea<\/a>/,
   );
 });
 
@@ -266,7 +268,7 @@ console.log(JSON.stringify({ floor, run: { html: app.inner, title: document.titl
   const run = JSON.stringify(result["run"]);
   assert.match(floor, /class=\\"floor\\"/);
   assert.match(floor, /Floor · Cloving/);
-  assert.match(run, /← Back to the floor/);
+  assert.match(run, /class=\\"banner-back\\" href=\\"#\\">← Floor</);
   assert.match(run, /class=\\"banner working\\"/);
   assert.doesNotMatch(run, /class=\\"floor\\"/);
 });

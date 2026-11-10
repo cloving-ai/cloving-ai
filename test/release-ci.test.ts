@@ -1,11 +1,17 @@
 import assert from "node:assert/strict";
 import { spawnSync, type SpawnSyncReturns } from "node:child_process";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { test } from "node:test";
 import {
+  changedPathsRun,
+  gateRun,
   job,
   metadata,
   prepareShellAttempt,
   releaseWorkflow,
+  runs,
   script,
   steps,
 } from "./release-fixture.ts";
@@ -138,7 +144,8 @@ await test("CLV-097 quality qualifies the exact toolchain and completes the deve
   assert.deepEqual(job(workflow, "quality_linux_node").env, {
     CLOVING_CHECK_TIME_FACTOR: "3",
     CLOVING_TEST_CONCURRENCY: "4",
-    CLOVING_TEST_SHARD: "${{ matrix.shard }}/3",
+    CLOVING_TEST_SHARD:
+      "${{ format('{0}/{1}', matrix.shard, github.event_name == 'pull_request' && '6' || '3') }}",
     CLOVING_CI_ARCHITECTURE: "x64",
     NODE_OPTIONS: "--max-old-space-size=4096",
   });
@@ -153,9 +160,7 @@ await test("CLV-097 quality qualifies the exact toolchain and completes the deve
     CLOVING_CI_MACOS_VERSION: "15.*",
     NODE_OPTIONS: "--max-old-space-size=4096",
   });
-  const commands = steps(workflow, "quality_macos")
-    .map((step) => step.run)
-    .filter((run) => run !== undefined);
+  const commands = runs(workflow, "quality_macos");
   assert.deepEqual(commands.slice(0, 1), [
     "npm install --global npm@11.19.1 --ignore-scripts",
   ]);
@@ -172,20 +177,15 @@ await test("CLV-097 quality qualifies the exact toolchain and completes the deve
   assert.deepEqual(commands.slice(2), [
     "npm ci --ignore-scripts",
     "npm run check:setup",
-    steps(workflow, "quality_macos").find((step) => step.id === "changed-paths")
-      ?.run,
-    "npm run check:quality",
+    changedPathsRun,
+    gateRun,
   ]);
 });
 
 await test("CLV-266 Linux shards qualify the selected toolchain before the gate", async () => {
   const workflow = await releaseWorkflow();
-  const commands = steps(workflow, "quality_macos")
-    .map((step) => step.run)
-    .filter((run) => run !== undefined);
-  const linuxCommands = steps(workflow, "quality_linux_node")
-    .map((step) => step.run)
-    .filter((run) => run !== undefined);
+  const commands = runs(workflow, "quality_macos");
+  const linuxCommands = runs(workflow, "quality_linux_node");
   assert.equal(linuxCommands[0], commands[0]);
   const linuxQualification = linuxCommands[1];
   assert.ok(typeof linuxQualification === "string");
@@ -203,16 +203,21 @@ await test("CLV-266 Linux shards qualify the selected toolchain before the gate"
   assert.deepEqual(linuxCommands.slice(4), commands.slice(3));
 });
 
-await test("CLV-097 Linux CI qualifies the lowest Node version of each engine range", async () => {
+await test("CLV-097 Linux CI qualifies the lowest Node version of each engine range on main and tags, and a pull request runs the newest of them in six shards", async () => {
   const workflow = await releaseWorkflow();
   const { manifest } = await metadata();
   const lowest = (manifest.engines["node"] ?? "")
     .split(" || ")
     .map((range) => /^>=(\d+\.\d+\.\d+) <\d+$/.exec(range)?.[1]);
   assert.deepEqual(lowest, ["24.22.1", "26.9.0"]);
+  const newest = lowest.at(-1);
+  assert.equal(newest, "26.9.0");
   assert.deepEqual(job(workflow, "quality_linux_node").strategy, {
     "fail-fast": false,
-    matrix: { node: lowest, shard: ["1", "2", "3"] },
+    matrix: {
+      node: `\${{ fromJSON(github.event_name == 'pull_request' && '${JSON.stringify([newest])}' || '${JSON.stringify(lowest)}') }}`,
+      shard: `\${{ fromJSON(github.event_name == 'pull_request' && '${JSON.stringify(["1", "2", "3", "4", "5", "6"])}' || '${JSON.stringify(["1", "2", "3"])}') }}`,
+    },
   });
   assert.equal(job(workflow, "publish").strategy, undefined);
 });
@@ -275,9 +280,7 @@ await test("CLV-097 publish uses same-revision successful quality and only versi
     contents: "write",
     "id-token": "write",
   });
-  const commands = steps(workflow, "publish")
-    .map((step) => step.run)
-    .filter((run) => run !== undefined);
+  const commands = runs(workflow, "publish");
   assert.equal(commands[0], script(workflow, "validate-tag"));
   assert.deepEqual(commands.slice(1, 4), [
     "npm install --global npm@11.19.1 --ignore-scripts",
@@ -308,7 +311,7 @@ await test("CLV-097 publish uses same-revision successful quality and only versi
   assert.deepEqual(release?.env, { GH_TOKEN: "${{ github.token }}" });
 });
 
-await test("CLV-266 Linux CI prepares zsh from the official archive before setup and propagates failures", async () => {
+await test("CLV-266 Linux CI installs two pinned zsh packages from the official archive before setup and propagates failures", async () => {
   const workflow = await releaseWorkflow();
   const linuxSteps = steps(workflow, "quality_linux_node");
   const prepare = linuxSteps.findIndex((step) => step.id === "prepare-shells");
@@ -316,31 +319,47 @@ await test("CLV-266 Linux CI prepares zsh from the official archive before setup
     (step) => step.run === "npm run check:setup",
   );
   assert.ok(prepare >= 0 && prepare < setup, "Prepare zsh before setup");
-  for (const [zshStatus, updateStatus, installStatus, status, output] of [
-    ["0", "0", "0", 0, ""],
-    ["1", "0", "0", 0, "update --error-on=any\ninstall -y zsh\n"],
-    ["1", "9", "0", 9, "update --error-on=any\n"],
-    ["1", "0", "8", 8, "update --error-on=any\ninstall -y zsh\n"],
+  const base = "https://archive.ubuntu.com/ubuntu/pool/main/z/zsh";
+  const common = "zsh-common_5.9-6ubuntu2_all.deb";
+  const shell = "zsh_5.9-6ubuntu2_amd64.deb";
+  const first = `curl ${common} ${base}/${common}\n`;
+  const checked = `${first}curl ${shell} ${base}/${shell}\nsha256sum\n`;
+  const installed = `${checked}dpkg -i ${common} ${shell}\n`;
+  const folder = await mkdtemp(join(tmpdir(), "clv-266-zsh-"));
+  const checkFile = join(folder, "checked");
+  for (const [zsh, download, check, install, status, output] of [
+    ["0", "0", "0", "0", 0, ""],
+    ["1", "0", "0", "0", 0, installed],
+    ["1", "22", "0", "0", 22, first],
+    ["1", "0", "1", "0", 1, checked],
+    ["1", "0", "0", "8", 8, installed],
   ] as const) {
     const result = prepareShellAttempt(workflow, {
-      ZSH_STATUS: zshStatus,
-      UPDATE_STATUS: updateStatus,
-      INSTALL_STATUS: installStatus,
+      ZSH_STATUS: zsh,
+      CURL_STATUS: download,
+      CHECK_STATUS: check,
+      INSTALL_STATUS: install,
+      CHECK_FILE: checkFile,
     });
     assert.equal(result.error, undefined);
     assert.equal(result.status, status, result.stderr);
     assert.equal(result.stdout, output);
   }
+  assert.match(
+    await readFile(checkFile, "utf8"),
+    /^56d160585b417af0cc04d7372f74a3b734609d7cc43ef8ea6e92bfdfc27f77c3 {2}\/\S+\/zsh-common_5\.9-6ubuntu2_all\.deb\nbd5cc8dd3a01a6db38c0a815d75202c356a9c7f378674ba7bed9bc86dcba8af0 {2}\/\S+\/zsh_5\.9-6ubuntu2_amd64\.deb\n$/,
+  );
+  await rm(folder, { recursive: true, force: true });
 });
 
-await test("CLV-266 every shard exports coverage and both required checks need the final job", async () => {
+await test("CLV-266 every shard exports coverage, shows the start and end of each test file in the job log, and both required checks need the final job", async () => {
   const workflow = await releaseWorkflow();
   for (const name of ["quality_macos", "quality_linux_node"] as const) {
-    const gate = steps(workflow, name).find(
-      (step) => step.run === "npm run check:quality",
-    );
+    const gate = steps(workflow, name).find((step) => step.run === gateRun);
     const directory = "${{ runner.temp }}/cloving-coverage/shard";
     assert.deepEqual(gate?.env, {
+      CLOVING_TEST_PROGRESS_FILE:
+        "${{ runner.temp }}/cloving-test-progress.log",
       CLOVING_COVERAGE_DIRECTORY: directory,
       CLOVING_TEST_COVERAGE:
         "${{ github.event_name == 'pull_request' && 'on' || 'off' }}",

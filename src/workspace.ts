@@ -6,8 +6,14 @@ export interface WorkspaceRepository {
   readonly path: string;
 }
 
+export interface WorkspaceLimits {
+  readonly lanes?: number;
+  readonly dailySpendLimitUsd?: number;
+}
+
 export interface Workspace {
   readonly repositories: readonly WorkspaceRepository[];
+  readonly limits: WorkspaceLimits;
 }
 
 const namePattern = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
@@ -74,10 +80,34 @@ function unique(
   }
 }
 
+function positiveNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value) && value > 0;
+}
+
+function workspaceLimits(fields: Fields): WorkspaceLimits {
+  const { lanes, dailySpendLimitUsd } = fields;
+  if (
+    lanes !== undefined &&
+    !(Number.isSafeInteger(lanes) && Number(lanes) >= 1 && Number(lanes) <= 64)
+  )
+    refused("lanes must be a whole number from 1 to 64");
+  if (dailySpendLimitUsd !== undefined && !positiveNumber(dailySpendLimitUsd))
+    refused("dailySpendLimitUsd must be a number above 0");
+  return {
+    ...(lanes === undefined ? {} : { lanes: Number(lanes) }),
+    ...(dailySpendLimitUsd === undefined ? {} : { dailySpendLimitUsd }),
+  };
+}
+
 export function parseWorkspace(text: string): Workspace {
   const fields = parsed(text);
   if (fields["version"] !== 1) refused("version must be 1");
-  const unknown = unknownField(fields, ["version", "repositories"]);
+  const unknown = unknownField(fields, [
+    "version",
+    "repositories",
+    "lanes",
+    "dailySpendLimitUsd",
+  ]);
   if (unknown !== undefined) refused(`the field ${unknown} is not known`);
   const listed = fields["repositories"];
   if (!Array.isArray(listed) || listed.length === 0)
@@ -87,5 +117,5 @@ export function parseWorkspace(text: string): Workspace {
   );
   unique(repositories, "name");
   unique(repositories, "path");
-  return { repositories };
+  return { repositories, limits: workspaceLimits(fields) };
 }

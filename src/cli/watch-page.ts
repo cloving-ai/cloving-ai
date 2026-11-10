@@ -8,15 +8,15 @@ import {
 } from "./schedule-render.ts";
 import {
   LoopActions,
-  LoopRow,
-  LoopsPanel,
-  loopAmount,
+  LoopCell,
+  LoopLast,
+  lastRunText,
   loopLastText,
   loopMessage,
-  loopNextText,
   loopTime,
-  relativeText,
+  pastClock,
 } from "./watch-loops-view.ts";
+import { LineNext, nextRunText } from "./watch-line-next-view.ts";
 import * as waitDisplay from "./command-waits.ts";
 import { cardReply } from "./watch-card-reply.ts";
 import { record } from "../protocol.ts";
@@ -32,17 +32,7 @@ import { watchClient } from "./watch-client.ts";
 import { watchDecisionClient } from "./watch-decision-client.ts";
 import { watchLoopsClient } from "./watch-loops-client.ts";
 import { watchTranscriptClient } from "./watch-transcript-client.ts";
-import {
-  CutNote,
-  ToolOutput,
-  Transcript,
-  TranscriptBody,
-  TranscriptButton,
-  TranscriptLine,
-  jumpLabel,
-  transcriptWanted,
-  waitingText,
-} from "./watch-transcript-view.ts";
+import { transcriptFunctions } from "./watch-transcript-view.ts";
 import { RunNotes } from "./watch-notes-view.ts";
 import { runActionFunctions } from "./watch-rename-view.ts";
 import { runCommandFunctions } from "./watch-run-command-view.ts";
@@ -94,7 +84,6 @@ import {
   Station,
   Token,
   lampLabel,
-  nextRunText,
   stepAge,
 } from "./watch-floor-view.ts";
 import { Demo, Shelf, Tile } from "./watch-shelf-view.ts";
@@ -158,10 +147,10 @@ import {
   Phases,
   Run,
   RunTotals,
-  RunTurns,
 } from "./watch-view.ts";
 import {
   BackLink,
+  BannerBack,
   Brand,
   clove,
   Header,
@@ -184,14 +173,13 @@ const functions = [
   shownScheduled,
   loopText,
   loopTime,
-  loopAmount,
-  relativeText,
-  loopNextText,
+  pastClock,
+  lastRunText,
   loopLastText,
   loopMessage,
   LoopActions,
-  LoopRow,
-  LoopsPanel,
+  LoopLast,
+  LoopCell,
   record,
   commandText,
   Commands,
@@ -256,6 +244,7 @@ const functions = [
   Token,
   Station,
   ReadyCount,
+  LineNext,
   LineEnd,
   Legend,
   Line,
@@ -291,19 +280,10 @@ const functions = [
   pageTitle,
   ...turnFunctions,
   ...decisionFunctions,
-  CutNote,
-  ToolOutput,
-  TranscriptLine,
-  waitingText,
-  TranscriptButton,
-  jumpLabel,
-  TranscriptBody,
-  transcriptWanted,
-  Transcript,
+  ...transcriptFunctions,
   BannerDetail,
   Banner,
   Phases,
-  RunTurns,
   Run,
   RunTotals,
   timeLeft,
@@ -317,6 +297,7 @@ const functions = [
   Header,
   RefusedWorkflows,
   BackLink,
+  BannerBack,
   FloorPage,
   BoardPage,
   Page,

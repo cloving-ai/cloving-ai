@@ -106,7 +106,7 @@ await test("CLV-312 a board location can name the repository of the workflow", (
   assert.doesNotMatch(other, /#run=draft/);
 });
 
-await test("CLV-312 a board card and the back link of its run keep the repository of the board", () => {
+await test("CLV-312 CLV-342 a board card and the back link in the banner of its run keep the repository of the board", () => {
   const board = page(twoRepositories(), "#workflow=idea&repository=beta");
   assert.match(
     board,
@@ -118,7 +118,7 @@ await test("CLV-312 a board card and the back link of its run keep the repositor
   );
   assert.match(
     run,
-    /<a class="back" href="#workflow=idea&amp;repository=beta">← Back to idea<\/a>/,
+    /<section class="banner [a-z]+"><a class="banner-back" href="#workflow=idea&amp;repository=beta">← idea<\/a>/,
   );
 });
 

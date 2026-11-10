@@ -104,7 +104,7 @@ await test("CLV-201 installation describes the published package without a packa
   assert.match(readme, /CI also runs the Ubuntu checks with Node 24\.22\.1\./);
   assert.match(
     readme,
-    /The `quality_linux` check passes only when the Ubuntu checks pass on both Node versions\./,
+    /The `quality_linux` check passes only when each Ubuntu job of the run passes\./,
   );
   assert.doesNotMatch(readme, /exactly Node/);
   assert.match(readme, /supports macOS and Linux on arm64 and x64/);
@@ -230,6 +230,7 @@ function readmeFindings(text: string): readonly string[] {
             "CLOVING_CHANGED_PATHS",
             "CLOVING_TEST_CONCURRENCY",
             "CLOVING_TEST_COVERAGE",
+            "CLOVING_TEST_PROGRESS_FILE",
             "CLOVING_TEST_SET",
             "CLOVING_TEST_SHARD",
           ].includes(name),

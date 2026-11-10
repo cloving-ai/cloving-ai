@@ -79,6 +79,15 @@ export function steps(
   return job(workflow, name).steps;
 }
 
+export function runs(
+  workflow: ReleaseWorkflow,
+  name: keyof ReleaseWorkflow["jobs"],
+): readonly string[] {
+  return steps(workflow, name)
+    .map((step) => step.run)
+    .filter((run) => run !== undefined);
+}
+
 export function script(workflow: ReleaseWorkflow, id: string): string {
   const run = steps(workflow, "publish").find((step) => step.id === id)?.run;
   assert.ok(typeof run === "string", `Missing shell step: ${id}`);
@@ -90,15 +99,20 @@ test() {
   [[ "$*" == "-x /bin/zsh" ]] || exit 90
   return "$ZSH_STATUS"
 }
+curl() {
+  [[ "\${*:1:10}" == '--fail --silent --show-error --location --retry 2 --connect-timeout 20 --max-time 60' && "\${11}" == -o ]] || exit 94
+  printf 'curl %s %s\\n' "$(basename "\${12}")" "\${13}"
+  return "$CURL_STATUS"
+}
+sha256sum() {
+  [[ "$*" == '--check --strict --quiet' ]] || exit 96
+  printf 'sha256sum\\n'
+  cat > "$CHECK_FILE"
+  return "$CHECK_STATUS"
+}
 sudo() {
-  [[ "$1" == apt-get && "$2" == -o ]] || exit 91
-  source_list="\${3#Dir::Etc::sourcelist=}"
-  shift 3
-  [[ "$(cat "$source_list")" == 'deb [signed-by=/usr/share/keyrings/ubuntu-archive-keyring.gpg] https://archive.ubuntu.com/ubuntu noble main universe' ]] || exit 92
-  [[ "$*" == '-o Dir::Etc::sourceparts=- -o Acquire::https::Timeout=30 -o Acquire::Retries=2 '* ]] || exit 93
-  shift 6
-  printf '%s\\n' "$*"
-  if [[ "$1" == update ]]; then return "$UPDATE_STATUS"; fi
+  [[ "$1" == dpkg && "$2" == -i && $# == 4 ]] || exit 91
+  printf 'dpkg -i %s %s\\n' "$(basename "$3")" "$(basename "$4")"
   return "$INSTALL_STATUS"
 }
 `;
@@ -270,3 +284,16 @@ export async function releaseAttempt(scenario: ReleaseScenario = {}): Promise<{
     },
   );
 }
+
+export const gateRun = [
+  ': > "$CLOVING_TEST_PROGRESS_FILE"',
+  'tail -n +1 -f "$CLOVING_TEST_PROGRESS_FILE" &',
+  "progress=$!",
+  "trap 'kill \"$progress\"' EXIT",
+  "npm run check:quality",
+].join("\n");
+
+export const changedPathsRun = [
+  'git diff --name-only --no-renames -z HEAD^1 HEAD > "$RUNNER_TEMP/changed-paths"',
+  'echo "CLOVING_CHANGED_PATHS=$RUNNER_TEMP/changed-paths" >> "$GITHUB_ENV"',
+].join("\n");

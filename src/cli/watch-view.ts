@@ -10,7 +10,9 @@ import type { CardControls } from "./watch-card-view.ts";
 import type { PhoneControls } from "./watch-phone-view.ts";
 import {
   BackLink,
+  BannerBack,
   Header,
+  type BannerBackProps,
   Queue,
   RefusedWorkflows,
   type QueueControls,
@@ -46,13 +48,14 @@ import {
 } from "./watch-needs-view.ts";
 export type { ContinueControls } from "./watch-needs-view.ts";
 import { Today } from "./watch-today-view.ts";
-import { LoopsPanel, type LoopControls } from "./watch-loops-view.ts";
+import type { LoopControls } from "./watch-loops-view.ts";
 import type { ThemeControls } from "./watch-theme-view.ts";
-import { Events, Turn, PullRequest, Review } from "./watch-turn.ts";
+import { Events, PullRequest } from "./watch-turn.ts";
 import { RunDecisions, type DecisionControls } from "./watch-decision-view.ts";
 import { Commands } from "./command-effects.ts";
 import {
-  Transcript,
+  RunTurns,
+  TerminalPage,
   type TranscriptControls,
 } from "./watch-transcript-view.ts";
 export { PullRequest, Review } from "./watch-turn.ts";
@@ -84,7 +87,9 @@ export function BannerDetail(props: Timed): Shown {
   ];
 }
 
-export function Banner(props: Timed): Shown {
+export function Banner(
+  props: Timed & { readonly back: BannerBackProps },
+): Shown {
   const { run, now } = props;
   const { tone, icon, label } = runTone(run);
   const name = element("span", { class: "name", children: runName(run) });
@@ -95,35 +100,11 @@ export function Banner(props: Timed): Shown {
   return element("section", {
     class: `banner ${tone}`,
     children: [
+      component(BannerBack, props.back),
       element("span", { class: "icon", children: icon }),
       element("div", { children: words }),
     ],
   });
-}
-
-export function RunTurns(
-  props: Timed & {
-    readonly transcripts: TranscriptControls | undefined;
-    readonly turnId: string | null;
-  },
-): Shown {
-  const { run, now } = props;
-  if (run.turns.length === 0)
-    return element("p", {
-      class: "meta",
-      children: "No agent turn for this run.",
-    });
-  return run.turns.map((item, index) => [
-    component(Turn, { key: item.key, turn: item, now }),
-    component(Transcript, {
-      key: `transcript-${item.key}`,
-      run,
-      turn: item,
-      turnId: props.turnId,
-      controls: props.transcripts,
-    }),
-    component(Review, { key: `review-${item.key}`, run, round: index + 1 }),
-  ]);
 }
 
 export function Run(
@@ -135,6 +116,7 @@ export function Run(
     readonly renaming?: RenameControls | undefined;
     readonly transcripts?: TranscriptControls | undefined;
     readonly turnId?: string | null | undefined;
+    readonly back?: BannerBackProps | undefined;
   },
 ): Shown {
   const { run, now, copying } = props;
@@ -149,7 +131,7 @@ export function Run(
     `${run.code}: ${run.detail}`,
   ];
   return [
-    component(Banner, { run, now }),
+    component(Banner, { run, now, back: props.back ?? { workflowId: null } }),
     component(RunHeading, { run, renaming: props.renaming }),
     component(RunDecisions, { run, copying, now, deciding: props.deciding }),
     loopText(run) === ""
@@ -217,19 +199,24 @@ export function Page(props: PageProps): Shown {
     "The Cloving service does not answer. The page shows the last known records.";
   const down = model.service === "up" ? null : text("down", lost);
   const location = watchLocation(selected);
+  if (location.view === "terminal")
+    return component(TerminalPage, { ...props, model, location });
   if (location.runId !== null) {
     const run = model.runs.find((item) => item.runId === location.runId);
+    const back = {
+      workflowId: location.workflowId,
+      repository: location.repository,
+    };
     return [
       component(Header, { model, stale, queue: props.queue, theme }),
       down,
       component(Queue, { model, words }),
       component(RefusedWorkflows, { model }),
-      component(BackLink, {
-        workflowId: location.workflowId,
-        repository: location.repository,
-      }),
       run === undefined
-        ? text("meta", "This run is not available.")
+        ? [
+            component(BackLink, back),
+            text("meta", "This run is not available."),
+          ]
         : component(Run, {
             key: run.runId,
             run,
@@ -241,6 +228,7 @@ export function Page(props: PageProps): Shown {
             renaming: props.renaming,
             transcripts: props.transcripts,
             turnId: location.turnId,
+            back: { ...back, words },
           }),
     ];
   }
@@ -281,7 +269,13 @@ export function FloorPage(
           element("div", {
             class: "floor-main",
             children: [
-              component(Floor, { model, now, words, controlling }),
+              component(Floor, {
+                model,
+                now,
+                words,
+                controlling,
+                looping: props.loops,
+              }),
               component(NeedsYou, {
                 runs: model.runs,
                 now,
@@ -296,11 +290,6 @@ export function FloorPage(
             class: "side-panels",
             children: [
               component(Today, { model, words }),
-              component(LoopsPanel, {
-                loops: model.loops ?? [],
-                now,
-                controls: props.loops,
-              }),
               component(Queue, { model, words }),
               component(RefusedWorkflows, { model }),
             ],

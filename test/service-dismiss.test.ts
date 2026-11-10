@@ -154,3 +154,23 @@ await test("CLV-321 a dismiss request that is not valid, or that leaves no recei
     await authority.close();
   }
 });
+
+await test("CLV-338 the status of a run shows dismissed only after its dismissal", () =>
+  withQueueSpend(
+    async (scene) => {
+      const runId = await failedRun(scene, "shown");
+      const status = async () =>
+        record(
+          (
+            await call(scene.harness, {
+              operation: "status",
+              parameters: { runId },
+            })
+          )["run"],
+        );
+      assert.equal(Object.hasOwn((await status()) ?? {}, "dismissed"), false);
+      await dismissal(scene, { runId, commandId: "dismiss-shown" });
+      assert.equal((await status())?.["dismissed"], true);
+    },
+    { limitUsd: 1000 },
+  ));

@@ -140,7 +140,9 @@ export async function holdRecord(
     cutAt: () => saved.cutAt,
     note: async (hold) => {
       const reason =
-        hold?.reason === "working-lanes" ? undefined : hold?.reason;
+        hold?.reason === "load" || hold?.reason === "memory"
+          ? hold.reason
+          : undefined;
       if (open?.reason === reason) return seen();
       finish();
       if (reason !== undefined)

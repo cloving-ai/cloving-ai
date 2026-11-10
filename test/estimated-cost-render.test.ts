@@ -85,7 +85,11 @@ await test("CLV-133 watch cards and run totals and turns use estimates in their 
   assert.match(runHtml, /code-head">Agent turn · .*≈ 2\.20 USD \(estimate\)/);
   assert.match(runHtml, /Output tokens: 170<\/p>/);
   assert.doesNotMatch(runHtml, /Price not known/);
-  assert.equal(runHtml.match(/≈ 2\.20 USD \(estimate\)/g)?.length, 2);
+  assert.match(
+    runHtml,
+    /code-head">Turn 1 · .*≈ 2\.20 USD \(estimate\) <button/,
+  );
+  assert.equal(runHtml.match(/≈ 2\.20 USD \(estimate\)/g)?.length, 3);
 });
 
 await test("CLV-133 help and README describe dated built-in prices and model overrides", () => {

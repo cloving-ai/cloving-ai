@@ -42,6 +42,16 @@ export function Group(props: {
   });
 }
 
+export function turnHeading(
+  turn: WatchTurn,
+  shown: { readonly label: string; readonly now: string },
+): string {
+  const cost = priceText(turn.costUsd, turn.estimatedCostUsd);
+  return [shown.label, turn.outcome, turnTime(turn, shown.now), cost]
+    .filter((part) => part !== "")
+    .join(" · ");
+}
+
 export function Turn(props: {
   readonly turn: WatchTurn;
   readonly now: string;
@@ -49,8 +59,6 @@ export function Turn(props: {
   const { turn, now } = props;
   const groups = groupActivity(turn.activity);
   const working = turn.outcome === "in work";
-  const cost = priceText(turn.costUsd, turn.estimatedCostUsd);
-  const heading = ["Agent turn", turn.outcome, turnTime(turn, now), cost];
   const place = `Branch ${turn.branch} · work tree ${turn.worktree}`;
   const activity = groups.map((items, index) =>
     component(Group, { items, open: working && index === groups.length - 1 }),
@@ -60,7 +68,7 @@ export function Turn(props: {
     children: [
       element("h3", {
         class: "code-head",
-        children: heading.filter((part) => part !== "").join(" · "),
+        children: turnHeading(turn, { label: "Agent turn", now }),
       }),
       element("p", { class: "meta", children: place }),
       turn.harness === undefined
@@ -214,6 +222,7 @@ export function Review(props: {
 }
 
 export const turnFunctions = [
+  turnHeading,
   Item,
   Group,
   Turn,
