@@ -382,6 +382,7 @@
     "src/cli/watch-snapshot.ts": "cli",
     "src/cli/watch-steer-view.ts": "cli",
     "src/cli/watch-stream.ts": "cli",
+    "src/cli/watch-terminal-parts-view.ts": "cli",
     "src/cli/watch-terminal-view.ts": "cli",
     "src/cli/watch-theme-view.ts": "cli",
     "src/cli/watch-themes.ts": "cli",
