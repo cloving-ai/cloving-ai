@@ -6,7 +6,11 @@ import { codexStream } from "./codex-stream.ts";
 import { cursorStream } from "./cursor-stream.ts";
 import { opencodeStream } from "./opencode-stream.ts";
 import { textOutput } from "./text-output.ts";
-import { activityOutput, type LaterAttempt } from "./turn-activity.ts";
+import {
+  activityOutput,
+  recordPrompt,
+  type LaterAttempt,
+} from "./turn-activity.ts";
 import { grokUsageWarnings } from "../grok-result.ts";
 import { geminiStream } from "./gemini-stream.ts";
 import {
@@ -325,6 +329,7 @@ function signalTurn(
 }
 
 export function startTurn(start: TurnStart): StartedTurn {
+  recordPrompt(start);
   const { child, configuration, standardInput, launch } = spawnTurn(start);
   const refused = launch.refusal(child.stderr);
   const output = turnOutput(start, child);
