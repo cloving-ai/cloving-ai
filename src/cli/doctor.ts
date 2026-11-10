@@ -18,7 +18,10 @@ import type { TurnProfiles } from "../turn-profile.ts";
 import { harnessObservations } from "./doctor-harness.ts";
 import { retentionObservation } from "./doctor-retention.ts";
 import { themeObservation } from "./doctor-theme.ts";
-import { turnEnvironmentObservation } from "./doctor-turns.ts";
+import {
+  commitSignatureObservation,
+  turnEnvironmentObservation,
+} from "./doctor-turns.ts";
 import { turnRunnerObservation } from "./doctor-runners.ts";
 import { threadPoolObservation } from "./doctor-thread-pool.ts";
 import {
@@ -173,6 +176,7 @@ async function settingObservations(context: {
   return {
     "merge-mode": mergeModeObservation(environment["CLOVING_MERGE_MODE"]),
     "turn-environment": turnEnvironmentObservation(environment),
+    "commit-signatures": await commitSignatureObservation(context),
     "command-gh-no-login": commandLoginObservation(
       environment["CLOVING_COMMANDS"],
     ),

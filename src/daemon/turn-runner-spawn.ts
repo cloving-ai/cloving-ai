@@ -16,6 +16,11 @@ import {
   type RunnerPlaces,
   type TurnRunner,
 } from "../turn-runner.ts";
+import {
+  commitSignatureSettings,
+  withGitSettings,
+  type CommitSignatures,
+} from "../turn-environment.ts";
 
 export interface RunnerLaunch {
   readonly command: readonly string[];
@@ -104,6 +109,7 @@ export function runnerLaunch(
     readonly directory: string;
     readonly folder: string;
     readonly turnId?: string;
+    readonly commitSignatures?: CommitSignatures;
   },
   launch: {
     readonly command: readonly string[];
@@ -112,15 +118,19 @@ export function runnerLaunch(
   },
 ): RunnerLaunch {
   const { runner } = start;
+  const gitSettings = commitSignatureSettings(start.commitSignatures);
   if (runner === undefined || runner.kind === "host")
     return {
       command: launch.command,
-      environment: launch.environment,
+      environment: withGitSettings(launch.environment, gitSettings),
       refusal: () => () => undefined,
       release: () => Promise.resolve(),
     };
   const folder = mkdtempSync(join(start.folder, "runner-"));
-  const placed = places(start, { folder, environment: launch.environment });
+  const placed = {
+    ...places(start, { folder, environment: launch.environment }),
+    gitSettings,
+  };
   if (runner.kind === "seatbelt")
     writeFileSync(
       placed.settingsFile,
@@ -129,7 +139,10 @@ export function runnerLaunch(
     );
   const environment =
     runner.kind === "seatbelt"
-      ? { ...launch.environment, CLAUDE_CODE_TMPDIR: placed.temporary }
+      ? {
+          ...withGitSettings(launch.environment, gitSettings),
+          CLAUDE_CODE_TMPDIR: placed.temporary,
+        }
       : { ...launch.serviceEnvironment, ...launch.environment };
   return {
     command: runnerCommand(runner, { command: launch.command, places: placed }),

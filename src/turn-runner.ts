@@ -1,3 +1,5 @@
+import { gitSettingVariables, type GitSetting } from "./turn-environment.ts";
+
 export interface ContainerRunner {
   readonly kind: "container";
   readonly engine: string;
@@ -22,6 +24,7 @@ export interface RunnerPlaces {
   readonly name: string;
   readonly volume: string;
   readonly variables: readonly string[];
+  readonly gitSettings?: readonly GitSetting[];
 }
 
 function command(value: unknown): value is string {
@@ -85,11 +88,16 @@ const hostOnlyVariables = [
   "XDG_STATE_HOME",
 ];
 
-const gitSettings = [
-  "GIT_CONFIG_COUNT=1",
-  "GIT_CONFIG_KEY_0=safe.directory",
-  "GIT_CONFIG_VALUE_0=*",
-];
+const runnerGitSettings: readonly GitSetting[] = [["safe.directory", "*"]];
+
+function gitArguments(places: RunnerPlaces): readonly string[] {
+  return Object.entries(
+    gitSettingVariables(
+      [...runnerGitSettings, ...(places.gitSettings ?? [])],
+      0,
+    ),
+  ).map(([name, value]) => `${name}=${value}`);
+}
 
 function probed(
   command: readonly string[],
@@ -137,7 +145,7 @@ function containerCommand(
     "-w",
     places.directory,
     ...[
-      ...gitSettings,
+      ...gitArguments(places),
       ...places.variables.filter((name) => !hostOnlyVariables.includes(name)),
     ].flatMap((variable) => ["-e", variable]),
     runner.image,

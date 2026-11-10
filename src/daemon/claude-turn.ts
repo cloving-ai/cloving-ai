@@ -30,6 +30,7 @@ import { runnerLaunch, type RunnerLaunch } from "./turn-runner-spawn.ts";
 import {
   githubTokens,
   passedVariables,
+  type CommitSignatures,
   type TurnVariables,
 } from "../turn-environment.ts";
 
@@ -52,6 +53,7 @@ export interface TurnStart {
   readonly turnId?: string;
   readonly environment?: Readonly<Record<string, string>>;
   readonly variables?: TurnVariables;
+  readonly commitSignatures?: CommitSignatures;
   readonly runner?: TurnRunner;
   readonly command: readonly string[];
   readonly directory: string;

@@ -20,6 +20,7 @@ export const doctorCodes = [
   "queue-interval",
   "private-texts",
   "turn-environment",
+  "commit-signatures",
   "turn-runners",
   "command-gh-no-login",
   "retention",
@@ -70,6 +71,8 @@ export const doctorFixes: Readonly<Record<DoctorCode, string>> = {
     "Set an interval from 10 to 3600: CLOVING_QUEUE_SECONDS=30 cloving doctor",
   "private-texts": `Set a nonblank private text: CLOVING_PRIVATE_TEXTS='["TEXT TO KEEP PRIVATE"]' cloving doctor`,
   "turn-environment": `Give a turn a variable that the project needs: cloving config set turns.environment '["NAME"]' --private`,
+  "commit-signatures":
+    "Let turns commit with no signature: cloving config set turns.commitSignatures off --private. Or give turns the SSH agent: add SSH_AUTH_SOCK to turns.environment.",
   "turn-runners":
     "Install the engine or the sandbox runtime of each profile runner, or set runner.kind to host",
   "command-gh-no-login":
@@ -106,6 +109,7 @@ export function requiredDoctorCodes(
     "settings-files",
     "no-workflow",
     "runtime-directory",
+    "commit-signatures",
   ]);
   if (workflows.some((workflow) => workflow.capabilities.includes("github"))) {
     codes.add("gh-login");
