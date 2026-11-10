@@ -346,23 +346,33 @@ async function launchEnding(
 
 async function sameSignalled(
   launch: TurnLaunch,
-  name: NodeJS.Signals,
+  request: { readonly name: NodeJS.Signals; readonly watching: AbortSignal },
 ): Promise<void> {
-  if ((await processMatch(launch)) === "same")
-    signalGroup(launch.processId, name);
+  for (;;) {
+    const match = await processMatch(launch);
+    if (match === "same") signalGroup(launch.processId, request.name);
+    if (match !== "unknown") return;
+    await delay(intervals.process, undefined, { signal: request.watching });
+  }
 }
 
 export function attachedTurn(
   start: FollowStart,
   launch: TurnLaunch,
 ): FollowedTurn {
+  const watching = new AbortController();
   return followed(start, {
     processId: launch.processId,
     launch: Promise.resolve(launch),
     files: launch,
-    ending: (signal) => launchEnding(launch, signal),
+    ending: (signal) =>
+      launchEnding(launch, signal).finally(() => {
+        watching.abort();
+      }),
     signal: (name) => {
-      sameSignalled(launch, name).catch(() => undefined);
+      sameSignalled(launch, { name, watching: watching.signal }).catch(
+        () => undefined,
+      );
     },
   });
 }

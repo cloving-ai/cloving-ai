@@ -59,17 +59,17 @@ async function launchOf(turn: {
   return launch;
 }
 
-async function withFailedProcessList(
+async function withFailedProcessList<Used>(
   folder: string,
-  use: () => Promise<void>,
-): Promise<void> {
+  use: () => Promise<Used>,
+): Promise<Used> {
   const tools = join(folder, "tools");
   mkdirSync(tools);
   writeFileSync(join(tools, "ps"), "#!/bin/sh\nexit 2\n", { mode: 0o700 });
   const path = process.env["PATH"] ?? "";
   process.env["PATH"] = `${tools}:${path}`;
   try {
-    await use();
+    return await use();
   } finally {
     process.env["PATH"] = path;
   }
@@ -211,5 +211,22 @@ await test("CLV-337 an attached turn waits and sends no signal while the identit
       assert.equal((await kept.ended).exitCode, 3);
     });
     await killed(launch.processId);
+    await turn.ended;
+  }));
+
+await test("CLV-337 an attached turn keeps its stop request while the identity of its live process cannot be read, then sends it", () =>
+  withFolder(async (folder) => {
+    const turn = started(folder, holding);
+    const launch = await launchOf(turn);
+    const kept = await withFailedProcessList(folder, async () => {
+      const attached = attachedTurn({ command: ["fake"] }, launch);
+      attached.stop(1500);
+      await delay(400);
+      assert.equal(existsSync(join(folder, "terminated")), false);
+      return attached;
+    });
+    await until(() => existsSync(join(folder, "terminated")));
+    assert.equal((await kept.ended).exitCode, null);
+    assert.equal(processExists(launch.processId), false);
     await turn.ended;
   }));
