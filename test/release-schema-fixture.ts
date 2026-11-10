@@ -15,7 +15,7 @@ export interface WorkflowStep {
 
 interface WorkflowStrategy {
   readonly "fail-fast": boolean;
-  readonly matrix: Readonly<Record<string, readonly string[]>>;
+  readonly matrix: Readonly<Record<string, readonly string[] | string>>;
 }
 
 export interface WorkflowJob {
@@ -92,6 +92,10 @@ function isCommand(value: unknown): value is Command {
   return Array.isArray(value) && value.every(isString);
 }
 
+function isMatrixValues(value: unknown): value is Command | string {
+  return isString(value) || isCommand(value);
+}
+
 function isTriggerFilter(value: unknown): value is TriggerFilter {
   return isRecordOf(value, isCommand);
 }
@@ -117,7 +121,7 @@ function isStrategy(value: unknown): value is WorkflowStrategy {
   return (
     isRecord(value) &&
     typeof value["fail-fast"] === "boolean" &&
-    isRecordOf(value["matrix"], isCommand)
+    isRecordOf(value["matrix"], isMatrixValues)
   );
 }
 

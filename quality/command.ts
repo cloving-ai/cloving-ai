@@ -9,6 +9,14 @@ export function parseTestCoverage(value: string | undefined): "on" | "off" {
   throw new Error("CLOVING_TEST_COVERAGE must be on or off");
 }
 
+export type TestSet = "all" | "platform";
+
+export function parseTestSet(value: string | undefined): TestSet {
+  if (value === undefined || value === "all") return "all";
+  if (value === "platform") return "platform";
+  throw new Error("CLOVING_TEST_SET must be all or platform");
+}
+
 export function parseTestShard(
   value: string | undefined,
 ): TestShard | undefined {

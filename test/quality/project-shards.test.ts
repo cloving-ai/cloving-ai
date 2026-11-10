@@ -2,7 +2,11 @@ import assert from "node:assert/strict";
 import { join, resolve } from "node:path";
 import { test } from "node:test";
 import { format } from "prettier";
-import { checkProject, requiredChecks } from "../../quality/project.ts";
+import {
+  checkProject,
+  checkProjectTestShard,
+  requiredChecks,
+} from "../../quality/project.ts";
 import { withFiles } from "./files-fixture.ts";
 
 for (const shard of ["1/2", "2/2"]) {
@@ -56,3 +60,42 @@ for (const shard of ["1/2", "2/2"]) {
     });
   });
 }
+
+await test("the platform set runs only the listed tests of its shard", async () => {
+  const passing =
+    'import assert from "node:assert/strict"; import { test } from "node:test"; import { value } from "./main.ts"; await test("value", () => { assert.equal(value, 1); });';
+  const files = {
+    "package.json": '{"type":"module"}',
+    "main.ts": "export const value = 1;\n",
+    "a.test.ts": passing.replace("value, 1", "value, 2"),
+    "b.test.ts": passing,
+    "c.test.ts": passing.replace("value, 1", "value, 3"),
+    "quality/platform-tests.json": '["b.test.ts"]',
+  };
+  await withFiles(files, async (directory) => {
+    const options = {
+      shard: "1/1",
+      coverage: "off",
+      architecture: {
+        roles: {
+          [join(directory, "main.ts")]: "pure",
+          [join(directory, "a.test.ts")]: "test",
+          [join(directory, "b.test.ts")]: "test",
+          [join(directory, "c.test.ts")]: "test",
+        },
+        allowed: {},
+        forbiddenReachability: {},
+      },
+      stepExports: {},
+    } as const;
+    const result = await checkProjectTestShard(directory, {
+      ...options,
+      testSet: "platform",
+    });
+    assert.deepEqual(result.completed, ["tests"]);
+    await assert.rejects(
+      checkProjectTestShard(directory, { ...options, testSet: "all" }),
+      /test-report-failure/,
+    );
+  });
+});
