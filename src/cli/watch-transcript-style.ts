@@ -29,7 +29,7 @@ export const transcriptStyle = `
 .transcript-lines .tool-result, .transcript-lines .detail { padding-left: 2ch; color: var(--color-terminal-dim); }
 .transcript-lines .gutter { flex: none; width: 3ch; }
 .transcript-lines details.tool-result { display: block; }
-.transcript-lines details.tool-result > summary { display: flex; }
+.transcript-lines details.tool-result > summary { display: flex; color: inherit; }
 .transcript-lines details.tool-result > .output { margin: 2px 0 0 3ch; }
 .transcript-lines .output summary, .transcript-lines .entry.notice, .transcript-lines .entry.result { color: var(--color-terminal-dim); }
 .transcript-lines .tool-result.error, .transcript-lines .entry.error, .transcript-lines .removed { color: var(--color-terminal-red); }

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { test } from "node:test";
-import { component } from "../src/cli/watch-element.ts";
+import { component, type Shown } from "../src/cli/watch-element.ts";
 import type { WatchTurn } from "../src/cli/watch-render.ts";
 import {
   RunTurns,
@@ -42,9 +42,7 @@ const run = sampleRun({
   feedback: [{ decisionId: "run-1/review-1", text: "Fix the name." }],
 });
 
-function tabbed(
-  transcripts: TranscriptControls | undefined,
-): ReturnType<typeof component> {
+function tabbed(transcripts: TranscriptControls | undefined): Shown {
   return component(RunTurns, {
     run,
     now: at("21:40:00"),
@@ -63,13 +61,13 @@ function controls(tab: RunTab, chosen: RunTab[]): TranscriptControls {
   };
 }
 
-function panels(shown: unknown): readonly (readonly unknown[])[] {
+function panels(shown: Shown) {
   return found(shown, "div")
     .filter((node) => node["role"] === "tabpanel")
     .map((node) => [node["id"], node["aria-labelledby"], node["hidden"]]);
 }
 
-function tabs(shown: unknown): readonly Record<string, unknown>[] {
+function tabs(shown: Shown) {
   return found(shown, "button").filter((node) => node["role"] === "tab");
 }
 
@@ -209,7 +207,7 @@ console.log(JSON.stringify({ first, clicked, refreshed, linked: tabs() }));
   });
 });
 
-await test("CLV-341 the tabs underline the selected tab, and a folded tool output shows its fold line as one row and opens under the gutter", () => {
+await test("CLV-341 the tabs underline the selected tab, and a folded tool output shows its fold line as one row in the color of its result and opens under the gutter", () => {
   assert.match(
     rule(".run-tabs"),
     /display: flex;.*border-bottom: var\(--shape-border\) solid var\(--color-line\)/,
@@ -222,7 +220,7 @@ await test("CLV-341 the tabs underline the selected tab, and a folded tool outpu
   assert.match(rule(".transcript-lines details.tool-result"), /display: block/);
   assert.match(
     rule(".transcript-lines details.tool-result > summary"),
-    /display: flex/,
+    /display: flex; color: inherit/,
   );
   assert.match(
     rule(".transcript-lines details.tool-result > .output"),

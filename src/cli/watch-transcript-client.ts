@@ -163,10 +163,9 @@ function transcriptsFollowed(selected) {
   }
   const { turnId } = watchLocation(selected);
   if (turnId === null || turnId === undefined) { state.turnShown = null; state.turnTabbed = null; return; }
-  if (state.turnTabbed !== selected) {
-    state.turnTabbed = selected;
-    if (transcriptTab !== "transcript") { transcriptTab = "transcript"; transcriptRedraw(); return; }
-  }
+  const linked = state.turnTabbed !== selected;
+  state.turnTabbed = selected;
+  if (linked && transcriptTab !== "transcript") { transcriptTab = "transcript"; transcriptRedraw(); return; }
   if (state.turnShown === selected) return;
   const section = [...(document.querySelectorAll?.("[data-turn]") ?? [])].find((node) => node.getAttribute("data-turn") === turnId);
   if (section === undefined) return;
