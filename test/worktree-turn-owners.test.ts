@@ -114,20 +114,28 @@ await test("CLV-346 when two turns run in one work tree, the end of the first st
 
 function stubbornLeftover(directory: string): {
   readonly process: ChildProcess;
+  readonly ready: () => boolean;
   readonly terminated: () => boolean;
 } {
   const file = join(directory, "term-seen");
+  const readyFile = join(directory, "term-ready");
   const leftover = spawn(
     process.execPath,
     [
       "-e",
-      `process.on("SIGTERM", () => require("node:fs").writeFileSync(${JSON.stringify(file)}, "seen"));
+      `const fs = require("node:fs");
+process.on("SIGTERM", () => fs.writeFileSync(${JSON.stringify(file)}, "seen"));
+fs.writeFileSync(${JSON.stringify(readyFile)}, "ready");
 setInterval(() => undefined, 1000);`,
     ],
     { cwd: directory, detached: true, stdio: "ignore" },
   );
   leftover.unref();
-  return { process: leftover, terminated: () => existsSync(file) };
+  return {
+    process: leftover,
+    ready: () => existsSync(readyFile),
+    terminated: () => existsSync(file),
+  };
 }
 
 await test("CLV-346 a turn that starts in the work tree during the grace period of a cleanup is kept", async () => {
@@ -138,7 +146,7 @@ await test("CLV-346 a turn that starts in the work tree during the grace period 
   const turns: { root: number; child: () => number }[] = [];
   const ended: (() => void)[] = [];
   try {
-    await until(() => alive(leftoverId));
+    await until(() => leftover.ready());
     const cleanup = stopLeftProcesses({
       directory,
       runId: "run-a",
