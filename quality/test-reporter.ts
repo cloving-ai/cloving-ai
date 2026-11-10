@@ -1,4 +1,5 @@
-import { resolve } from "node:path";
+import { appendFileSync } from "node:fs";
+import { relative, resolve } from "node:path";
 import { inspect } from "node:util";
 import type { TestEvent } from "node:test/reporters";
 import type { CoverageRow } from "./coverage.ts";
@@ -224,6 +225,31 @@ function failureOutput(
     stderr: fileStderr(output.stderr, event.data),
   });
   return true;
+}
+
+function progressLine(event: TestEvent): string | undefined {
+  if (event.type !== "test:dequeue" && event.type !== "test:complete")
+    return undefined;
+  const { name, file } = event.data;
+  if (file === undefined || resolve(name) !== resolve(file)) return undefined;
+  const path = relative(process.cwd(), file);
+  if (event.type === "test:dequeue") return `start ${path}`;
+  return `end ${path} ${(event.data.details.duration_ms / 1000).toFixed(1)} s`;
+}
+
+function writeProgress(event: TestEvent, progressFile: string): void {
+  const line = progressLine(event);
+  if (line !== undefined) appendFileSync(progressFile, `${line}\n`);
+}
+
+export async function* withProgress(
+  source: AsyncIterable<TestEvent>,
+  progressFile: string,
+): AsyncGenerator<TestEvent> {
+  for await (const event of source) {
+    writeProgress(event, progressFile);
+    yield event;
+  }
 }
 
 export default async function* reportTests(

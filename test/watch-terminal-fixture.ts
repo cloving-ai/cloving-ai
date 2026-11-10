@@ -15,7 +15,10 @@ export function terminal(...entries: readonly TranscriptEntry[]): string {
       run: { runId: "run-1", turns: [turn] },
       turn,
       turnId: null,
+      now: turn.startedAt,
       controls: {
+        tab: "transcript",
+        onTab: () => undefined,
         view: () => ({
           shown: true,
           entries,
