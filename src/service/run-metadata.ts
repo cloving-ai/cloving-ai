@@ -58,6 +58,19 @@ export async function ticketMetadataPage(
   });
 }
 
+export async function dismissalOf(
+  context: ServiceContext,
+  runId: string,
+): Promise<Fields> {
+  const page = await context.authority.queries.eventsAfter({
+    after: 0,
+    limit: 1,
+    runId,
+    type: "run.dismissed",
+  });
+  return page.events.length === 0 ? {} : { dismissed: true };
+}
+
 export async function outcomeOf(
   context: ServiceContext,
   view: Pick<RunView, "state" | "runId" | "latestSequence">,

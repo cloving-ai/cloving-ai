@@ -1,9 +1,16 @@
+import {
+  decisionAlert,
+  runAlert,
+  stoppedScheduleAlert,
+  type Alert,
+} from "../alert-selection.ts";
 import { operationalDecision } from "../decision-visibility.ts";
 import { decisionLines, runStatus } from "../cli/render.ts";
-import { record, type Fields } from "../protocol.ts";
+import type { Fields } from "../protocol.ts";
 
 export interface Notification {
-  readonly event: "decision" | "blocked" | "failed" | "schedule-stopped";
+  readonly event:
+    "decision" | "paused" | "blocked" | "failed" | "schedule-stopped";
   readonly runId: string;
   readonly workflowId: string;
   readonly subject: string;
@@ -39,10 +46,8 @@ function message(
   };
 }
 
-export function decisionNotification(
-  run: Fields,
-  decision: Fields,
-): NotifyEvent {
+function decisionEvent(alert: Extract<Alert, { kind: "decision" }>) {
+  const { run, decision } = alert;
   const lines = decisionLines(
     operationalDecision(decision, String(run["workflowId"])),
   );
@@ -50,7 +55,7 @@ export function decisionNotification(
   const count = Array.isArray(allowed) ? allowed.length : 0;
   const split = lines.length - count;
   return {
-    key: `decision:${String(decision["decisionId"])}`,
+    key: alert.key,
     message: message(run, {
       event: "decision",
       body: body(lines.slice(0, split).join("\n"), lines.slice(split)),
@@ -58,65 +63,59 @@ export function decisionNotification(
   };
 }
 
-export function outcomeNotification(run: Fields): NotifyEvent | undefined {
-  const outcome = record(run["outcome"]);
-  const blocked =
-    run["state"] === "completed" && outcome?.["kind"] === "blocked";
-  if (!blocked && run["state"] !== "failed") return undefined;
-  const event = blocked ? "blocked" : "failed";
-  const wanted = blocked ? "Outcome:" : "Reason:";
-  const line = runStatus({ run }).find((text) => text.startsWith(wanted));
+function scheduleEvent(alert: Extract<Alert, { kind: "schedule-stopped" }>) {
+  const { workflowId, failedRunIds } = alert;
   return {
-    key: `${event}:${String(run["runId"])}`,
-    message: message(run, {
-      event,
-      body: body(String(line), [`cloving status ${String(run["runId"])}`]),
+    key: alert.key,
+    message: {
+      ...message(
+        { workflowId, runId: failedRunIds[2] },
+        {
+          event: "schedule-stopped",
+          body: body(
+            `Schedule stopped after three failed runs:\n${failedRunIds.join("\n")}`,
+            [`cloving schedule resume ${workflowId}`],
+          ),
+        },
+      ),
+      failedRunIds,
+    },
+  };
+}
+
+export function notifyEvent(alert: Alert): NotifyEvent {
+  if (alert.kind === "decision") return decisionEvent(alert);
+  if (alert.kind === "schedule-stopped") return scheduleEvent(alert);
+  const wanted = alert.kind === "blocked" ? "Outcome:" : "Reason:";
+  const line = runStatus({ run: alert.run }).find((text) =>
+    text.startsWith(wanted),
+  );
+  return {
+    key: alert.key,
+    message: message(alert.run, {
+      event: alert.kind,
+      body: body(String(line), [
+        `cloving status ${String(alert.run["runId"])}`,
+      ]),
     }),
   };
+}
+
+export function decisionNotification(
+  run: Fields,
+  decision: Fields,
+): NotifyEvent {
+  return notifyEvent(decisionAlert(run, decision));
+}
+
+export function outcomeNotification(run: Fields): NotifyEvent | undefined {
+  const alert = runAlert(run);
+  return alert === undefined ? undefined : notifyEvent(alert);
 }
 
 export function stoppedScheduleNotification(
   schedule: Fields,
 ): NotifyEvent | undefined {
-  if (schedule["state"] !== "stopped") return undefined;
-  const failedRunIds = schedule["failedRunIds"];
-  if (!Array.isArray(failedRunIds) || failedRunIds.length !== 3)
-    throw new Error("invalid-stopped-schedule");
-  const ids = failedRunIds.map((runId: unknown) => String(runId));
-  const workflowId = String(schedule["workflowId"]);
-  return {
-    key: `schedule-stopped:${workflowId}:${String(schedule["stoppedSlot"])}`,
-    message: {
-      ...message(
-        { workflowId, runId: ids[2] },
-        {
-          event: "schedule-stopped",
-          body: body(
-            `Schedule stopped after three failed runs:\n${ids.join("\n")}`,
-            [`cloving schedule resume ${workflowId}`],
-          ),
-        },
-      ),
-      failedRunIds: ids,
-    },
-  };
-}
-
-export function scheduleStopNotifications(
-  schedule: Fields,
-): readonly NotifyEvent[] {
-  const stops = schedule["stops"];
-  if (stops === undefined) {
-    const event = stoppedScheduleNotification(schedule);
-    return event === undefined ? [] : [event];
-  }
-  if (!Array.isArray(stops)) throw new Error("invalid-stopped-schedule");
-  return stops.flatMap((stop: unknown) => {
-    const event = stoppedScheduleNotification({
-      ...record(stop),
-      workflowId: schedule["workflowId"],
-      state: "stopped",
-    });
-    return event === undefined ? [] : [event];
-  });
+  const alert = stoppedScheduleAlert(schedule);
+  return alert === undefined ? undefined : notifyEvent(alert);
 }
