@@ -1,11 +1,24 @@
 import assert from "node:assert/strict";
 import childProcess, { execFileSync } from "node:child_process";
 import { syncBuiltinESMExports } from "node:module";
-import { test } from "node:test";
+import { mock, test } from "node:test";
 import timers from "node:timers/promises";
 import { until } from "./claude-worker-fixture.ts";
 import { testMilliseconds } from "./test-timing.ts";
 import { withConsumer } from "./world-host-fixture.ts";
+
+function recorded<
+  Call extends readonly Parameters<typeof childProcess.spawn>[number][],
+  Result,
+>(
+  original: (...given: Call) => Result,
+  record: (given: Call) => void,
+): (...given: Call) => Result {
+  return (...given) => {
+    record(given);
+    return original(...given);
+  };
+}
 
 await test("CLV-196 worker report waits honor the scaled deadline", async () => {
   const previous = process.env["CLOVING_CHECK_TIME_FACTOR"];
@@ -142,19 +155,17 @@ await test("CLV-147 shared authority timings scale every duration with the check
 
 await test("CLV-147 a scaled workflow scenario can finish after the unscaled child timeout", async () => {
   const previous = process.env["CLOVING_CHECK_TIME_FACTOR"];
-  const spawn = childProcess.spawn;
-  const timeouts: unknown[] = [];
-  Object.defineProperty(childProcess, "spawn", {
-    configurable: true,
-    writable: true,
-    value: (...given: readonly unknown[]): unknown => {
+  const timeouts: [string | undefined, number | undefined][] = [];
+  mock.method(
+    childProcess,
+    "spawn",
+    recorded(childProcess.spawn, (given) => {
       timeouts.push([
         process.env["CLOVING_CHECK_TIME_FACTOR"],
-        Reflect.get(Object(given[2]), "timeout"),
+        given[2].timeout,
       ]);
-      return Reflect.apply(spawn, childProcess, given);
-    },
-  });
+    }),
+  );
   syncBuiltinESMExports();
   try {
     for (const factor of ["1", "3"]) {
@@ -173,7 +184,7 @@ await test("CLV-147 a scaled workflow scenario can finish after the unscaled chi
       ['["1",45000]', '["3",135000]'],
     );
   } finally {
-    childProcess.spawn = spawn;
+    mock.restoreAll();
     syncBuiltinESMExports();
     if (previous === undefined) delete process.env["CLOVING_CHECK_TIME_FACTOR"];
     else process.env["CLOVING_CHECK_TIME_FACTOR"] = previous;
