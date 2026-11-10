@@ -45,7 +45,7 @@ function controls(
     messages: {},
     asking: null,
     onCommand: (runId, command) => calls.push(`${command} ${runId}`),
-    onAsk: (runId) => calls.push(`ask ${runId}`),
+    onAsk: (runId, place) => calls.push(`ask ${runId} ${place}`),
     onKeep: () => calls.push("keep"),
     ...changes,
   };
@@ -121,7 +121,11 @@ await test("CLV-335 the run detail of an active run has Pause or Resume and Drop
   click(page("run=run-a", controlling), "Pause");
   click(page("run=paused-run", controlling), "Resume");
   click(page("run=run-a", controlling), "Drop");
-  assert.deepEqual(calls, ["pause run-a", "resume paused-run", "ask run-a"]);
+  assert.deepEqual(calls, [
+    "pause run-a",
+    "resume paused-run",
+    "ask run-a detail",
+  ]);
   const busy = found(
     page("run=run-a", controls(calls, { busy: ["run-a"] })),
     "button",
@@ -137,8 +141,8 @@ await test("CLV-335 the run detail of an active run has Pause or Resume and Drop
 await test("CLV-335 Drop asks a second click in one line with Drop the run and Keep it, and the control shows the reply of the service", () => {
   const calls: string[] = [];
   const asking = controls(calls, {
-    asking: "run-a",
-    messages: { "run-a": "Paused" },
+    asking: { runId: "run-a", place: "detail" },
+    messages: { "run-a": { command: "pause", text: "Paused" } },
   });
   const shown = page("run=run-a", asking);
   assert.match(
@@ -197,4 +201,75 @@ await test("CLV-335 each card of an active run and each station token has the co
     [["Resume", "Drop"], []],
   );
   assert.doesNotMatch(rendered(page("", undefined)), /run-command|run-menu/);
+});
+
+function copies(node: unknown): readonly unknown[][] {
+  return found(node, "div")
+    .filter((item) => item["class"] === "run-command")
+    .map((item) => [item["data-run"], item["data-place"], ...inside(item)]);
+}
+
+await test("CLV-335 each copy of the controls names its place, and only the copy that the person pressed asks the second click of Drop", () => {
+  const calls: string[] = [];
+  const floor = page("", controls(calls));
+  assert.deepEqual(copies(floor).toSorted(), [
+    ["paused-run", "need", "Resume", "Drop"],
+    ["paused-run", "token", "Resume", "Drop"],
+    ["run-a", "token", "Pause", "Drop"],
+  ]);
+  const need = found(floor, "div").find(
+    (item) => item["data-place"] === "need",
+  );
+  click(need?.["children"], "Drop");
+  click(page("workflow=develop-issue", controls(calls)), "Drop");
+  assert.deepEqual(calls, ["ask paused-run need", "ask run-a card"]);
+  const asking = controls(calls, {
+    asking: { runId: "paused-run", place: "need" },
+  });
+  assert.deepEqual(copies(page("", asking)).toSorted(), [
+    ["paused-run", "need", "Drop the run", "Keep it"],
+    ["paused-run", "token", "Resume", "Drop"],
+    ["run-a", "token", "Pause", "Drop"],
+  ]);
+});
+
+await test("CLV-335 the reply of Drop stays in view after the run ends: the run detail shows it with no control, the board and the floor show it in one line, and an older reply of Pause or Resume does not show for an ended run", () => {
+  const dropped = floorModel([
+    floorRun("dropped-run", {
+      operation: "claude-turn",
+      minutes: 5,
+      state: "cancelled",
+    }),
+  ]);
+  const controlling = controls([], {
+    messages: {
+      "dropped-run": { command: "drop", text: "Dropped" },
+      "failed-run": { command: "resume", text: "Resumed" },
+    },
+  });
+  const shown = (selected: string, shownModel = dropped) =>
+    rendered(
+      component(Page, {
+        model: shownModel,
+        selected,
+        now: shownModel.updatedAt,
+        stale: false,
+        copying: noCopy,
+        controlling,
+      }),
+    );
+  const reply = (text: string) =>
+    `<p class="run-command-message" role="status">${text}</p>`;
+  const lines = (html: string) =>
+    html.match(/<p class="run-command-message" role="status">[^<]*<\/p>/g);
+  assert.deepEqual(lines(shown("run=dropped-run")), [reply("Dropped")]);
+  assert.doesNotMatch(shown("run=dropped-run"), /class="run-command"/);
+  for (const selected of ["workflow=develop-issue", ""])
+    assert.deepEqual(
+      lines(shown(selected)),
+      [reply("Title of dropped-run: Dropped")],
+      selected,
+    );
+  for (const selected of ["run=failed-run", "workflow=develop-issue", ""])
+    assert.doesNotMatch(shown(selected, model), /run-command-message/);
 });

@@ -243,6 +243,7 @@ export function Need(props: {
           paused
             ? component(RunCommandAction, {
                 runId: need.runId,
+                place: "need",
                 paused,
                 controlling: props.controlling,
               })

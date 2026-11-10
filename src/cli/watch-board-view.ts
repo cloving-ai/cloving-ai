@@ -1,6 +1,7 @@
 import { NoteMark, type SteerControls } from "./watch-steer-view.ts";
 import {
   CardActions,
+  RunCommandReplies,
   type RunCommandControls,
 } from "./watch-run-command-view.ts";
 import { loopText, scheduleStatusLine } from "./schedule-render.ts";
@@ -346,6 +347,12 @@ export function Board(props: {
             class: "meta",
             children: scheduleStatusLine(workflow.schedule, "watch"),
           }),
+      component(RunCommandReplies, {
+        runs: workflow.columns
+          .flatMap((column) => column.cards)
+          .filter((card) => card.endedAt !== null),
+        controlling: props.controlling,
+      }),
       element("div", {
         class: "columns",
         children: workflow.columns.map((column, index) =>

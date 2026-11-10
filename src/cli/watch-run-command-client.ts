@@ -5,14 +5,14 @@ function runCommandMessage(reply) {
   if (reply.error) return reply.error.code + ": " + reply.error.detail;
   return runCommandWords[reply.command] ?? "";
 }
-function runCommandFocus(runId, name) {
+function runCommandFocus(asking, name) {
   draw();
-  document.querySelector('.run-command[data-run="' + runId + '"] .' + name)?.focus();
+  document.querySelector('.run-command[data-run="' + asking.runId + '"][data-place="' + asking.place + '"] .' + name)?.focus();
 }
 function runCommandSent(control, runId) {
-  const kept = state.runCommandSent[control];
-  if (kept !== undefined) return kept;
   const expectedRevision = state.model?.runs.find((run) => run.runId === runId)?.revision;
+  const kept = state.runCommandSent[control];
+  if (kept !== undefined && kept.expectedRevision === expectedRevision) return kept;
   return { runId, expectedRevision, commandId: crypto.randomUUID() };
 }
 async function runCommandPost(runId, command) {
@@ -41,7 +41,7 @@ async function runCommandPost(runId, command) {
     message = "The watch tool does not answer. Click again to send the same command.";
   }
   state.runCommandBusy = state.runCommandBusy.filter((busy) => busy !== runId);
-  state.runCommandMessages = { ...state.runCommandMessages, [runId]: message };
+  state.runCommandMessages = { ...state.runCommandMessages, [runId]: { command, text: message } };
   await load();
 }
 function runCommandControls() {
@@ -51,14 +51,14 @@ function runCommandControls() {
     messages: state.runCommandMessages,
     asking: state.runCommandAsking,
     onCommand: runCommandPost,
-    onAsk(runId) {
-      state.runCommandAsking = runId;
-      runCommandFocus(runId, "drop-keep");
+    onAsk(runId, place) {
+      state.runCommandAsking = { runId, place };
+      runCommandFocus(state.runCommandAsking, "drop-keep");
     },
     onKeep() {
-      const runId = state.runCommandAsking;
+      const asking = state.runCommandAsking;
       state.runCommandAsking = null;
-      runCommandFocus(runId, "run-command-drop");
+      runCommandFocus(asking, "run-command-drop");
     },
   };
 }

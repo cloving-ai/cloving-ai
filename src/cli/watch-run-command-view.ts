@@ -7,17 +7,28 @@ import {
   type SteerControls,
 } from "./watch-steer-view.ts";
 
+export type RunCommandPlace = "detail" | "card" | "token" | "need";
+
+export interface RunCommandReply {
+  readonly command: RunCommand;
+  readonly text: string;
+}
+
 export interface RunCommandControls {
   readonly busy: readonly string[];
-  readonly messages: Readonly<Record<string, string>>;
-  readonly asking: string | null;
+  readonly messages: Readonly<Record<string, RunCommandReply>>;
+  readonly asking: {
+    readonly runId: string;
+    readonly place: RunCommandPlace;
+  } | null;
   readonly onCommand: (runId: string, command: RunCommand) => void;
-  readonly onAsk: (runId: string) => void;
+  readonly onAsk: (runId: string, place: RunCommandPlace) => void;
   readonly onKeep: () => void;
 }
 
 interface RunCommandProps {
   readonly runId: string;
+  readonly place: RunCommandPlace;
   readonly paused: boolean;
   readonly controlling: RunCommandControls | undefined;
 }
@@ -25,7 +36,7 @@ interface RunCommandProps {
 export function RunCommandButtons(
   props: RunCommandProps & { readonly controlling: RunCommandControls },
 ): Shown {
-  const { runId, paused, controlling } = props;
+  const { runId, place, paused, controlling } = props;
   const busy = controlling.busy.includes(runId) ? { disabled: true } : {};
   const command = paused ? "resume" : "pause";
   return [
@@ -43,7 +54,7 @@ export function RunCommandButtons(
       class: "run-command-drop",
       ...busy,
       onClick: () => {
-        controlling.onAsk(runId);
+        controlling.onAsk(runId, place);
       },
       children: "Drop",
     }),
@@ -82,24 +93,38 @@ export function DropQuestion(props: {
   });
 }
 
+export function RunCommandMessage(props: {
+  readonly text: string | undefined;
+}): Shown {
+  if (props.text === undefined) return null;
+  return element("p", {
+    class: "run-command-message",
+    role: "status",
+    children: props.text,
+  });
+}
+
+export function dropReply(
+  controlling: RunCommandControls | undefined,
+  runId: string,
+): string | undefined {
+  const reply = controlling?.messages[runId];
+  return reply?.command === "drop" ? reply.text : undefined;
+}
+
 export function RunCommandAction(props: RunCommandProps): Shown {
-  const { runId, paused, controlling } = props;
+  const { runId, place, controlling } = props;
   if (controlling === undefined) return null;
-  const message = controlling.messages[runId];
+  const asking = controlling.asking;
   return element("div", {
     class: "run-command",
     "data-run": runId,
+    "data-place": place,
     children: [
-      controlling.asking === runId
+      asking?.runId === runId && asking.place === place
         ? component(DropQuestion, { runId, controlling })
-        : component(RunCommandButtons, { runId, paused, controlling }),
-      message === undefined
-        ? null
-        : element("p", {
-            class: "run-command-message",
-            role: "status",
-            children: message,
-          }),
+        : component(RunCommandButtons, { ...props, controlling }),
+      component(RunCommandMessage, { text: controlling.messages[runId]?.text }),
     ],
   });
 }
@@ -129,14 +154,18 @@ export function RunActions(props: {
   readonly steering: SteerControls | undefined;
   readonly controlling: RunCommandControls | undefined;
 }): Shown {
-  const { run } = props;
-  if (!steerable(run.state)) return null;
+  const { run, controlling } = props;
+  if (!steerable(run.state))
+    return component(RunCommandMessage, {
+      text: dropReply(controlling, run.runId),
+    });
   return [
     component(SteerAction, { runId: run.runId, steering: props.steering }),
     component(RunCommandAction, {
       runId: run.runId,
+      place: "detail",
       paused: run.state === "paused",
-      controlling: props.controlling,
+      controlling,
     }),
   ];
 }
@@ -146,23 +175,41 @@ export function CardActions(props: {
   readonly steering: SteerControls | undefined;
   readonly controlling: RunCommandControls | undefined;
 }): Shown {
-  const { card } = props;
+  const { card, controlling } = props;
   if (card.endedAt !== null) return null;
   return [
     component(SteerAction, { runId: card.runId, steering: props.steering }),
     component(RunCommandMenu, {
       runId: card.runId,
+      place: "card",
       paused: card.paused === true,
-      controlling: props.controlling,
+      controlling,
     }),
   ];
+}
+
+export function RunCommandReplies(props: {
+  readonly runs: readonly Pick<WatchRun, "runId" | "title">[];
+  readonly controlling: RunCommandControls | undefined;
+}): Shown {
+  return props.runs.map((run) => {
+    const text = dropReply(props.controlling, run.runId);
+    if (text === undefined) return null;
+    return component(RunCommandMessage, {
+      key: run.runId,
+      text: `${run.title ?? run.runId}: ${text}`,
+    });
+  });
 }
 
 export const runCommandFunctions = [
   RunCommandButtons,
   DropQuestion,
+  RunCommandMessage,
+  dropReply,
   RunCommandAction,
   RunCommandMenu,
   RunActions,
   CardActions,
+  RunCommandReplies,
 ];

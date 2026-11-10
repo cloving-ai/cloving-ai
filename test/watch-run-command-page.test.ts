@@ -16,11 +16,18 @@ function revised(
 }
 
 const working = floorRun("run-a", { operation: "claude-turn", minutes: 5 });
-const running = floorModel([revised(working, { revision: 4 })]);
-const paused = floorModel([revised(working, { revision: 5, state: "paused" })]);
+const shown = (revision: number, state: string) =>
+  floorModel([revised(working, { revision, state })]);
+const models = {
+  running4: shown(4, "running"),
+  paused5: shown(5, "paused"),
+  running6: shown(6, "running"),
+  paused7: shown(7, "paused"),
+  cancelled8: shown(8, "cancelled"),
+};
 
 const scenario = `
-const { running, paused } = JSON.parse(process.env.WATCH_MODEL);
+const { running4, paused5, running6, paused7, cancelled8 } = JSON.parse(process.env.WATCH_MODEL);
 const posts = [];
 const answers = [];
 const plain = globalThis.fetch;
@@ -42,30 +49,32 @@ const labels = () => app.all("div").filter((node) => node.getAttribute("class") 
 const seen = [];
 const look = (name) => { seen.push({ name, message: message(), labels: labels(), sent: posts.length, loads: requests.filter((address) => address === "data.json").length }); };
 location.hash = "#run=run-a";
-replies.push(running);
+replies.push(running4);
 await load();
 look("start");
-answers.push({ kind: "run-command", command: "pause", committed: { state: "paused", revision: 5 } });
-await press("Pause", paused);
-look("paused");
-await press("Resume", paused);
-look("lost");
+await press("Pause", paused5);
+look("pause-lost");
+await press("Resume", paused5);
+look("resume-lost");
 answers.push({ kind: "run-command", command: "resume", committed: { state: "running", revision: 6 } });
-await press("Resume", running);
+await press("Resume", running6);
 look("resumed");
+answers.push({ kind: "run-command", command: "pause", committed: { state: "paused", revision: 7 } });
+await press("Pause", paused7);
+look("paused");
 answers.push({ error: { code: "stale-revision", detail: "stale-revision", currentRevision: 9 } });
-await press("Pause", running);
+await press("Resume", paused7);
 look("stale");
 answers.push({ error: { code: "run-cancelled", detail: "The run is cancelled." } });
-await press("Pause", running);
+await press("Resume", paused7);
 look("refused");
 button("Drop").dispatch("click");
 look("asked");
 button("Keep it").dispatch("click");
 look("kept");
 button("Drop").dispatch("click");
-answers.push({ kind: "run-command", command: "drop", committed: { state: "cancelled", revision: 5 } });
-await press("Drop the run", running);
+answers.push({ kind: "run-command", command: "drop", committed: { state: "cancelled", revision: 8 } });
+await press("Drop the run", cancelled8);
 look("dropped");
 console.log(JSON.stringify({ posts, seen }));
 `;
@@ -77,14 +86,15 @@ const stale = "The run changed. Look again and try again.";
 
 const expectedLooks = [
   ["start", null, 0, 1, "Pause", "Drop"],
-  ["paused", "Paused", 1, 2, "Resume", "Drop"],
-  ["lost", lost, 2, 3, "Resume", "Drop"],
+  ["pause-lost", lost, 1, 2, "Resume", "Drop"],
+  ["resume-lost", lost, 2, 3, "Resume", "Drop"],
   ["resumed", "Resumed", 3, 4, "Pause", "Drop"],
-  ["stale", stale, 4, 5, "Pause", "Drop"],
-  ["refused", refused, 5, 6, "Pause", "Drop"],
-  ["asked", refused, 5, 6, "Drop the run", "Keep it"],
-  ["kept", refused, 5, 6, "Pause", "Drop"],
-  ["dropped", "Dropped", 6, 7, "Pause", "Drop"],
+  ["paused", "Paused", 4, 5, "Resume", "Drop"],
+  ["stale", stale, 5, 6, "Resume", "Drop"],
+  ["refused", refused, 6, 7, "Resume", "Drop"],
+  ["asked", refused, 6, 7, "Drop the run", "Keep it"],
+  ["kept", refused, 6, 7, "Resume", "Drop"],
+  ["dropped", "Dropped", 7, 8],
 ];
 
 function looks(result: Readonly<Record<string, unknown>>): unknown[][] {
@@ -119,9 +129,10 @@ function checkedPosts(
       ["actions/pause", "POST", "run-a", 4],
       ["actions/resume", "POST", "run-a", 5],
       ["actions/resume", "POST", "run-a", 5],
-      ["actions/pause", "POST", "run-a", 4],
-      ["actions/pause", "POST", "run-a", 4],
-      ["actions/drop", "POST", "run-a", 4],
+      ["actions/pause", "POST", "run-a", 6],
+      ["actions/resume", "POST", "run-a", 7],
+      ["actions/resume", "POST", "run-a", 7],
+      ["actions/drop", "POST", "run-a", 7],
     ],
   );
   assert.deepEqual(
@@ -132,16 +143,18 @@ function checkedPosts(
 }
 
 await test("CLV-335 the page posts Pause, Resume and Drop with the revision of the run and a random command ID that a retry keeps, asks a second click for Drop, and shows the reply in one line", () => {
-  const models = {
-    running,
-    paused,
-    updatedAt: running.updatedAt,
-    cardForms: [],
-  };
-  const result = played(models, scenario);
+  const result = played(
+    { ...models, updatedAt: models.running4.updatedAt, cardForms: [] },
+    scenario,
+  );
   const ids = checkedPosts(result);
   for (const id of ids) assert.match(id, /^[0-9a-f]{8}-[0-9a-f-]{27}$/);
   assert.equal(ids[1], ids[2], "a retry after a lost reply keeps the ID");
-  assert.equal(new Set(ids).size, 5);
+  assert.notEqual(
+    ids[3],
+    ids[0],
+    "a click after the run changed gets a new ID, not the ID of an old lost click",
+  );
+  assert.equal(new Set(ids).size, 6);
   assert.deepEqual(looks(result), expectedLooks);
 });

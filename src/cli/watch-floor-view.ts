@@ -1,8 +1,10 @@
 import type { ShownSchedule } from "./schedule-render.ts";
 import { component, element, type Shown } from "./watch-element.ts";
 import { watchHash } from "./watch-navigation.ts";
+import { steerable } from "./watch-steer-view.ts";
 import {
   RunCommandMenu,
+  RunCommandReplies,
   type RunCommandControls,
 } from "./watch-run-command-view.ts";
 import {
@@ -91,6 +93,7 @@ export function Station(props: {
                   component(Token, { token, now }),
                   component(RunCommandMenu, {
                     runId: token.runId,
+                    place: "token",
                     paused: token.lamp === "stopped",
                     controlling: props.controlling,
                   }),
@@ -273,6 +276,10 @@ export function Floor(props: {
           }),
           component(Legend, {}),
         ],
+      }),
+      component(RunCommandReplies, {
+        runs: model.runs.filter((run) => !steerable(run.state)),
+        controlling,
       }),
       model.repositories === undefined
         ? component(Lines, {

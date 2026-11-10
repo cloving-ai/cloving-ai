@@ -157,6 +157,7 @@ h2, h3 { font-family: var(--font-heading); font-weight: 700; }
 .steer-message { margin: 0; font-size: 12px; }
 .run-command { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 6px 0; }
 .run-command-message { flex-basis: 100%; margin: 0; font-size: 12px; }
+.board > .run-command-message, .floor > .run-command-message { flex: none; padding: 6px 20px 0; }
 .drop-question { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0; font-size: 13px; }
 .run-menu summary { width: fit-content; padding: 0 8px; cursor: pointer; list-style: none; color: var(--color-muted); font: 700 16px/1.2 var(--font-ui); }
 .run-menu summary::-webkit-details-marker { display: none; }
