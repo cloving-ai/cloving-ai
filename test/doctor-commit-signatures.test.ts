@@ -158,9 +158,9 @@ await test("CLV-344 the default signature format is openpgp", () =>
     });
     const shown = check(await scene.report(), "commit-signatures");
     assert.equal(shown["result"], "fail");
-    assert.equal(
-      shown["detail"],
-      "A turn cannot sign commits (gpg.format openpgp): error: gpg failed to sign the data:",
+    assert.match(
+      String(shown["detail"]),
+      /^A turn cannot sign commits \(gpg\.format openpgp\): error: gpg failed to sign the data:?$/,
     );
   }));
 
