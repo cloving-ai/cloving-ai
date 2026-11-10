@@ -8,7 +8,6 @@ export interface AuthorityTiming {
   readonly renewalMilliseconds: number;
   readonly heartbeatMilliseconds: number;
   readonly aliveThresholdMilliseconds: number;
-  readonly cleanupIntervalMilliseconds: number;
   readonly callTimeoutMilliseconds: number;
   readonly messageRetentionMilliseconds: number;
   readonly retentionIntervalMilliseconds: number;
@@ -20,7 +19,6 @@ export const authorityTiming: AuthorityTiming = {
   renewalMilliseconds: 500,
   heartbeatMilliseconds: 1_000,
   aliveThresholdMilliseconds: 3_000,
-  cleanupIntervalMilliseconds: 1_000,
   callTimeoutMilliseconds: 10_000,
   messageRetentionMilliseconds: 30 * 86_400_000,
   retentionIntervalMilliseconds: 3_600_000,
@@ -101,6 +99,7 @@ export function librarySettings(
 ): Partial<SolidObjectsConfiguration> {
   return {
     tableNamePrefix: "solid_",
+    singleOwner: true,
     maxAttempts: 1,
     maxActivationDurationMilliseconds: 50,
     maxPayloadBytes: 900_000 + commandLimits.stdoutBytes * 12,
@@ -108,9 +107,9 @@ export function librarySettings(
     logger: authorityLogger(log),
     leaseDurationMilliseconds: timing.leaseMilliseconds,
     leaseRenewalIntervalMilliseconds: timing.renewalMilliseconds,
+    idleDeactivationTimeoutMilliseconds: timing.renewalMilliseconds,
     processHeartbeatIntervalMilliseconds: timing.heartbeatMilliseconds,
     processAliveThresholdMilliseconds: timing.aliveThresholdMilliseconds,
-    deadProcessCleanupIntervalMilliseconds: timing.cleanupIntervalMilliseconds,
     messageRetentionMilliseconds: timing.messageRetentionMilliseconds,
     retentionIntervalMilliseconds: timing.retentionIntervalMilliseconds,
     shutdownTimeoutMilliseconds: timing.shutdownMilliseconds,

@@ -26,9 +26,6 @@ export const testAuthorityTiming: AuthorityTiming = {
   aliveThresholdMilliseconds: testMilliseconds(
     authorityTiming.aliveThresholdMilliseconds,
   ),
-  cleanupIntervalMilliseconds: testMilliseconds(
-    authorityTiming.cleanupIntervalMilliseconds,
-  ),
   callTimeoutMilliseconds: testMilliseconds(
     authorityTiming.callTimeoutMilliseconds,
   ),
@@ -45,7 +42,6 @@ export const quickCleanupTiming: AuthorityTiming = {
   ...testAuthorityTiming,
   heartbeatMilliseconds: testMilliseconds(100),
   aliveThresholdMilliseconds: testMilliseconds(300),
-  cleanupIntervalMilliseconds: testMilliseconds(100),
 };
 
 export const fastTiming: AuthorityTiming = {

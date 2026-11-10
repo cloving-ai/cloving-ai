@@ -14,6 +14,7 @@ import {
   sampleDecision,
   sampleModel,
   sampleRun,
+  wantedTranscripts,
 } from "./watch-sample.ts";
 
 const scenario = `
@@ -77,11 +78,14 @@ await test("CLV-016 the watch page document has the components, a script that ge
       '"actions/run"',
       '"phone.json"',
       '"actions/phone/" + action',
+      '"actions/schedule"',
       "transcriptPath(item",
       "transcriptPath(item",
       '"actions/queue"',
       '"actions/continue"',
       '"actions/dismiss"',
+      '"actions/steer"',
+      '"actions/rename"',
       '"data.json?runId=" + encodeURIComponent(runId)',
       '"data.json"',
     ],
@@ -270,7 +274,12 @@ await test("CLV-016 the script of the watch page reads the data at each message 
     waiting: page({ ...props, model: null, stale: false }),
     stale: page({ ...props, model: null, stale: true }),
     first: {
-      html: page({ ...props, model, stale: false }),
+      html: page({
+        ...props,
+        model,
+        stale: false,
+        transcripts: wantedTranscripts,
+      }),
       title: pageTitle(model, "run-1"),
     },
     label: "Copied",
@@ -280,7 +289,10 @@ await test("CLV-016 the script of the watch page reads the data at each message 
     scrolled: [0, 2000, 0],
     timers: [1000, 15000],
     other: pageTitle(model, "run-2"),
-    streams: ["events"],
+    streams: [
+      "events",
+      "api/v1/runs/run-1/turns/operation-1/transcript-stream?after=0",
+    ],
     unread: 0,
   });
 });

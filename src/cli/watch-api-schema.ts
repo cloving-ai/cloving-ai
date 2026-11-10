@@ -31,3 +31,7 @@ export function problem(description: string) {
     content: { "application/problem+json": { schema: reference("Problem") } },
   };
 }
+
+export const invalidQuery = problem(
+  "A query parameter is unknown, repeated or has an invalid value.",
+);

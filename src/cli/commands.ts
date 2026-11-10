@@ -2,6 +2,8 @@ import {
   decisionRequest,
   readCommandReply,
   dismissRequest,
+  renameRequest,
+  steerRequest,
   readCommandRequest,
   runCommandRequest,
   runRequest,
@@ -237,6 +239,26 @@ function dismiss(
   });
 }
 
+function rename(
+  environment: Located,
+  invocation: Invoked<"rename">,
+): Promise<number> {
+  const format = identified(environment, invocation);
+  const request = renameRequest({ ...invocation, commandId: format.commandId });
+  return mutated(environment, { format, request });
+}
+
+function steer(
+  environment: Located,
+  invocation: Invoked<"steer">,
+): Promise<number> {
+  const format = identified(environment, invocation);
+  return mutated(environment, {
+    format,
+    request: steerRequest({ ...invocation, commandId: format.commandId }),
+  });
+}
+
 async function events(
   environment: Located,
   invocation: Invoked<"events">,
@@ -290,21 +312,22 @@ export function runtimeCommand(
   if (invocation.kind === "restart") return restartCommand(placed, invocation);
   if (invocation.kind === "watch") return watch(placed, invocation);
   if (invocation.kind === "dismiss") return dismiss(placed, invocation);
+  if (invocation.kind === "steer") return steer(placed, invocation);
+  if (invocation.kind === "rename") return rename(placed, invocation);
   return located(invocation, placed);
 }
 
 function located(
   invocation: Exclude<
     RuntimeInvocation,
-    { kind: "command-help" | "restart" | "watch" | "dismiss" }
+    {
+      kind:
+        "command-help" | "restart" | "watch" | "dismiss" | "steer" | "rename";
+    }
   >,
   environment: Located,
 ): Promise<number> {
-  if (invocation.kind === "schedule")
-    return requested(environment, {
-      format: { json: invocation.json },
-      request: scheduleServiceRequest(invocation),
-    });
+  if (invocation.kind === "schedule") return schedule(environment, invocation);
   if (invocation.kind === "queue") return queue(environment, invocation);
   if (invocation.kind === "report")
     return reportCommand(invocation, environment);
@@ -317,6 +340,22 @@ function located(
   return requested(environment, {
     format: { json: invocation.json },
     request: readCommandRequest(invocation),
+  });
+}
+
+function schedule(
+  environment: Located,
+  invocation: Invoked<"schedule">,
+): Promise<number> {
+  if (invocation.action !== "run")
+    return requested(environment, {
+      format: { json: invocation.json },
+      request: scheduleServiceRequest(invocation, null),
+    });
+  const format = identified(environment, invocation);
+  return mutated(environment, {
+    format,
+    request: scheduleServiceRequest(invocation, format.commandId),
   });
 }
 

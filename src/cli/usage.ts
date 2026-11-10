@@ -23,7 +23,8 @@ export const commandUsage: Readonly<Record<string, string>> = {
 
 Serves cloving_status, cloving_questions and cloving_events as read tools over stdio.
 Serves cloving_run, cloving_answer, cloving_approve, cloving_deny, cloving_pause,
-cloving_resume, cloving_drop, cloving_continue and cloving_dismiss to submit runs and decisions. Each of these tools
+cloving_resume, cloving_drop, cloving_continue, cloving_dismiss, cloving_steer and cloving_rename to submit runs, decisions,
+notes and names. Each of these tools
 needs a commandId. After a lost reply, send the same commandId again.
 The server binds to one repository at startup. It needs an existing Cloving service.
 With --workspace, one server serves each repository of the running workspace.
@@ -32,7 +33,7 @@ a repository argument with the workspace names to each tool. A tool that
 changes state needs the repository argument when the workspace lists more than
 one repository. A read tool with no repository argument reads each repository.
 Standard output contains only JSON-RPC messages. Diagnostics use standard error.
---connection launches the encrypted remote bridge from the cloving-zapier integration package.
+--connection launches the encrypted remote bridge from the Cloving relay integration package.
 Pair the harness first with cloving integrations pair mcp --name <name>.
 On the workflow computer, use cloving integrations connect mcp, approve mcp and serve mcp.
 The remote bridge exposes only locally permitted workflows and tools. It does not need a local project.
@@ -114,11 +115,15 @@ Use --repository <name> to show the runs of one repository.
   schedule: `Usage: cloving schedule [--json]
        cloving schedule pause <workflowId> [--json]
        cloving schedule resume <workflowId> [--json]
+       cloving schedule run <workflowId> [--command-id <id>] [--json]
 
 Lists interval schedules and their state. Pause stops new runs; an active run continues.
 Three consecutive failed or blocked scheduled runs stop a schedule.
 Resume clears failures and starts the next run one interval later.
 Paused and stopped schedules survive a service restart.
+Run admits one manual run with the input of the schedule, marked manual from loop.
+It does not change the next run. While a run of the workflow is active, the service
+refuses it with run-active.
 `,
   questions: `Usage: cloving questions [<run-id>] [--json]
 
@@ -153,6 +158,20 @@ Cancels the run and its pending dispatch. It keeps the workspace and the evidenc
 
 Records a dismissal of a run that ended failed or blocked. Needs you on the watch page does not list the run.
 The dismissal is an event of the run and stays after a restart. It does not change the run or its files.
+`,
+  steer: `Usage: cloving steer <run-id> --text <note> [--now] [--command-id <id>] [--json]
+
+Records a note of 1 to 4000 characters for an active run. The next agent turn of the run gets the note.
+With --now, a Claude Code or Codex turn in work that recorded a session stops and resumes the same session
+with the note as the next message. A turn takes at most three such notes. In other cases the reply says
+queued with the reason, and the note waits for the next turn.
+`,
+  rename: `Usage: cloving rename <run-id> (--title <text> [--label <text>] | --clear) [--command-id <id>] [--json]
+
+Gives an active or ended run a manual title of 1 to 200 characters on one line, and with --label a label of
+1 to 32 letters, digits or the characters # ! . _ / -. The watch page, cloving status and the read API show it.
+--clear removes the manual name, and the run gets its automatic name again. The rename is an event of the run,
+so it stays after a restart. The newest rename wins. It does not change the pull request or the ticket.
 `,
   events: `Usage: cloving events [<run-id>] [--after <sequence>] [--limit <n>] [--follow] [--json]
 
@@ -270,7 +289,7 @@ Settings files: .cloving/config.json in the repository and <config>/cloving/proj
   CLOVING_GEMINI_COMMAND           A JSON list of a command and its arguments for the gemini worker. The default is gemini --output-format stream-json --approval-mode yolo; Cloving appends -p and the turn text; turn text of 64 KiB or more in UTF-8 goes through standard input instead. No approval prompts or capacity retries.
   CLOVING_OPENCODE_COMMAND         A JSON list of a command and its arguments for opencode. The default is opencode run --format json; the turn text is appended as one argument. OPENCODE_PERMISSION permits unattended tools.
   CLOVING_WATCH_REPOSITORY         The service repository context for the watch board, set by start from --repository. Its local origin supplies the GitHub identity. There is no current-directory default.
-  CLOVING_WATCH_ACTIONS            The value off removes the board run form, the queue control and their write endpoints. The default is on.
+  CLOVING_WATCH_ACTIONS            The value off removes the board run form, the queue control, the loop controls and their write endpoints. The default is on.
   CLOVING_WATCH_PORT               The port number of the watch page. The value off starts no watch page. The default is 3663.
   CLOVING_PHONE_RELAY              The phone relay child, which connects phones through cloving.ai. The value off starts no phone relay. The default is on.
   CLOVING_RELAY_ORIGIN             The origin of the phone relay server. Only https origins are accepted. The default is https://cloving.ai.
@@ -296,7 +315,7 @@ export const usage = `Usage: cloving [--help] [--version]
        cloving templates show <name> [--json]
        cloving templates copy <name> [--id <workflow-id>] [--json] [--repository <directory>]
        cloving themes list [--json] [--repository <directory>]
-       cloving integrations <command> <zapier|mcp> [options]
+       cloving integrations <command> mcp [options]
        cloving red-green
        cloving <command> [--help]
 
@@ -308,7 +327,7 @@ Commands:
   templates show      Show the decision points and the files of one template.
   templates copy      Copy one template into .cloving/workflows of the repository.
   themes list         List the themes of the watch page and their refusal codes.
-  integrations        Connect and manage encrypted Zapier and MCP access.
+  integrations        Connect and manage encrypted MCP access.
   red-green  Check assertion failure on the base and success on the head.
   init             Start the setup agent
   init-prompt Print setup instructions for an agent.
@@ -327,6 +346,8 @@ Commands:
   resume     Resume a paused run.
   drop       Cancel a run and keep its files.
   dismiss    Remove a stopped run from Needs you.
+  steer      Send a note to a run in work.
+  rename     Give a run a new title and label.
   events     Print the committed events.
   watch      Serve a page that shows the runs live.
   reload     Check and compile the workflow files again.

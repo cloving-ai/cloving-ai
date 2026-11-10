@@ -1,4 +1,4 @@
-import type { ShownSchedules } from "./schedule-render.ts";
+import { shownLoopMarks, type ShownSchedules } from "./schedule-render.ts";
 import { activeCommandWait, shownCommandWaits } from "./command-waits.ts";
 import type { WorkflowStage, WorkflowStages } from "../workflow-declaration.ts";
 import { linksOf } from "../authority/handoff-chain.ts";
@@ -210,14 +210,23 @@ export const linkFields = [
   "continuedBy",
 ];
 
+function notesWaitingOf(run: WatchRun): { readonly notesWaiting?: number } {
+  const waiting = (run.notes ?? []).filter(
+    (note) => note.receipt === "waiting",
+  ).length;
+  return waiting === 0 ? {} : { notesWaiting: waiting };
+}
+
 function cardOf(run: WatchRun, runs: readonly WatchRun[]): WatchCard {
   return {
     runId: run.runId,
-    ...(run.scheduled === undefined ? {} : { scheduled: run.scheduled }),
+    ...shownLoopMarks(run),
     commandWaits: run.commandWaits ?? [],
     spent: run.spent,
     limit: run.limit,
     title: run.title,
+    ...(run.label == null ? {} : { label: run.label }),
+    ...(run.manualName === undefined ? {} : { manualName: run.manualName }),
     ...linksOf(run),
     ...(run.awaitedRunId == null ? {} : { awaitedRunId: run.awaitedRunId }),
     completionMark: completionMarkOf(run, runs),
@@ -228,6 +237,7 @@ function cardOf(run: WatchRun, runs: readonly WatchRun[]): WatchCard {
     currentStep: activeRun(run.state) ? run.currentStep : null,
     endedAt: activeRun(run.state) ? null : run.latestAt,
     decisionWaiting: run.decisions.length > 0,
+    ...notesWaitingOf(run),
     ...pullRequestCardDetails(run),
   };
 }

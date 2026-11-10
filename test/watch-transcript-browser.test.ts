@@ -165,7 +165,7 @@ await test("CLV-329 the view stops at a scroll up, shows Jump to the end with th
     }
   }));
 
-await test("CLV-329 a link with the turn opens the run detail with that ended turn expanded, and the run detail without it keeps the ended turn closed", () =>
+await test("CLV-332 a link with the turn opens the run detail with that ended turn expanded, the run detail without it opens the last ended turn, and a turn that the reader hides stays closed", () =>
   withHarness(async (harness) => {
     const turn = await liveTurn(harness);
     await appendFile(turn.stream, `${said("Done.")}\n`);
@@ -190,17 +190,17 @@ await test("CLV-329 a link with the turn opens the run detail with that ended tu
       assert.deepEqual(linked, { count: 1, last: "Done." });
       await page.navigate("about:blank");
       await page.navigate(run);
-      const closed = await page.evaluate(`(async () => {
-        for (let attempt = 0; attempt < 500 && !document.querySelector(".transcript-toggle"); attempt++)
-          await new Promise((resolve) => setTimeout(resolve, 20));
-        return { toggle: document.querySelector(".transcript-toggle")?.textContent ?? null, lines: document.querySelectorAll(".transcript-lines").length };
-      })()`);
-      assert.deepEqual(closed, { toggle: "Show", lines: 0 });
-      await page.click(".transcript-toggle");
       assert.deepEqual(await page.evaluate(entryCount(1)), {
         count: 1,
         last: "Done.",
       });
+      await page.click(".transcript-toggle");
+      await delay(1500);
+      const closed = await page.evaluate(`(() => ({
+        toggle: document.querySelector(".transcript-toggle")?.textContent ?? null,
+        lines: document.querySelectorAll(".transcript-lines").length,
+      }))()`);
+      assert.deepEqual(closed, { toggle: "Show", lines: 0 });
     } finally {
       assert.equal(await watch.stop(), 0);
     }

@@ -19,6 +19,8 @@ const lostDetails: ReadonlyMap<string, string> = new Map([
   ["run-command", resend],
   ["continue-run", resend],
   ["dismiss-run", resend],
+  ["rename-run", resend],
+  ["steer-run", resend],
   ["queue-command", resend],
   [
     "restart",
@@ -46,8 +48,17 @@ function refused(runtimeDirectory: string): Reply {
   };
 }
 
+function lostDetail(request: ServiceRequest): string | undefined {
+  if (
+    request.operation === "schedule" &&
+    request.parameters["action"] === "run"
+  )
+    return resend;
+  return lostDetails.get(request.operation);
+}
+
 function lost(request: ServiceRequest, runtimeDirectory: string): Reply {
-  const detail = lostDetails.get(request.operation);
+  const detail = lostDetail(request);
   if (detail === undefined) return unavailable(runtimeDirectory);
   return { kind: "error", error: { code: "outcome-unknown", detail } };
 }

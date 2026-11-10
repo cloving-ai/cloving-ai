@@ -1,10 +1,22 @@
 import {
   calendarText,
   dayText,
+  loopText,
   scheduleStatusLine,
   scheduledText,
   shownScheduled,
 } from "./schedule-render.ts";
+import {
+  LoopActions,
+  LoopRow,
+  LoopsPanel,
+  loopAmount,
+  loopLastText,
+  loopMessage,
+  loopNextText,
+  loopTime,
+  relativeText,
+} from "./watch-loops-view.ts";
 import * as waitDisplay from "./command-waits.ts";
 import { cardReply } from "./watch-card-reply.ts";
 import { record } from "../protocol.ts";
@@ -17,6 +29,7 @@ import {
   cardSubmitKey,
 } from "./watch-card-view.ts";
 import { watchClient } from "./watch-client.ts";
+import { watchLoopsClient } from "./watch-loops-client.ts";
 import { watchTranscriptClient } from "./watch-transcript-client.ts";
 import {
   CutNote,
@@ -26,9 +39,11 @@ import {
   TranscriptButton,
   TranscriptLine,
   jumpLabel,
+  transcriptWanted,
   waitingText,
 } from "./watch-transcript-view.ts";
 import { RunNotes } from "./watch-notes-view.ts";
+import { runActionFunctions } from "./watch-rename-view.ts";
 import { watchPhoneClient } from "./watch-phone-client.ts";
 import {
   PhoneAsk,
@@ -154,19 +169,18 @@ import {
 } from "./watch-turn.ts";
 import {
   Banner,
-  BackLink,
   BannerDetail,
   BoardPage,
   FloorPage,
   Page,
   Phases,
   PullRequest,
-  RefusedWorkflows,
   Run,
   RunTotals,
   RunTurns,
 } from "./watch-view.ts";
 import {
+  BackLink,
   Brand,
   clove,
   Header,
@@ -176,6 +190,7 @@ import {
   QueueControl,
   Queue,
   queueLanes,
+  RefusedWorkflows,
   skippedText,
   Version,
 } from "./watch-header-view.ts";
@@ -186,6 +201,16 @@ const functions = [
   dayText,
   scheduledText,
   shownScheduled,
+  loopText,
+  loopTime,
+  loopAmount,
+  relativeText,
+  loopNextText,
+  loopLastText,
+  loopMessage,
+  LoopActions,
+  LoopRow,
+  LoopsPanel,
   record,
   commandText,
   Commands,
@@ -238,6 +263,7 @@ const functions = [
   Card,
   HandoffLinks,
   RunNotes,
+  ...runActionFunctions,
   Column,
   columnCollapsed,
   Board,
@@ -307,6 +333,7 @@ const functions = [
   TranscriptButton,
   jumpLabel,
   TranscriptBody,
+  transcriptWanted,
   Transcript,
   BannerDetail,
   Banner,
@@ -356,6 +383,7 @@ export function pageDocument(
     ...functions.map((item) => item.toString()),
     watchCardClient,
     watchPhoneClient,
+    watchLoopsClient,
     watchTranscriptClient,
     watchClient,
   ].join("\n");

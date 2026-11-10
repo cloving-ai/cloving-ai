@@ -4,7 +4,10 @@ import { join } from "node:path";
 import { after, test } from "node:test";
 import { openAuthority } from "../src/broker/actor/authority.ts";
 import { continuation } from "./authority-fixture.ts";
-import { lockContention } from "../src/broker/actor/authority-connection.ts";
+import {
+  lockContention,
+  storageRefusal,
+} from "../src/broker/actor/authority-connection.ts";
 import {
   alterDatabase as alter,
   executeStored,
@@ -105,10 +108,35 @@ await test("CLV-007 a stored value that cannot be read is refused and releases t
 
 await test("CLV-007 extended busy codes count as lock contention and other codes do not", () => {
   assert.deepEqual(
-    [5, 261, 517, 773, 1, 6, 10, undefined].map((errcode) =>
+    [5, 261, 517, 773, 1, 6, 10, undefined, "5"].map((errcode) =>
       lockContention(Object.assign(new Error("sqlite"), { errcode })),
     ),
-    [true, true, true, true, false, false, false, false],
+    [true, true, true, true, false, false, false, false, false],
+  );
+});
+
+await test("CLV-007 a storage error refuses with its message and other thrown values refuse with a fixed detail", () => {
+  const busy = Object.assign(new Error("database is locked"), { errcode: 5 });
+  const other = {
+    kind: "refused",
+    reason: "storage-failure",
+    detail: "storage threw a value that is not an Error",
+  };
+  assert.deepEqual(
+    [busy, new Error("disk I/O error"), "text", null, Object.create(null)].map(
+      (thrown) => storageRefusal(thrown),
+    ),
+    [
+      {
+        kind: "refused",
+        reason: "authority-held",
+        detail: "database is locked",
+      },
+      { kind: "refused", reason: "storage-failure", detail: "disk I/O error" },
+      other,
+      other,
+      other,
+    ],
   );
 });
 

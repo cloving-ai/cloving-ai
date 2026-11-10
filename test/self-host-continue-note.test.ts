@@ -118,7 +118,7 @@ await test("CLV-326 cloving run continue with --note gives the note to the first
       const text = await runCli(["status", continued], environment);
       assert.match(
         text.stdout,
-        /\nNote at [0-9T:.-]+Z, got by implement\/claude-turn\/1: Merge the branch of the first run first\.\n/,
+        /\nNote at [0-9T:.-]+Z from continue, got by implement\/claude-turn\/1: Merge the branch of the first run first\.\n/,
       );
     } finally {
       assert.equal(await ended(daemon), 0);

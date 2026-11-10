@@ -78,9 +78,33 @@ const listed = [
     ["runId", "commandId"],
   ],
   ["cloving_dismiss", ["runId", "commandId"], ["runId", "commandId"]],
+  [
+    "cloving_steer",
+    ["runId", "text", "now", "commandId"],
+    ["runId", "text", "commandId"],
+  ],
+  [
+    "cloving_rename",
+    ["runId", "title", "label", "clear", "commandId"],
+    ["runId", "commandId"],
+  ],
+  ["cloving_schedules", [], undefined],
+  ["cloving_schedule_pause", ["workflowId"], ["workflowId"]],
+  ["cloving_schedule_resume", ["workflowId"], ["workflowId"]],
+  [
+    "cloving_schedule_run",
+    ["workflowId", "commandId"],
+    ["workflowId", "commandId"],
+  ],
 ] as const;
+const reads = [
+  "cloving_status",
+  "cloving_questions",
+  "cloving_events",
+  "cloving_schedules",
+];
 
-await test("CLV-251 mcp handshake lists the three read tools and the eight mutation tools and answers ping", async () => {
+await test("CLV-251 CLV-328 mcp handshake lists the four read tools and the twelve mutation tools and answers ping", async () => {
   const output = await mcpExchange([
     request({
       id: 1,
@@ -114,7 +138,7 @@ await test("CLV-251 mcp handshake lists the three read tools and the eight mutat
     listed,
   );
   for (const tool of tools) {
-    const reading = listed.slice(0, 3).some(([name]) => name === tool["name"]);
+    const reading = reads.includes(String(tool["name"]));
     assert.deepEqual(
       tool["annotations"],
       reading
@@ -126,7 +150,10 @@ await test("CLV-251 mcp handshake lists the three read tools and the eight mutat
               : {}),
           },
     );
-    assert.equal(typeof tool["description"], reading ? "undefined" : "string");
+    assert.equal(
+      typeof tool["description"],
+      reads.slice(0, 3).includes(String(tool["name"])) ? "undefined" : "string",
+    );
     assert.equal(fields(tool["inputSchema"])["type"], "object");
     assert.equal(fields(tool["inputSchema"])["additionalProperties"], false);
   }

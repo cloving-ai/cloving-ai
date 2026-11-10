@@ -1,23 +1,17 @@
 import assert from "node:assert/strict";
-import { join } from "node:path";
 import { test } from "node:test";
-import { pathToFileURL } from "node:url";
 import { queuePrelude, queueWorkflow } from "./daemon-queue-fixture.ts";
 import { testMilliseconds } from "./test-timing.ts";
-import { productRoot, withConsumer } from "./world-host-fixture.ts";
+import { withConsumer } from "./world-host-fixture.ts";
 
 const idleMilliseconds = 60_000;
 
 const statementCount = `
 import * as idleSqlite from "node:sqlite";
-const productSources = ${JSON.stringify(pathToFileURL(join(productRoot, "src")).href + "/")};
-const productStatements = [];
+const idleStatements = new Map();
 const counting = { on: false };
-Error.stackTraceLimit = 100;
 const recorded = (sql) => {
-  if (!counting.on) return;
-  const frames = new Error().stack.split("\\n").filter((line) => line.includes(productSources));
-  if (frames.length > 0) productStatements.push({ sql, frames: frames.slice(0, 3).map((line) => line.trim()) });
+  if (counting.on) idleStatements.set(sql, (idleStatements.get(sql) ?? 0) + 1);
 };
 for (const method of ["all", "get", "run", "iterate"]) {
   const original = idleSqlite.StatementSync.prototype[method];
@@ -33,7 +27,7 @@ idleSqlite.DatabaseSync.prototype.exec = function (sql) {
 };
 `;
 
-await test("CLV-284 after a finished run, with no request and no active turn, the daemon runs no query of its own in a period of 60 s", () =>
+await test("CLV-284 after a finished run, with no request and no active turn, the daemon runs no query in a period of 60 s", () =>
   withConsumer(queueWorkflow, async (consumer) => {
     const result = await consumer.runWithin(
       `${queuePrelude}${statementCount}
@@ -47,7 +41,7 @@ try {
   counting.on = true;
   await delay(${String(idleMilliseconds)});
   counting.on = false;
-  print({ productStatements });
+  print({ idleStatements: [...idleStatements].map(([sql, count]) => ({ count, sql })) });
 } finally { await daemon.close(); }
 process.exit(0);
 `,
@@ -55,5 +49,5 @@ process.exit(0);
     );
     assert.equal(result.status, 0, result.stderr);
     const [idle] = result.lines;
-    assert.deepEqual(idle, { productStatements: [] });
+    assert.deepEqual(idle, { idleStatements: [] });
   }));

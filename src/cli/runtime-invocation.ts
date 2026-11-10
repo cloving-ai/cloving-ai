@@ -2,6 +2,7 @@ import type { ScheduleInvocation } from "./schedule-arguments.ts";
 import type { QueueInvocation } from "./queue-arguments.ts";
 import type { ContinueInvocation } from "./continue-arguments.ts";
 import type { RestartInvocation } from "./restart-arguments.ts";
+import type { RenameInvocation } from "./rename-arguments.ts";
 
 export type RunSource =
   | { readonly kind: "prompt"; readonly text: string }
@@ -22,6 +23,15 @@ export type RuntimeInvocation =
   | {
       readonly kind: "dismiss";
       readonly runId: string;
+      readonly commandId: string | null;
+      readonly json: boolean;
+    }
+  | RenameInvocation
+  | {
+      readonly kind: "steer";
+      readonly runId: string;
+      readonly text: string;
+      readonly now: boolean;
       readonly commandId: string | null;
       readonly json: boolean;
     }

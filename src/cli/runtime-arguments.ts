@@ -3,6 +3,7 @@ import { scheduleInvocation } from "./schedule-arguments.ts";
 import { queueInvocation } from "./queue-arguments.ts";
 import { continueInvocation } from "./continue-arguments.ts";
 import { restartInvocation } from "./restart-arguments.ts";
+import { renameInvocation } from "./rename-arguments.ts";
 import {
   argumentRules,
   type DecisionCommand,
@@ -76,6 +77,24 @@ const shapes: ReadonlyMap<string, Shape> = new Map<string, Shape>([
       required: [],
       allowed: () => mutationOptions,
       build: dismiss,
+    },
+  ],
+  [
+    "steer",
+    {
+      subject: "required",
+      required: ["text"],
+      allowed: () => ["text", "now", ...mutationOptions],
+      build: steer,
+    },
+  ],
+  [
+    "rename",
+    {
+      subject: "required",
+      required: [],
+      allowed: () => ["title", "label", "clear", ...mutationOptions],
+      build: renameInvocation,
     },
   ],
   [
@@ -310,6 +329,21 @@ function dismiss(request: RuntimeRequest): Outcome {
   if (typeof runId !== "string" || commandId === invalid)
     return "invalid-option-value";
   return { kind: "dismiss", runId, commandId, json: given(request, "json") };
+}
+
+function steer(request: RuntimeRequest): Outcome {
+  const runId = key(request.positionals[0]);
+  const commandId = key(valueOf(request, "command-id"));
+  if (typeof runId !== "string" || commandId === invalid)
+    return "invalid-option-value";
+  return {
+    kind: "steer",
+    runId,
+    text: valueOf(request, "text") ?? "",
+    now: given(request, "now"),
+    commandId,
+    json: given(request, "json"),
+  };
 }
 
 function runCommand(command: RunCommand, request: RuntimeRequest): Outcome {

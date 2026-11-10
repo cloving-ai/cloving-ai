@@ -108,11 +108,26 @@ async function change(
   return result("schedule", { schedule: summary(workflowId, progress) });
 }
 
+function scheduleInput(
+  scheduled: readonly DeclaredWorkflow[],
+  workflowId: unknown,
+): Reply {
+  const entry = scheduled.find((item) => item.workflowId === workflowId);
+  if (entry?.schedule === undefined)
+    return failed("unknown-schedule", { workflowId });
+  return result("schedule-input", {
+    workflowId: entry.workflowId,
+    input: entry.schedule.input,
+  });
+}
+
 function request(settings: ScheduleState, parameters: Fields): Promise<Reply> {
   const { action, workflowId } = parameters;
   const scheduled = settings.declarations.filter(
     (entry) => entry.schedule !== undefined,
   );
+  if (action === "input")
+    return Promise.resolve(scheduleInput(scheduled, workflowId));
   if (action === "list")
     return Promise.resolve(
       result("schedules", {

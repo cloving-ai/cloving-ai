@@ -1,11 +1,11 @@
 import { record, type Fields } from "../protocol.ts";
 import { commandJson } from "./command-requests.ts";
 import { servedMcp, type McpTarget } from "./mcp-server.ts";
+import type { McpCall } from "./mcp-tool.ts";
 import {
   callMcpTool,
   mcpToolCall,
   mcpTools,
-  type McpCall,
   type McpListing,
 } from "./mcp-tools.ts";
 import type { WorkspaceMember, WorkspaceRecord } from "./workspace-record.ts";

@@ -129,7 +129,7 @@ export function operation(
       worktrees: join(scene.root, "worktrees"),
       gh: ["gh"],
       environment: {},
-      privateTexts: ["zapier"],
+      privateTexts: ["hidden-word"],
     },
     calls: {
       gh: request.gh,

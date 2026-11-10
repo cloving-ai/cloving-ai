@@ -1,5 +1,6 @@
 import type { WatchNote } from "./watch-notes-view.ts";
 import type { ShownSchedule, ShownSchedules } from "./schedule-render.ts";
+import type { WatchLoop } from "./watch-loops.ts";
 import type { CommandWaitView } from "../authority/command-wait-view.ts";
 import type { CommandEffect } from "../command-settings.ts";
 import type { CardForm } from "./watch-run-input.ts";
@@ -84,7 +85,9 @@ export interface WatchStep {
 }
 
 export interface WatchCard {
+  readonly notesWaiting?: number;
   readonly scheduled?: { readonly slot: number };
+  readonly manualFromLoop?: true;
   readonly commandWaits?: readonly CommandWaitView[];
   readonly spent?: number | null;
   readonly limit?: number | null;
@@ -97,6 +100,8 @@ export interface WatchCard {
   readonly estimatedCostUsd: number | null;
   readonly runId: string;
   readonly title: string | null;
+  readonly label?: string | null;
+  readonly manualName?: true;
   readonly claudeCostUsd: number | null;
   readonly usage: WorkerUsage;
   readonly currentStep: WatchStep | null;
@@ -126,7 +131,8 @@ export interface WatchToken {
   readonly title: string | null;
   readonly lamp: WatchLamp;
   readonly worker: string;
-  readonly ticket: string;
+  readonly ticket: string | null;
+  readonly pullRequestNumber: number | null;
   readonly startedAt: string | null;
 }
 
@@ -155,7 +161,7 @@ export interface WatchWorkflow {
 export interface WatchTile {
   readonly runId: string;
   readonly workflowId: string;
-  readonly ticket: string;
+  readonly ticket: string | null;
   readonly pullRequestNumber: number | null;
   readonly title: string;
   readonly startedAt: string;
@@ -178,6 +184,7 @@ export interface WatchRun {
   readonly linked?: true;
   readonly demo?: string;
   readonly scheduled?: { readonly slot: number };
+  readonly manualFromLoop?: true;
   readonly commandWaits?: readonly CommandWaitView[];
   readonly awaitedRunId?: string | null;
   readonly commandEffects?: readonly CommandEffect[];
@@ -199,6 +206,10 @@ export interface WatchRun {
   readonly estimatedCostUsd: number | null;
   readonly ticketId: string | null;
   readonly title: string | null;
+  readonly label?: string | null;
+  readonly titleSource?: string | null;
+  readonly labelSource?: string | null;
+  readonly manualName?: true;
   readonly outcome: string | null;
   readonly latestAt: string | null;
   readonly claudeCostUsd: number | null;
@@ -234,6 +245,7 @@ export interface WatchModel {
   readonly serviceVersion?: string;
   readonly restart?: Fields;
   readonly schedules?: ShownSchedules;
+  readonly loops?: readonly WatchLoop[];
   readonly queue?: Fields;
   readonly workflowRefusals?: readonly WorkflowRefusal[];
   readonly cardForms?: readonly CardForm[];

@@ -1,5 +1,6 @@
 import { notesOf } from "./watch-notes-view.ts";
-import { shownScheduled, type ShownSchedules } from "./schedule-render.ts";
+import { shownLoopMarks, type ShownSchedules } from "./schedule-render.ts";
+import { loopRows } from "./watch-loops.ts";
 import { shownCommandWaits } from "./command-waits.ts";
 import { operationalDecision } from "../decision-visibility.ts";
 import type { WorkflowStages } from "../workflow-declaration.ts";
@@ -22,7 +23,7 @@ import type {
   WatchTurn,
 } from "./watch-render.ts";
 import { boardsOf, currentStepOf, roundOf, stagesFor } from "./watch-board.ts";
-import { completedOf } from "./watch-floor.ts";
+import { completedOf, shownName } from "./watch-floor.ts";
 import { todayStart } from "./watch-today.ts";
 import { decisionOf, phasesOf } from "./watch-phases.ts";
 
@@ -224,6 +225,7 @@ export function decisionCommands(
 
 export interface WatchInputs {
   readonly schedules?: ShownSchedules;
+  readonly loopRuns?: readonly Fields[];
   readonly queue?: Fields;
   readonly repository?: PrRepository | null;
   readonly workflows: readonly string[];
@@ -297,7 +299,7 @@ function runOf(inputs: WatchInputs, value: unknown): WatchRun {
     { records: inputs.githubRecords, repository: inputs.repository ?? null },
     runId,
   );
-  const ticketId = text(status["ticketId"]);
+  const ticketId = text(status["ticketId"]) || null;
   const issue = establishedIssue(
     inputs.repository ?? null,
     status["issueIdentity"],
@@ -305,13 +307,14 @@ function runOf(inputs: WatchInputs, value: unknown): WatchRun {
   return {
     runId,
     workflowId,
-    ...shownScheduled(status["scheduled"]),
+    ...shownLoopMarks(status),
     ...runLinksOf(status),
     ...notesOf(status["notes"]),
     commandWaits: shownCommandWaits(status["commandWaits"]),
-    ticketId: ticketId === "" ? null : ticketId,
+    ticketId,
     ...(issue === null ? {} : { issueIdentity: issue }),
     title: stamp(status["title"]),
+    ...shownName(status, { ticketId, issue }),
     ...outcomeOf(status["outcome"]),
     latestAt: stamp(status["latestAt"]),
     ...budgetsOf(status),
@@ -366,7 +369,12 @@ export function watchModel(inputs: WatchInputs): WatchModel {
   return {
     workflows,
     completed: completedOf(runs, todayStart(inputs.updatedAt)),
-    ...(inputs.schedules === undefined ? {} : { schedules: inputs.schedules }),
+    ...(inputs.schedules === undefined
+      ? {}
+      : {
+          schedules: inputs.schedules,
+          loops: loopRows(inputs.schedules, inputs.loopRuns ?? []),
+        }),
     ...(inputs.queue === undefined ? {} : { queue: inputs.queue }),
     ...(inputs.today === undefined ? {} : { today: inputs.today }),
     workflowRefusals: workflowRefusals(inputs.workflowRefusals),

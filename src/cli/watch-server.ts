@@ -13,7 +13,8 @@ import type {
 import { send } from "./client.ts";
 import { isPhoneAction, phoneAction, phoneRead } from "./watch-phone.ts";
 import { queueAction } from "./watch-queue.ts";
-import { continueAction, dismissAction } from "./watch-continue.ts";
+import { routedRunAction } from "./watch-continue.ts";
+import { scheduleAction } from "./watch-loops-action.ts";
 import type { WatchPrSettings } from "./watch-pr-settings.ts";
 import { readFile } from "node:fs/promises";
 import {
@@ -141,8 +142,9 @@ function transcriptRead(directories: readonly string[]): TranscriptRead {
 function routedAction(path: string): typeof watchAction | null {
   if (isPhoneAction(path)) return phoneAction;
   if (path === "/actions/queue") return queueAction;
-  if (path === "/actions/continue") return continueAction;
-  if (path === "/actions/dismiss") return dismissAction;
+  const run = routedRunAction(path);
+  if (run !== null) return run;
+  if (path === "/actions/schedule") return scheduleAction;
   return path === "/actions/run" ? watchAction : null;
 }
 

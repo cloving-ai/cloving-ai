@@ -8,6 +8,7 @@ import {
   type Shape,
 } from "./command-shapes.ts";
 import { isNoteId, isNoteText } from "./notes.ts";
+import { isRunLabel, isRunTitle } from "../run-name.ts";
 import { isBlockedReason, isPromotionId } from "../workflow-contracts.ts";
 import {
   commandEvents,
@@ -71,7 +72,15 @@ const shapes: Readonly<Record<string, Shape>> = {
   },
   "note-run": {
     required: ["noteId", "note", "source"],
-    validators: { source: (value) => value === "continue" },
+    validators: {
+      source: (value) => value === "continue" || value === "steer",
+    },
+  },
+  "rename-run": {
+    required: [],
+    optional: ["title", "label"],
+    consistent: (fields) =>
+      fields["label"] === undefined || fields["title"] !== undefined,
   },
   "mark-started": revised,
   "open-gate": {
@@ -295,6 +304,8 @@ const validators: Readonly<Record<string, (value: unknown) => boolean>> = {
   continueRequest: isDigest,
   note: isNoteText,
   noteId: isNoteId,
+  title: isRunTitle,
+  label: isRunLabel,
   units: whole,
   recoveryLimit: (value) => positive(value) && atMost(value, recoveryBound),
   leaseGeneration: positive,

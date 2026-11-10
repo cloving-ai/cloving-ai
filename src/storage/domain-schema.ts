@@ -170,8 +170,28 @@ const versionKinds = [
   "current",
 ] as const;
 
+type SchemaReader = Pick<SqlConnection, "get" | "all">;
+
+export async function inspectFile(file: {
+  readonly path: string;
+  readonly timeoutMilliseconds: number;
+}): Promise<SchemaState> {
+  const database = new DatabaseSync(file.path, {
+    timeout: file.timeoutMilliseconds,
+  });
+  try {
+    database.exec("PRAGMA locking_mode = EXCLUSIVE");
+    return await inspectSchema({
+      get: (sql) => Promise.resolve(database.prepare(sql).get()),
+      all: (sql) => Promise.resolve(database.prepare(sql).all()),
+    });
+  } finally {
+    database.close();
+  }
+}
+
 export async function inspectSchema(
-  connection: SqlConnection,
+  connection: SchemaReader,
 ): Promise<SchemaState> {
   const version = integer(
     await connection.get("PRAGMA user_version"),
@@ -192,7 +212,7 @@ export async function inspectSchema(
 }
 
 async function emptyDatabase(
-  connection: SqlConnection,
+  connection: SchemaReader,
   detail: string,
 ): Promise<SchemaState> {
   const objects = integer(
@@ -301,7 +321,7 @@ function structureOf(rows: readonly unknown[]): string {
   );
 }
 
-async function structure(connection: SqlConnection): Promise<string> {
+async function structure(connection: SchemaReader): Promise<string> {
   return structureOf(await connection.all(structureQuery));
 }
 
@@ -313,7 +333,7 @@ function expectedStructure(schemas: readonly string[]): string {
   return value;
 }
 
-async function recordedChecksums(connection: SqlConnection): Promise<string> {
+async function recordedChecksums(connection: SchemaReader): Promise<string> {
   return JSON.stringify(
     (
       await connection.all(

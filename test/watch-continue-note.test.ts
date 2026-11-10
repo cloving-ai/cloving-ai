@@ -176,7 +176,7 @@ await test("CLV-326 the run detail shows each note with its time and the turn th
   const html = rendered(page(model, { selected: "run=run-new" }));
   assert.match(
     html,
-    /<section class="run-notes" aria-label="Notes from the operator"><h3>Notes from the operator<\/h3><ul><li><p class="note-text">Merge the branch of the first run first\.<\/p><p class="meta">2026-11-08T10:00:00\.000Z · got by implement\/claude-turn\/1<\/p><\/li><li><p class="note-text">Keep &lt;the&gt; tests\.<\/p><p class="meta">2026-11-08T10:05:00\.000Z · waiting<\/p><\/li><li><p class="note-text">Use the old branch\.<\/p><p class="meta">2026-11-08T10:06:00\.000Z · got by turn-raw<\/p><\/li><li><p class="note-text">Keep the old tests\.<\/p><p class="meta">2026-11-08T10:07:00\.000Z · receipt deleted by the retention rule<\/p><\/li><\/ul><\/section>/,
+    /<section class="run-notes" aria-label="Notes from the operator"><h3>Notes from the operator<\/h3><ul><li><p class="note-text">Merge the branch of the first run first\.<\/p><p class="meta">2026-11-08T10:00:00\.000Z · continue · got by implement\/claude-turn\/1<\/p><\/li><li><p class="note-text">Keep &lt;the&gt; tests\.<\/p><p class="meta">2026-11-08T10:05:00\.000Z · continue · waiting<\/p><\/li><li><p class="note-text">Use the old branch\.<\/p><p class="meta">2026-11-08T10:06:00\.000Z · continue · got by turn-raw<\/p><\/li><li><p class="note-text">Keep the old tests\.<\/p><p class="meta">2026-11-08T10:07:00\.000Z · continue · receipt deleted by the retention rule<\/p><\/li><\/ul><\/section>/,
   );
   assert.equal(
     rendered(

@@ -102,6 +102,24 @@ h2, h3 { font-family: var(--font-heading); font-weight: 700; }
 .today-table th:first-child { padding-left: 0; text-align: left; overflow-wrap: anywhere; }
 .today-table tbody tr:last-child > * { border-bottom: 0; }
 .today-queue { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; margin: 0; padding: 12px 20px; }
+.loops { background: var(--color-surface); box-shadow: inset 0 0 0 var(--shape-border) var(--color-line); }
+.loops h2 { margin: 0; padding: 12px 20px; font-size: 18px; border-bottom: var(--shape-border) solid var(--color-line); }
+.loops-list { list-style: none; margin: 0; padding: 0; }
+.loop { display: flex; flex-direction: column; gap: 4px; padding: 12px 20px; border-bottom: var(--shape-border) solid var(--color-line); }
+.loop:last-child { border-bottom: 0; }
+.loop-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.loop-workflow { font-weight: 700; overflow-wrap: anywhere; }
+.loop-state { font-size: 13px; font-weight: 700; }
+.loop-active .loop-state { color: var(--color-state-running); }
+.loop-paused .loop-state { color: var(--color-state-waiting); }
+.loop-stopped .loop-state { color: var(--color-state-failed); }
+.loop p { margin: 0; color: var(--color-muted); font-size: 13px; overflow-wrap: anywhere; }
+.loop-actions { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 4px; }
+.loop-switch { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; }
+.loop-run { border: 0; cursor: pointer; padding: 6px 12px; background: var(--color-panel); color: var(--color-ink); font: inherit; font-size: 13px; clip-path: var(--angled); }
+.loop-run:disabled { cursor: progress; opacity: 0.6; }
+.loop-run:focus-visible { clip-path: none; }
+.loop p.loop-message { color: var(--color-ink); font-size: 13px; }
 .lanes { display: inline-flex; gap: 3px; }
 .lane { width: 14px; height: 12px; clip-path: var(--angled); }
 .lane.busy { background: var(--color-state-running); }
@@ -129,6 +147,25 @@ h2, h3 { font-family: var(--font-heading); font-weight: 700; }
 .need-note label { display: grid; gap: 4px; min-width: 240px; font-size: 12px; color: var(--color-muted); }
 .need-note input { padding: 6px 8px; border: var(--shape-border) solid var(--color-line); border-radius: calc(var(--shape-radius) / 2); background: var(--color-surface); color: var(--color-ink); font: inherit; }
 .run-notes h3 { margin: 12px 0 4px; font-size: 14px; }
+.note-mark { width: fit-content; font: 600 12px/1.6 var(--font-ui); color: var(--color-warn); }
+.steer { display: grid; gap: 4px; margin: 6px 0; }
+.steer-open { width: fit-content; }
+.steer-form { display: grid; gap: 6px; }
+.steer-form label { display: grid; gap: 4px; font-size: 12px; color: var(--color-muted); }
+.steer-form label:has(input) { display: flex; align-items: center; gap: 6px; }
+.steer-form textarea { padding: 6px 8px; border: var(--shape-border) solid var(--color-line); border-radius: calc(var(--shape-radius) / 2); background: var(--color-surface); color: var(--color-ink); font: inherit; }
+.steer-message { margin: 0; font-size: 12px; }
+.rename, .rename-form { display: grid; gap: 6px; }
+.rename-open, .rename-clear { width: fit-content; }
+.rename-form label { display: grid; gap: 4px; font-size: 12px; color: var(--color-muted); }
+.rename-form input { padding: 6px 8px; border: var(--shape-border) solid var(--color-line); border-radius: calc(var(--shape-radius) / 2); background: var(--color-surface); color: var(--color-ink); font: inherit; }
+.rename-message { margin: 0; font-size: 12px; }
+.run-name { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; margin: 0; }
+.name-title { font: 700 18px/1.3 var(--font-heading); }
+.name-label, .need-label, .card-label { font-weight: 700; }
+.name-pull, .card-pull, .token-pull { color: var(--color-muted); }
+.card-ids { display: flex; gap: 6px; font: 400 12px/1.6 var(--font-ui); }
+.token-pull { padding: 6px 0 6px 6px; }
 .run-notes ul { margin: 0; padding: 0; list-style: none; }
 .note-text { margin: 4px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
 .need-action { flex-shrink: 0; padding: 8px 18px; border: 0; cursor: pointer; background: var(--color-panel); color: var(--color-ink); font: 600 14px/1.4 var(--font-ui); text-decoration: none; white-space: nowrap; clip-path: var(--angled); }

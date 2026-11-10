@@ -11,7 +11,7 @@ import type { WatchTurn } from "../src/cli/watch-render.ts";
 import type { TranscriptEntry } from "../src/turn-transcript.ts";
 import { found, rendered } from "./watch-dom.ts";
 import { entry } from "./turn-transcript-fixture.ts";
-import { sampleRun } from "./watch-sample.ts";
+import { at, sampleRun, sampleTurn } from "./watch-sample.ts";
 
 const operationId = '["cloving-operation",1,"run-1","work","effect",1,null]';
 
@@ -23,7 +23,11 @@ function turnOf(outcome: string): WatchTurn {
 
 function shown(
   view: Partial<TranscriptView>,
-  options: { readonly outcome?: string; readonly turnId?: string } = {},
+  options: {
+    readonly outcome?: string;
+    readonly turnId?: string;
+    readonly later?: readonly WatchTurn[];
+  } = {},
 ) {
   const asked: unknown[] = [];
   const controls: TranscriptControls = {
@@ -47,10 +51,11 @@ function shown(
     onEarlier: () => undefined,
     onRetry: () => undefined,
   };
+  const turn = turnOf(options.outcome ?? "in work");
   const html = rendered(
     component(Transcript, {
-      runId: "run-1",
-      turn: turnOf(options.outcome ?? "in work"),
+      run: { runId: "run-1", turns: [turn, ...(options.later ?? [])] },
+      turn,
       turnId: options.turnId ?? null,
       controls,
     }),
@@ -149,13 +154,15 @@ await test("CLV-329 each transcript has a link to the run detail with the turn, 
   assert.deepEqual(asked, [{ runId: "run-1", operationId, wanted: true }]);
 });
 
-await test("CLV-329 an ended turn asks for a closed transcript unless the link names it", () => {
-  assert.deepEqual(shown({ shown: false }, { outcome: "completed" }).asked, [
-    { runId: "run-1", operationId, wanted: false },
-  ]);
+await test("CLV-329 an ended turn before the last turn asks for a closed transcript unless the link names it", () => {
+  const later = [sampleTurn({ startedAt: at("21:40:00"), outcome: "failed" })];
+  assert.deepEqual(
+    shown({ shown: false }, { outcome: "completed", later }).asked,
+    [{ runId: "run-1", operationId, wanted: false }],
+  );
   const linked = shown(
     { shown: false },
-    { outcome: "completed", turnId: operationId },
+    { outcome: "completed", turnId: operationId, later },
   );
   assert.deepEqual(linked.asked, [
     { runId: "run-1", operationId, wanted: true },
@@ -245,7 +252,7 @@ await test("CLV-329 the buttons and the scroll box of a transcript call their co
     onRetry: (target) => calls.push(["retry", target.operationId]),
   };
   const tree = component(Transcript, {
-    runId: "run-1",
+    run: { runId: "run-1", turns: [] },
     turn: turnOf("in work"),
     turnId: null,
     controls,
@@ -269,7 +276,7 @@ await test("CLV-329 the buttons and the scroll box of a transcript call their co
     ["scroll", operationId, 40],
   ]);
   const plain = component(Transcript, {
-    runId: "run-1",
+    run: { runId: "run-1", turns: [] },
     turn: turnOf("completed"),
     turnId: null,
     controls: undefined,
@@ -299,7 +306,7 @@ await test("CLV-329 the Retry button of a failed transcript read calls its contr
     onRetry: (target) => calls.push(["retry", target.operationId]),
   };
   const failed = component(Transcript, {
-    runId: "run-1",
+    run: { runId: "run-1", turns: [] },
     turn: turnOf("in work"),
     turnId: null,
     controls,

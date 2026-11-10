@@ -1,4 +1,14 @@
-import { scheduleStatusLine, scheduledText } from "./schedule-render.ts";
+import {
+  NoteMark,
+  SteerAction,
+  type SteerControls,
+} from "./watch-steer-view.ts";
+import {
+  NameMarks,
+  RenameAction,
+  type RenameControls,
+} from "./watch-rename-view.ts";
+import { loopText, scheduleStatusLine } from "./schedule-render.ts";
 import { CommandWaits, effectBudgetText } from "./command-waits.ts";
 import { AddCard, type CardControls } from "./watch-card-view.ts";
 import type { CardForm } from "./watch-run-input.ts";
@@ -50,9 +60,6 @@ export function cardReview(card: WatchCard): string {
   return [
     card.round === null ? null : `round ${String(card.round)}`,
     card.greptileScore === null ? null : `${String(card.greptileScore)}/5`,
-    card.pullRequestNumber === null
-      ? null
-      : `#${String(card.pullRequestNumber)}`,
   ]
     .filter((part) => part !== null)
     .join(" · ");
@@ -139,15 +146,20 @@ export function cardTotals(
   return `${label} · ${priceText(card.claudeCostUsd, card.estimatedCostUsd)}`;
 }
 
-export function Card(props: {
+interface CardProps {
   readonly card: WatchCard;
+  readonly steering?: SteerControls | undefined;
+  readonly renaming?: RenameControls | undefined;
   readonly workflowId: string;
   readonly repository?: string | undefined;
   readonly now: string;
   readonly observationNow?: string | undefined;
   readonly words?: WatchWords | undefined;
-}): Shown {
+}
+
+export function Card(props: CardProps): Shown {
   const { card, workflowId, now, words } = props;
+  const steering = card.endedAt === null ? props.steering : undefined;
   return element("article", {
     class: "card",
     children: [
@@ -159,6 +171,11 @@ export function Card(props: {
           element("strong", {
             children: card.title ?? card.runId.slice(0, 12),
           }),
+          component(NameMarks, {
+            tone: "card",
+            label: card.label,
+            pullRequestNumber: card.pullRequestNumber,
+          }),
           element("span", {
             class:
               card.endedAt === null && card.currentStep !== null
@@ -167,12 +184,9 @@ export function Card(props: {
             children: cardStep(card, now),
           }),
           component(CardReview, { card, workflowId }),
-          card.scheduled === undefined
+          loopText(card) === ""
             ? null
-            : element("span", {
-                class: "meta",
-                children: scheduledText(card.scheduled),
-              }),
+            : element("span", { class: "meta", children: loopText(card) }),
           element("span", {
             class: "card-cost",
             children: cardTotals(card, words),
@@ -183,9 +197,12 @@ export function Card(props: {
                 children: `! ${wordText(words, { key: "state.decision", text: "Decision waiting" })}`,
               })
             : null,
+          component(NoteMark, { waiting: card.notesWaiting ?? 0 }),
           element("small", { children: card.runId.slice(0, 12) }),
         ],
       }),
+      component(SteerAction, { runId: card.runId, steering }),
+      component(RenameAction, { run: card, renaming: props.renaming }),
       completionMark(card, { ...props, now: props.observationNow ?? now }),
       element("span", {
         class: "meta",
@@ -251,7 +268,7 @@ export function columnCollapsed(
   return value ?? ["Done", "Stopped"].includes(name);
 }
 
-export function Column(props: {
+interface ColumnProps {
   readonly column: WatchWorkflow["columns"][number];
   readonly addCard?: Shown;
   readonly workflowId: string;
@@ -259,8 +276,12 @@ export function Column(props: {
   readonly now: string;
   readonly observationNow?: string | undefined;
   readonly controls?: ColumnControls | undefined;
+  readonly steering?: SteerControls | undefined;
+  readonly renaming?: RenameControls | undefined;
   readonly words?: WatchWords | undefined;
-}): Shown {
+}
+
+export function Column(props: ColumnProps): Shown {
   const { column, controls, words } = props;
   const collapsed = columnCollapsed(controls?.choices ?? null, column.name);
   const name = labelWord(words, column.name);
@@ -312,6 +333,8 @@ export function Board(props: {
   readonly now: string;
   readonly observationNow?: string | undefined;
   readonly controls?: ColumnControls | undefined;
+  readonly steering?: SteerControls | undefined;
+  readonly renaming?: RenameControls | undefined;
   readonly words?: WatchWords | undefined;
 }): Shown {
   const { workflow, now, words } = props;
@@ -339,6 +362,8 @@ export function Board(props: {
             now,
             observationNow: props.observationNow,
             controls: props.controls,
+            steering: props.steering,
+            renaming: props.renaming,
             words,
             addCard:
               index === 0

@@ -420,13 +420,23 @@ The watch reads the state of an issue and of a pull request with the GitHub comm
 
 The **Today** panel at the side of the floor shows the numbers of the day: the runs completed, the cost, the cost per completed run and the stopped runs. A stopped run is a run that ended as failed, cancelled or blocked. Under the completed runs and the cost, the panel shows the values of yesterday. A bar chart shows the completed runs of each of the last 7 days, today last. A table shows the completed runs and the cost of today for each workflow. The last line shows the queue state, with one mark for each lane, busy or free.
 
+The **Loops** panel at the side of the floor shows one row for each schedule of the service. A row shows the workflow, the rule (for example `every 30 min` or `Mondays at 07:00 America/Los_Angeles`) and the state: `active`, `paused` or `stopped`. It shows the next run in the local time of the browser and as a relative time, for example `in 2 h`. A paused or stopped loop has no next run. The row also shows the last run of the loop, with its state, its outcome and its end time, and the failures in a row. The last run is the latest scheduled run or `manual from loop` run of the workflow. The panel refreshes on each poll of the page. With no schedule, the floor has no Loops panel.
+
+With watch actions on, each row has a switch and a **Run now** button:
+
+- The switch of an active loop sends the same command as `cloving schedule pause <workflowId>`.
+- The switch of a paused or stopped loop sends the same command as `cloving schedule resume <workflowId>`. A resume also sets the failures in a row to 0.
+- **Run now** sends the same command as `cloving schedule run <workflowId>`. The service admits one manual run with the input of the schedule. The run shows `manual from loop` in status, on its card and in the run detail. The next run of the schedule does not change.
+
+When a run of the workflow is active, the service refuses **Run now** with `run-active`. The row shows the reply of the service. Each click has its own random command ID. When the reply is lost, is late (status 503) or is `outcome-unknown`, the next click of the same control sends the same command ID again, so the service does not admit a second run. A click of the other control of the row does not change that command ID. A repeated command ID gives the stored run, also after the input of the schedule changes or the schedule is removed.
+
 A day starts at local midnight of the computer that runs the service. The panel counts a run on the day that the run ends. It uses the same events, outcomes and run costs as `cloving report`. The cost is the sum of the known run costs. When the cost of a run is not known, the cost shows as "at least $129.93", and a line under it shows the count, for example "4 runs with no cost". The rows of the table show their cost in the same way. The cost per completed run is the known cost of the day divided by the count of completed runs with a known cost.
 
 Below the floor, the **Completed today** shelf shows the count of runs that completed today, and one tile for each run, the newest first. The shelf uses the same day as the Today panel. A blocked run has no tile. A tile shows the ticket number, the pull request number, the title in at most two lines, the workflow, the time from start to end and the cost. The left edge of a tile has the color of the line of its workflow. When the run attached a video (`.mp4` or `.webm`) with the GitHub method `attach-asset`, the tile also shows **Play demo** with a small frame of the video. Select it to play the video in a player on the page. Press Esc or click outside the player to close it. The shelf scrolls sideways when the tiles do not fit. With no completed run, the shelf shows "No run completed today."
 
 Each workflow board with supported inputs has **+ Add a card** at the bottom of its first column, including an empty board. The form uses the string and ticket fields of the workflow's registered declaration. Ticket fields are labeled **Ticket ID**; other fields use their declared names, and optional fields can be left out. Unsupported inputs have no control. Select **Add card** or press Enter in a field to send. **Cancel** and Esc close the form. The service reply shows the admitted run ID or a refusal code; admitted cards arrive through the existing live stream.
 
-The form sends the same run request as the CLI and retains its random command ID for retries, including a lost reply. Retry the same form to avoid duplicate runs. The write endpoint accepts at most 16 KiB of JSON, requires the page's random token, matching Origin and a loopback/localhost Host with the bound port, and allows no cross-origin preflight. `CLOVING_WATCH_ACTIONS=off` removes the form control, the queue control and their endpoints; actions are enabled by default. Decisions and other run actions still use their displayed CLI commands.
+The form sends the same run request as the CLI and retains its random command ID for retries, including a lost reply. Retry the same form to avoid duplicate runs. The write endpoint accepts at most 16 KiB of JSON, requires the page's random token, matching Origin and a loopback/localhost Host with the bound port, and allows no cross-origin preflight. The switches and the **Run now** buttons of the Loops panel use the same write rules. `CLOVING_WATCH_ACTIONS=off` removes the form control, the queue control, the loop controls and their endpoints; actions are enabled by default. The Loops panel stays. Decisions and other run actions still use their displayed CLI commands.
 
 `cloving start` reads its settings from the environment. `cloving start --help` gives the form and the default of each setting:
 
@@ -439,7 +449,7 @@ The form sends the same run request as the CLI and retains its random command ID
 - `CLOVING_PROFILES`: a JSON file of named turn profiles. The service reads it at the start and at each `cloving reload`.
 - `CLOVING_COMMANDS`: a JSON object mapping command names to argument arrays, such as `{"review-requests":["/opt/cloving/scan-reviews.mjs"]}`. Names contain 1–64 ASCII letters, digits or hyphens; the first argument must be an absolute executable path. Unset means no commands. Invalid values stop startup with `invalid-commands`. A command gets no GitHub login; use the methods of the `github` capability to read or change GitHub.
 - `CLOVING_COMMAND_SECONDS`: a whole number from 1 to 3600, default 60. Invalid values stop startup with `invalid-command-seconds`. A command exceeding the deadline fails with `command-timeout`.
-- `CLOVING_WATCH_ACTIONS`: `off` disables starting runs from the board and the queue control; default `on`.
+- `CLOVING_WATCH_ACTIONS`: `off` disables starting runs from the board, the queue control and the loop controls; default `on`.
 - `CLOVING_WATCH_PORT`: the port of the watch page, or `off`.
 - `CLOVING_WATCH_REPOSITORY`: repository context for a separate watch process. `start` sets this from its service repository. The watch process uses its local origin and has no current-directory default.
 - `CLOVING_WORKSPACE_PERMITS`: the permit socket of the workspace supervisor. A workspace start sets it for each repository.
@@ -474,6 +484,7 @@ The watch page has a read API at `http://127.0.0.1:3663/api/v1`. Its OpenAPI 3.1
 - `GET /api/v1/openapi.json` gives the OpenAPI document.
 - `GET /api/v1/service` tells if the Cloving service answers.
 - `GET /api/v1/workflows` gives the workflows with their counts and card fields.
+- `GET /api/v1/schedules` gives the loops, the rows of the Loops panel: the workflow, the rule, the state, the next run, the failures in a row and the last run. When the service answers but its scheduler does not, the route answers 503 with the code `schedules-unavailable`.
 - `GET /api/v1/runs` gives one page of runs, newest first. The query parameters `workflowId`, `state`, `limit` (1 to 200, default 50) and `cursor` select the runs. The `nextCursor` of a page gives the next page.
 - `GET /api/v1/runs/{runId}` gives one run with its phases, open decisions, reviews and agent turns.
 - `GET /api/v1/runs/{runId}/events` gives the events of one run, the lowest sequence first. The query parameter `after` (default 0) gives only the events with a higher sequence.
@@ -488,6 +499,7 @@ curl http://127.0.0.1:3663/api/v1/
 curl http://127.0.0.1:3663/api/v1/openapi.json
 curl http://127.0.0.1:3663/api/v1/service
 curl http://127.0.0.1:3663/api/v1/workflows
+curl http://127.0.0.1:3663/api/v1/schedules
 curl 'http://127.0.0.1:3663/api/v1/runs?workflowId=develop&state=waiting_gate&limit=20'
 curl 'http://127.0.0.1:3663/api/v1/runs/<run-id>'
 curl 'http://127.0.0.1:3663/api/v1/runs/<run-id>/events?after=40'
@@ -500,7 +512,9 @@ The run list has the active runs and the runs of the last 7 days. The run detail
 
 #### Transcript of an agent turn
 
-Each agent turn in the run detail has a **Transcript** section. The section shows the conversation of the turn like the terminal of the agent: monospaced text on the theme colors, one block for each entry. The open turn is expanded and follows the stream while the agent works. An ended turn opens with **Show**. The **Link** of a turn opens `#run=<run-id>&turn=<operation-id>`: the run detail with that turn expanded.
+Each agent turn in the run detail has a **Transcript** section. The section shows the conversation of the turn like the terminal of the agent: monospaced text on the theme colors, one block for each entry.
+
+The turn in work is expanded and follows the stream while the agent works. When no turn is in work, the last agent turn (the turn that started last) is expanded. The other turns open with **Show**. The **Link** of a turn opens `#run=<run-id>&turn=<operation-id>`: the run detail with that turn expanded in place of the last turn. A transcript that you show or hide keeps that state until you leave the run detail.
 
 The service reads the `turn.jsonl` file of the journal folder of the turn and makes one entry from each line. The watch page does not read the journal. An entry has one of these kinds:
 
@@ -693,7 +707,7 @@ A text word is plain text of 1 to 60 characters, with no control characters and 
 
 `cloving mcp --repository <directory>` serves Cloving tools to an MCP client over standard input and output. The server connects to the service of that repository. Start the service with `cloving start` before the client calls a tool.
 
-To use a workflow computer from a harness on another machine, install the `cloving-zapier` integration package on both machines. On the workflow computer, run `cloving integrations connect mcp`, choose workflows, and open the link to connect it to your Cloving account. On the harness machine, run `cloving integrations pair mcp --name studio`. After signing in, copy the pairing code to `cloving integrations approve mcp` on the workflow computer, then keep `cloving integrations serve mcp` running there.
+To use a workflow computer from a harness on another machine, install the Cloving relay integration package on both machines. On the workflow computer, run `cloving integrations connect mcp`, choose workflows, and open the link to connect it to your Cloving account. On the harness machine, run `cloving integrations pair mcp --name studio`. After signing in, copy the pairing code to `cloving integrations approve mcp` on the workflow computer, then keep `cloving integrations serve mcp` running there.
 
 Configure the harness to launch `cloving-mcp --connection studio`, or `cloving mcp --connection studio`. The pairing command prints a complete configuration. Private keys stay at the endpoints, and cloving.ai carries encrypted messages. The bridge requires a harness that can launch a local MCP process. The `cloving.ai/mcp` page explains setup; it is not a URL-only MCP endpoint.
 
@@ -713,7 +727,7 @@ command = "cloving"
 args = ["mcp", "--repository", "<directory>"]
 ```
 
-The server has twelve tools:
+The server has seventeen tools:
 
 - `cloving_status`, `cloving_questions` and `cloving_events` read the runs, the pending decisions and the events, as `cloving status`, `cloving questions` and `cloving events` do.
 - `cloving_run` submits a run, as `cloving run` does. Give exactly one source: `prompt`, `ticket` (a ticket ID or `next`) or `input` (a JSON object, not a file path).
@@ -721,8 +735,10 @@ The server has twelve tools:
 - `cloving_pause`, `cloving_resume` and `cloving_drop` send a run command with the `expectedRevision` of the run.
 - `cloving_continue` continues a failed or blocked run, as `cloving run continue` does. The arguments `from` and `bundle` are optional.
 - `cloving_dismiss` dismisses a failed or blocked run, as `cloving dismiss` does.
+- `cloving_steer` sends a note to an active run, as `cloving steer` does. The argument `now` is optional.
+- `cloving_schedules`, `cloving_schedule_pause`, `cloving_schedule_resume` and `cloving_schedule_run` list, pause, resume and run the loops, as `cloving schedule`, `cloving schedule pause`, `cloving schedule resume` and `cloving schedule run` do. They take the `workflowId` of the schedule.
 
-Each of the nine tools that change state requires a `commandId`. The server never makes a command ID. After a lost reply (`outcome-unknown`), send the same request with the same `commandId` again. The service then gives the stored receipt, also when the first request came from the CLI. A tool gives the same JSON object as the CLI command with `--json`. A refusal of the service gives `isError: true`, and an argument that is not valid gives the JSON-RPC error `-32602`. A cancel of a tool call stops the wait for the reply, but it does not cancel a command that the service admitted.
+Each of the eleven tools that admit a command requires a `commandId`. `cloving_schedule_pause` and `cloving_schedule_resume` need no command ID, because a second pause or resume changes nothing. The server never makes a command ID. After a lost reply (`outcome-unknown`), send the same request with the same `commandId` again. The service then gives the stored receipt, also when the first request came from the CLI. A tool gives the same JSON object as the CLI command with `--json`. A refusal of the service gives `isError: true`, and an argument that is not valid gives the JSON-RPC error `-32602`. A cancel of a tool call stops the wait for the reply, but it does not cancel a command that the service admitted.
 
 A tool call cannot start the service and cannot select a different repository. The server binds to one repository when it starts.
 
@@ -1189,9 +1205,89 @@ The service records the note on the new run as the event `run.noted`, in the sam
 
 The first agent turn that the new run starts gets the note before its turn text, in a section `Notes from the operator:`. A reused effect does not start a turn, so it does not get the note. The worker adds the section, so a workflow needs no change. The worker records the note IDs of a turn in the turn journal. A turn gets the note only when its agent process starts. When the turn stops before that, for example because the daemon stopped, the next turn of the run gets the note. When the daemon restarts during that turn, the resumed turn keeps the same notes, and no other turn gets them.
 
-`cloving status <run-id>` shows each note with its time and the step of the turn that got it, for example `Note at 2026-11-08T10:00:00.000Z, got by implement/claude-turn/1: Merge the branch of the first run first.`. Before a turn gets the note, the line shows `waiting`. In the status JSON, each item of `notes` has `noteId`, `text`, `source`, `recordedAt` and `receivedBy`, which is the operation ID of the turn or `null`.
+`cloving status <run-id>` shows each note with its time and the step of the turn that got it, for example `Note at 2026-11-08T10:00:00.000Z from continue, got by implement/claude-turn/1: Merge the branch of the first run first.`. Before a turn gets the note, the line shows `waiting`. In the status JSON, each item of `notes` has `noteId`, `text`, `source`, `recordedAt` and `receivedBy`, which is the operation ID of the turn or `null`.
 
 The status reads the turn that got a note from the turn journal. When the retention rule moves the turn records to the archive, the status reads them in the `journal` folder of the archive. When the retention rule deletes the turn records, the status cannot find the turn that got the note. Then the line shows `receipt deleted by the retention rule`, and the JSON item adds `"receipt": "deleted"`.
+
+### Steer a run in work
+
+A person reaches a run in work at a decision gate. Between gates, a turn can work for an hour or more. When the watch page or the turn log shows that the turn goes the wrong way, send the run a note:
+
+```sh
+cloving steer <run-id> --text "Change only src/cli.ts."
+cloving steer <run-id> --text "Change only src/cli.ts." --now
+```
+
+The service removes the spaces at the start and end of the note. Then the note must have 1 to 4000 characters. The service records the note on the run as the event `run.noted` with the source `steer`. The MCP tool `cloving_steer` takes `runId`, `text` and an optional `now`, and sends the same request. With `--command-id <id>`, a lost reply can be sent again. A note is not an answer to a decision.
+
+The note reaches the run in one of two forms:
+
+- **Next turn.** Without `--now`, the next agent turn that the run starts gets the note in its section `Notes from the operator:`, as a note of `cloving run continue --note` does. The turn in work goes on with no change. The reply says `queued`.
+- **Now.** With `--now`, the worker looks for the open Claude Code or Codex turn of the run. When that turn recorded a session, the worker stops the turn as a daemon restart does. Then it resumes the same session with the next message `A person sent this note while you worked:` and the note. The resumed turn is the same turn: it keeps its round, its work tree and its budget. Its attempt record has `resumedAfter: steer`. The reply says `now` and has the operation ID of the turn.
+
+The turn gets a note sent now when the resumed agent starts. If the daemon stops before that start, the restarted daemon resumes the session as before the note, and the note waits for the next turn. When the resumed agent stops because the model is at capacity or the network is not available, the next attempt starts a new session. Its prompt has the task and, after the task, the notes that the turn got.
+
+A turn takes at most three notes with `--now`. A daemon restart does not reset this count. In these cases the note waits for the next turn, and the reply says `queued` with the reason:
+
+- `no-open-turn`: the run has no open agent turn, for example because it runs a command or waits for CI or a review.
+- `no-session`: the open turn recorded no session.
+- `harness-cannot-resume`: the harness of the open turn cannot resume a session.
+- `note-limit`: the open turn took three notes with `--now`.
+
+The service refuses these notes:
+
+- A blank note, or a note of more than 4000 characters, gets `invalid-note`.
+- A note for a run that completed or failed gets `run-not-active`.
+- A note for a dropped run gets `run-cancelled`.
+- A note for an unknown run gets `unknown-run`.
+- A request with a known command ID and a different run or note gets `conflicting-command`. The same request gets the stored receipt again and does not stop the turn again.
+
+`cloving status <run-id>`, the status JSON and the run detail of the watch page show each note with its time, its source and the turn that got it, for example `Note at 2026-11-08T10:00:00.000Z from steer, got by implement/claude-turn/1: Change only src/cli.ts.`.
+
+On the watch page, with watch actions on, the card of a run in work and the run detail have a **Steer** button. The button opens a form with a note field and the check box **Send to the turn in work now**. **Send** sends the same request as `cloving steer`, and Esc closes the form. The reply shows under the button. Until a turn gets the note, the card shows `1 note waiting`.
+
+### Name a run
+
+Each run card has a name with no setup. A ticket command is optional. The service picks the title of a run from the first of these sources that exists:
+
+1. A manual name from **Rename**, `cloving rename` or `cloving_rename`.
+2. The ticket title: the first line of the ticket text when it starts with `# `.
+3. The title of the pull request that the run opened.
+4. A field `title` in the run input.
+5. The first line of the prompt or the ticket text that is not empty, without a leading `# `, cut at 80 characters at a word end.
+6. The workflow ID and the task ID, for example `develop task-0123456789ab`.
+
+The result of the `open-pr` effect keeps the title of the pull request. Each later `open-pr` call of the run reads the current title on GitHub, so the run shows a new title after its next push.
+
+The service picks the label in this order:
+
+1. A manual label.
+2. The issue number, for example `#699`, or the ticket ID.
+3. A ticket key at the start of the title, for example `SID-4820` in `SID-4820: Filter and page Notion database files`. A key has two or more capital letters or digits with at least one letter, a hyphen and a number.
+4. No label.
+
+When the run has a pull request, the card also shows its number, for example `PR #686`. The station token, the card, the run detail, **Needs you**, the shelf, `cloving status <run-id>`, the status JSON and the read API show the same title and label. The status JSON and the read API also have `titleSource` (`manual`, `ticket`, `pull-request`, `input`, `prompt` or `fallback`) and `labelSource` (`manual`, `ticket`, `title` or `null`).
+
+To give a run a new name, use one of these:
+
+```sh
+cloving rename <run-id> --title "Fix the flaky retention test" --label SID-4820
+cloving rename <run-id> --clear
+```
+
+- **Watch page:** with watch actions on, the run detail and each card have a **Rename** action. It opens a form with the current title and a label field. Enter saves, and Esc cancels. When the run has a manual name, **Use the automatic name** removes it.
+- **MCP:** the tool `cloving_rename` takes `runId`, `commandId`, `title`, an optional `label` and an optional `clear`.
+
+A title has 1 to 200 characters after the spaces at its start and end are removed. It is on one line and has no control characters. A label has 1 to 32 characters from letters, digits and `# ! . _ / -`. `--clear` takes no title and no label. A rename works for an active run and for a run that ended. It is the event `run.renamed` of the run, so the name stays after `cloving restart`, and the newest rename wins. A rename does not change the pull request or the ticket.
+
+The service refuses these renames:
+
+- A blank or invalid title gets `invalid-title`.
+- An invalid label gets `invalid-label`.
+- A rename of an unknown run gets `unknown-run`.
+- A request with a known command ID and other values gets `conflicting-command`. The same request gets the stored receipt again.
+
+The watch page sends a rename with the page token, the same Origin and a loopback Host, in at most 16 KiB of JSON, like its other actions. Each save gets a random command ID, and a save again after a lost reply sends the same command ID. `CLOVING_WATCH_ACTIONS=off` removes the Rename action and its endpoint.
 
 ### Rescue stuck pull requests
 
@@ -1997,13 +2093,15 @@ An earlier scheduled run blocks later scheduled slots while queued, running, wai
 
 Use `cloving schedule [--json]` to list workflow IDs, intervals or calendar times, state, failure counts, slots, next run times and active runs. `cloving schedule pause <workflowId> [--json]` stops new scheduled runs without interrupting an active run or recording skips. `cloving schedule resume <workflowId> [--json]` clears the failure count and starts the next run one interval later, or at the next calendar slot, retaining increasing slot numbers. Repeating pause or resume leaves the current state and timing unchanged. Paused and stopped schedules survive restarts and interval changes.
 
+`cloving schedule run <workflowId> [--command-id <id>] [--json]` admits one manual run of the workflow with the input of the schedule. The admission command ID is `loop:<workflowId>:<id>`. With no `--command-id`, the CLI makes a random command ID and shows it. Send the command again with the same `--command-id` after a lost reply; the service then gives the same run. While a run of the workflow is active, the service refuses the command with `run-active`. The service admits the run requests of one workflow one at a time. So a run now that comes during another admission of the workflow waits for it and then refuses with `run-active`. A run now does not change the next run, the slot or the failures in a row of the schedule. The **Run now** button of the Loops panel on the watch page sends the same command.
+
 `cloving status` shows each schedule after the queue lines, for example `Schedule review-queue: every 300 s, active, next run at 2026-10-14T12:05:00.000Z, 0 failures in a row`. Paused schedules show `paused` without a next run time; stopped schedules show `stopped`, the stop time and the failure count. The watch board shows the same information on the workflow's board and refreshes it on the next poll. Status times use ISO timestamps; watch times use the browser's local date and time.
 
 A calendar schedule shows its days, its time and its time zone. The next run shows the local time of that time zone with its offset, in status, in `cloving schedule` and on the watch board. For example, `cloving status` shows `Schedule review: Mondays at 07:00 America/Los_Angeles, active, next run at 2026-11-16T07:00:00-08:00, 0 failures in a row`. A schedule with no `weekdays` shows `each day`, for example `each day at 07:00 UTC`.
 
 Status JSON includes `schedules` entries with `workflowId`, `everySeconds`, `state`, `failuresInRow`, `nextAt` and `stoppedAt`. Times are epoch milliseconds or `null`; paused and stopped schedules have `nextAt: null`. A calendar entry has `at`, `timeZone` and, when set, `weekdays` in place of `everySeconds`. It also has `nextLocal`, the next run as a local ISO time with its offset, or `null` when `nextAt` is `null`. The field is absent when no schedules are configured. A scheduler that is not running yet is shown as `schedules: { "status": "unavailable" }` and `Schedules: unavailable` in status and watch.
 
-Runs admitted by a schedule show `scheduled 12` for slot 12 on the status run line, in run status, on the watch card and in the watch run detail. Their JSON summary and detail include `scheduled: { "slot": 12 }`. Manual runs have no scheduled mark.
+Runs admitted by a schedule show `scheduled 12` for slot 12 on the status run line, in run status, on the watch card and in the watch run detail. Their JSON summary and detail include `scheduled: { "slot": 12 }`. A run of `cloving schedule run` shows `manual from loop` in the same places, and its JSON has `manualFromLoop: true`. Other manual runs have no mark.
 
 Three consecutive failed scheduled runs stop a schedule. A completed run with outcome `blocked` counts as a failure; cancellation leaves the count unchanged, and any other completion clears it. With `CLOVING_NOTIFY_COMMAND` configured, each stop sends a `schedule-stopped` notification with the three failed run IDs and the resume command; its `runId` names the third failed run.
 
@@ -2108,7 +2206,7 @@ After a merge or branch update changes `package.json` or `package-lock.json`, re
 
 `npm run check` and `npm run test:concurrency` currently reject admission because the complete quality policy is not implemented. Setup checks are not product acceptance. State and retained releases will live outside the package installation; installing or updating the package does not activate a daemon or migrate state.
 
-Run `npm run test:scale` on an otherwise idle machine to measure authority opening at 1,000, 10,000 and 50,000 events. This command runs the benchmark alone, without coverage; the regular test suite excludes it. The fixture uses completed runs with budgets, gates and released continuations. It requires each opening to take less than two seconds and the largest opening to take less than eight times the 10,000-event opening. Replay uses the pure reducer with run-scoped projections and preserves shared effect and lease state. Large effect histories, growing gate or pending-intent state within one run, and cancelled-run recovery still require separate scaling work; this benchmark does not establish their bounds. The generated-history parity and tamper tests compare replay with the full reducer and cover every event type. The same command also measures the first status page of a service with 700 runs and 7,000 events, and requires an answer in less than 200 ms. The service keeps the projected authority state in memory, so a status request reads no projected table in full after the start. The expiry check of leases, decisions and command waits also uses this state. It reads the end of the next lease once after each change of the authority state, and it runs no other query until that lease ends. The polls and heartbeats of the Solid Objects runtime still query the authority database while the service is idle.
+Run `npm run test:scale` on an otherwise idle machine to measure authority opening at 1,000, 10,000 and 50,000 events. This command runs the benchmark alone, without coverage; the regular test suite excludes it. The fixture uses completed runs with budgets, gates and released continuations. It requires each opening to take less than two seconds and the largest opening to take less than eight times the 10,000-event opening. Replay uses the pure reducer with run-scoped projections and preserves shared effect and lease state. Large effect histories, growing gate or pending-intent state within one run, and cancelled-run recovery still require separate scaling work; this benchmark does not establish their bounds. The generated-history parity and tamper tests compare replay with the full reducer and cover every event type. The same command also measures the first status page of a service with 700 runs and 7,000 events, and requires an answer in less than 200 ms. The service keeps the projected authority state in memory, so a status request reads no projected table in full after the start. The expiry check of leases, decisions and command waits also uses this state. It reads the end of the next lease once after each change of the authority state, and it runs no other query until that lease ends. The Solid Objects runtime runs as the only owner of the authority database. It wakes for a change in the service or at the next due time of its work, and it does not poll. It releases the authority actor 500 ms after the last turn, so an idle service renews no lease. With no request and no active turn, the service runs no query.
 
 `npm run check:quality` checks the npm manifest, lock and installed versions, builds the package with `npm run build`, regenerates TypeScript output in memory, inventories first-party files, and runs strict compilation, the proposed module catalog, workflow/effect boundaries, suppression and test-integrity checks, formatting, typed lint, structural checks, clone detection and the regular local test suite. Production modules require at least 90% line, statement and function coverage and 85% branch coverage per file. Coverage uses native V8 ranges mapped to the syntax tree of the exact Node-stripped source; unimported production files fail. Class and named object types allow at most 24 callable members; interfaces allow 10. Clone checks support ordinary TypeScript and JavaScript; JSX is rejected until separately qualified. `npm run check:lint`, `npm run check:format` and `npm run test:quality` run individual development checks.
 

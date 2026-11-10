@@ -5,8 +5,20 @@ import { element, type Shown } from "./watch-element.ts";
 export interface WatchNote {
   readonly noteId: string;
   readonly text: string;
+  readonly source: string;
   readonly recordedAt: string;
   readonly receipt: string;
+}
+
+export function noteWaiting(notes: unknown): boolean {
+  return (
+    Array.isArray(notes) &&
+    notes.some(
+      (note: unknown) =>
+        part(note, "receivedBy") === null &&
+        part(note, "receipt") === undefined,
+    )
+  );
 }
 
 export function notesOf(value: unknown): {
@@ -17,6 +29,7 @@ export function notesOf(value: unknown): {
     notes: value.map((note: unknown) => ({
       noteId: String(part(note, "noteId")),
       text: String(part(note, "text")),
+      source: String(part(note, "source")),
       recordedAt: String(part(note, "recordedAt")),
       receipt: noteReceipt(note),
     })),
@@ -41,7 +54,7 @@ export function RunNotes(props: {
               element("p", { class: "note-text", children: note.text }),
               element("p", {
                 class: "meta",
-                children: `${note.recordedAt} · ${note.receipt}`,
+                children: `${note.recordedAt} · ${note.source} · ${note.receipt}`,
               }),
             ],
           }),

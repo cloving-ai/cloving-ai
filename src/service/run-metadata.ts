@@ -1,6 +1,7 @@
 import { issueIdentity } from "../issue-identity.ts";
 import { record, type Fields } from "../protocol.ts";
 import type { RunView } from "../authority/status.ts";
+import { nameOf, ticketOf } from "./run-names.ts";
 import {
   invalidRequest,
   isIdentifier,
@@ -79,53 +80,28 @@ export async function outcomeOf(
   };
 }
 
-function ticketOf(input: Fields | undefined): {
-  readonly id: string | undefined;
-  readonly text: string | undefined;
-} {
-  const declared = record(record(input?.["input"])?.["ticket"]);
-  const id = declared === undefined ? input?.["ticketId"] : declared["id"];
-  const text = declared === undefined ? input?.["ticket"] : declared["text"];
-  return {
-    id: typeof id === "string" ? id : undefined,
-    text: typeof text === "string" ? text : undefined,
-  };
-}
-
-function titleOf(input: Fields | undefined, workflowId: string): string | null {
-  const ticket = ticketOf(input).text;
-  if (ticket === undefined) return null;
-  const fallback = `Cloving task ${String(input?.["cycleId"])}`;
-  const lines = ticket.split("\n");
-  if (workflowId === "develop-prompt" && !Object.hasOwn(input ?? {}, "input")) {
-    const first = lines.find((line) => /\S/.test(line));
-    return first === undefined
-      ? fallback
-      : first.replace(/^# /, "").trim().slice(0, 200);
-  }
-  const first = lines[0] ?? "";
-  return first.startsWith("# ")
-    ? first.slice(2).trim().slice(0, 200)
-    : fallback;
-}
-
 export async function metadataOf(
   context: ServiceContext,
   source: {
+    readonly runId: string;
     readonly workflowId: string;
     readonly digest: string | null | undefined;
+    readonly input: Fields | null;
   },
 ): Promise<Fields> {
   const document = source.digest
     ? await context.authority.queries.document(source.digest)
     : undefined;
   const input = record(JSON.parse(document ?? "null"));
+  const text = ticketOf(input).text;
   return {
     ticketId: ticketIdOf(input),
-    title: titleOf(input, source.workflowId),
-    ...(ticketOf(input).text === undefined
-      ? {}
-      : { issueIdentity: issueIdentity(ticketOf(input).text) }),
+    ...(await nameOf(context, {
+      ...source,
+      stored: input,
+      submission: source.input,
+    })),
+    ...(text === undefined ? {} : { issueIdentity: issueIdentity(text) }),
   };
 }
 
@@ -166,12 +142,22 @@ export async function scheduleMetadata(
   };
 }
 
+export interface LoopMarks {
+  readonly scheduled?: { readonly slot: number };
+  readonly manualFromLoop?: true;
+}
+
 export async function scheduledMetadata(
   context: ServiceContext,
   run: { readonly runId: string; readonly workflowId: string },
-): Promise<{ readonly scheduled?: { readonly slot: number } }> {
+): Promise<LoopMarks> {
   const commandId = (await context.authority.queries.run(run.runId))
     ?.admissionCommandId;
+  if (
+    typeof commandId === "string" &&
+    commandId.startsWith(`loop:${run.workflowId}:`)
+  )
+    return { manualFromLoop: true };
   const prefix = `schedule:${run.workflowId}:`;
   if (typeof commandId !== "string" || !commandId.startsWith(prefix)) return {};
   const suffix = commandId.slice(prefix.length);
@@ -190,4 +176,18 @@ export async function submittedInput(
     : undefined;
   const request = record(JSON.parse(document ?? "null"));
   return record(request?.["submission"]) ?? null;
+}
+
+export async function currentName(
+  context: ServiceContext,
+  runId: string,
+): Promise<Fields> {
+  const details = (await context.authority.state()).details[runId];
+  const workflowIds = await context.authority.queries.workflowIds([runId]);
+  return metadataOf(context, {
+    runId,
+    workflowId: String(workflowIds[runId]),
+    digest: details?.input,
+    input: await submittedInput(context, details?.submission),
+  });
 }

@@ -15,7 +15,9 @@ export function Tile(props: {
       element("div", {
         class: "tile-ids",
         children: [
-          element("span", { class: "tile-ticket", children: tile.ticket }),
+          tile.ticket === null
+            ? null
+            : element("span", { class: "tile-ticket", children: tile.ticket }),
           tile.pullRequestNumber === null
             ? null
             : element("span", {
@@ -58,7 +60,7 @@ export function Demo(props: {
       class: "tile-demo",
       type: "button",
       popovertarget: player,
-      "aria-label": `Play demo of ${tile.ticket}`,
+      "aria-label": `Play demo of ${tile.ticket ?? tile.title}`,
       children: [
         element("video", {
           class: "demo-frame",
