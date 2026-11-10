@@ -17,6 +17,7 @@ import {
   newestRestart,
   restartFailureText,
   restartFiles,
+  restartText,
   serialCalls,
   type RestartMark,
   type RestartProblem,
@@ -59,6 +60,7 @@ export interface RestartWatch {
   readonly stopping: AbortSignal;
   readonly stop: () => Promise<void>;
   readonly stopChildren: () => Promise<readonly string[]>;
+  readonly resumeChildren: () => void;
   readonly exclusive: CheckoutLock;
 }
 
@@ -280,12 +282,32 @@ async function childrenAlive(
   });
 }
 
+async function workStarted(
+  watch: RestartWatch,
+  mark: RestartMark,
+): Promise<boolean> {
+  const work = await waitingWork(watch, mark).catch(() => null);
+  if (work !== null && work.length === 0) return false;
+  await replaced(watch.directory, {
+    name: `${restartFiles.request}${randomUUID()}`,
+    text: restartText(mark),
+  });
+  await rm(join(watch.directory, restartFiles.claimed), { force: true });
+  watch.resumeChildren();
+  const output = work ?? ["The service did not list its work."];
+  process.stderr.write(
+    `Restart waits: work started before the stop.\n${output.join("\n")}\n`,
+  );
+  return true;
+}
+
 async function restarted(
   watch: RestartWatch,
   claimed: RestartMark,
 ): Promise<number | undefined> {
   if (stopSignalled(watch) || (await refused(watch, claimed))) return undefined;
   if (await childrenAlive(watch, claimed)) return undefined;
+  if (await workStarted(watch, claimed)) return undefined;
   await watch.stop();
   if (stopSignalled(watch)) return undefined;
   await updateNoted(watch, claimed);

@@ -17,6 +17,7 @@ import {
   hostedChildren,
   stopped,
   watchAfterStart,
+  type ChildrenStop,
   type HostProcesses,
 } from "./self-host-children.ts";
 
@@ -99,7 +100,7 @@ async function hostWatches(
   lifecycle: {
     readonly stopping: AbortController;
     readonly stop: () => Promise<void>;
-    readonly stopChildren: () => Promise<readonly string[]>;
+    readonly children: Pick<ChildrenStop, "stop" | "resume">;
   },
 ): Promise<number | undefined> {
   const watches = {
@@ -111,7 +112,8 @@ async function hostWatches(
     polled(settings, watches),
     restartWatch({
       ...watches,
-      stopChildren: lifecycle.stopChildren,
+      stopChildren: lifecycle.children.stop,
+      resumeChildren: lifecycle.children.resume,
       directory: settings.directory,
       runtime: settings.runtime,
       checkout: settings.checkout ?? settings.product,
@@ -157,7 +159,7 @@ export async function hostedPrograms(settings: HostProcesses): Promise<number> {
   process.on("SIGTERM", terminate);
   const polling = hostWatches(settings, {
     stopping,
-    stopChildren: pause.stop,
+    children: pause,
     stop: async () => {
       updating = true;
       await stop("keep");

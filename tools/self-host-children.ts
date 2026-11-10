@@ -275,6 +275,7 @@ async function stillRunning(
 
 export interface ChildrenStop {
   readonly stop: () => Promise<readonly string[]>;
+  readonly resume: () => void;
   readonly held: () => Promise<boolean> | undefined;
   readonly end: () => void;
 }
@@ -289,22 +290,26 @@ export function childrenStop(
       if (program.name === "relay" && !running(program))
         hosted.programs[index] = productChild(settings, ["relay"]);
   };
+  const resume = (): void => {
+    relaunched();
+    const pause = hold;
+    hold = undefined;
+    pause?.resolve(true);
+  };
   return {
     stop: async () => {
-      const pause = Promise.withResolvers<boolean>();
-      hold = pause;
+      hold = Promise.withResolvers<boolean>();
       const alive = await stillRunning(
         hosted.programs.filter((program) => program !== hosted.daemon),
         settings.stopMilliseconds ?? 60000,
       );
       if (alive.length === 0) return [];
-      relaunched();
-      hold = undefined;
-      pause.resolve(true);
+      resume();
       return alive.map(
         (program) => `${String(program.child.pid)} ${program.name}`,
       );
     },
+    resume,
     held: () => hold?.promise,
     end: () => {
       hold?.resolve(false);

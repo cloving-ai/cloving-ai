@@ -43,11 +43,16 @@ export function processIdentity(
   });
 }
 
-export async function sameProcess(recorded: RecordedProcess): Promise<boolean> {
+export type ProcessMatch = "same" | "other" | "unknown";
+
+export async function processMatch(
+  recorded: RecordedProcess,
+): Promise<ProcessMatch> {
   const identity = await processIdentity(recorded.processId);
-  return (
-    identity !== undefined &&
-    identity.start === recorded.processStart &&
+  if (identity === undefined)
+    return processExists(recorded.processId) ? "unknown" : "other";
+  return identity.start === recorded.processStart &&
     identity.command.split(" ").includes(recorded.marker)
-  );
+    ? "same"
+    : "other";
 }

@@ -1,6 +1,13 @@
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -12,6 +19,7 @@ import { restartMark, restartText } from "../src/restart-request.ts";
 import { turnRecoveries } from "../src/turn-recovery.ts";
 import { heldWork, type KeepReads } from "../src/work-gap.ts";
 import { hostedPrograms } from "../tools/self-host-processes.ts";
+import { checkoutLock, restartWatch } from "../tools/self-host-restart.ts";
 import { hostWorkReads, selfUpdateActive } from "../tools/self-update-host.ts";
 import { fresh, old, scripted, waitingOld } from "./restart-report-fixture.ts";
 import { programs } from "./self-host-processes-fixture.ts";
@@ -243,6 +251,52 @@ await test("CLV-337 a restart that keeps turns waits for an open command and a t
     assert.equal(existsSync(join(root, "daemon-signals")), false);
     await writeFile(join(held, "result.json"), "{}");
     assert.equal(await hosting, 75);
+  }));
+
+await test("CLV-337 a restart that keeps turns checks the work again before the daemon stop and gives the restart back for a command that started meanwhile", () =>
+  withFolder(async (directory) => {
+    const command = join(directory, "commands", "command-late");
+    const calls: string[] = [];
+    const stopping = new AbortController();
+    await writeFile(
+      join(directory, "pending-restart-one"),
+      keepMark("restart-late"),
+    );
+    const watching = restartWatch({
+      directory,
+      runtime: join(directory, "run"),
+      checkout: directory,
+      environment: process.env,
+      milliseconds: 50,
+      stopping: stopping.signal,
+      exclusive: checkoutLock(stopping),
+      stop: () => {
+        calls.push("stop");
+        return Promise.resolve();
+      },
+      stopChildren: async () => {
+        calls.push("children");
+        await mkdir(command, { recursive: true });
+        await writeFile(join(command, "started.json"), "{}");
+        return [];
+      },
+      resumeChildren: () => {
+        calls.push("resume");
+      },
+    });
+    await eventually(() => (calls.includes("resume") ? true : undefined));
+    assert.deepEqual(calls, ["children", "resume"]);
+    assert.equal(existsSync(join(directory, "claimed-restart")), false);
+    const [request = "", ...others] = (await readdir(directory)).filter(
+      (name) => name.startsWith("pending-restart-"),
+    );
+    assert.deepEqual(others, []);
+    const given = restartMark(await readFile(join(directory, request), "utf8"));
+    assert.equal(given?.commandId, "restart-late");
+    assert.equal(given.at, "keep");
+    await writeFile(join(command, "result.json"), "{}");
+    assert.equal(await watching, 75);
+    assert.deepEqual(calls, ["children", "resume", "children", "stop"]);
   }));
 
 await test("CLV-337 the status shows the turns that the new service connected to and the turns that it resumed", () =>

@@ -190,6 +190,7 @@ async function checkoutWatch(scene: {
     environment: npmPath(bin),
     milliseconds: 50,
     stopChildren: () => Promise.resolve([]),
+    resumeChildren: () => undefined,
     stopping: scene.stopping.signal,
     stop: scene.stop,
     exclusive: scene.exclusive,

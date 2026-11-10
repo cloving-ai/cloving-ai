@@ -17,7 +17,7 @@ import type { TurnLaunch } from "../turn-launch.ts";
 import {
   processExists,
   processIdentity,
-  sameProcess,
+  processMatch,
 } from "./process-identity.ts";
 import {
   receivedLines,
@@ -106,7 +106,7 @@ async function exitRecord(path: string): Promise<Ending | undefined> {
 
 export async function launchState(launch: TurnLaunch): Promise<LaunchState> {
   if ((await exitRecord(launch.exit)) !== undefined) return "ended";
-  if (await sameProcess(launch)) return "running";
+  if ((await processMatch(launch)) !== "other") return "running";
   return (await exitRecord(launch.exit)) === undefined ? "gone" : "ended";
 }
 
@@ -324,7 +324,8 @@ export function detachedTurn(start: DetachedStart): FollowedTurn {
 
 async function running(launch: TurnLaunch, poll: number): Promise<boolean> {
   if (!processExists(launch.processId)) return false;
-  return poll % intervals.identity !== 0 || sameProcess(launch);
+  if (poll % intervals.identity !== 0) return true;
+  return (await processMatch(launch)) !== "other";
 }
 
 async function launchEnding(
@@ -347,7 +348,8 @@ async function sameSignalled(
   launch: TurnLaunch,
   name: NodeJS.Signals,
 ): Promise<void> {
-  if (await sameProcess(launch)) signalGroup(launch.processId, name);
+  if ((await processMatch(launch)) === "same")
+    signalGroup(launch.processId, name);
 }
 
 export function attachedTurn(

@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -51,6 +57,22 @@ async function launchOf(turn: {
   const launch = await turn.launch;
   assert.ok(launch);
   return launch;
+}
+
+async function withFailedProcessList(
+  folder: string,
+  use: () => Promise<void>,
+): Promise<void> {
+  const tools = join(folder, "tools");
+  mkdirSync(tools);
+  writeFileSync(join(tools, "ps"), "#!/bin/sh\nexit 2\n", { mode: 0o700 });
+  const path = process.env["PATH"] ?? "";
+  process.env["PATH"] = `${tools}:${path}`;
+  try {
+    await use();
+  } finally {
+    process.env["PATH"] = path;
+  }
 }
 
 function killed(processId: number): Promise<void> {
@@ -157,4 +179,37 @@ await test("CLV-337 an attached turn does not signal a different process with th
     } finally {
       other.kill("SIGKILL");
     }
+  }));
+
+await test("CLV-337 a launch whose process lives while its identity cannot be read stays running", () =>
+  withFolder(async (folder) => {
+    const turn = started(folder, holding);
+    const launch = await launchOf(turn);
+    await withFailedProcessList(folder, async () => {
+      assert.equal(await launchState(launch), "running");
+    });
+    await killed(launch.processId);
+    await turn.ended;
+  }));
+
+await test("CLV-337 an attached turn waits and sends no signal while the identity of its live process cannot be read", () =>
+  withFolder(async (folder) => {
+    const turn = started(folder, holding);
+    const launch = await launchOf(turn);
+    await withFailedProcessList(folder, async () => {
+      const kept = attachedTurn({ command: ["fake"] }, launch);
+      const early = await Promise.race([
+        kept.ended.then(() => "ended"),
+        delay(1500).then(() => "waiting"),
+      ]);
+      assert.equal(early, "waiting");
+      kept.stop(0);
+      await delay(300);
+      assert.equal(existsSync(join(folder, "terminated")), false);
+      assert.equal(processExists(launch.processId), true);
+      writeFileSync(launch.exit, JSON.stringify({ exitCode: 3 }));
+      assert.equal((await kept.ended).exitCode, 3);
+    });
+    await killed(launch.processId);
+    await turn.ended;
   }));
