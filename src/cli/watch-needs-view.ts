@@ -1,5 +1,6 @@
 import { component, element, type Shown } from "./watch-element.ts";
 import { cardKey, type CardKeyEvent } from "./watch-card-view.ts";
+import { ReplyButtons, type DecisionControls } from "./watch-decision-view.ts";
 import {
   RunCommandAction,
   type RunCommandControls,
@@ -20,6 +21,8 @@ export interface WatchNeed {
   readonly workflowId: string;
   readonly since: string | null;
   readonly continuable?: true;
+  readonly decision?: WatchDecision;
+  readonly reason?: string;
 }
 
 export interface ContinueControls {
@@ -55,7 +58,18 @@ export function decisionNeed(
     text: decisionText(decision.type),
     workflowId: run.workflowId,
     since: decision.openedAt,
+    decision,
   };
+}
+
+export function pauseReason(run: WatchRun): string {
+  return `Why it paused: ${run.code}: ${run.detail}`;
+}
+
+export function reasonText(run: WatchRun): string {
+  return run.state === "paused"
+    ? pauseReason(run)
+    : `${run.code}: ${run.detail}`;
 }
 
 export function stoppedNeed(run: WatchRun): WatchNeed {
@@ -66,11 +80,10 @@ export function stoppedNeed(run: WatchRun): WatchNeed {
     runId: run.runId,
     title: run.title ?? run.runId,
     ...(run.label == null ? {} : { label: run.label }),
-    text: [run.detail, "Examine the run, then resume or drop it."]
-      .filter((part) => part !== "")
-      .join(" "),
+    text: "Examine the run, then resume or drop it.",
     workflowId: run.workflowId,
     since: paused?.recordedAt ?? run.latestAt,
+    reason: pauseReason(run),
   };
 }
 
@@ -212,22 +225,62 @@ export function DismissAction(props: {
   });
 }
 
+export function NeedDecision(props: {
+  readonly need: WatchNeed;
+  readonly deciding: DecisionControls | undefined;
+}): Shown {
+  const { need, deciding } = props;
+  if (need.decision === undefined || deciding === undefined) return null;
+  return component(ReplyButtons, {
+    decision: need.decision,
+    deciding,
+    prefix: "need-action need-",
+  });
+}
+
+export function needLink(need: WatchNeed): string {
+  return watchHash({
+    workflowId: null,
+    runId: need.runId,
+    decisionId: need.decision?.decisionId ?? null,
+  });
+}
+
 export function NeedMessage(props: {
   readonly need: WatchNeed;
   readonly continuing: ContinueControls | undefined;
+  readonly deciding?: DecisionControls | undefined;
 }): Shown {
-  const message = props.continuing?.messages[props.need.runId];
+  const { runId } = props.need;
+  const message =
+    props.continuing?.messages[runId] ?? props.deciding?.messages[runId];
   if (message === undefined) return null;
   return element("p", { class: "need-message", children: message });
+}
+
+export function NeedTitle(props: { readonly need: WatchNeed }): Shown {
+  const { need } = props;
+  return element("h3", {
+    class: "need-title",
+    children:
+      need.label === undefined
+        ? need.title
+        : [
+            element("span", { class: "need-label", children: need.label }),
+            " ",
+            need.title,
+          ],
+  });
 }
 
 export function Need(props: {
   readonly need: WatchNeed;
   readonly now: string;
   readonly continuing?: ContinueControls | undefined;
+  readonly deciding?: DecisionControls | undefined;
   readonly controlling?: RunCommandControls | undefined;
 }): Shown {
-  const { need, now, continuing } = props;
+  const { need, now, continuing, deciding } = props;
   const paused = need.kind === "stopped" && need.continuable !== true;
   const decision = need.kind === "decision";
   return element("li", {
@@ -240,23 +293,13 @@ export function Need(props: {
       element("div", {
         class: "need-body",
         children: [
-          element("h3", {
-            class: "need-title",
-            children:
-              need.label === undefined
-                ? need.title
-                : [
-                    element("span", {
-                      class: "need-label",
-                      children: need.label,
-                    }),
-                    " ",
-                    need.title,
-                  ],
-          }),
+          component(NeedTitle, { need }),
           element("p", { class: "need-text", children: need.text }),
+          need.reason === undefined
+            ? null
+            : element("p", { class: "need-reason", children: need.reason }),
           element("p", { class: "need-meta", children: needMeta(need, now) }),
-          component(NeedMessage, { need, continuing }),
+          component(NeedMessage, { need, continuing, deciding }),
           paused
             ? component(RunCommandAction, {
                 runId: need.runId,
@@ -269,9 +312,10 @@ export function Need(props: {
       }),
       component(ContinueAction, { need, continuing }),
       component(DismissAction, { need, continuing }),
+      component(NeedDecision, { need, deciding }),
       element("a", {
         class: "need-action",
-        href: watchHash({ workflowId: null, runId: need.runId }),
+        href: needLink(need),
         children: decision ? "Answer" : "Open run",
       }),
     ],
@@ -283,9 +327,10 @@ export function NeedsYou(props: {
   readonly now: string;
   readonly words?: WatchWords | undefined;
   readonly continuing?: ContinueControls | undefined;
+  readonly deciding?: DecisionControls | undefined;
   readonly controlling?: RunCommandControls | undefined;
 }): Shown {
-  const { now, continuing, controlling } = props;
+  const { now, continuing, deciding, controlling } = props;
   const needs = needsOf(props.runs);
   return element("section", {
     class: "needs",
@@ -317,6 +362,7 @@ export function NeedsYou(props: {
                 need,
                 now,
                 continuing,
+                deciding,
                 controlling,
               }),
             ),
@@ -324,3 +370,25 @@ export function NeedsYou(props: {
     ],
   });
 }
+
+export const needsFunctions = [
+  decisionText,
+  decisionNeed,
+  pauseReason,
+  reasonText,
+  stoppedNeed,
+  continuableRun,
+  continuableNeed,
+  needRepository,
+  needsOf,
+  needMeta,
+  ContinueAction,
+  ContinueForm,
+  DismissAction,
+  NeedDecision,
+  needLink,
+  NeedMessage,
+  NeedTitle,
+  Need,
+  NeedsYou,
+];
