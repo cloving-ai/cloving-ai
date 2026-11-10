@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
+import { readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { test } from "node:test";
 import { parseTestSet } from "../../quality/command.ts";
+import { sourceFiles } from "../../quality/source-files.ts";
 import { selectTestSet } from "../../quality/test-shards.ts";
 import { withFiles } from "./files-fixture.ts";
 
@@ -86,3 +88,22 @@ for (const [list, message] of [
       },
     );
   });
+
+await test("the committed platform list names test files of the inventory, with each real-browser test", async () => {
+  const directory = process.cwd();
+  const tests = (await sourceFiles(directory)).filter((file) =>
+    file.endsWith(".test.ts"),
+  );
+  const selected = selectTestSet(directory, { tests, set: "platform" });
+  const browserTests: string[] = [];
+  for (const name of await readdir("test"))
+    if (
+      name.endsWith(".test.ts") &&
+      (await readFile(join("test", name), "utf8")).includes(
+        'from "./watch-real-browser.ts"',
+      )
+    )
+      browserTests.push(join(directory, "test", name));
+  assert.ok(browserTests.length > 0);
+  for (const file of browserTests) assert.ok(selected.includes(file), file);
+});
