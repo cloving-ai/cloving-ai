@@ -316,6 +316,14 @@ h3 { margin: 22px 0 6px; font-size: 16px; }
 .foot { margin-top: 18px; }
 .decision { background: var(--color-surface); box-shadow: var(--shadow); border: var(--shape-border) solid var(--color-warn); border-radius: var(--shape-radius); padding: 2px 14px 12px; margin-top: 18px; }
 .decision h3 { margin-top: 10px; }
+.decision .request { white-space: pre-wrap; overflow-wrap: anywhere; }
+.decision-replies { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0; }
+.decision-answer { display: grid; gap: 6px; margin: 10px 0; }
+.decision-answer label { display: grid; gap: 4px; font-size: 12px; color: var(--color-muted); }
+.decision-answer textarea { padding: 6px 8px; border: var(--shape-border) solid var(--color-line); border-radius: calc(var(--shape-radius) / 2); background: var(--color-surface); color: var(--color-ink); font: inherit; }
+.decision-answer button { justify-self: start; }
+.decision-reply { margin: 12px 0 0; font-weight: 600; }
+.need-reason { margin: 4px 0 0; font-size: 13px; }
 .review { border-left: 3px solid var(--color-bad); padding: 0 12px; margin-top: 10px; }
 .review p { white-space: pre-wrap; }
 .fact, p.good, p.bad { margin: 8px 0 4px; }

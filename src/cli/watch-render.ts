@@ -41,13 +41,22 @@ export interface WatchTurn {
   readonly summary: string;
 }
 
+export type DecisionReply = "approve" | "deny" | "answer";
+
 export interface WatchDecision {
+  readonly private?: true;
   readonly decisionId: string;
   readonly type: string;
   readonly prompt: string;
   readonly openedAt: string | null;
+  readonly reference: string;
+  readonly expectedRevision: number;
+  readonly generation: number;
+  readonly subjectDigest: string;
+  readonly replies: readonly DecisionReply[];
   readonly approve: string;
   readonly deny: string;
+  readonly answer: string;
 }
 
 export interface WatchEvent {

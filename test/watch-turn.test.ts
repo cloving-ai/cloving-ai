@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { component } from "../src/cli/watch-element.ts";
 import type { WatchItem } from "../src/cli/watch-render.ts";
-import { Decision, Events, Turn } from "../src/cli/watch-turn.ts";
+import { Decision } from "../src/cli/watch-decision-view.ts";
+import { Events, Turn } from "../src/cli/watch-turn.ts";
 import { found, rendered } from "./watch-dom.ts";
 import {
   at,
@@ -64,26 +65,27 @@ await test("CLV-016 the watch page keeps the last group of tool calls open while
   ]);
 });
 
-await test("CLV-016 the watch page shows a pending decision with the commits, the changed files and the report of the worker, with the full text folded and one command for each answer", () => {
+await test("CLV-016 the watch page shows a pending decision with the commits, the changed files and the report of the worker, with the full text open and one command for each answer", () => {
   const html = rendered(
     component(Decision, {
       decision: sampleDecision,
       turn: reviewedTurn,
       copying: noCopy,
+      now: at("21:26:44"),
     }),
   );
   assert.equal(
     html,
     [
-      '<section class="decision"><h3>Your decision · approval</h3>',
+      '<section class="decision" id="decision-run-1/review-1"><h3>Your decision · approval</h3>',
+      '<pre class="request">Review &lt;b&gt;this&lt;/b&gt; &amp; that.</pre>',
+      '<div class="command code-window"><span class="label code-head">Approve</span><code>cloving approve run-1/review-1 --text &quot;yes&quot;</code><button type="button">Copy</button></div>',
+      '<div class="command code-window"><span class="label code-head">Deny</span><code>cloving deny run-1/review-1</code><button type="button">Copy</button></div>',
       '<p class="fact">Branch <code>cloving/clv-016-a6f7ef47</code> · 1 commit</p>',
       "<pre>9e69feb Reject a &lt;request&gt;</pre>",
       "<pre> src/a.ts | 6 ++++++\n 1 file changed, 6 insertions(+)</pre>",
       '<p class="good">All the work is committed.</p>',
       '<details open><summary>Report of the worker</summary><div class="report">I added the check &amp; one test.</div></details>',
-      "<details><summary>Full text of the request</summary><pre>Review &lt;b&gt;this&lt;/b&gt; &amp; that.</pre></details>",
-      '<div class="command code-window"><span class="label code-head">Approve</span><code>cloving approve run-1/review-1 --text &quot;yes&quot;</code><button type="button">Copy</button></div>',
-      '<div class="command code-window"><span class="label code-head">Deny</span><code>cloving deny run-1/review-1</code><button type="button">Copy</button></div>',
       "</section>",
     ].join(""),
   );
@@ -96,6 +98,7 @@ await test("CLV-016 the watch page warns about work that is not committed and ab
         decision: sampleDecision,
         turn: turn === undefined ? undefined : sampleTurn(turn),
         copying: noCopy,
+        now: at("21:26:44"),
       }),
     );
   includes(shown({ ...reviewedTurn, commits: [], uncommitted: [" M a.ts"] }), [
@@ -107,7 +110,7 @@ await test("CLV-016 the watch page warns about work that is not committed and ab
   ]);
   const alone = shown(undefined);
   includes(alone, [
-    "<details open><summary>Full text of the request</summary>",
+    '<pre class="request">Review &lt;b&gt;this&lt;/b&gt; &amp; that.</pre>',
   ]);
   assert.equal(alone.includes("Report of the worker"), false);
 });
@@ -122,7 +125,12 @@ await test("CLV-016 a click on the copy control of a command gives that command 
     },
   };
   const [approve, deny] = found(
-    component(Decision, { decision: sampleDecision, turn: undefined, copying }),
+    component(Decision, {
+      decision: sampleDecision,
+      turn: undefined,
+      copying,
+      now: at("21:26:44"),
+    }),
     "button",
   );
   const click: unknown = approve?.["onClick"];
@@ -162,6 +170,7 @@ await test("CLV-098 turn, event and command code windows reuse headings and keep
       decision: sampleDecision,
       turn: undefined,
       copying: noCopy,
+      now: at("21:26:44"),
     }),
   );
   assert.match(
@@ -169,7 +178,7 @@ await test("CLV-098 turn, event and command code windows reuse headings and keep
     /<div class="command code-window"><span class="label code-head">Approve<\/span><code>/,
   );
   assert.match(decision, /<button type="button">Copy<\/button>/);
-  assert.match(decision, /<details open><summary>Full text of the request/);
+  assert.match(decision, /<pre class="request">/);
 });
 
 await test("CLV-094 turn headings retain zero prices and selected counts beside unknown fields", () => {

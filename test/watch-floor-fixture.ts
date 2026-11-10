@@ -122,6 +122,7 @@ export function decisionFor(
     runId,
     decisionId: `${runId}/review-1`,
     type: options.type ?? "approval",
+    allowed: options.type === "question" ? ["answer"] : ["approve", "deny"],
     prompt: "Approve the drafted issue.",
     revision: 1,
     generation: 1,

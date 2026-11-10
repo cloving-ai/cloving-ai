@@ -29,6 +29,7 @@ import {
   cardSubmitKey,
 } from "./watch-card-view.ts";
 import { watchClient } from "./watch-client.ts";
+import { watchDecisionClient } from "./watch-decision-client.ts";
 import { watchLoopsClient } from "./watch-loops-client.ts";
 import { watchTranscriptClient } from "./watch-transcript-client.ts";
 import { transcriptFunctions } from "./watch-transcript-view.ts";
@@ -87,22 +88,8 @@ import {
   stepAge,
 } from "./watch-floor-view.ts";
 import { Demo, Shelf, Tile } from "./watch-shelf-view.ts";
-import {
-  ContinueAction,
-  ContinueForm,
-  DismissAction,
-  Need,
-  NeedMessage,
-  NeedsYou,
-  continuableNeed,
-  continuableRun,
-  decisionNeed,
-  decisionText,
-  needMeta,
-  needRepository,
-  needsOf,
-  stoppedNeed,
-} from "./watch-needs-view.ts";
+import { needsFunctions } from "./watch-needs-view.ts";
+import { decisionFunctions } from "./watch-decision-view.ts";
 import {
   DayChart,
   LaneLine,
@@ -131,6 +118,7 @@ import {
 } from "./watch-board-view.ts";
 import {
   boardWorkflow,
+  locationOptions,
   watchHash,
   watchLocation,
   watchTitle,
@@ -150,17 +138,7 @@ import {
   turnTime,
   waitingDetail,
 } from "./watch-render.ts";
-import {
-  Command,
-  Decision,
-  Events,
-  Group,
-  Review,
-  Item,
-  RunTotals,
-  Turn,
-  Work,
-} from "./watch-turn.ts";
+import { turnFunctions } from "./watch-turn.ts";
 import {
   Banner,
   BannerDetail,
@@ -168,8 +146,8 @@ import {
   FloorPage,
   Page,
   Phases,
-  PullRequest,
   Run,
+  RunTotals,
 } from "./watch-view.ts";
 import {
   BackLink,
@@ -242,6 +220,7 @@ const functions = [
   attemptText,
   totalsSuffix,
   watchHash,
+  locationOptions,
   watchLocation,
   boardWorkflow,
   watchTitle,
@@ -275,20 +254,7 @@ const functions = [
   Demo,
   Tile,
   Shelf,
-  decisionText,
-  decisionNeed,
-  stoppedNeed,
-  continuableRun,
-  continuableNeed,
-  needRepository,
-  needsOf,
-  needMeta,
-  ContinueAction,
-  ContinueForm,
-  DismissAction,
-  NeedMessage,
-  Need,
-  NeedsYou,
+  ...needsFunctions,
   dollars,
   spentText,
   unknownCostText,
@@ -312,19 +278,12 @@ const functions = [
   phaseTime,
   selectedRun,
   pageTitle,
-  Item,
-  Group,
-  Turn,
-  Work,
-  Command,
-  Decision,
-  Events,
+  ...turnFunctions,
+  ...decisionFunctions,
   ...transcriptFunctions,
   BannerDetail,
   Banner,
   Phases,
-  PullRequest,
-  Review,
   Run,
   RunTotals,
   timeLeft,
@@ -363,6 +322,7 @@ export function pageDocument(
     watchLoopsClient,
     watchRunCommandClient,
     watchTranscriptClient,
+    watchDecisionClient,
     watchClient,
   ].join("\n");
   return [
