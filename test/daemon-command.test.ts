@@ -117,11 +117,16 @@ process.exit(0);
     assert.equal(restarted.status, 0, restarted.stderr);
   }));
 
+const launchRecorded = `async () => {
+  const files = await import("node:fs");
+  return files.existsSync("command-pid") && files.existsSync("commands") && files.readdirSync("commands").some((name) => files.existsSync("commands/" + name + "/launch.json"));
+}`;
+
 const crashScene = `${commandPrelude}
 writeFileSync("scan.mjs", 'import { appendFileSync, existsSync, writeFileSync } from "node:fs"; appendFileSync("calls", "one\\\\n"); writeFileSync("command-pid", String(process.pid)); const wait = setInterval(() => { if (!existsSync("go")) return; clearInterval(wait); process.stdout.write("done"); }, 20);');
 await launch();
 const admission = await submit();
-await until(() => existsSync("command-pid"));
+await until(${launchRecorded});
 await halt("command-started", { runId: admission.runId });
 `;
 
@@ -214,7 +219,7 @@ await test("CLV-178 failed command recovery releases the socket and ownership so
 writeFileSync("scan.mjs", 'import { writeFileSync } from "node:fs"; writeFileSync("command-pid", String(process.pid)); setInterval(() => {}, 1000);');
 await launch();
 await submit();
-await until(() => existsSync("command-pid"));
+await until(${launchRecorded});
 await halt("command-started");
 `,
       );
