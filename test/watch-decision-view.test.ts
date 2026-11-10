@@ -2,10 +2,12 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { DecisionControls } from "../src/cli/watch-decision-view.ts";
 import { component } from "../src/cli/watch-element.ts";
+import { decisionCommands, runDecision } from "../src/cli/watch-decision.ts";
 import { watchHash, watchLocation } from "../src/cli/watch-navigation.ts";
 import type { WatchDecision, WatchModel } from "../src/cli/watch-render.ts";
 import { Page } from "../src/cli/watch-view.ts";
 import { found, rendered } from "./watch-dom.ts";
+import { boardModel, boardRun } from "./watch-board-fixture.ts";
 import {
   decisionFor,
   draftRun,
@@ -210,4 +212,86 @@ await test("CLV-336 in Needs you an approval has Approve and Deny, Answer opens 
     decisions: [decisionFor("draft", { type: "question", minutes: 3 })],
   });
   assert.doesNotMatch(rendered(floor(asked, controls([]))), /need-approve/);
+});
+
+const modelDecision = {
+  decisionId: "run-1/review-1",
+  type: "approval",
+  runId: "run-1",
+  prompt: "Review the work.",
+  allowed: ["approve", "deny"],
+  revision: 1,
+  generation: 2,
+  subjectDigest: "sha256:abc",
+};
+
+const modelBinding =
+  "--expected-revision 1 --generation 2 --subject-digest sha256:abc";
+
+await test("CLV-016 the watch model gives each pending decision its approve and deny commands", () => {
+  assert.deepEqual(decisionCommands(modelDecision, "cloving"), {
+    decisionId: "run-1/review-1",
+    type: "approval",
+    prompt: "Review the work.",
+    openedAt: null,
+    reference: "run-1/review-1",
+    expectedRevision: 1,
+    generation: 2,
+    subjectDigest: "sha256:abc",
+    replies: ["approve", "deny"],
+    approve: `cloving approve run-1/review-1 ${modelBinding}`,
+    deny: `cloving deny run-1/review-1 --text "<feedback>" ${modelBinding}`,
+    answer: `cloving answer run-1/review-1 --text "<answer>" ${modelBinding}`,
+  });
+});
+
+await test("CLV-336 a question decision allows only an answer, and a reply that the page does not know is left out", () => {
+  const question = {
+    ...modelDecision,
+    type: "question",
+    allowed: ["answer", "escalate", 7],
+  };
+  assert.deepEqual(decisionCommands(question, "cloving").replies, ["answer"]);
+  const broken = decisionCommands(
+    { ...modelDecision, allowed: "approve", revision: "1" },
+    "cloving",
+  );
+  assert.deepEqual([broken.replies, broken.expectedRevision], [[], 0]);
+});
+
+await test("CLV-336 a question of analyze-chats is private in the model and keeps only its preview text", () => {
+  const model = (workflowId: string) =>
+    boardModel([boardRun("run-1", { state: "waiting_gate", workflowId })], {
+      workflows: [workflowId],
+      decisions: [
+        {
+          ...modelDecision,
+          type: "question",
+          allowed: ["answer"],
+          prompt: "Q?",
+        },
+      ],
+    }).runs[0]?.decisions[0];
+  const hidden = model("analyze-chats");
+  assert.equal(hidden?.private, true);
+  assert.equal(
+    hidden.prompt,
+    "Private analysis question. Run cloving questions to view it.",
+  );
+  const shown = model("develop");
+  assert.equal(shown?.private, undefined);
+  assert.equal(shown?.prompt, "Q?");
+});
+
+await test("CLV-336 a decision that is not an object gives empty fields, and a decision keeps the time it opened", () => {
+  const empty = runDecision(null, { workflowId: "develop", client: "cloving" });
+  assert.deepEqual(
+    [empty.decisionId, empty.openedAt, empty.replies, empty.generation],
+    ["", null, [], 0],
+  );
+  const openedAt = "2026-11-09T10:00:00.000Z";
+  assert.equal(
+    decisionCommands({ ...modelDecision, openedAt }, "cloving").openedAt,
+    openedAt,
+  );
 });

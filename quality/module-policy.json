@@ -1944,7 +1944,6 @@
     "test/watch-continue.test.ts": "test",
     "test/watch-decision-action.test.ts": "test",
     "test/watch-decision-client.test.ts": "test",
-    "test/watch-decision-model.test.ts": "test",
     "test/watch-decision-service.test.ts": "test",
     "test/watch-decision-view.test.ts": "test",
     "test/watch-direct-fixture.ts": "test",

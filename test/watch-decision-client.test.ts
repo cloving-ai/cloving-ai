@@ -156,11 +156,12 @@ const stale = [line(), app.all("pre").find((node) => node.getAttribute("class") 
 replies.push({ schemaVersion: 1, kind: "error", code: "decision-not-pending", detail: "No pending decision matches run-1/review-1." }, changed);
 button("Deny").dispatch("click");
 await wait();
+const pending = line();
 replies.push(null, changed);
 button("Deny").dispatch("click");
 await wait();
 const refused = line();
-console.log(JSON.stringify({ stale, refused: [refused] }));
+console.log(JSON.stringify({ stale, refused: [pending, refused] }));
 `,
   );
   assert.deepEqual(result["stale"], [
@@ -168,27 +169,9 @@ console.log(JSON.stringify({ stale, refused: [refused] }));
     "Review round 2.",
   ]);
   assert.deepEqual(result["refused"], [
+    "decision-not-pending: No pending decision matches run-1/review-1.",
     "The watch page refused the request. Refresh the page.",
   ]);
-});
-
-await test("CLV-336 a refusal of the service shows its code and detail in the reply line", () => {
-  const result = played(
-    model(sampleDecision),
-    `${capture}
-location.hash = "#run=run-1";
-replies.push(model);
-await load();
-replies.push({ schemaVersion: 1, kind: "error", code: "decision-not-pending", detail: "No pending decision matches run-1/review-1." }, model);
-button("Deny").dispatch("click");
-await wait();
-console.log(JSON.stringify({ refused: line() }));
-`,
-  );
-  assert.equal(
-    result["refused"],
-    "decision-not-pending: No pending decision matches run-1/review-1.",
-  );
 });
 
 await test("CLV-336 a decision link scrolls to the decision and puts the focus in its text field once", () => {
