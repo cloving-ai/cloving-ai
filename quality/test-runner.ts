@@ -1,8 +1,9 @@
 import { availableParallelism } from "node:os";
 import { run } from "node:test";
+import type { TestEvent } from "node:test/reporters";
 import { parseTestConcurrency } from "./test-execution.ts";
 import reportDurations from "./test-duration-reporter.ts";
-import reportTests from "./test-reporter.ts";
+import reportTests, { withProgress } from "./test-reporter.ts";
 
 const [reporterArgument, concurrencyArgument, ...files] = process.argv.slice(2);
 if (
@@ -17,10 +18,13 @@ const concurrency = parseTestConcurrency(
   concurrencyArgument.slice("--test-concurrency=".length),
   availableParallelism(),
 );
-const reporter =
+const progressFile = process.env["CLOVING_TEST_PROGRESS_FILE"];
+const report =
   reporterArgument === "--test-reporter=durations"
     ? reportDurations
     : reportTests;
+const reporter = (source: AsyncIterable<TestEvent>): AsyncGenerator<string> =>
+  report(progressFile ? withProgress(source, progressFile) : source);
 const controller = new AbortController();
 const interrupt = (): void => {
   process.exitCode = 1;

@@ -19,3 +19,10 @@ await test("the README documents the Linux shards of a pull request and of main"
     /three duration-balanced shards for each Linux Node version on each pull request/,
   );
 });
+
+await test("the README documents the test progress file of CI", () => {
+  assert.match(
+    readme,
+    /`CLOVING_TEST_PROGRESS_FILE`.*`start <file>`.*`end <file> <seconds> s`/,
+  );
+});

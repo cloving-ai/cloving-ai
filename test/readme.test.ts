@@ -229,6 +229,7 @@ function readmeFindings(text: string): readonly string[] {
             "CLOVING_CHECK_TIME_FACTOR",
             "CLOVING_TEST_CONCURRENCY",
             "CLOVING_TEST_COVERAGE",
+            "CLOVING_TEST_PROGRESS_FILE",
             "CLOVING_TEST_SET",
             "CLOVING_TEST_SHARD",
           ].includes(name),

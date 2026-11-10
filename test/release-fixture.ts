@@ -275,3 +275,11 @@ export async function releaseAttempt(scenario: ReleaseScenario = {}): Promise<{
     },
   );
 }
+
+export const gateRun = [
+  ': > "$CLOVING_TEST_PROGRESS_FILE"',
+  'tail -n +1 -f "$CLOVING_TEST_PROGRESS_FILE" &',
+  "progress=$!",
+  "trap 'kill \"$progress\"' EXIT",
+  "npm run check:quality",
+].join("\n");

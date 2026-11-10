@@ -70,8 +70,9 @@
           "if": "${{ matrix.shard == '1' || matrix.shard == 'platform' }}"
         },
         {
-          "run": "npm run check:quality",
+          "run": ": > \"$CLOVING_TEST_PROGRESS_FILE\"\ntail -n +1 -f \"$CLOVING_TEST_PROGRESS_FILE\" &\nprogress=$!\ntrap 'kill \"$progress\"' EXIT\nnpm run check:quality",
           "env": {
+            "CLOVING_TEST_PROGRESS_FILE": "${{ runner.temp }}/cloving-test-progress.log",
             "CLOVING_COVERAGE_DIRECTORY": "${{ runner.temp }}/cloving-coverage/shard",
             "CLOVING_TEST_COVERAGE": "${{ github.event_name == 'pull_request' && 'on' || 'off' }}"
           }
@@ -150,8 +151,9 @@
           "if": "${{ matrix.shard == '1' }}"
         },
         {
-          "run": "npm run check:quality",
+          "run": ": > \"$CLOVING_TEST_PROGRESS_FILE\"\ntail -n +1 -f \"$CLOVING_TEST_PROGRESS_FILE\" &\nprogress=$!\ntrap 'kill \"$progress\"' EXIT\nnpm run check:quality",
           "env": {
+            "CLOVING_TEST_PROGRESS_FILE": "${{ runner.temp }}/cloving-test-progress.log",
             "CLOVING_COVERAGE_DIRECTORY": "${{ runner.temp }}/cloving-coverage/shard",
             "CLOVING_TEST_COVERAGE": "${{ github.event_name == 'pull_request' && 'on' || 'off' }}"
           }

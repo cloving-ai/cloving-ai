@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import {
+  gateRun,
   job,
   metadata,
   prepareShellAttempt,
@@ -174,7 +175,7 @@ await test("CLV-097 quality qualifies the exact toolchain and completes the deve
   assert.deepEqual(commands.slice(2), [
     "npm ci --ignore-scripts",
     "npm run check:setup",
-    "npm run check:quality",
+    gateRun,
   ]);
 });
 
@@ -354,14 +355,14 @@ await test("CLV-266 Linux CI installs two pinned zsh packages from the official 
   await rm(folder, { recursive: true, force: true });
 });
 
-await test("CLV-266 every shard exports coverage and both required checks need the final job", async () => {
+await test("CLV-266 every shard exports coverage, shows the start and end of each test file in the job log, and both required checks need the final job", async () => {
   const workflow = await releaseWorkflow();
   for (const name of ["quality_macos", "quality_linux_node"] as const) {
-    const gate = steps(workflow, name).find(
-      (step) => step.run === "npm run check:quality",
-    );
+    const gate = steps(workflow, name).find((step) => step.run === gateRun);
     const directory = "${{ runner.temp }}/cloving-coverage/shard";
     assert.deepEqual(gate?.env, {
+      CLOVING_TEST_PROGRESS_FILE:
+        "${{ runner.temp }}/cloving-test-progress.log",
       CLOVING_COVERAGE_DIRECTORY: directory,
       CLOVING_TEST_COVERAGE:
         "${{ github.event_name == 'pull_request' && 'on' || 'off' }}",

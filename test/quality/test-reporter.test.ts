@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
-import { resolve } from "node:path";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 import { test } from "node:test";
 import type { TestEvent } from "node:test/reporters";
-import reportTests from "../../quality/test-reporter.ts";
+import reportTests, { withProgress } from "../../quality/test-reporter.ts";
 
 function eventSource(events: readonly TestEvent[]): AsyncIterable<TestEvent> {
   return {
@@ -279,4 +281,65 @@ await test("a failure copies a shared value one time and keeps the bytes of data
   assert.ok(error.length <= 100_000, String(error.length));
   assert.match(error, /DataView\(3\) \[ 1, 2, 3 \]/);
   assert.match(error, /DataView\(3\) \[ 1, 2, 4 \]/);
+});
+
+function dequeued(
+  name: string,
+  file: string,
+): Extract<TestEvent, { type: "test:dequeue" }> {
+  return {
+    type: "test:dequeue",
+    data: {
+      name,
+      file,
+      nesting: 0,
+      parentId: undefined,
+      tags: [],
+      testId: 1,
+      type: "test",
+    },
+  };
+}
+
+function finished(
+  name: string,
+  file: string,
+): Extract<TestEvent, { type: "test:complete" }> {
+  return {
+    type: "test:complete",
+    data: {
+      name,
+      file,
+      nesting: 0,
+      parentId: undefined,
+      tags: [],
+      testId: 1,
+      testNumber: 1,
+      details: { passed: true, duration_ms: 1500 },
+    },
+  };
+}
+
+await test("the progress wrapper passes each event on and appends a line when a test file starts and when it ends, and no line for a test inside the file", async () => {
+  const folder = await mkdtemp(join(tmpdir(), "clv-test-progress-"));
+  const progressFile = join(folder, "progress.log");
+  const file = resolve("test/progress-sample.test.ts");
+  try {
+    const events = [
+      dequeued(file, file),
+      dequeued("an inner test", file),
+      finished("an inner test", file),
+      finished(file, file),
+    ];
+    const passed: TestEvent[] = [];
+    for await (const event of withProgress(eventSource(events), progressFile))
+      passed.push(event);
+    assert.deepEqual(passed, events);
+    assert.equal(
+      await readFile(progressFile, "utf8"),
+      "start test/progress-sample.test.ts\nend test/progress-sample.test.ts 1.5 s\n",
+    );
+  } finally {
+    await rm(folder, { recursive: true, force: true });
+  }
 });
