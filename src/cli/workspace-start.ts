@@ -1,8 +1,13 @@
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
-import { parseWorkspace, workspaceFile, type Workspace } from "../workspace.ts";
+import {
+  parseWorkspace,
+  workspaceFile,
+  type Workspace,
+  type WorkspaceLimits,
+} from "../workspace.ts";
 import { adoptionRecordPath, runtimeDirectory } from "./runtime-directory.ts";
 import {
   claimWorkspaceRecord,
@@ -11,6 +16,7 @@ import {
   writeWorkspaceRecord,
   type WorkspaceMember,
 } from "./workspace-record.ts";
+import { permitServer, type PermitServer } from "./workspace-permit-server.ts";
 
 export interface WorkspaceHost {
   readonly repository: string;
@@ -54,7 +60,11 @@ const watchRestart: WatchRestart = { delayMilliseconds: 1000, limit: 5 };
 const settleMilliseconds = 200;
 
 type Members =
-  | { readonly kind: "members"; readonly members: readonly Member[] }
+  | {
+      readonly kind: "members";
+      readonly members: readonly Member[];
+      readonly limits: WorkspaceLimits;
+    }
   | { readonly kind: "refused"; readonly text: string };
 
 function refusal(text: string): Members {
@@ -99,7 +109,7 @@ function located(
     return refusal(
       `workspace-runtime-shared: ${shared[0].name} and ${shared[1].name} use the same runtime directory ${shared[0].runtime}. Unset CLOVING_RUNTIME_DIR.`,
     );
-  return { kind: "members", members };
+  return { kind: "members", members, limits: workspace.limits };
 }
 
 async function workspaceMembers(
@@ -126,6 +136,7 @@ async function memberStatus(input: {
   readonly member: Member;
   readonly start: WorkspaceStart;
   readonly stopping: AbortController;
+  readonly permits: string;
 }): Promise<number> {
   const { member, start, stopping } = input;
   let status: number | undefined;
@@ -135,7 +146,10 @@ async function memberStatus(input: {
       runtime: member.runtime,
       options: start.options,
       environment: start.environment,
-      overrides: { CLOVING_WATCH_PORT: "off" },
+      overrides: {
+        CLOVING_WATCH_PORT: "off",
+        CLOVING_WORKSPACE_PERMITS: input.permits,
+      },
       signal: stopping.signal,
     });
     if (status !== 0 && !stopping.signal.aborted)
@@ -202,21 +216,27 @@ async function settledWatch(
   if (!(await settledMembers(input, settling))) return 0;
   await writeWorkspaceRecord(settling.path, {
     processId: input.processId,
-    members: settling.members.map((member) => ({
-      ...member,
-      runtime:
-        runtimeDirectory(input.environment, member.repository) ??
-        member.runtime,
-    })),
+    members: currentMembers(input, settling.members),
   });
   const port = input.environment["CLOVING_WATCH_PORT"] ?? "3663";
   if (port === "off") return 0;
   return watchedPage(input, { port, signal: settling.signal });
 }
 
+function currentMembers(
+  input: WorkspaceStart,
+  members: readonly Member[],
+): readonly Member[] {
+  return members.map((member) => ({
+    ...member,
+    runtime:
+      runtimeDirectory(input.environment, member.repository) ?? member.runtime,
+  }));
+}
+
 async function supervised(
   input: WorkspaceStart,
-  workspace: Pick<Settling, "path" | "members">,
+  workspace: Pick<Settling, "path" | "members"> & { readonly permits: string },
 ): Promise<number> {
   const stopping = new AbortController();
   const watching = new AbortController();
@@ -234,7 +254,12 @@ async function supervised(
   });
   const statuses = await Promise.all(
     workspace.members.map((member) =>
-      memberStatus({ member, start: input, stopping }).finally(() => {
+      memberStatus({
+        member,
+        start: input,
+        stopping,
+        permits: workspace.permits,
+      }).finally(() => {
         ended.add(member);
       }),
     ),
@@ -282,8 +307,40 @@ export async function workspaceStart(input: WorkspaceStart): Promise<number> {
   );
   const path = String(workspaceRecordPath(input.environment));
   try {
-    return await supervised(input, { path, members: found.members });
+    return await permitted(input, { path, found });
   } finally {
     await removeWorkspaceRecord(path, input.processId);
+  }
+}
+
+async function permitted(
+  input: WorkspaceStart,
+  workspace: {
+    readonly path: string;
+    readonly found: Extract<Members, { kind: "members" }>;
+  },
+): Promise<number> {
+  const { path, found } = workspace;
+  let permits: PermitServer;
+  try {
+    permits = await permitServer({
+      path: join(dirname(path), "control.sock"),
+      members: () => currentMembers(input, found.members),
+      limits: found.limits,
+    });
+  } catch (error) {
+    input.refuse(
+      `workspace-permits-failed: ${error instanceof Error ? error.message : String(error)}\n`,
+    );
+    return 1;
+  }
+  try {
+    return await supervised(input, {
+      path,
+      members: found.members,
+      permits: permits.path,
+    });
+  } finally {
+    await permits.close();
   }
 }

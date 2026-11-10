@@ -1,8 +1,8 @@
 import { record, type Fields, type Reply } from "../protocol.ts";
-import { queueSpending } from "../queue-spend.ts";
+import { costTotal, queueSpending } from "../queue-spend.ts";
 import { reportedPrice } from "../worker-usage.ts";
 import type { OperationView } from "../broker/actor/authority.ts";
-import { failed, type ServiceContext } from "./replies.ts";
+import { failed, result, type ServiceContext } from "./replies.ts";
 
 type SpendContext = Pick<
   ServiceContext,
@@ -43,21 +43,22 @@ export async function spendLimitRefusal(
   });
 }
 
-export async function queueSpend(context: SpendContext): Promise<Fields> {
-  const limitUsd = context.queueDailySpendLimitUsd;
-  if (limitUsd === undefined) return {};
+interface SpendTotals {
+  readonly costs: number[];
+  unknownTurns: number;
+  turnsInWork: number;
+}
+
+async function spendTotals(
+  context: Omit<SpendContext, "queueDailySpendLimitUsd">,
+): Promise<SpendTotals> {
   const now = Date.parse(context.clock());
   const operations = await context.authority.effects.workerTurns({
     after: new Date(now - 24 * 3_600_000).toISOString(),
     through: new Date(now).toISOString(),
   });
   const runIds = [...new Set(operations.map((operation) => operation.runId))];
-  const costs: number[] = [];
-  const totals = {
-    costs,
-    unknownTurns: 0,
-    turnsInWork: 0,
-  };
+  const totals: SpendTotals = { costs: [], unknownTurns: 0, turnsInWork: 0 };
   const queued = new Set<string>();
   for (const runId of runIds) {
     if (await spendCounted(context, runId)) queued.add(runId);
@@ -66,11 +67,32 @@ export async function queueSpend(context: SpendContext): Promise<Fields> {
     if (queued.has(operation.runId))
       await countTurn(context, { operation, totals });
   }
-  const spending = queueSpending(totals.costs, limitUsd);
-  const spentUsd =
-    totals.costs.length === 0 && totals.unknownTurns > 0
-      ? null
-      : spending.spentUsd;
+  return totals;
+}
+
+function spentOf(totals: SpendTotals): number | null {
+  return totals.costs.length === 0 && totals.unknownTurns > 0
+    ? null
+    : costTotal(totals.costs);
+}
+
+export async function spendRead(
+  context: Omit<SpendContext, "queueDailySpendLimitUsd">,
+): Promise<Reply> {
+  const totals = await spendTotals(context);
+  return result("spend", {
+    spentUsd: spentOf(totals),
+    unknownTurns: totals.unknownTurns,
+    turnsInWork: totals.turnsInWork,
+    windowHours: 24,
+  });
+}
+
+export async function queueSpend(context: SpendContext): Promise<Fields> {
+  const limitUsd = context.queueDailySpendLimitUsd;
+  if (limitUsd === undefined) return {};
+  const totals = await spendTotals(context);
+  const spentUsd = spentOf(totals);
   return {
     spend: {
       limitUsd,
@@ -78,20 +100,17 @@ export async function queueSpend(context: SpendContext): Promise<Fields> {
       unknownTurns: totals.unknownTurns,
       turnsInWork: totals.turnsInWork,
       windowHours: 24,
-      holding: spentUsd !== null && spending.holding,
+      holding:
+        spentUsd !== null && queueSpending(totals.costs, limitUsd).holding,
     },
   };
 }
 
 async function countTurn(
-  context: SpendContext,
+  context: Pick<SpendContext, "authority">,
   turn: {
     readonly operation: OperationView;
-    readonly totals: {
-      costs: number[];
-      unknownTurns: number;
-      turnsInWork: number;
-    };
+    readonly totals: SpendTotals;
   },
 ): Promise<void> {
   const { operation, totals } = turn;

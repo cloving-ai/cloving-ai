@@ -18,6 +18,7 @@ import type { WorkspaceRecord } from "./workspace-record.ts";
 import { themesCommand } from "./themes-command.ts";
 import { channelTexts } from "./mcp-channel.ts";
 import { mcpServer } from "./mcp-server.ts";
+import { workspaceMcpServer } from "./mcp-workspace.ts";
 import { settingsEnvironment } from "./project-settings.ts";
 import { clientCommand, runtimeDirectory } from "./runtime-directory.ts";
 import {
@@ -89,7 +90,7 @@ export async function main(
       terminal,
     });
   } else if (invocation.kind === "mcp") {
-    process.exitCode = await mcpCommand(invocation, repository);
+    process.exitCode = await mcpCommand(invocation, context);
   } else {
     process.exitCode = await serviceCommand(invocation, {
       ...context,
@@ -99,9 +100,15 @@ export async function main(
 }
 
 function mcpCommand(
-  invocation: { readonly channel?: true },
-  repository: string | undefined,
+  invocation: Extract<Invocation, { readonly kind: "mcp" }>,
+  context: {
+    readonly repository: string | undefined;
+    readonly workspace?: WorkspaceRecord | undefined;
+  },
 ): Promise<number> {
+  if (invocation.workspace === true)
+    return workspaceMcpServer(context.workspace);
+  const { repository } = context;
   const runtime = runtimeDirectory(process.env, repository);
   if (invocation.channel === undefined) return mcpServer(runtime);
   const privateTexts = channelTexts(

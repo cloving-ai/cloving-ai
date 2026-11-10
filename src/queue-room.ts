@@ -140,6 +140,25 @@ export type QueueHold =
       readonly working: number;
       readonly limit: number;
       readonly text: string;
+    }
+  | WorkspaceHold;
+
+export type WorkspaceHold =
+  | {
+      readonly reason: "workspace-lanes";
+      readonly busy: number;
+      readonly limit: number;
+      readonly text: string;
+    }
+  | {
+      readonly reason: "workspace-spend";
+      readonly spentUsd: number;
+      readonly limitUsd: number;
+      readonly text: string;
+    }
+  | {
+      readonly reason: "workspace-unknown" | "workspace-restart";
+      readonly text: string;
     };
 
 export function workingHold(

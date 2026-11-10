@@ -121,16 +121,36 @@ function initialize(parameters: Fields, options: ServerOptions): Fields {
   };
 }
 
+export interface McpTarget {
+  readonly tools: readonly Fields[];
+  readonly call: (
+    parameters: Fields,
+    signal: AbortSignal,
+  ) => Promise<Fields | undefined>;
+}
+
+function repositoryTarget(runtimeDirectory: string): McpTarget {
+  return {
+    tools: mcpTools,
+    call: async (parameters, signal) => {
+      const call = mcpToolCall(parameters);
+      return call === undefined
+        ? undefined
+        : callMcpTool(runtimeDirectory, { call, signal });
+    },
+  };
+}
+
 async function response(
   request: Fields,
   context: {
     readonly id: string | number;
-    readonly runtimeDirectory: string;
+    readonly target: McpTarget;
     readonly signal: AbortSignal;
     readonly options: ServerOptions;
   },
 ): Promise<Fields> {
-  const { id, runtimeDirectory, signal } = context;
+  const { id, target, signal } = context;
   const parameters =
     request["params"] === undefined ? {} : record(request["params"]);
   if (parameters === undefined)
@@ -139,21 +159,21 @@ async function response(
   let result: Fields;
   if (method === "initialize") result = initialize(parameters, context.options);
   else if (method === "ping") result = {};
-  else if (method === "tools/list") result = { tools: mcpTools };
+  else if (method === "tools/list") result = { tools: target.tools };
   else if (method === "tools/call") {
-    const call = mcpToolCall(parameters);
-    if (call === undefined)
+    const called = await target.call(parameters, signal);
+    if (called === undefined)
       return error(id, {
         code: -32602,
         message: "Unknown tool or invalid arguments.",
       });
-    result = await callMcpTool(runtimeDirectory, { call, signal });
+    result = called;
   } else return error(id, { code: -32601, message: "Method not found." });
   return { jsonrpc: "2.0", id, result };
 }
 
 interface Session {
-  readonly runtimeDirectory: string;
+  readonly target: McpTarget;
   readonly options: ServerOptions;
   readonly calls: Map<string | number, AbortController>;
   readonly pending: Set<Promise<void>>;
@@ -176,11 +196,7 @@ function written(message: Fields): Promise<void> {
 function watchChannel(session: Session): void {
   const { channel } = session.options;
   if (channel === undefined || session.channel.watcher !== undefined) return;
-  session.channel.watcher = channelAlerts({
-    runtimeDirectory: session.runtimeDirectory,
-    privateTexts: channel.privateTexts,
-    write: written,
-  });
+  session.channel.watcher = channelAlerts({ ...channel, write: written });
 }
 
 function notified(request: Fields, session: Session): void {
@@ -208,7 +224,7 @@ function dispatch(message: Message, session: Session): void {
   session.calls.set(id, call);
   const pending = response(request, {
     id,
-    runtimeDirectory: session.runtimeDirectory,
+    target: session.target,
     signal: call.signal,
     options: session.options,
   })
@@ -223,12 +239,17 @@ function dispatch(message: Message, session: Session): void {
 }
 
 export interface ServerOptions {
-  readonly channel?: { readonly privateTexts: readonly string[] };
+  readonly channel?: {
+    readonly runtimeDirectory: string;
+    readonly privateTexts: readonly string[];
+  };
 }
 
 export async function mcpServer(
   runtimeDirectory: string | undefined,
-  options: ServerOptions = {},
+  options: {
+    readonly channel?: { readonly privateTexts: readonly string[] };
+  } = {},
 ): Promise<number> {
   if (runtimeDirectory === undefined) {
     process.stderr.write(
@@ -236,8 +257,19 @@ export async function mcpServer(
     );
     return 2;
   }
+  const { channel } = options;
+  return servedMcp(
+    repositoryTarget(runtimeDirectory),
+    channel === undefined ? {} : { channel: { ...channel, runtimeDirectory } },
+  );
+}
+
+export async function servedMcp(
+  target: McpTarget,
+  options: ServerOptions = {},
+): Promise<number> {
   const session: Session = {
-    runtimeDirectory,
+    target,
     options,
     calls: new Map(),
     pending: new Set(),

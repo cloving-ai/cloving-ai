@@ -152,7 +152,7 @@ await test("CLV-061 the help text of the start command has one line for each set
   const settingLines = (name: string): readonly string[] =>
     lines.filter((line) => line.startsWith(`  ${name} `));
   const names = [...new Set(program.match(/CLOVING_[A-Z_]+/g))];
-  assert.equal(names.length, 38);
+  assert.equal(names.length, 39);
   for (const name of names) assert.equal(settingLines(name).length, 1, name);
   for (const [name, fact] of facts)
     assert.match(String(settingLines(name)[0]), fact);
@@ -266,5 +266,21 @@ await test("CLV-312 the help texts and the README describe the workspace watch p
   assert.match(
     workspace ?? "",
     /one watch page for all repositories.*Needs you names the repository.*Today panel.*one row for each repository.*cloving status.*--repository <name>/,
+  );
+});
+
+await test("CLV-312 the start help and the README describe the workspace lanes and the workspace daily spend limit", () => {
+  assert.match(
+    String(commandUsage["start"]).replaceAll("\n", " "),
+    /workspace fields lanes \(1 to 64\) and dailySpendLimitUsd \(above 0\).*asks the supervisor before it starts a run.*85 percent of the limit/,
+  );
+  const readme = readFileSync(new URL("../README.md", import.meta.url), "utf8");
+  assert.match(
+    readme,
+    /`lanes` \(the setting `workspace\.lanes`.*`dailySpendLimitUsd` \(the setting `workspace\.dailySpendLimitUsd`.*asks the supervisor for a permit/,
+  );
+  assert.match(
+    readme,
+    /^- `CLOVING_WORKSPACE_PERMITS`: the permit socket of the workspace supervisor\./m,
   );
 });
