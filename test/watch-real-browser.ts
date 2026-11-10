@@ -61,30 +61,31 @@ export function browserExecutable(
   );
 }
 
+export function browserArguments(directory: string): string[] {
+  return [
+    "--headless",
+    "--use-mock-keychain",
+    "--remote-debugging-pipe",
+    `--user-data-dir=${directory}`,
+    "--no-first-run",
+    "--no-default-browser-check",
+    "--disable-background-networking",
+    "--disable-component-update",
+    "--disable-sync",
+    "--disable-extensions",
+  ];
+}
+
 export async function realBrowser() {
   const directory = await mkdtemp(join(tmpdir(), "cloving-watch-chrome-"));
   const executable = browserExecutable(
     process.platform,
     process.env["CLOVING_TEST_BROWSER"],
   );
-  const child = spawn(
-    executable,
-    [
-      "--headless",
-      "--remote-debugging-pipe",
-      `--user-data-dir=${directory}`,
-      "--no-first-run",
-      "--no-default-browser-check",
-      "--disable-background-networking",
-      "--disable-component-update",
-      "--disable-sync",
-      "--disable-extensions",
-    ],
-    {
-      env: { ...process.env, NODE_V8_COVERAGE: undefined },
-      stdio: ["ignore", "ignore", "ignore", "pipe", "pipe"],
-    },
-  );
+  const child = spawn(executable, browserArguments(directory), {
+    env: { ...process.env, NODE_V8_COVERAGE: undefined },
+    stdio: ["ignore", "ignore", "ignore", "pipe", "pipe"],
+  });
   const exited = new Promise<void>((resolve) => {
     child.once("close", () => {
       resolve();
