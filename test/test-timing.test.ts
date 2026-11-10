@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
+import childProcess, { execFileSync } from "node:child_process";
 import { syncBuiltinESMExports } from "node:module";
 import { test } from "node:test";
 import timers from "node:timers/promises";
@@ -142,19 +142,39 @@ await test("CLV-147 shared authority timings scale every duration with the check
 
 await test("CLV-147 a scaled workflow scenario can finish after the unscaled child timeout", async () => {
   const previous = process.env["CLOVING_CHECK_TIME_FACTOR"];
+  const spawn = childProcess.spawn;
+  const timeouts: unknown[] = [];
+  Object.defineProperty(childProcess, "spawn", {
+    configurable: true,
+    writable: true,
+    value: (...given: readonly unknown[]): unknown => {
+      timeouts.push([
+        process.env["CLOVING_CHECK_TIME_FACTOR"],
+        Reflect.get(Object(given[2]), "timeout"),
+      ]);
+      return Reflect.apply(spawn, childProcess, given);
+    },
+  });
+  syncBuiltinESMExports();
   try {
-    process.env["CLOVING_CHECK_TIME_FACTOR"] = "3";
-    await withConsumer(
-      'export async function develop() { "use workflow"; return "ended"; }',
-      async (consumer) => {
-        const ended = await consumer.run(
-          `await delay(${String(testMilliseconds(16_000))}); print({ kind: "ended" });`,
-        );
-        assert.equal(ended.status, 0, ended.stderr);
-        assert.deepEqual(ended.lines, [{ kind: "ended" }]);
-      },
+    for (const factor of ["1", "3"]) {
+      process.env["CLOVING_CHECK_TIME_FACTOR"] = factor;
+      await withConsumer(
+        'export async function develop() { "use workflow"; return "ended"; }',
+        async (consumer) => {
+          const ended = await consumer.run('print({ kind: "ended" });');
+          assert.equal(ended.status, 0, ended.stderr);
+          assert.deepEqual(ended.lines, [{ kind: "ended" }]);
+        },
+      );
+    }
+    assert.deepEqual(
+      [...new Set(timeouts.map((entry) => JSON.stringify(entry)))],
+      ['["1",45000]', '["3",135000]'],
     );
   } finally {
+    childProcess.spawn = spawn;
+    syncBuiltinESMExports();
     if (previous === undefined) delete process.env["CLOVING_CHECK_TIME_FACTOR"];
     else process.env["CLOVING_CHECK_TIME_FACTOR"] = previous;
   }
