@@ -1,5 +1,6 @@
 import { component, element, type Shown } from "./watch-element.ts";
 import { cardKey, type CardKeyEvent } from "./watch-card-view.ts";
+import { ReplyButtons, type DecisionControls } from "./watch-decision-view.ts";
 import { stepAge } from "./watch-floor-view.ts";
 import { watchHash } from "./watch-navigation.ts";
 import type { WatchDecision, WatchRun } from "./watch-render.ts";
@@ -15,6 +16,8 @@ export interface WatchNeed {
   readonly workflowId: string;
   readonly since: string | null;
   readonly continuable?: true;
+  readonly decision?: WatchDecision;
+  readonly reason?: string;
 }
 
 export interface ContinueControls {
@@ -49,7 +52,18 @@ export function decisionNeed(
     text: decisionText(decision.type),
     workflowId: run.workflowId,
     since: decision.openedAt,
+    decision,
   };
+}
+
+export function pauseReason(run: WatchRun): string {
+  return `Why it paused: ${run.code}: ${run.detail}`;
+}
+
+export function reasonText(run: WatchRun): string {
+  return run.state === "paused"
+    ? pauseReason(run)
+    : `${run.code}: ${run.detail}`;
 }
 
 export function stoppedNeed(run: WatchRun): WatchNeed {
@@ -59,11 +73,10 @@ export function stoppedNeed(run: WatchRun): WatchNeed {
     key: `stopped:${run.runId}`,
     runId: run.runId,
     title: run.title ?? run.runId,
-    text: [run.detail, "Examine the run, then resume or drop it."]
-      .filter((part) => part !== "")
-      .join(" "),
+    text: "Examine the run, then resume or drop it.",
     workflowId: run.workflowId,
     since: paused?.recordedAt ?? run.latestAt,
+    reason: pauseReason(run),
   };
 }
 
@@ -204,11 +217,35 @@ export function DismissAction(props: {
   });
 }
 
+export function NeedDecision(props: {
+  readonly need: WatchNeed;
+  readonly deciding: DecisionControls | undefined;
+}): Shown {
+  const { need, deciding } = props;
+  if (need.decision === undefined || deciding === undefined) return null;
+  return component(ReplyButtons, {
+    decision: need.decision,
+    deciding,
+    prefix: "need-action need-",
+  });
+}
+
+export function needLink(need: WatchNeed): string {
+  return watchHash({
+    workflowId: null,
+    runId: need.runId,
+    decisionId: need.decision?.decisionId ?? null,
+  });
+}
+
 export function NeedMessage(props: {
   readonly need: WatchNeed;
   readonly continuing: ContinueControls | undefined;
+  readonly deciding?: DecisionControls | undefined;
 }): Shown {
-  const message = props.continuing?.messages[props.need.runId];
+  const { runId } = props.need;
+  const message =
+    props.continuing?.messages[runId] ?? props.deciding?.messages[runId];
   if (message === undefined) return null;
   return element("p", { class: "need-message", children: message });
 }
@@ -217,8 +254,9 @@ export function Need(props: {
   readonly need: WatchNeed;
   readonly now: string;
   readonly continuing?: ContinueControls | undefined;
+  readonly deciding?: DecisionControls | undefined;
 }): Shown {
-  const { need, now, continuing } = props;
+  const { need, now, continuing, deciding } = props;
   const decision = need.kind === "decision";
   return element("li", {
     class: `need need-${need.kind}`,
@@ -232,15 +270,19 @@ export function Need(props: {
         children: [
           element("h3", { class: "need-title", children: need.title }),
           element("p", { class: "need-text", children: need.text }),
+          need.reason === undefined
+            ? null
+            : element("p", { class: "need-reason", children: need.reason }),
           element("p", { class: "need-meta", children: needMeta(need, now) }),
-          component(NeedMessage, { need, continuing }),
+          component(NeedMessage, { need, continuing, deciding }),
         ],
       }),
       component(ContinueAction, { need, continuing }),
       component(DismissAction, { need, continuing }),
+      component(NeedDecision, { need, deciding }),
       element("a", {
         class: "need-action",
-        href: watchHash({ workflowId: null, runId: need.runId }),
+        href: needLink(need),
         children: decision ? "Answer" : "Open run",
       }),
     ],
@@ -252,8 +294,9 @@ export function NeedsYou(props: {
   readonly now: string;
   readonly words?: WatchWords | undefined;
   readonly continuing?: ContinueControls | undefined;
+  readonly deciding?: DecisionControls | undefined;
 }): Shown {
-  const { now, continuing } = props;
+  const { now, continuing, deciding } = props;
   const needs = needsOf(props.runs);
   return element("section", {
     class: "needs",
@@ -280,9 +323,36 @@ export function NeedsYou(props: {
         : element("ol", {
             class: "needs-list",
             children: needs.map((need) =>
-              component(Need, { key: need.key, need, now, continuing }),
+              component(Need, {
+                key: need.key,
+                need,
+                now,
+                continuing,
+                deciding,
+              }),
             ),
           }),
     ],
   });
 }
+
+export const needsFunctions = [
+  decisionText,
+  decisionNeed,
+  pauseReason,
+  reasonText,
+  stoppedNeed,
+  continuableRun,
+  continuableNeed,
+  needRepository,
+  needsOf,
+  needMeta,
+  ContinueAction,
+  ContinueForm,
+  DismissAction,
+  NeedDecision,
+  needLink,
+  NeedMessage,
+  Need,
+  NeedsYou,
+];

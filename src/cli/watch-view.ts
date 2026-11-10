@@ -16,25 +16,18 @@ import {
   type QueueControls,
 } from "./watch-header-view.ts";
 export { clove, Header, type QueueControls } from "./watch-header-view.ts";
-import {
-  continuedCostText,
-  priceText,
-  spendLimitText,
-  usageText,
-  totalsSuffix,
-} from "./usage-render.ts";
+import { Phases, RunTotals } from "./watch-run-parts.ts";
+export { Phases, RunTotals } from "./watch-run-parts.ts";
 import { component, element, type Shown } from "./watch-element.ts";
 import {
   completedDetail,
   counted,
   elapsed,
-  phaseTime,
   runName,
   runTone,
   waitingDetail,
   type Copying,
   type WatchModel,
-  type WatchPhase,
   type WatchRun,
   type WatchWorkflow,
 } from "./watch-render.ts";
@@ -46,12 +39,17 @@ import {
 import { watchLocation } from "./watch-navigation.ts";
 import { Floor } from "./watch-floor-view.ts";
 import { Shelf } from "./watch-shelf-view.ts";
-import { NeedsYou, type ContinueControls } from "./watch-needs-view.ts";
+import {
+  NeedsYou,
+  reasonText,
+  type ContinueControls,
+} from "./watch-needs-view.ts";
 export type { ContinueControls } from "./watch-needs-view.ts";
 import { Today } from "./watch-today-view.ts";
 import { LoopsPanel, type LoopControls } from "./watch-loops-view.ts";
 import type { ThemeControls } from "./watch-theme-view.ts";
-import { Decision, Events, Turn, PullRequest, Review } from "./watch-turn.ts";
+import { Events, Turn, PullRequest, Review } from "./watch-turn.ts";
+import { RunDecisions, type DecisionControls } from "./watch-decision-view.ts";
 import { Commands } from "./command-effects.ts";
 import {
   Transcript,
@@ -70,7 +68,7 @@ export function BannerDetail(props: Timed): Shown {
   if (run.state === "waiting_gate") return waitingDetail(run, now);
   if (run.state === "completed") return completedDetail(run);
   if (run.state !== "running" || turn?.outcome !== "in work")
-    return `${run.code}: ${run.detail}`;
+    return reasonText(run);
   const calls = turn.activity.filter((item) => item.kind === "tool").length;
   const quiet =
     turn.activeAt === null
@@ -98,50 +96,6 @@ export function Banner(props: Timed): Shown {
     children: [
       element("span", { class: "icon", children: icon }),
       element("div", { children: words }),
-    ],
-  });
-}
-
-export function Phases(props: {
-  readonly phases: readonly WatchPhase[];
-  readonly now: string;
-}): Shown {
-  const marks: Readonly<Record<string, string>> = {
-    done: "✓",
-    active: "●",
-    failed: "✕",
-  };
-  const steps = props.phases.map((phase) =>
-    element("li", {
-      class: `phase ${phase.state}`,
-      children: [
-        element("span", { class: "mark", children: marks[phase.state] ?? "○" }),
-        element("span", { class: "name", children: phase.name }),
-        element("span", {
-          class: "time",
-          children: phaseTime(phase, props.now),
-        }),
-      ],
-    }),
-  );
-  return element("ol", { class: "phases", children: steps });
-}
-
-export function RunTotals(props: { readonly run: WatchRun }): Shown {
-  const { run } = props;
-  return element("section", {
-    class: "run-usage",
-    children: [
-      element("h3", { children: `Run totals${totalsSuffix(run.state)}` }),
-      element("p", { children: usageText(run.usage) }),
-      element("p", {
-        children: `${priceText(run.claudeCostUsd, run.estimatedCostUsd)}${spendLimitText(run.spendLimitUsd)}`,
-      }),
-      run.continuedCostUsd === undefined
-        ? null
-        : element("p", {
-            children: continuedCostText(run.continuedCostUsd),
-          }),
     ],
   });
 }
@@ -174,13 +128,13 @@ export function RunTurns(
 export function Run(
   props: Timed & {
     readonly copying: Copying;
+    readonly deciding?: DecisionControls | undefined;
     readonly steering?: SteerControls | undefined;
     readonly transcripts?: TranscriptControls | undefined;
     readonly turnId?: string | null | undefined;
   },
 ): Shown {
   const { run, now, copying } = props;
-  const turn = run.turns.at(-1);
   const budget = effectBudgetText(run.spent, run.limit);
   const place =
     run.chain === undefined
@@ -193,6 +147,7 @@ export function Run(
   ];
   return [
     component(Banner, { run, now }),
+    component(RunDecisions, { run, copying, now, deciding: props.deciding }),
     loopText(run) === ""
       ? null
       : element("p", { class: "meta", children: loopText(run) }),
@@ -210,9 +165,6 @@ export function Run(
         class: "meta",
         children: `CI rerun after a failed check: workflow ${rerun.run}, commit ${rerun.commit.slice(0, 7)}`,
       }),
-    ),
-    run.decisions.map((decision) =>
-      component(Decision, { decision, turn, copying }),
     ),
     component(RunTurns, {
       run,
@@ -238,6 +190,7 @@ export interface PageProps {
   readonly phone?: PhoneControls | undefined;
   readonly queue?: QueueControls | undefined;
   readonly continuing?: ContinueControls | undefined;
+  readonly deciding?: DecisionControls | undefined;
   readonly loops?: LoopControls | undefined;
   readonly steering?: SteerControls | undefined;
   readonly theme?: ThemeControls | undefined;
@@ -274,6 +227,7 @@ export function Page(props: PageProps): Shown {
             run,
             now,
             copying,
+            deciding: props.deciding,
             steering: props.steering,
             transcripts: props.transcripts,
             turnId: location.turnId,
@@ -323,6 +277,7 @@ export function FloorPage(
                 now,
                 words,
                 continuing: props.continuing,
+                deciding: props.deciding,
               }),
             ],
           }),

@@ -58,8 +58,14 @@ export const sampleDecision: WatchDecision = {
   type: "approval",
   prompt: "Review <b>this</b> & that.",
   openedAt: null,
+  reference: "run-1/review-1",
+  expectedRevision: 1,
+  generation: 1,
+  subjectDigest: `sha256:${"a".repeat(64)}`,
+  replies: ["approve", "deny"],
   approve: 'cloving approve run-1/review-1 --text "yes"',
   deny: "cloving deny run-1/review-1",
+  answer: 'cloving answer run-1/review-1 --text "<answer>"',
 };
 
 export function phases(

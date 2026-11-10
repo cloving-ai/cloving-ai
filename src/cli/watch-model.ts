@@ -2,7 +2,7 @@ import { notesOf } from "./watch-notes-view.ts";
 import { shownLoopMarks, type ShownSchedules } from "./schedule-render.ts";
 import { loopRows } from "./watch-loops.ts";
 import { shownCommandWaits } from "./command-waits.ts";
-import { operationalDecision } from "../decision-visibility.ts";
+import { runDecision } from "./watch-decision.ts";
 import type { WorkflowStages } from "../workflow-declaration.ts";
 import {
   workflowRefusals,
@@ -14,7 +14,6 @@ import { budgetsOf, priceFields, statusTurns } from "./watch-usage.ts";
 import { priceOf, usageOf, attemptFields } from "../worker-usage.ts";
 import { priceText } from "./usage-render.ts";
 import type {
-  WatchDecision,
   WatchEvent,
   WatchFeedback,
   WatchItem,
@@ -206,23 +205,6 @@ export function turnOf(records: TurnRecords): WatchTurn {
   };
 }
 
-export function decisionCommands(
-  decision: unknown,
-  client: string,
-): WatchDecision {
-  const fields = record(decision);
-  const decisionId = text(fields["decisionId"]);
-  const binding = `--expected-revision ${String(fields["revision"])} --generation ${String(fields["generation"])} --subject-digest ${text(fields["subjectDigest"])}`;
-  return {
-    decisionId,
-    type: text(fields["type"]),
-    prompt: text(fields["prompt"]),
-    openedAt: stamp(fields["openedAt"]),
-    approve: `${client} approve ${decisionId} ${binding}`,
-    deny: `${client} deny ${decisionId} --text "<feedback>" ${binding}`,
-  };
-}
-
 export interface WatchInputs {
   readonly schedules?: ShownSchedules;
   readonly loopRuns?: readonly Fields[];
@@ -329,10 +311,7 @@ function runOf(inputs: WatchInputs, value: unknown): WatchRun {
     decisions: inputs.decisions
       .filter((decision) => record(decision)["runId"] === runId)
       .map((decision) =>
-        decisionCommands(
-          operationalDecision(record(decision), workflowId),
-          inputs.client,
-        ),
+        runDecision(decision, { workflowId, client: inputs.client }),
       ),
     events: list(record(value)["events"]).map(eventOf),
     turns: statusTurns(inputs.turns, status),

@@ -202,16 +202,18 @@ function draw() {
   const queue = queueControls();
   const continuing = continueControls();
   const steering = steerControls();
+  const deciding = decisionControls();
   const theme = themeControls();
   const loops = loopControls();
   const transcripts = transcriptControls();
-  const page = component(Page, { model, selected, now, observationNow, stale, copying, columns, cards, phone, queue, continuing, steering, loops, theme, transcripts });
+  const page = component(Page, { model, selected, now, observationNow, stale, copying, columns, cards, phone, queue, continuing, deciding, steering, loops, theme, transcripts });
   render(page, document.getElementById("app"));
   if (model === null) return;
   transcriptsFollowed(selected);
   document.title = watchTitle(model, selected);
   const { runId } = watchLocation(selected);
   moved(model.runs.find((run) => run.runId === runId)?.state ?? "", followed);
+  decisionFollowed(selected);
 }
 async function withSelectedRun(model) {
   const { runId } = watchLocation(location.hash);
@@ -259,7 +261,7 @@ addEventListener("keydown", (event) => {
   controls.onToggle(target);
 });
 darkScheme.addEventListener("change", draw);
-addEventListener("hashchange", () => { state.run = ""; state.hovered = null; state.focused = null; draw(); load(); });
+addEventListener("hashchange", () => { state.run = ""; state.hovered = null; state.focused = null; decisionState.focused = ""; draw(); load(); });
 draw();
 listen();
 setInterval(draw, 1000);

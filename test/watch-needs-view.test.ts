@@ -32,10 +32,10 @@ function panel(html: string): string {
 }
 
 const decisionItem =
-  '<li class="need need-decision"><span class="need-mark" title="Decision"></span><div class="need-body"><h3 class="need-title">Title of draft</h3><p class="need-text">Examine the work, then approve or deny it.</p><p class="need-meta">idea, waiting 12m</p></div><a class="need-action" href="#run=draft">Answer</a></li>';
+  '<li class="need need-decision"><span class="need-mark" title="Decision"></span><div class="need-body"><h3 class="need-title">Title of draft</h3><p class="need-text">Examine the work, then approve or deny it.</p><p class="need-meta">idea, waiting 12m</p></div><a class="need-action" href="#run=draft&amp;decision=draft%2Freview-1">Answer</a></li>';
 
 const stoppedItem =
-  '<li class="need need-stopped"><span class="need-mark" title="Stopped run"></span><div class="need-body"><h3 class="need-title">Title of merge</h3><p class="need-text">The operator paused the run. Examine the run, then resume or drop it.</p><p class="need-meta">develop-issue, waiting 51m</p></div><a class="need-action" href="#run=merge">Open run</a></li>';
+  '<li class="need need-stopped"><span class="need-mark" title="Stopped run"></span><div class="need-body"><h3 class="need-title">Title of merge</h3><p class="need-text">Examine the run, then resume or drop it.</p><p class="need-reason">Why it paused: operator-pause: The operator paused the run.</p><p class="need-meta">develop-issue, waiting 51m</p></div><a class="need-action" href="#run=merge">Open run</a></li>';
 
 const fullPanel = `<section class="needs" aria-labelledby="needs-title"><div class="needs-head"><h2 id="needs-title">Needs you</h2><span class="needs-count">2 waiting for a person</span></div><ol class="needs-list">${stoppedItem}${decisionItem}</ol></section>`;
 
@@ -76,12 +76,12 @@ await test("CLV-287 Answer opens the decision form of the run, and Open run open
   assert.match(answer, /<a class="back" href="#">← Back to the floor<\/a>/);
   assert.match(
     answer,
-    /<section class="decision"><h3>Your decision · approval<\/h3>[\s\S]*Approve the drafted issue\./,
+    /<section class="decision" id="decision-draft\/review-1"><h3>Your decision · approval · waiting 12m<\/h3>[\s\S]*Approve the drafted issue\./,
   );
   const stopped = page(model, "run=merge");
   assert.match(
     stopped,
-    /<section class="banner attention">[\s\S]*Paused[\s\S]*operator-pause: The operator paused the run\./,
+    /<section class="banner attention">[\s\S]*Paused[\s\S]*Why it paused: operator-pause: The operator paused the run\./,
   );
 });
 
