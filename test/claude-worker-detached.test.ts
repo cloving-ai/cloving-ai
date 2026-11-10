@@ -102,8 +102,12 @@ await test("CLV-337 a new worker connects to a running turn and reads each line 
     assert.equal(journalRecord(scene, "operation-1/result.json"), undefined);
     const before = lineNumbers(scene).length;
     await until(() => lineNumbers(scene).length > before + 5);
-    const next = scene.worker("gated-lines");
+    const noted: unknown[] = [];
+    const next = scene.worker("gated-lines", {
+      recovered: (recovery) => noted.push(recovery),
+    });
     assert.equal((await next.reconcile(intent(), signal)).kind, "accepted");
+    assert.deepEqual(noted, [{ runId: "run-1", way: "connected" }]);
     assert.equal(alive(turn.processId), true);
     opened(scene);
     await until(() => scene.reports.length === 1);
@@ -145,8 +149,12 @@ await test("CLV-337 a turn process killed while no worker runs falls back to the
     await until(() => sessionKnown(scene));
     await first.close({ turns: "keep" });
     await stoppedGroup(scene);
-    const next = scene.worker("crash-once");
+    const noted: unknown[] = [];
+    const next = scene.worker("crash-once", {
+      recovered: (recovery) => noted.push(recovery),
+    });
     assert.equal((await next.reconcile(intent(), signal)).kind, "accepted");
+    assert.deepEqual(noted, [{ runId: "run-1", way: "resumed" }]);
     await until(() => scene.reports.length === 1);
     assert.equal(scene.reports[0]?.outcome, "completed");
     assert.equal(scene.turns().length, 2);

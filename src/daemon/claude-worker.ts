@@ -6,7 +6,7 @@ import type {
 } from "../broker/actor/delivery-intents.ts";
 import { begun } from "./claude-begin.ts";
 import { attachableLaunch, attachPlan } from "./claude-attach.ts";
-import type { TurnLaunch } from "./detached-turn.ts";
+import type { TurnLaunch } from "../turn-launch.ts";
 import {
   located,
   readRecord as read,
@@ -140,6 +140,10 @@ async function resumed(
   if (aborted()) return failure("claude-start-aborted");
   if (prompt === undefined)
     return interruptedReply(request, "claude-turn-interrupted");
+  parts.settings.recovered?.({
+    runId: intent.runId,
+    way: launch === undefined ? "resumed" : "connected",
+  });
   const noted = await parts.notes.recorded({ ...intent, prompt, started });
   await begun(parts, {
     key,

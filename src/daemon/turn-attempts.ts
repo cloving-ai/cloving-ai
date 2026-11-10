@@ -20,7 +20,7 @@ import {
 import { nativeHarness } from "../harness-defaults.ts";
 import { profileCommand } from "../turn-profile.ts";
 import type { TurnResume } from "./claude-recovery.ts";
-import type { TurnLaunch } from "./detached-turn.ts";
+import type { TurnLaunch } from "../turn-launch.ts";
 import type { ResumeReason } from "../worker-usage.ts";
 import { steeredMetadata, type Steering } from "./turn-steering.ts";
 

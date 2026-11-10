@@ -13,11 +13,11 @@ import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { record } from "../protocol.ts";
 import type { StreamResult } from "./claude-stream.ts";
+import type { TurnLaunch } from "../turn-launch.ts";
 import {
   processExists,
   processIdentity,
   sameProcess,
-  type RecordedProcess,
 } from "./process-identity.ts";
 import {
   receivedLines,
@@ -26,13 +26,6 @@ import {
   streamState,
   type TurnProgress,
 } from "./turn-stream.ts";
-
-export interface TurnLaunch extends RecordedProcess {
-  readonly output: string;
-  readonly offset: number;
-  readonly exit: string;
-  readonly configuration: string;
-}
 
 export type TurnExit = "exited" | "released";
 
@@ -109,27 +102,6 @@ async function exitRecord(path: string): Promise<Ending | undefined> {
   if (fields === undefined) return undefined;
   const { exitCode } = fields;
   return { exitCode: typeof exitCode === "number" ? exitCode : null };
-}
-
-export function recordedLaunch(value: unknown): TurnLaunch | undefined {
-  const fields = record(value);
-  if (fields === undefined) return undefined;
-  const { processId, processStart, marker, output, offset } = fields;
-  const { exit, configuration } = fields;
-  if (typeof processId !== "number" || !Number.isSafeInteger(processId))
-    return undefined;
-  if (processId <= 0 || typeof offset !== "number") return undefined;
-  const texts = [processStart, marker, output, exit, configuration];
-  if (!texts.every((text) => typeof text === "string")) return undefined;
-  return {
-    processId,
-    processStart: String(processStart),
-    marker: String(marker),
-    output: String(output),
-    offset,
-    exit: String(exit),
-    configuration: String(configuration),
-  };
 }
 
 export async function launchState(launch: TurnLaunch): Promise<LaunchState> {

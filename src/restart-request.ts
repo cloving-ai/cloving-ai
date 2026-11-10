@@ -1,6 +1,6 @@
 import { record } from "./protocol.ts";
 
-export type RestartTime = "gap" | "now";
+export type RestartTime = "keep" | "gap" | "now";
 
 export type RestartCancel = "cancelled" | "none" | "started";
 
@@ -52,8 +52,10 @@ export interface RestartPort {
   readonly failure: () => Promise<RestartFailure | undefined>;
 }
 
+const restartTimes: readonly unknown[] = ["keep", "gap", "now"];
+
 export function isRestartTime(value: unknown): value is RestartTime {
-  return value === "gap" || value === "now";
+  return restartTimes.includes(value);
 }
 
 export function isRestartSettings(value: unknown): value is RestartSettings {

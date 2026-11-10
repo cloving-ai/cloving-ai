@@ -182,14 +182,16 @@ New turns use the new values. A turn in work keeps the values of its start.
 The reply lists each other changed field as a field that needs a restart. The service keeps its old value.
 An invalid settings file, an invalid profiles file or a profile harness with no worker at the start refuses the reload. Then nothing changes.
 `,
-  restart: `Usage: cloving restart [--at gap|now] [--within <duration>] [--resume-queue] [--settings environment|files] [--update] [--command-id <id>] [--json]
+  restart: `Usage: cloving restart [--at keep|gap|now] [--within <duration>] [--resume-queue] [--settings environment|files] [--update] [--command-id <id>] [--json]
        cloving restart --cancel [--command-id <id>] [--json]
 
 Restarts the service that cloving start runs, with the settings files and the product files of the new start.
---at gap waits for the next gap: no run that has not ended, no open turn and no queue submission. It is the default.
---within limits the wait for a gap, for example 30m or 6h. The default is 12h. At the deadline, the restart is cancelled.
+--at keep is the default. It restarts at once when each open turn can keep running through the restart.
+It waits for each turn that cannot keep running, each open command and each queue submission.
+--at gap waits for the next gap: no run that has not ended, no open turn and no queue submission.
+--within limits the wait, for example 30m or 6h. The default is 12h. At the deadline, the restart is cancelled.
 While the restart waits, the queue admits no new run. cloving status shows the pending restart.
---at now stops at once. Claude and Codex turns resume after the start.
+--at now stops at once. A Claude turn keeps running, and a Codex turn resumes after the start.
 A stale or missing dist builds first. A failed build starts nothing.
 The restart stops the watch server and the relay first. A child that still runs after 60 seconds refuses the restart.
 The start program replaces itself in the same terminal and starts the service again.

@@ -8,7 +8,7 @@ import {
   type TurnEnd,
   type TurnProgress,
 } from "./claude-turn.ts";
-import type { TurnLaunch } from "./detached-turn.ts";
+import type { TurnLaunch } from "../turn-launch.ts";
 import {
   attemptCommand,
   attemptUsage,

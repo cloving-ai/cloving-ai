@@ -9,11 +9,8 @@ import {
   recordedTexts,
   recordedTree,
 } from "./claude-recovery.ts";
-import {
-  launchState,
-  recordedLaunch,
-  type TurnLaunch,
-} from "./detached-turn.ts";
+import { launchState } from "./detached-turn.ts";
+import { attemptNumber, keptLaunch, type TurnLaunch } from "../turn-launch.ts";
 import type { TurnAttach } from "./turn-attempts.ts";
 import { selectedProfile, type WorkerProfiles } from "./worker-profile.ts";
 
@@ -21,20 +18,12 @@ export async function attachableLaunch(
   folder: string,
   started: unknown,
 ): Promise<TurnLaunch | "gone" | undefined> {
-  if (recordedField(started, "phase") !== "running") return undefined;
-  const launch = recordedLaunch(recordedField(started, "launch"));
   const attempt = attemptNumber(started);
-  if (launch === undefined || attempt === undefined) return undefined;
+  if (attempt === undefined) return undefined;
   const entry = await readRecord(folder, `attempt-${String(attempt)}.json`);
-  if (recordedField(entry, "endedAt") !== undefined) return undefined;
+  const launch = keptLaunch({ started, entry });
+  if (launch === undefined) return undefined;
   return (await launchState(launch)) === "gone" ? "gone" : launch;
-}
-
-function attemptNumber(started: unknown): number | undefined {
-  const attempt = recordedField(started, "attempt");
-  if (typeof attempt !== "number" || !Number.isSafeInteger(attempt))
-    return undefined;
-  return attempt >= 1 && attempt <= 8 ? attempt : undefined;
 }
 
 async function readAttach(

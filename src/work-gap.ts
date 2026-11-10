@@ -44,3 +44,30 @@ export async function workInProgress(reads: WorkReads): Promise<Work> {
 export function atGap(work: Work): boolean {
   return work.activeRuns === 0 && !work.openTurn && !work.pendingSubmission;
 }
+
+export function gapLines(work: Work): readonly string[] {
+  return [
+    ...(work.runIds.length > 0
+      ? [`Active runs: ${work.runIds.join(", ")}`]
+      : []),
+    ...(work.openTurn ? ["A worker turn is open."] : []),
+    ...(work.pendingSubmission ? ["A queue submission is pending."] : []),
+  ];
+}
+
+export interface KeepReads {
+  readonly heldTurn: () => Promise<boolean>;
+  readonly openCommand: () => Promise<boolean>;
+  readonly pendingSubmission: () => Promise<boolean>;
+}
+
+export async function heldWork(reads: KeepReads): Promise<readonly string[]> {
+  const heldTurn = await reads.heldTurn();
+  const openCommand = await reads.openCommand();
+  const pendingSubmission = await reads.pendingSubmission();
+  return [
+    ...(heldTurn ? ["A worker turn cannot keep running."] : []),
+    ...(openCommand ? ["A command effect is open."] : []),
+    ...(pendingSubmission ? ["A queue submission is pending."] : []),
+  ];
+}

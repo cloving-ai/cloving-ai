@@ -285,6 +285,7 @@ async function openDaemon(settings: DaemonSettings): Promise<DaemonOpening> {
     ...controlPorts(controls),
     ...spendSettings(settings),
     workerHarness: worker.harness,
+    turnRecovery: resources.recoveries,
     turnSteering: { steer: worker.steer },
     ...retentionReads(settings, given.promise),
     commandEffects: commandEffects(join(settings.directory, "commands")),
@@ -309,6 +310,7 @@ async function openDaemon(settings: DaemonSettings): Promise<DaemonOpening> {
   }
   const running = { ...resources, ...controls, service: opening.service };
   await recoverWorkers(running, given.promise);
+  resources.recoveries.finish();
   return {
     kind: "started",
     daemon: await runningDaemon(settings, { ...running, ports: given.promise }),

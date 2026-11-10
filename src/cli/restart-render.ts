@@ -98,6 +98,40 @@ function updateLines(update: Fields | undefined): readonly string[] {
   ];
 }
 
+function recoveredRuns(
+  after: Fields,
+  way: "connected" | "resumed",
+): readonly string[] {
+  const runs = record(after["turnRecovery"])?.[way];
+  return Array.isArray(runs)
+    ? runs.filter((runId) => typeof runId === "string")
+    : [];
+}
+
+const recoveryHeadings = {
+  connected: "Turns connected again",
+  resumed: "Turns resumed",
+} as const;
+
+function recoveryLines(after: Fields): readonly string[] {
+  return (["connected", "resumed"] as const).flatMap((way) => {
+    const runs = recoveredRuns(after, way);
+    return runs.length === 0
+      ? []
+      : [`${recoveryHeadings[way]}: ${runs.map(show).join(", ")}`];
+  });
+}
+
+function recoveredTurns(after: Fields): Fields {
+  if (record(after["turnRecovery"]) === undefined) return {};
+  return {
+    turns: {
+      connected: recoveredRuns(after, "connected"),
+      resumed: recoveredRuns(after, "resumed"),
+    },
+  };
+}
+
 export function restartedLines(restarted: Restarted): readonly string[] {
   const { before, after } = restarted;
   return [
@@ -111,6 +145,7 @@ export function restartedLines(restarted: Restarted): readonly string[] {
       (refusal) =>
         `Workflow ${show(refusal.label)}: refused: ${refusal.codes.map(show).join(", ")}`,
     ),
+    ...recoveryLines(after),
     ...updateLines(restarted.update),
   ];
 }
@@ -160,6 +195,7 @@ export function restartedJson(restarted: Restarted): Fields {
     lanes: lanesOf(after) ?? null,
     workflows: admittedIds(after),
     workflowRefusals: workflowRefusals(after["workflowRefusals"]),
+    ...recoveredTurns(after),
     ...(update === undefined ? {} : { update }),
   };
 }

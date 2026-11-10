@@ -22,7 +22,7 @@ import {
   type RestartProblem,
   type RestartRequest,
 } from "../src/restart-request.ts";
-import { atGap, workInProgress, type Work } from "../src/work-gap.ts";
+import { gapLines, heldWork, workInProgress } from "../src/work-gap.ts";
 import {
   checkedBuild,
   forgottenBuild,
@@ -133,39 +133,31 @@ export async function claimedRestart(
   return checked.mark;
 }
 
-async function gapWork(
+async function waitingWork(
   watch: RestartWatch,
   mark: RestartMark,
-): Promise<Work | undefined> {
-  if (mark.at === "now") return undefined;
-  const work = await workInProgress(
-    hostWorkReads({
-      directory: watch.directory,
-      runtimeDirectory: watch.runtime,
-      signal: watch.stopping,
-    }),
-  );
-  return atGap(work) ? undefined : work;
-}
-
-function workLines(work: Work | null): string {
-  if (work === null) return "The service did not list its active runs.";
-  return [
-    ...(work.runIds.length > 0
-      ? [`Active runs: ${work.runIds.join(", ")}`]
-      : []),
-    ...(work.openTurn ? ["A worker turn is open."] : []),
-    ...(work.pendingSubmission ? ["A queue submission is pending."] : []),
-  ].join("\n");
+): Promise<readonly string[]> {
+  if (mark.at === "now") return [];
+  const reads = hostWorkReads({
+    directory: watch.directory,
+    runtimeDirectory: watch.runtime,
+    signal: watch.stopping,
+  });
+  if (mark.at === "keep") return heldWork(reads);
+  return gapLines(await workInProgress(reads));
 }
 
 async function expired(
   watch: RestartWatch,
-  waiting: { readonly request: RestartRequest; readonly work: Work | null },
+  waiting: {
+    readonly request: RestartRequest;
+    readonly work: readonly string[] | null;
+  },
 ): Promise<void> {
   const { mark, name } = waiting.request;
   if (mark.deadline === undefined || Date.now() < mark.deadline) return;
-  const output = workLines(waiting.work);
+  const output =
+    waiting.work?.join("\n") ?? "The service did not list its active runs.";
   const unsaved = await failureNoted(watch, {
     mark,
     failure: { code: "restart-deadline", step: "wait", output },
@@ -322,8 +314,8 @@ export async function restartWatch(
       () => undefined,
     );
     if (request === undefined) continue;
-    const work = await gapWork(watch, request.mark).catch(() => null);
-    if (work !== undefined) {
+    const work = await waitingWork(watch, request.mark).catch(() => null);
+    if (work === null || work.length > 0) {
       await expired(watch, { request, work }).catch(() => undefined);
       continue;
     }

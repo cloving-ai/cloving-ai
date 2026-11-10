@@ -9,9 +9,8 @@ import {
   attachedTurn,
   detachedTurn,
   launchState,
-  recordedLaunch,
-  type TurnLaunch,
 } from "../src/daemon/detached-turn.ts";
+import { recordedLaunch, type TurnLaunch } from "../src/turn-launch.ts";
 import {
   processExists,
   processIdentity,

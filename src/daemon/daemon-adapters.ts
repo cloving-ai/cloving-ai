@@ -1,3 +1,4 @@
+import { turnRecoveries, type TurnRecoveries } from "../turn-recovery.ts";
 import type { ThreadPoolSettings } from "../cli/thread-pool.ts";
 import type { HostSignals, QueueLimits } from "../queue-room.ts";
 import { join } from "node:path";
@@ -91,6 +92,7 @@ export interface Adapters {
   readonly runs: StartDelivery;
   readonly handoff: EffectDelivery;
   readonly commands: CommandWorker;
+  readonly recoveries: TurnRecoveries;
 }
 
 function githubOf(
@@ -154,8 +156,10 @@ export function adapters(
     fallbackModels: settings.fallbackModels ?? [],
     tokenPrices: settings.tokenPrices ?? {},
   });
+  const recoveries = turnRecoveries();
   const worker = claudeWorker({
     ...workerHarness(settings),
+    recovered: recoveries.note,
     turnSettings: turnSettings.current,
     workflowId: async (runId) => (await given).workflow.id(runId),
     repository,
@@ -191,7 +195,7 @@ export function adapters(
     document,
     report,
   });
-  return { worker, github, runs, handoff, commands, turnSettings };
+  return { worker, github, runs, handoff, commands, turnSettings, recoveries };
 }
 
 function handoffOf(

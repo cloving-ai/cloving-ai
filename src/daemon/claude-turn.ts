@@ -30,12 +30,8 @@ export type { TurnProgress } from "./turn-stream.ts";
 import { shellTurnScript } from "../agent-harness-shell.ts";
 import type { TurnRunner } from "../turn-runner.ts";
 import { runnerLaunch, type RunnerLaunch } from "./turn-runner-spawn.ts";
-import {
-  attachedTurn,
-  detachedTurn,
-  type TurnExit,
-  type TurnLaunch,
-} from "./detached-turn.ts";
+import { attachedTurn, detachedTurn, type TurnExit } from "./detached-turn.ts";
+import type { TurnLaunch } from "../turn-launch.ts";
 import {
   githubTokens,
   passedVariables,

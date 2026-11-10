@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { queuePrelude, queueWorkflow } from "./daemon-queue-fixture.ts";
 import { withConsumer } from "./world-host-fixture.ts";
 
-await test("CLV-306 the daemon status shows the commit and start time, and a restart leaves its mark for the host", () =>
+await test("CLV-306 CLV-337 the daemon status shows the commit, the start time and the end of the turn recovery, and a restart leaves its mark for the host", () =>
   withConsumer(queueWorkflow, async (consumer) => {
     const result = await consumer.run(`${queuePrelude}
 const commit = "0123456789abcdef0123456789abcdef01234567";
@@ -17,6 +17,7 @@ try {
   const startedAt = Date.parse(status.serviceStartedAt);
   assert.ok(startedAt >= before && startedAt <= Date.now(), status.serviceStartedAt);
   assert.equal(status.restart, null);
+  assert.deepEqual(status.turnRecovery, { state: "done", connected: [], resumed: [] });
   const reply = await asked("restart", { at: "gap", commandId: "restart-one" });
   assert.equal(reply.restart.state, "pending", JSON.stringify(reply));
   const { readdirSync } = await import("node:fs");

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { test } from "node:test";
 import type { Fields, Reply } from "../src/protocol.ts";
@@ -39,64 +40,27 @@ async function withActivityReplies(
 }
 
 for (const state of ["admitted", "running", "paused", "waiting", "unknown"]) {
-  await test(`CLV-138 ${state} runs of any workflow prevent an update`, async () => {
+  await test(`CLV-138 CLV-337 ${state} runs of any workflow do not hold an update, and the check reads no run list`, async () => {
     await withActivityReplies(
       [page({ runs: [{ workflowId: "another-workflow", state }], next: null })],
       async (scene) => {
-        assert.equal(await selfUpdateActive(scene), true);
-        assert.equal(scene.reads.length, 1);
+        assert.equal(await selfUpdateActive(scene), false);
+        assert.equal(scene.reads.length, 0);
       },
     );
   });
 }
 
-await test("CLV-138 the activity check follows terminal pages to find a paused run", async () => {
-  await withActivityReplies(
-    [
-      page({
-        runs: [
-          { state: "completed" },
-          { state: "failed" },
-          { state: "cancelled" },
-        ],
-        next: "first",
-      }),
-      page({
-        runs: [{ workflowId: "develop-prd", state: "paused" }],
-        next: null,
-      }),
-    ],
-    async (scene) => {
-      assert.equal(await selfUpdateActive(scene), true);
-      assert.deepEqual(scene.reads, [
-        { limit: 500 },
-        { limit: 500, after: "first" },
-      ]);
-    },
-  );
-});
-
-for (const reply of [
-  {
-    kind: "error",
-    error: { code: "authority-unavailable", detail: "Unavailable." },
-  },
-  page({ runs: "invalid", next: null }),
-  page({ runs: [null], next: null }),
-  page({ runs: [], next: "" }),
-  page({ runs: [], next: 1 }),
-  page({ runs: [] }),
-] satisfies readonly Reply[]) {
-  await test(`CLV-138 unavailable or malformed status fails closed: ${JSON.stringify(reply)}`, async () => {
-    await withActivityReplies([reply], async (scene) => {
-      await withUpdate(async (fixture) => {
-        const updater = selfUpdater({
-          ...fixture.settings,
-          active: () => selfUpdateActive(scene),
-        });
-        assert.equal(await updater.check(), undefined);
-        assert.equal(fixture.actions.includes("stop"), false);
+await test("CLV-138 CLV-337 a worker journal that the check cannot read fails closed", async () => {
+  await withActivityReplies([], async (scene) => {
+    await writeFile(join(scene.directory, "journal"), "not a folder");
+    await withUpdate(async (fixture) => {
+      const updater = selfUpdater({
+        ...fixture.settings,
+        active: () => selfUpdateActive(scene),
       });
+      assert.equal(await updater.check(), undefined);
+      assert.equal(fixture.actions.includes("stop"), false);
     });
   });
-}
+});
