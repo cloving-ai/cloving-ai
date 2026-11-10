@@ -112,6 +112,61 @@ await test("CLV-346 when two turns run in one work tree, the end of the first st
   }
 });
 
+function stubbornLeftover(directory: string): {
+  readonly process: ChildProcess;
+  readonly terminated: () => boolean;
+} {
+  const file = join(directory, "term-seen");
+  const leftover = spawn(
+    process.execPath,
+    [
+      "-e",
+      `process.on("SIGTERM", () => require("node:fs").writeFileSync(${JSON.stringify(file)}, "seen"));
+setInterval(() => undefined, 1000);`,
+    ],
+    { cwd: directory, detached: true, stdio: "ignore" },
+  );
+  leftover.unref();
+  return { process: leftover, terminated: () => existsSync(file) };
+}
+
+await test("CLV-346 a turn that starts in the work tree during the grace period of a cleanup is kept", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "cloving-late-turn-"));
+  execFileSync("git", ["init", "-q"], { cwd: directory });
+  const leftover = stubbornLeftover(directory);
+  const leftoverId = leftover.process.pid ?? 0;
+  const turns: { root: number; child: () => number }[] = [];
+  const ended: (() => void)[] = [];
+  try {
+    await until(() => alive(leftoverId));
+    const cleanup = stopLeftProcesses({
+      directory,
+      runId: "run-a",
+      seconds: 60,
+      signal,
+      stopMilliseconds: 2000,
+      log: () => undefined,
+    });
+    await until(() => leftover.terminated());
+    const turnB = activeTurn(directory);
+    const rootB = turnB.root.pid ?? 0;
+    turns.push({ root: rootB, child: turnB.child });
+    ended.push(ownTurn(directory, { runId: "run-b", processId: rootB }));
+    await until(() => turnB.child() > 0);
+    await cleanup;
+    assert.equal(alive(leftoverId), false);
+    assert.equal(alive(rootB), true);
+    assert.equal(alive(turnB.child()), true);
+  } finally {
+    for (const end of ended) end();
+    stopAll([
+      leftoverId,
+      ...turns.flatMap((turn) => [turn.child(), turn.root]),
+    ]);
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 await test("CLV-346 the resume cleanup stops the processes of the dead session and keeps the live process tree of another active turn", () =>
   withScene(async (scene) => {
     const directory = await interruptedScene(scene);

@@ -515,6 +515,7 @@
     "src/daemon/workflow-schedules.ts": "daemon",
     "src/daemon/working-runs.ts": "daemon",
     "src/daemon/worktree-processes.ts": "daemon",
+    "src/daemon/worktree-selection.ts": "daemon",
     "src/decision-visibility.ts": "pure",
     "src/decision-wait.ts": "pure",
     "src/delivery-backoff.ts": "pure",

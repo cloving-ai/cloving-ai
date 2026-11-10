@@ -8,7 +8,7 @@ import {
   ownTurn,
   ownedProcesses,
 } from "../src/daemon/turn-owners.ts";
-import { signalTargets } from "../src/daemon/worktree-processes.ts";
+import { signalTargets } from "../src/daemon/worktree-selection.ts";
 
 const tree = "/work/tree";
 const user = 501;
