@@ -1,5 +1,11 @@
 export type TranscriptKind =
-  "assistant" | "thinking" | "tool-call" | "tool-result" | "notice" | "result";
+  | "prompt"
+  | "assistant"
+  | "thinking"
+  | "tool-call"
+  | "tool-result"
+  | "notice"
+  | "result";
 
 export interface TranscriptDraft {
   readonly kind: TranscriptKind;
@@ -7,6 +13,7 @@ export interface TranscriptDraft {
   readonly tool?: string;
   readonly summary?: string;
   readonly error?: boolean;
+  readonly callId?: string;
 }
 
 type Fields = Readonly<Record<string, unknown>>;
@@ -77,10 +84,12 @@ function inputSummary(input: unknown): string {
   return named ?? JSON.stringify(input ?? {});
 }
 
-function toolCall(tool: string, input: unknown): TranscriptDraft {
+function toolCall(part: Fields): TranscriptDraft {
+  const input = part["input"];
   return {
     kind: "tool-call",
-    tool,
+    tool: text(part["name"]),
+    callId: text(part["id"]),
     summary: inputSummary(input),
     text:
       typeof input === "string" ? input : JSON.stringify(input ?? {}, null, 2),
@@ -103,7 +112,7 @@ const assistantParts = new Map<string, (part: Fields) => Drafts>([
   ["text", (part) => said("assistant", part["text"])],
   ["thinking", (part) => said("thinking", part["thinking"])],
   ["redacted_thinking", none],
-  ["tool_use", (part) => [toolCall(text(part["name"]), part["input"])]],
+  ["tool_use", (part) => [toolCall(part)]],
 ]);
 
 const userParts = new Map<string, (part: Fields) => Drafts>([
@@ -114,6 +123,7 @@ const userParts = new Map<string, (part: Fields) => Drafts>([
         kind: "tool-result",
         text: resultText(part["content"]),
         error: part["is_error"] === true,
+        callId: text(part["tool_use_id"]),
       },
     ],
   ],

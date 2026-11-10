@@ -112,11 +112,11 @@ await test("CLV-286 a legend names the four lamp colors, and lamps and tokens ca
   );
 });
 
-await test("CLV-286 the line end of a scheduled workflow shows its next run time", () => {
+await test("CLV-286 the line end of a scheduled workflow with no loop row shows its next run time", () => {
   const clock = (at: number) =>
     new Date(at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   const end = (schedule: ShownSchedule) => {
-    const html = page(scheduleModel(schedule));
+    const html = page({ ...scheduleModel(schedule), loops: [] });
     const [scheduled = "", manual = ""] = lines(html);
     assert.match(manual, /<div class="line-end"><\/div>/);
     return /<div class="line-end">([\s\S]*?)<\/div>/.exec(scheduled)?.[1];

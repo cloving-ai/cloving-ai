@@ -80,6 +80,7 @@ function entryOf(value: unknown): TranscriptEntry {
     kind: transcriptKinds.find((kind) => kind === item["kind"]) ?? "notice",
     text: words(item["text"]),
     tool: typeof item["tool"] === "string" ? item["tool"] : null,
+    callId: typeof item["callId"] === "string" ? item["callId"] : null,
     summary: words(item["summary"]),
     error: item["error"] === true,
     omittedBytes: count(item["omittedBytes"]),

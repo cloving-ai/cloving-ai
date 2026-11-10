@@ -43,14 +43,17 @@ function page(model: WatchModel, loops?: LoopControls): unknown {
   });
 }
 
-function panel(html: string): string {
-  return /<section class="loops"[\s\S]*?<\/section>/.exec(html)?.[0] ?? "";
+const clock = (at: string | number): string =>
+  new Date(at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+
+function ends(html: string): readonly string[] {
+  return [
+    ...html.matchAll(/<div class="line-end">([\s\S]*?)<\/div><\/li>/g),
+  ].map((match) => match[1] ?? "");
 }
 
 function rows(html: string): readonly string[] {
-  return [...panel(html).matchAll(/<li class="loop [\s\S]*?<\/li>/g)].map(
-    (match) => match[0],
-  );
+  return ends(html).filter((end) => end.startsWith('<div class="line-loop '));
 }
 
 const idle: LoopControls = {
@@ -60,22 +63,20 @@ const idle: LoopControls = {
   onRun: () => undefined,
 };
 
-await test("CLV-328 the Loops panel shows one row for each loop with its rule, state, next run in local and relative time, last run and failures", () => {
+await test("CLV-340 the side bar has no Loops panel, and the line end of each loop workflow shows the state and rule, the next run of an active loop, the last run and the failures in a row that are not 0", () => {
   const html = rendered(page(loopModel()));
-  assert.match(
-    html,
-    /<aside class="side-panels">[\s\S]*<section class="loops" aria-labelledby="loops-title"><h2 id="loops-title">Loops<\/h2>/,
-  );
-  const [review, drift] = rows(html);
+  assert.doesNotMatch(html, /class="loops"|Loops<\/h2>/);
+  const [review, drift, develop] = ends(html);
   assert.equal(
     review,
-    `<li class="loop loop-active"><div class="loop-head"><a class="loop-workflow" href="#workflow=review-day">review-day</a><span class="loop-state">active</span></div><p class="loop-rule">every 30 min</p><p class="loop-next">Next run ${shownTime(nextAt)} · in 2 h</p><p class="loop-last">Last run <a href="#run=review-new">completed, handoff_requested, ended ${shownTime(endedAt)}</a></p><p class="loop-failures">0 failures in a row</p></li>`,
+    `<div class="line-loop loop-active"><p class="loop-rule"><span class="loop-state">active</span> · every 30 min</p><p class="loop-next">next run ${clock(nextAt)}</p><p class="loop-last"><a href="#run=review-new" title="completed, handoff_requested, ended ${shownTime(endedAt)}">last run ${clock(endedAt)} ✓</a></p></div>`,
   );
-  assert.match(review, /Next run [^<]*07:00/);
+  assert.match(review, /next run 07:00/);
   assert.equal(
     drift,
-    '<li class="loop loop-stopped"><div class="loop-head"><a class="loop-workflow" href="#workflow=docs-drift">docs-drift</a><span class="loop-state">stopped</span></div><p class="loop-rule">Mondays at 07:00 America/Los_Angeles</p><p class="loop-next">No next run</p><p class="loop-last">No run yet</p><p class="loop-failures">3 failures in a row</p></li>',
+    '<div class="line-loop loop-stopped"><p class="loop-rule"><span class="loop-state">stopped</span> · Mondays at 07:00 America/Los_Angeles</p><p class="loop-last">no run yet</p><p class="loop-failures">3 failures in a row</p></div>',
   );
+  assert.equal(develop, "");
 });
 
 await test("CLV-328 with watch actions, each row has a switch and a Run now button, and the switch sends pause for an active loop and resume for a stopped loop", () => {
@@ -117,7 +118,7 @@ await test("CLV-328 with watch actions, each row has a switch and a Run now butt
   const html = rendered(shown);
   assert.match(
     rows(html)[1] ?? "",
-    /<p class="loop-message" role="status">run-active: The workflow has an active run\.<\/p><\/li>$/,
+    /<p class="loop-message" role="status">run-active: The workflow has an active run\.<\/p><\/div>$/,
   );
   assert.match(
     rows(html)[0] ?? "",
@@ -143,8 +144,8 @@ await test("CLV-328 a busy row disables its switch and its button", () => {
   );
 });
 
-await test("CLV-328 a floor with no loops has no Loops panel", () => {
-  assert.equal(panel(rendered(page(floorModel([])))), "");
+await test("CLV-340 a floor with no loops has no loop cell", () => {
+  assert.deepEqual(rows(rendered(page(floorModel([])))), []);
 });
 
 await test("CLV-328 the row message tells the reply of the service", () => {

@@ -141,7 +141,9 @@ async function launched(
       return journal.progress(progress);
     },
     folder,
-    ...(entry.attempt === 1 ? {} : { activityFolder: start.folder }),
+    ...(entry.attempt === 1
+      ? {}
+      : { laterAttempt: { folder: start.folder, attempt: entry.attempt } }),
     prompt: launchPrompt(launch, prompt),
   });
   steering.child = { turn, sessionId: null };
