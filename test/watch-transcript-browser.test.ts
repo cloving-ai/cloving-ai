@@ -226,7 +226,7 @@ const terminalForm = (
 ) => `(async () => {
   const form = () => [...document.querySelectorAll(".transcript-lines > .entry")].map((node) =>
     node.classList.contains("tool-call")
-      ? [node.querySelector(".tool-line > summary")?.textContent ?? "", ...[...node.querySelectorAll(".entry.tool-result")].map((item) => item.textContent)]
+      ? [node.querySelector(".tool-line > summary")?.textContent ?? "", ...[...node.querySelectorAll(".entry.tool-result")].map((item) => [...item.querySelectorAll("summary, pre")].map((part) => part.textContent).join(" | "))]
       : [node.textContent]);
   const wanted = ${JSON.stringify(JSON.stringify(expected))};
   for (let attempt = 0; attempt < ${String(testMilliseconds(10_000) / 20)}; attempt++) {
@@ -275,7 +275,7 @@ await test("CLV-333 the open turn shows the prompt and each new entry of a turn 
           [
             prompt,
             ["⏺I read the ticket."],
-            ["⏺ Bash(npm test)", "⎿1 test failed"],
+            ["⏺ Bash(npm test)", "⎿ 1 line | 1 test failed"],
             ["⏺ Bash(npm run lint)"],
           ],
         ],

@@ -11,7 +11,11 @@ export type Invocation = { readonly repository?: string } & (
   | { readonly kind: "config-help" }
   | { readonly kind: "help" }
   | { readonly kind: "version" }
-  | { readonly kind: "mcp"; readonly workspace?: true }
+  | {
+      readonly kind: "mcp";
+      readonly channel?: true;
+      readonly workspace?: true;
+    }
   | { readonly kind: "mcp-help" }
   | { readonly kind: "init-prompt" }
   | { readonly kind: "init"; readonly harness: string | undefined }
@@ -76,6 +80,7 @@ const options = {
   title: { type: "string" },
   label: { type: "string" },
   clear: { type: "boolean" },
+  channel: { type: "boolean" },
 } as const;
 
 type Parsed = ReturnType<
@@ -185,14 +190,16 @@ function mcpInvocation(
   values: Parsed["values"],
   remaining: readonly string[],
 ): Invocation {
-  if (unexpected(values, ["help", "workspace"]))
+  if (unexpected(values, ["help", "channel", "workspace"]))
     return { kind: "usage-error", code: "unexpected-option", json: false };
   if (remaining.length > 0)
     return { kind: "usage-error", code: "unexpected-argument", json: false };
   if (values.help === true) return { kind: "mcp-help" };
-  return values.workspace === true
-    ? { kind: "mcp", workspace: true }
-    : { kind: "mcp" };
+  return {
+    kind: "mcp",
+    ...(values.channel === true ? { channel: true } : {}),
+    ...(values.workspace === true ? { workspace: true } : {}),
+  };
 }
 
 function promptInvocation(

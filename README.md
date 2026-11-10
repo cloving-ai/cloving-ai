@@ -258,7 +258,7 @@ Cloving develops itself through `develop`, a private copy of the develop templat
 
 ## Install
 
-Cloving supports macOS and Linux on arm64 and x64, with the Node and npm ranges in `package.json`. Workflow admission accepts the same Node range: Node 24.22.1 or a later Node 24 version, and Node 26.9.0 or a later Node 26 version. CI runs the developer gate and packed-install checks on macOS 15 arm64 and Ubuntu 24.04 x64 with Node 26.9.0 and npm 11.19.1. CI also runs the Ubuntu checks with Node 24.22.1. The `quality_linux` check passes only when the Ubuntu checks pass on both Node versions. A pull request runs only the platform tests on macOS (see [Development of Cloving](#development-of-cloving)). Windows is unsupported.
+Cloving supports macOS and Linux on arm64 and x64, with the Node and npm ranges in `package.json`. Workflow admission accepts the same Node range: Node 24.22.1 or a later Node 24 version, and Node 26.9.0 or a later Node 26 version. CI runs the developer gate and packed-install checks on macOS 15 arm64 and Ubuntu 24.04 x64 with Node 26.9.0 and npm 11.19.1. On a push to `main`, CI also runs the Ubuntu checks with Node 24.22.1. The `quality_linux` check passes only when each Ubuntu job of the run passes. A pull request runs the Ubuntu checks on Node 26.9.0 only, and it runs only the platform tests on macOS (see [Development of Cloving](#development-of-cloving)). Windows is unsupported.
 
 A run needs these tools:
 
@@ -462,7 +462,7 @@ The form sends the same run request as the CLI and retains its random command ID
 
 - `CLOVING_RUNTIME_DIR`: the runtime directory.
 - `CLOVING_TICKET_COMMAND`: the ticket command (see "Daily development").
-- `CLOVING_NOTIFY_COMMAND`: a JSON list naming a command to notify the operator about pending decisions, blocked runs, failed runs and stopped schedules. It has no default.
+- `CLOVING_NOTIFY_COMMAND`: a JSON list naming a command to notify the operator about pending decisions, paused runs, blocked runs, failed runs and stopped schedules. It has no default.
 - `CLOVING_NEXT_COMMAND`: a JSON list of a command and its arguments that prints the next ready ticket ID for `--next`. It has no default.
 - `CLOVING_READY_COMMAND`: a JSON list of a command and its arguments that prints the list of ready tickets for the watch page (see "Daily development"). It has no default.
 - `CLOVING_CLAUDE_COMMAND`: a replacement of the `claude` command of the worker.
@@ -478,7 +478,7 @@ The form sends the same run request as the CLI and retains its random command ID
 
 A command setting is a JSON list of texts, for example `CLOVING_CHECK_COMMAND='["npm", "test"]'`.
 
-The notify command receives no added argument. Its standard input receives one JSON object with `event`, `runId`, `workflowId`, `subject` and `body`. The body contains the decision or outcome text already shown by `cloving questions` or `cloving status`, with complete response commands, up to 4000 characters. The daemon checks every 15 seconds. The first check with no notification record only records existing events.
+The notify command receives no added argument. Its standard input receives one JSON object with `event` (`decision`, `paused`, `blocked`, `failed` or `schedule-stopped`), `runId`, `workflowId`, `subject` and `body`. A failed or blocked run that has a continuation or that you dismissed gives no notification. `cloving mcp --channel` uses the same events (see "Get alerts in Claude Code"). The body contains the decision or outcome text already shown by `cloving questions` or `cloving status`, with complete response commands, up to 4000 characters. The daemon checks every 15 seconds. The first check with no notification record only records existing events.
 
 The private `notify-events.json` journal records a notification as `pending` before calling the command and as `sent` after exit code 0. A failed command retries the same message after 1, 5, 15 and 60 minutes, with five attempts in total and a 30-second limit per attempt. The journal records attempt times and fixed failure reasons without command arguments or output. Pending and retryable failed entries resume after restart. Exhausted delivery logs one line naming its key. Old key-only records migrate as sent without sending them again.
 
@@ -532,7 +532,9 @@ The run list has the active runs and the runs of the last 7 days. The run detail
 
 #### Transcript of an agent turn
 
-Each agent turn in the run detail has a **Transcript** section. The section shows the turn as the terminal of Claude Code shows it, in a dark terminal panel. The panel is dark in each theme. It has its own color tokens (see the themes below). The panel of an open turn fills the height of the window below the header.
+The run detail has one tab bar above the agent turns, with the tabs **Transcript** and **Agent turn**. **Transcript** is selected by default. It shows a transcript for each agent turn. **Agent turn** shows the detail of each turn: the branch, the work tree, the harness, the tokens and the list of tool calls. The code review of each round shows under its turn in both tabs. The selected tab stays selected when the page refreshes, and a link with a turn selects **Transcript**.
+
+The head of each transcript names its turn with its state, its time and its cost, for example `Turn 2 · in work · 2 h 37 min · 4.10 USD`. The transcript shows the turn as the terminal of Claude Code shows it, in a dark terminal panel. The panel is dark in each theme. It has its own color tokens (see the themes below). The panel of an open turn fills the height of the window below the header.
 
 The turn in work is expanded and follows the stream while the agent works. When no turn is in work, the last agent turn (the turn that started last) is expanded. The other turns open with **Show**. The **Link** of a turn opens `#run=<run-id>&turn=<operation-id>`: the run detail with that turn expanded in place of the last turn. **Full screen** opens `#run=<run-id>&turn=<operation-id>&view=terminal`: only the panel of that turn, at the full size of the window. A transcript that you show or hide keeps that state until you leave the run detail.
 
@@ -542,7 +544,7 @@ The service reads the `turn.jsonl` file of the journal folder of the turn and ma
 - `assistant`: the text of the agent. The view shows `⏺` and the text with its line breaks.
 - `thinking`: the thinking of the agent. The view shows `✻ Thinking…`, closed until you open it.
 - `tool-call`: a tool call. The view shows `⏺ Tool(argument)` with the tool name in bold, and a click opens the full input. The argument is the first line of the command for `Bash` (at most 120 characters), the file path relative to the work tree for `Read`, `Write`, `Edit`, `MultiEdit` and `NotebookEdit`, the pattern and the path for `Grep`, the pattern for `Glob`, the URL for `WebFetch`, the query for `WebSearch` and the description for `Task` and `Agent`. For another tool, it is the first text field of the input.
-- `tool-result`: the output of a tool. The view shows it under its call after an indented `⎿`, in the dim color, with the first 4 lines. `… +N lines` opens the rest. An error result shows in red.
+- `tool-result`: the output of a tool. The view folds it under its call to one dim line: an indented `⎿` and the count of lines, for example `⎿ 42 lines`. A click on that line opens all the lines of the output. An error result shows `⎿ Error · N lines` in red. An empty output shows `⎿ (No content)` and does not fold.
 - `notice`: a system event, for example a started or ended background task, a retry or a rate limit. A line of another harness, or a line that the service cannot read, becomes a notice with its raw text. The view shows one dim line.
 - `result`: the end of the turn with its cost, its turns and its stop reason.
 
@@ -775,6 +777,34 @@ Each of the eleven tools that admit a command requires a `commandId`. `cloving_s
 A tool call cannot start the service and cannot select a different repository. The server binds to one repository when it starts.
 
 While a workspace runs, `cloving mcp --workspace` serves all repositories of the workspace from one server. The server adds the read tool `cloving_repositories`, which lists the repositories with the service state, the active runs and the pending decisions of each. Each tool gets a `repository` argument with the names of the workspace. A tool that changes state needs the `repository` argument when the workspace lists more than one repository; with no argument, it gives `repository-required`. A read tool with no `repository` argument reads each repository and gives one result for each repository. With no running workspace, the server stops with `workspace-not-running`.
+
+### Get alerts in Claude Code
+
+`cloving mcp --channel` tells a connected Claude Code session when a run needs you. The server sends one message for each new pending decision, paused run, failed or blocked run with no continuation, and stopped schedule. These are the same events as the events of `CLOVING_NOTIFY_COMMAND`. The message gets to the agent on its next turn, also when the session is idle, and the terminal shows a one-line summary.
+
+Register the server for the current repository, then start Claude Code with the channel:
+
+```sh
+claude mcp add --scope local --transport stdio cloving-local -- cloving mcp --repository "$PWD" --channel
+claude --dangerously-load-development-channels server:cloving-local
+```
+
+A message has one or two sentences with the run title and the next step, for example `Run run-60c4… (#701 CLV-336: Answer decisions in the browser) waits for your approval: Approve the change? Answer with cloving_questions and cloving_approve or cloving_deny.` Its attributes are `run_id`, `kind` (`decision`, `paused`, `failed`, `blocked` or `schedule_stopped`), `workflow`, and `ticket` and `decision_id` when they exist. The agent answers with the tools of the server, not over the channel. The `initialize` result gives instructions that explain the messages and the tools that answer them.
+
+While a workspace runs, `cloving mcp --workspace --channel` sends the alerts of all repositories of the workspace from one server. Each message then has the `repository` attribute with the workspace name of the repository. The agent gives that name as the `repository` argument of the tool. The server uses the private texts and the record of sent events of each repository.
+
+The text of a message comes from the run, so it is not trusted. The server uses the run title and fixed sentences, cuts each text at 300 characters, and hides token patterns and the private texts (`privateTexts`). A private question, for example of `analyze-chats`, shows only its preview, as on the watch page.
+
+The server sends each event one time. The private file `channel-events.json` in the runtime directory records the sent events. After a restart, the server sends only the open items that it did not send before. A stopped schedule is open while its state is stopped. A run that pauses again after a resume gives a new message. The server learns of changes from the event stream of the service, and it reads the stopped schedules every 15 seconds. If the server cannot read a changed run, it tries again every 15 seconds. Two sessions of the same repository share the record and hold a lock while they change it.
+
+Claude Code first asks a server for MCP protocol revision `2026-07-28` (`server/discover`). Claude Code does not register a channel on that revision. The Cloving server refuses that request, and Claude Code then connects on the earlier handshake with revision `2025-11-25`, where the channel registers. You do not need `MCP_PROTOCOL_NEGOTIATION=legacy`.
+
+Limits of the channels research preview of Claude Code:
+
+- Channels work only in an interactive session. A session with `-p` or the Agent SDK does not register the channel.
+- `--dangerously-load-development-channels` shows a confirmation dialog at the start.
+- On Team and Enterprise plans, an admin must turn on channels (the `channelsEnabled` setting).
+- A channel message gives no desktop alert. Use `CLOVING_NOTIFY_COMMAND` for a desktop alert.
 
 ### Answer decisions from a phone
 
@@ -2244,7 +2274,7 @@ Run `npm run test:scale` on an otherwise idle machine to measure authority openi
 
 The gate uses the committed `quality/test-durations.json` record to start files with unknown durations first in path order, then recorded files from longest to shortest, breaking ties by path. Stale entries have no effect. The launcher passes the ordered list directly to Node’s programmatic test runner because CLI discovery sorts positional paths. The test inventory and sorted report stay the same. Run `npm run record:test-durations` to refresh the record after adding or changing tests, then commit the JSON. This runs the regular suite with the gate's worker count, timeout settings, isolated environment and V8 coverage, sums each file's top-level test and suite durations in seconds, and writes entries in path order after a successful complete run. Nested tests are not counted twice. Temporary coverage stays outside the repository and is removed afterward. The command accepts the same concurrency and time-factor settings as the gate.
 
-CI runs three duration-balanced shards for each Linux Node version on each pull request and each push to `main`. A pull request runs only the platform tests on macOS, in one job with `CLOVING_TEST_SET=platform` and `CLOVING_TEST_SHARD=1/1`. A push to `main`, a merge group and a manual run start three full macOS shards. A release needs the passed CI of `main` for the tagged commit, so each release has a full macOS run. Shard 1 and the macOS platform job run the static checks. Each shard builds the package before testing, the same as the local gate, so runtime declarations are available independently of other test files. On a pull request, each shard exports raw production coverage, and a final job checks their joined coverage. A push to `main` runs the same shards with `CLOVING_TEST_COVERAGE=off`, so its test processes collect no coverage, and it skips the coverage job. The required checks remain `quality` and `quality_linux`. Without a shard setting, the local gate runs all checks and coverage as before and ignores `CLOVING_TEST_COVERAGE`.
+A pull request runs six duration-balanced Linux shards on Node 26.9.0. A push to `main` runs three shards on each supported Node version. A pull request runs only the platform tests on macOS, in one job with `CLOVING_TEST_SET=platform` and `CLOVING_TEST_SHARD=1/1`. A push to `main`, a merge group and a manual run start three full macOS shards. A release needs the passed CI of `main` for the tagged commit, so each release has a full macOS run. Shard 1 and the macOS platform job run the static checks. Each shard builds the package before testing, the same as the local gate, so runtime declarations are available independently of other test files. On a pull request, each shard exports raw production coverage, and a final job checks their joined coverage. A push to `main` runs the same shards with `CLOVING_TEST_COVERAGE=off`, so its test processes collect no coverage, and it skips the coverage job. The required checks remain `quality` and `quality_linux`. Without a shard setting, the local gate runs all checks and coverage as before and ignores `CLOVING_TEST_COVERAGE`. In CI, each gate step sets `CLOVING_TEST_PROGRESS_FILE` to a file in the temporary folder of the runner. The test reporter appends `start <file>` when a test file starts and `end <file> <seconds> s` when it ends, and the step shows these lines in the job log while the gate runs. A test file that hangs until the job time limit then shows a start line with no end line.
 
 A version tag runs no tests, because the `main` CI already tested its commit. The `release_check` job requires that the tagged commit is on `main`, and it waits up to 80 minutes for the `main` CI run of the same commit to pass. Then the publish job builds the package, publishes it and creates the GitHub release.
 

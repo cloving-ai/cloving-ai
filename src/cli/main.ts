@@ -16,6 +16,7 @@ import { workspaceCommand } from "./workspace-status.ts";
 import type { RuntimeInvocation } from "./runtime-invocation.ts";
 import type { WorkspaceRecord } from "./workspace-record.ts";
 import { themesCommand } from "./themes-command.ts";
+import { channelSource, refusedPrivateTexts } from "./mcp-channel.ts";
 import { mcpServer } from "./mcp-server.ts";
 import { workspaceMcpServer } from "./mcp-workspace.ts";
 import { clientCommand, runtimeDirectory } from "./runtime-directory.ts";
@@ -104,9 +105,19 @@ function mcpCommand(
     readonly workspace?: WorkspaceRecord | undefined;
   },
 ): Promise<number> {
-  return invocation.workspace === true
-    ? workspaceMcpServer(context.workspace)
-    : mcpServer(runtimeDirectory(process.env, context.repository));
+  if (invocation.workspace === true)
+    return workspaceMcpServer(context.workspace, invocation);
+  const { repository } = context;
+  const runtime = runtimeDirectory(process.env, repository);
+  if (invocation.channel === undefined || runtime === undefined)
+    return mcpServer(runtime);
+  const source = channelSource(process.env, {
+    runtimeDirectory: runtime,
+    repository,
+  });
+  return source === undefined
+    ? refusedPrivateTexts()
+    : mcpServer(runtime, { channel: [source] });
 }
 
 function serviceCommand(

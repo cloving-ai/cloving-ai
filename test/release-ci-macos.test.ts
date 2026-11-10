@@ -26,7 +26,7 @@ await test("a pull request runs only the macOS platform tests, and other events 
   );
 });
 
-await test("coverage joins the macOS platform artifact and the six Linux shard artifacts", async () => {
+await test("coverage joins the macOS platform artifact and the six Linux shard artifacts of Node 26.9.0", async () => {
   const workflow = await releaseWorkflow();
   const coverage = job(workflow, "coverage");
   assert.deepEqual(coverage.needs, ["quality_macos", "quality_linux_node"]);
@@ -48,9 +48,8 @@ await test("coverage joins the macOS platform artifact and the six Linux shard a
     step.run?.startsWith("node tools/check-shard-coverage.ts"),
   )?.run;
   const artifacts = ["macos-26.9.0-platform"];
-  for (const node of ["24.22.1", "26.9.0"])
-    for (const shard of ["1", "2", "3"])
-      artifacts.push(`linux-${node}-${shard}`);
+  for (const shard of ["1", "2", "3", "4", "5", "6"])
+    artifacts.push(`linux-26.9.0-${shard}`);
   assert.equal(
     command,
     [

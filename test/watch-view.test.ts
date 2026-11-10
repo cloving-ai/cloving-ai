@@ -211,7 +211,28 @@ await test("CLV-016 the watch page says that the watch tool does not answer, and
   ]);
 });
 
-await test("CLV-062 the watch page shows each turn and each review of a run in order, with the feedback of each denial", () => {
+function assertOrdered(
+  part: string,
+  [section, first, second]: readonly [string, string, string],
+): void {
+  const found = [
+    part.indexOf(section),
+    part.indexOf(first),
+    part.lastIndexOf(section),
+    part.indexOf(second),
+  ];
+  assert.ok(
+    found.every((index) => index >= 0),
+    part,
+  );
+  assert.deepEqual(
+    found,
+    found.toSorted((left, right) => left - right),
+  );
+  assert.notEqual(found[0], found[2]);
+}
+
+await test("CLV-062 the watch page shows each turn and each review of a run in order in both tabs, with the feedback of each denial", () => {
   const html = page(
     sampleModel([
       sampleRun({
@@ -243,22 +264,13 @@ await test("CLV-062 the watch page shows each turn and each review of a run in o
     '<section class="review denied"><h3>Review 1 · denied</h3><p>Add a test for &lt;empty&gt; lists.</p></section>';
   const second =
     '<section class="review pending"><h3>Review 2 · waits for your decision</h3></section>';
-  const found = [
-    html.indexOf('<section class="decision" '),
-    html.indexOf(turn),
-    html.indexOf(first),
-    html.lastIndexOf(turn),
-    html.indexOf(second),
-  ];
-  assert.ok(
-    found.every((index) => index >= 0),
-    html,
-  );
-  assert.deepEqual(
-    found,
-    found.toSorted((left, right) => left - right),
-  );
-  assert.notEqual(found[1], found[3]);
+  const transcript = '<section class="transcript code-window"';
+  const tabs = html.indexOf('role="tablist"');
+  const panel = html.slice(html.indexOf('id="run-panel-turn"'));
+  const shown = html.slice(tabs, html.indexOf('id="run-panel-turn"'));
+  assert.ok(html.indexOf('<section class="decision" ') < tabs, html);
+  assertOrdered(shown, [transcript, first, second]);
+  assertOrdered(panel, [turn, first, second]);
   assert.match(
     html,
     /<code>cloving deny run-1\/review-2 --text &quot;&lt;feedback&gt;&quot;<\/code>/,

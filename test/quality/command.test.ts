@@ -36,6 +36,27 @@ for (const execute of [runCommand, runSupervisedCommand]) {
     }
   });
 
+  await test(`${execute.name}: forwards the test progress file to check subprocesses`, async () => {
+    const previous = process.env["CLOVING_TEST_PROGRESS_FILE"];
+    process.env["CLOVING_TEST_PROGRESS_FILE"] = "/progress/test.log";
+    try {
+      assert.equal(
+        await execute({
+          ...command,
+          arguments: [
+            "-e",
+            "process.stdout.write(process.env.CLOVING_TEST_PROGRESS_FILE ?? 'unset')",
+          ],
+        }),
+        "/progress/test.log",
+      );
+    } finally {
+      if (previous === undefined)
+        delete process.env["CLOVING_TEST_PROGRESS_FILE"];
+      else process.env["CLOVING_TEST_PROGRESS_FILE"] = previous;
+    }
+  });
+
   await test(`${execute.name}: QG-10 gives a check its explicit isolated home directory`, async () => {
     await withFiles({}, async (directory) => {
       const options = {

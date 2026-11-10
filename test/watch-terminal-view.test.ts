@@ -15,7 +15,7 @@ import {
   visible,
 } from "./watch-terminal-fixture.ts";
 
-await test("CLV-333 a Bash call with 30 lines of output shows the call with the command, then its output after the gutter with 4 lines and a count of 26 more lines that opens the rest", () => {
+await test("CLV-341 a Bash call with 30 lines of output shows the call with the command, then a folded output whose fold line counts the 30 lines and opens all of them", () => {
   const html = terminal(
     call(1, { tool: "Bash", input: { command: "npm test\necho done" } }),
     result(2, { callId: "call-1", text: `${numbered(1, 30)}\n` }),
@@ -27,7 +27,7 @@ await test("CLV-333 a Bash call with 30 lines of output shows the call with the 
   ).replaceAll('"', "&quot;");
   assert.ok(
     html.includes(
-      `<div class="entry tool-call"><details class="tool-line"><summary><span class="mark">⏺</span> <strong class="tool-name">Bash</strong>(npm test)</summary><pre class="tool-input">${input}</pre></details><div class="entry tool-result"><span class="gutter">⎿</span><div class="output"><pre>${numbered(1, 4)}</pre><details><summary>… +26 lines</summary><pre>${numbered(5, 30)}</pre></details></div></div></div>`,
+      `<div class="entry tool-call"><details class="tool-line"><summary><span class="mark">⏺</span> <strong class="tool-name">Bash</strong>(npm test)</summary><pre class="tool-input">${input}</pre></details><details class="entry tool-result"><summary><span class="gutter">⎿</span> 30 lines</summary><div class="output"><pre>${numbered(1, 30)}</pre></div></details></div>`,
     ),
     html,
   );
@@ -75,13 +75,9 @@ await test("CLV-333 a turn with a prompt, text, a Bash call with 30 lines of out
     "⏺I read the ticket.",
     "Then I test.",
     "⏺ Bash(npm test)",
-    "⎿line 1",
-    "line 2",
-    "line 3",
-    "line 4",
-    "… +26 lines",
+    "⎿ 30 lines",
     "⏺ Read(src/a.ts)",
-    "⎿export const a = 1;",
+    "⎿ 1 line",
     "⏺ Edit(src/a.ts)",
     "⎿Updated src/a.ts with 2 additions and 1 removal",
     "- export const a = 1;",
@@ -134,14 +130,14 @@ await test("CLV-333 two parallel tool calls followed by their two results show e
   );
   assert.deepEqual(lines, [
     "⏺ Read(/other/a.ts)",
-    "⎿export const a = 1;",
+    "⎿ 1 line",
     "⏺ Bash(npm test)",
-    "⎿1 test failed",
-    "⎿orphan output",
+    "⎿ Error · 1 line",
+    "⎿ 1 line",
   ]);
   assert.ok(
     html.includes(
-      '<div class="entry tool-result error"><span class="gutter">⎿</span><div class="output"><pre>1 test failed</pre></div></div></div><div class="entry tool-result"><span class="gutter">⎿</span><div class="output"><pre>orphan output</pre></div></div></div>',
+      '<details class="entry tool-result error"><summary><span class="gutter">⎿</span> Error · 1 line</summary><div class="output"><pre>1 test failed</pre></div></details></div><details class="entry tool-result"><summary><span class="gutter">⎿</span> 1 line</summary><div class="output"><pre>orphan output</pre></div></details></div>',
     ),
     html,
   );
@@ -234,7 +230,7 @@ await test("CLV-333 a Write call shows the count of lines and the first 4 lines,
       result(2, { callId: "call-1", text: "String not found.", error: true }),
     ),
   );
-  assert.ok(failed.includes("⎿String not found."), failed.join("\n"));
+  assert.ok(failed.includes("⎿ Error · 1 line"), failed.join("\n"));
   assert.ok(!failed.some((line) => line.startsWith("⎿Updated")));
   const empty = visible(
     terminal(
