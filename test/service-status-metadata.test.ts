@@ -262,8 +262,9 @@ await test("CLV-072 completed status reads its outcome without loading the event
       queries: {
         ...store.queries,
         eventsAfter: (cursor) =>
-          ["run.noted", "run.renamed"].includes(cursor.type ?? "") &&
-          cursor.runId === "run-1"
+          ["run.noted", "run.renamed", "run.dismissed"].includes(
+            cursor.type ?? "",
+          ) && cursor.runId === "run-1"
             ? store.queries.eventsAfter(cursor)
             : Promise.reject(new Error("Status must not load event history")),
       },
