@@ -108,7 +108,7 @@ console.log(JSON.stringify({ board, run, back }));
   assert.match(board, /#workflow=develop-issue/);
   assert.match(board, /Title of round-2/);
   assert.match(run, /#workflow=develop-issue&run=round-2/);
-  assert.match(run, /← Back to develop-issue/);
+  assert.match(run, /href=\\"#workflow=develop-issue\\">← develop-issue</);
   assert.doesNotMatch(run, /class=\\"workflows|class=\\"run /);
   assert.deepEqual(result["back"], result["board"]);
 });

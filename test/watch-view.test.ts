@@ -61,8 +61,7 @@ function banner(run: Partial<WatchRun>): string {
 await test("CLV-016 the watch page shows the state of the selected run first, as a banner with a tone, an icon and plain words, then the its pending decision, the steps of the run, its turn, its folded events and its identifiers", () => {
   const found = positions(page(model, "run-1"), [
     `<span>updated ${shownClock("21:34:41")}</span></div></header>`,
-    '<a class="back" href="#">← Back to the floor</a>',
-    '<section class="banner attention"><span class="icon">!</span><div><h2>Needs your decision <span class="name">clv-016-a6f7ef47</span></h2><p>A decision waits for you for 1 min 0 s. Examine the work, then approve or deny.</p></div></section>',
+    '<section class="banner attention"><a class="banner-back" href="#">← Floor</a><span class="icon">!</span><div><h2>Needs your decision <span class="name">clv-016-a6f7ef47</span></h2><p>A decision waits for you for 1 min 0 s. Examine the work, then approve or deny.</p></div></section>',
     '<section class="decision" id="decision-run-1/review-1">',
     `<ol class="phases"><li class="phase done"><span class="mark">✓</span><span class="name">Admitted</span><span class="time">${shownClock("21:26:00")}</span></li>`,
     '<li class="phase done"><span class="mark">✓</span><span class="name">Agent turn</span><span class="time">7 min 38 s</span></li>',
@@ -92,7 +91,7 @@ await test("CLV-016 the banner of a run in work shows the time of the turn, the 
   ];
   assert.equal(
     banner({ ...working, turns: [sampleTurn({ activity })] }),
-    '<section class="banner working"><span class="icon">●</span><div><h2>In work <span class="name">clv-016-a6f7ef47</span></h2><p>The worker works for 8 min 39 s · 1 tool call · last output 4 min 21 s ago<span class="now">I run the gate &lt;now&gt;.</span></p></div>',
+    '<section class="banner working"><a class="banner-back" href="#">← Floor</a><span class="icon">●</span><div><h2>In work <span class="name">clv-016-a6f7ef47</span></h2><p>The worker works for 8 min 39 s · 1 tool call · last output 4 min 21 s ago<span class="now">I run the gate &lt;now&gt;.</span></p></div>',
   );
   assert.match(
     banner({ ...working, turns: [sampleTurn({ activeAt: null })] }),
@@ -125,7 +124,7 @@ await test("CLV-016 the banner of a run at its end shows the time and the cost o
   const ended = { decisions: [], state: "completed" };
   assert.match(
     banner(ended),
-    /^<section class="banner good"><span class="icon">✓<\/span><div><h2>Completed .*<p>The run completed in 7 min 41 s · cost 1\.03 USD\.<\/p>/,
+    /^<section class="banner good"><a class="banner-back" href="#">← Floor<\/a><span class="icon">✓<\/span><div><h2>Completed .*<p>The run completed in 7 min 41 s · cost 1\.03 USD\.<\/p>/,
   );
   assert.match(
     banner({ ...ended, events: [], turns: [], claudeCostUsd: null }),
@@ -137,24 +136,28 @@ await test("CLV-016 the banner of a run at its end shows the time and the cost o
   );
   assert.match(
     banner({ ...ended, decision: "denied" }),
-    /^<section class="banner idle"><span class="icon">✕<\/span><div><h2>Denied .*<p>You denied the work\. The run completed in 7 min 41 s · cost 1\.03 USD\.<\/p>/,
+    /^<section class="banner idle"><a class="banner-back" href="#">← Floor<\/a><span class="icon">✕<\/span><div><h2>Denied .*<p>You denied the work\. The run completed in 7 min 41 s · cost 1\.03 USD\.<\/p>/,
   );
   const reason = { code: "world-run-failed", detail: "It failed & stopped." };
   for (const [state, shown, why] of [
-    ["failed", 'banner bad"><span class="icon">✕</span><div><h2>Failed ', ""],
+    [
+      "failed",
+      'banner bad"><a class="banner-back" href="#">← Floor</a><span class="icon">✕</span><div><h2>Failed ',
+      "",
+    ],
     [
       "cancelled",
-      'banner bad"><span class="icon">✕</span><div><h2>Dropped ',
+      'banner bad"><a class="banner-back" href="#">← Floor</a><span class="icon">✕</span><div><h2>Dropped ',
       "",
     ],
     [
       "paused",
-      'banner attention"><span class="icon">Ⅱ</span><div><h2>Paused ',
+      'banner attention"><a class="banner-back" href="#">← Floor</a><span class="icon">Ⅱ</span><div><h2>Paused ',
       "Why it paused: ",
     ],
     [
       "<new>",
-      'banner idle"><span class="icon">○</span><div><h2>&lt;new&gt; ',
+      'banner idle"><a class="banner-back" href="#">← Floor</a><span class="icon">○</span><div><h2>&lt;new&gt; ',
       "",
     ],
   ] as const) {
@@ -176,13 +179,13 @@ await test("CLV-016 the steps of a run that failed show the step that stopped an
     `<li class="phase failed"><span class="mark">✕</span><span class="name">Failed</span><span class="time">${shownClock("21:35:01")}</span></li></ol>`,
   ]);
   positions(page(sampleModel([{ ...done, decision: "denied" }])), [
-    '<section class="banner idle"><span class="icon">✕</span><div><h2>Denied',
+    '<section class="banner idle"><a class="banner-back" href="#">← Floor</a><span class="icon">✕</span><div><h2>Denied',
   ]);
 });
 
 await test("CLV-016 the full page shows a selected run and plain words for no turn, for no workflows, for no data and for a service that does not answer", () => {
   positions(page(model), [
-    '<a class="back" href="#">← Back to the floor</a>',
+    '<a class="banner-back" href="#">← Floor</a>',
     '<p class="meta">No agent turn for this run.</p>',
     '<p class="meta foot">develop-prompt · run-2 · 1 of 8 effect units<br>',
   ]);
@@ -204,7 +207,7 @@ await test("CLV-016 the watch page says that the watch tool does not answer, and
   const stale = rendered(component(Page, { ...props, model, stale: true }));
   positions(stale, [
     '<span class="bad">The watch tool does not answer.</span></div></header>',
-    '<a class="back" href="#">← Back to the floor</a>',
+    '<a class="banner-back" href="#">← Floor</a>',
   ]);
 });
 
