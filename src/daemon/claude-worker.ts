@@ -5,7 +5,7 @@ import type {
   DeliveryIntent,
 } from "../broker/actor/delivery-intents.ts";
 import { begun } from "./claude-begin.ts";
-import { attachableLaunch, attachPlan } from "./claude-attach.ts";
+import { attachableLaunch, attachPlan, holdKeptTurn } from "./claude-attach.ts";
 import type { TurnLaunch } from "../turn-launch.ts";
 import {
   located,
@@ -48,6 +48,7 @@ export {
 } from "./claude-worker-parts.ts";
 
 export interface ClaudeWorker extends Delivery {
+  readonly hold: (intent: DeliveryIntent) => Promise<void>;
   readonly recover: (intent: DeliveryIntent) => Promise<void>;
   readonly harness: (operationId: string) => Promise<string | undefined>;
   readonly stop: NonNullable<Delivery["stop"]>;
@@ -292,6 +293,7 @@ export function claudeWorker(settings: ClaudeWorkerSettings): ClaudeWorker {
       ? Promise.resolve(failure("unsupported-effect"))
       : run();
   return {
+    hold: (intent) => holdKeptTurn(settings.journal, intent),
     recover: (intent) =>
       turnIntent(intent)
         ? recoverTurn(

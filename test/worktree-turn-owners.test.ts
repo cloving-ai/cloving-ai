@@ -19,6 +19,7 @@ import {
   withScene,
 } from "./claude-worker-fixture.ts";
 import { activeOwners, ownTurn } from "../src/daemon/turn-owners.ts";
+import { keptTurn } from "../src/daemon/claude-attach.ts";
 import { stopLeftProcesses } from "../src/daemon/worktree-processes.ts";
 import { resumeWorktree } from "../src/daemon/resume-worktree.ts";
 
@@ -226,7 +227,7 @@ await test("CLV-346 CLV-337 a running turn owns its work tree through its start 
     await until(async () => (await activeOwners(turn.directory)).length === 0);
   }));
 
-await test("CLV-346 CLV-337 a kept turn leaves the active turns when its worker closes, and it is an active turn again when a new worker connects to it", () =>
+await test("CLV-346 CLV-337 a kept turn stays an active turn when its worker closes, the journal names it as a kept turn, and a new worker that connects to it owns it until it ends", () =>
   withScene(async (scene) => {
     const first = scene.worker("gated-lines");
     await first.deliver(intent(), signal);
@@ -238,10 +239,16 @@ await test("CLV-346 CLV-337 a kept turn leaves the active turns when its worker 
     assert.deepEqual(await activeOwners(turn.directory), [owner]);
     await first.close({ turns: "keep" });
     assert.equal(alive(turn.processId), true);
-    await until(async () => (await activeOwners(turn.directory)).length === 0);
+    assert.deepEqual(await activeOwners(turn.directory), [owner]);
+    const kept = await keptTurn(scene.journal, intent());
+    assert.equal(kept?.directory, turn.directory);
+    assert.equal(kept.runId, "run-1");
+    assert.equal(kept.launch.processId, turn.parentId);
     const next = scene.worker("gated-lines");
+    await next.hold(intent());
+    await next.hold(intent({ operationId: "operation-2" }));
+    assert.deepEqual(await activeOwners(turn.directory), [owner]);
     assert.equal((await next.reconcile(intent(), signal)).kind, "accepted");
-    await until(async () => (await activeOwners(turn.directory)).length === 1);
     assert.deepEqual(await activeOwners(turn.directory), [owner]);
     writeFileSync(join(scene.directory, "turns.log.gate"), "");
     await until(() => scene.reports.length === 1);

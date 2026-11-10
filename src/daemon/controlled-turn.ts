@@ -1,6 +1,6 @@
 import { startTurn, type RunningTurn, type TurnStart } from "./claude-turn.ts";
 import type { Attempts } from "./turn-attempts.ts";
-import { ownTurn } from "./turn-owners.ts";
+import { keepTurn, ownTurn } from "./turn-owners.ts";
 import { stopLeftProcesses } from "./worktree-processes.ts";
 
 async function leftProcesses(attempts: Attempts, since: number): Promise<void> {
@@ -30,11 +30,14 @@ export function controlledTurn(
     turn.stop(attempts.grace.milliseconds);
   };
   attempts.stopping.signal.addEventListener("abort", stop, { once: true });
-  const cleaned = turn.exited.then((exit) => {
+  const cleaned = turn.exited.then(async (exit) => {
+    if (exit === "released")
+      keepTurn(launch.start.directory, {
+        runId: attempts.options.runId,
+        launch: await turn.launch,
+      });
     owned?.();
-    return exit === "released"
-      ? undefined
-      : leftProcesses(attempts, launch.since);
+    if (exit !== "released") await leftProcesses(attempts, launch.since);
   });
   return {
     ...turn,

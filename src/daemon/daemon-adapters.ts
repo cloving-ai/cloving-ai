@@ -234,10 +234,12 @@ export async function recoverCommands(
 }
 
 export async function recoverClaude(
-  worker: Pick<ClaudeWorker, "harness" | "recover">,
+  worker: Pick<ClaudeWorker, "harness" | "hold" | "recover">,
   ports: Pick<HostPorts, "state" | "operations">,
 ): Promise<void> {
-  for (const intent of await recoveryCalls(ports, "claude")) {
+  const intents = await recoveryCalls(ports, "claude");
+  for (const intent of intents) await worker.hold(intent);
+  for (const intent of intents) {
     if (!resumableHarness(await worker.harness(intent.operationId))) continue;
     if (!(await stillRecoverable(ports, intent))) continue;
     await worker.recover(intent);

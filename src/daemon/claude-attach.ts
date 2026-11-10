@@ -2,7 +2,8 @@ import { turnHarness } from "../harness-defaults.ts";
 import { resumeReasonField } from "../worker-usage.ts";
 import { record } from "../protocol.ts";
 import type { ProtectedIntent } from "../broker/actor/delivery-intents.ts";
-import { readRecord } from "./operation-journal.ts";
+import { located, readRecord } from "./operation-journal.ts";
+import { keepTurn } from "./turn-owners.ts";
 import {
   priorEnd,
   recordedField,
@@ -76,4 +77,31 @@ export async function attachPlan(
   if (recordedField(started, "harness") !== harness.worker)
     return "claude-turn-interrupted";
   return { attach, tree, profile, harness };
+}
+
+export interface KeptTurn {
+  readonly directory: string;
+  readonly runId: string;
+  readonly launch: TurnLaunch;
+}
+
+export async function keptTurn(
+  journal: string,
+  intent: { readonly runId: string; readonly operationId: string },
+): Promise<KeptTurn | undefined> {
+  const { folder } = located(journal, intent.operationId);
+  const started = await readRecord(folder, "started.json");
+  const tree = recordedTree(started);
+  if (tree === undefined) return undefined;
+  const launch = await attachableLaunch(folder, started);
+  if (launch === undefined || launch === "gone") return undefined;
+  return { directory: tree.path, runId: intent.runId, launch };
+}
+
+export async function holdKeptTurn(
+  journal: string,
+  intent: { readonly runId: string; readonly operationId: string },
+): Promise<void> {
+  const kept = await keptTurn(journal, intent);
+  if (kept !== undefined) keepTurn(kept.directory, kept);
 }
