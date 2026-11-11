@@ -276,3 +276,34 @@ console.log(JSON.stringify({ posts, message, closed: app.all("form").length }));
   );
   assert.equal(result["closed"], 0);
 });
+
+await test("CLV-357 new run data that ends the run closes an open Steer form, and the form stays closed when the run shows again", () => {
+  const running = { ...floorModel([runningRun([])]), cardForms: [] };
+  const ended = {
+    ...running,
+    runs: running.runs.map((run) => ({ ...run, state: "completed" })),
+  };
+  const served = { ...running, ended };
+  const result = played(
+    served,
+    `
+const { ended, ...running } = JSON.parse(process.env.WATCH_MODEL);
+location.hash = "#run=run-a";
+replies.push(running);
+await load();
+const button = (text) => app.all("button").find((node) => node.inner === text);
+button("Steer").dispatch("click");
+await settled();
+const opened = app.all("textarea").length;
+replies.push(ended);
+await load();
+await settled();
+const afterEnd = app.all("textarea").length;
+replies.push(running);
+await load();
+await settled();
+console.log(JSON.stringify({ opened, afterEnd, afterReturn: app.all("textarea").length }));
+`,
+  );
+  assert.deepEqual(result, { opened: 1, afterEnd: 0, afterReturn: 0 });
+});

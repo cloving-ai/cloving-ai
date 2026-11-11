@@ -143,6 +143,22 @@ async function pressTab(
     });
 }
 
+const keys = {
+  Enter: { code: "Enter", windowsVirtualKeyCode: 13, text: "\r" },
+  Escape: { code: "Escape", windowsVirtualKeyCode: 27 },
+} as const;
+
+async function pressKey(
+  command: ReturnType<typeof protocol>,
+  press: { readonly sessionId: string; readonly key: keyof typeof keys },
+): Promise<void> {
+  for (const type of ["keyDown", "keyUp"])
+    await command("Input.dispatchKeyEvent", {
+      sessionId: press.sessionId,
+      params: { type, key: press.key, ...keys[press.key] },
+    });
+}
+
 async function attachedSession(
   command: ReturnType<typeof protocol>,
 ): Promise<string> {
@@ -201,6 +217,7 @@ async function browserPage(
         });
     },
     pressTab: () => pressTab(command, sessionId),
+    press: (key: keyof typeof keys) => pressKey(command, { sessionId, key }),
     async scroll(expression: string) {
       const gesture = await evaluate(expression);
       await command("Input.synthesizeScrollGesture", {

@@ -84,3 +84,72 @@ await test("CLV-357 Rename in the ⋯ menu closes the menu at once while the poi
     focus: "name-edit",
   });
 });
+
+const focusOn = (selector: string) => `(async () => {
+  ${frames}
+  await frame();
+  document.querySelector(${JSON.stringify(selector)}).focus();
+  await frame();
+  return {};
+})()`;
+
+const place = `(async () => {
+  ${frames}
+  await frame();
+  await frame();
+  return {
+    focus: document.activeElement.getAttribute("class") ?? document.activeElement.getAttribute("name"),
+    menu: getComputedStyle(document.querySelector(".run-more-menu")).visibility,
+    asking: document.querySelector(".drop-question") !== null,
+    form: document.querySelector(".banner .rename-form") !== null,
+  };
+})()`;
+
+await test("CLV-357 with the keyboard, Keep it gives the focus to ⋯ with the menu closed, Enter on ⋯ opens the menu, and Escape in the rename form gives the focus to the pencil", async () => {
+  await using fixture = await watchPageServer(model, {
+    hash: "#run=run-7",
+    token: "a".repeat(64),
+  });
+  await using browser = await realBrowser();
+  const page = await browser.page({ width: 1280, height: 800 });
+  await page.navigate(fixture.url);
+  await page.evaluate(ready);
+  await page.evaluate(focusOn(".run-more-open"));
+  await page.evaluate(focusOn(".run-more-menu .run-command-drop"));
+  await page.press("Enter");
+  assert.deepEqual(await page.evaluate(place), {
+    focus: "drop-keep",
+    menu: "hidden",
+    asking: true,
+    form: false,
+  });
+  await page.press("Enter");
+  assert.deepEqual(await page.evaluate(place), {
+    focus: "run-more-open",
+    menu: "hidden",
+    asking: false,
+    form: false,
+  });
+  await page.press("Enter");
+  assert.deepEqual(await page.evaluate(place), {
+    focus: "run-more-open",
+    menu: "visible",
+    asking: false,
+    form: false,
+  });
+  await page.evaluate(focusOn(".run-more-menu .rename-open"));
+  await page.press("Enter");
+  assert.deepEqual(await page.evaluate(place), {
+    focus: "title",
+    menu: "hidden",
+    asking: false,
+    form: true,
+  });
+  await page.press("Escape");
+  assert.deepEqual(await page.evaluate(place), {
+    focus: "name-edit",
+    menu: "hidden",
+    asking: false,
+    form: false,
+  });
+});

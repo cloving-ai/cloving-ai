@@ -145,6 +145,10 @@ function steerClose() {
   draw();
   document.querySelector(".steer-open")?.focus();
 }
+function steerEnded() {
+  const run = state.model?.runs.find((item) => item.runId === state.steerOpen);
+  if (run !== undefined && !steerable(run.state)) state.steerOpen = null;
+}
 function steerNote(text) {
   state.steerNote = text;
 }
@@ -301,6 +305,7 @@ async function load() {
     const model = await reply.json();
     const receivedAt = performance.now();
     state.model = await withSelectedRun(model);
+    steerEnded();
     state.receivedAt = receivedAt;
     state.stale = false;
   } catch {

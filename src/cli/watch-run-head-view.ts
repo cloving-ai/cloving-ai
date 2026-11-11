@@ -1,10 +1,5 @@
 import { component, element, type Shown } from "./watch-element.ts";
-import {
-  phaseTime,
-  runTone,
-  type WatchPhase,
-  type WatchRun,
-} from "./watch-render.ts";
+import { phaseTime, runTone, type WatchRun } from "./watch-render.ts";
 import {
   DropQuestion,
   RunCommandMessage,
@@ -34,9 +29,12 @@ interface MenuEvent {
   readonly currentTarget: unknown;
 }
 
-interface KeyEvent extends MenuEvent {
-  readonly key: string;
+interface MenuPick extends MenuEvent {
   readonly target: unknown;
+}
+
+interface KeyEvent extends MenuPick {
+  readonly key: string;
 }
 
 interface Marked {
@@ -83,18 +81,12 @@ export function RunIdentity(props: {
   });
 }
 
-export function activePhase(
-  phases: readonly WatchPhase[],
-): WatchPhase | undefined {
-  return phases.find((phase) => phase.state === "active");
-}
-
 export function RunStatus(props: {
   readonly run: WatchRun;
   readonly now: string;
 }): Shown {
   const { run, now } = props;
-  const phase = activePhase(run.phases);
+  const phase = run.phases.find((item) => item.state === "active");
   const time = phase === undefined ? "" : phaseTime(phase, now);
   const parts = [runTone(run).label, phase?.name ?? "", time].filter(
     (part) => part !== "",
@@ -149,25 +141,28 @@ export function releaseMenu(event: MenuEvent): void {
     event.currentTarget.removeAttribute("data-hold");
 }
 
-export function keepMenu(event: {
-  readonly stopPropagation: () => void;
-}): void {
-  event.stopPropagation();
+export function closable(
+  value: unknown,
+): value is { readonly closest: (selector: string) => unknown } {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "closest" in value &&
+    typeof value.closest === "function"
+  );
+}
+
+export function pickMenu(event: KeyEvent | MenuPick): void {
+  const { target } = event;
+  if (closable(target) && target.closest(".run-more-open") !== null)
+    releaseMenu(event);
+  else holdMenu(event);
 }
 
 export function closeMenu(event: KeyEvent): void {
   if (event.key !== "Escape") return;
   holdMenu(event);
   if (blurrable(event.target)) event.target.blur();
-}
-
-export function moreShown(
-  props: HeadControls & { readonly run: WatchRun },
-): boolean {
-  return (
-    props.renaming !== undefined ||
-    (props.controlling !== undefined && steerable(props.run.state))
-  );
 }
 
 export function RunMore(
@@ -194,7 +189,7 @@ export function RunMore(
   return element("div", {
     class: "run-more",
     onKeyDown: closeMenu,
-    onClick: holdMenu,
+    onClick: pickMenu,
     onMouseEnter: releaseMenu,
     onMouseLeave: releaseMenu,
     onFocusIn: releaseMenu,
@@ -202,7 +197,6 @@ export function RunMore(
       element("button", {
         type: "button",
         class: "run-more-open",
-        onClick: keepMenu,
         title: "More run controls",
         "aria-haspopup": "true",
         children: [
@@ -246,7 +240,9 @@ export function RunHeadActions(
     live && controlling !== undefined
       ? component(PauseButton, { run, controlling })
       : null,
-    moreShown(props) ? component(RunMore, props) : null,
+    props.renaming !== undefined || (live && controlling !== undefined)
+      ? component(RunMore, props)
+      : null,
   ];
   if (children.every((child) => child === null)) return null;
   return element("div", { class: "run-head-actions", children });
@@ -281,13 +277,14 @@ export function CommandNotice(props: {
 }
 
 export function SteerNotice(props: {
-  readonly runId: string;
+  readonly run: Pick<WatchRun, "runId" | "state">;
   readonly steering: SteerControls | undefined;
 }): Shown {
-  const { runId, steering } = props;
+  const { steering } = props;
+  const { runId } = props.run;
   if (steering === undefined) return null;
   const message = steering.messages[runId];
-  const open = steering.open === runId;
+  const open = steering.open === runId && steerable(props.run.state);
   if (!open && message === undefined) return null;
   return element("div", {
     class: "steer",
@@ -311,7 +308,7 @@ export function RunNotices(
   const renamed = renaming?.messages[run.runId];
   return [
     component(CommandNotice, { run, controlling: props.controlling }),
-    component(SteerNotice, { runId: run.runId, steering: props.steering }),
+    component(SteerNotice, { run, steering: props.steering }),
     renamed === undefined
       ? null
       : element("p", {
@@ -357,16 +354,15 @@ export function RunFacts(props: { readonly run: WatchRun }): Shown {
 
 export const runHeadFunctions = [
   RunIdentity,
-  activePhase,
   RunStatus,
   PauseButton,
   blurrable,
   marked,
   holdMenu,
   releaseMenu,
-  keepMenu,
+  closable,
+  pickMenu,
   closeMenu,
-  moreShown,
   RunMore,
   RunHeadActions,
   CommandNotice,

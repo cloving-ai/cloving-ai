@@ -57,9 +57,11 @@ const bare = sampleRun({
   phases: phases(["done", "done", "active"]),
 });
 
+const ended = { ...working, runId: "run-9", state: "completed" };
+
 function model(): WatchModel {
   return {
-    ...sampleModel([working, bare]),
+    ...sampleModel([working, bare, ended]),
     queue: {
       state: "running",
       busy: 1,
@@ -303,7 +305,7 @@ function menuElement() {
   };
 }
 
-await test("CLV-357 a pick in the ⋯ menu or Escape closes the menu at once, and the menu opens again when the pointer leaves or enters or the focus comes back", () => {
+await test("CLV-357 a pick in the ⋯ menu or Escape closes the menu at once, and a click on ⋯, the pointer leaving or entering, or the focus coming back opens it again", () => {
   const more = found(page(working, all([])), "div").find(
     (node) => node["class"] === "run-more",
   );
@@ -315,14 +317,21 @@ await test("CLV-357 a pick in the ⋯ menu or Escape closes the menu at once, an
     Reflect.apply(handler, undefined, [{ currentTarget: box, ...event }]);
   };
   const held = () => [...box.attributes];
-  fire("onClick", {});
+  const item = { closest: () => null };
+  const opener = {
+    closest: (selector: string) => (selector === ".run-more-open" ? {} : null),
+  };
+  fire("onClick", { target: item });
   assert.deepEqual(held(), ["data-hold"]);
+  fire("onClick", { target: opener });
+  assert.deepEqual(held(), []);
+  fire("onClick", { target: item });
   fire("onMouseLeave", {});
   assert.deepEqual(held(), []);
-  fire("onClick", {});
+  fire("onClick", { target: item });
   fire("onMouseEnter", {});
   assert.deepEqual(held(), []);
-  fire("onClick", {});
+  fire("onClick", { target: item });
   fire("onFocusIn", {});
   assert.deepEqual(held(), []);
   const blurred: string[] = [];
@@ -331,16 +340,20 @@ await test("CLV-357 a pick in the ⋯ menu or Escape closes the menu at once, an
     target: { blur: () => blurred.push("blur") },
   });
   assert.deepEqual([held(), blurred], [["data-hold"], ["blur"]]);
-  const opener = found(more["children"], "button").find(
+  const button = found(more["children"], "button").find(
     (node) => node["class"] === "run-more-open",
   );
-  const click = opener?.["onClick"];
-  assert.ok(typeof click === "function");
-  const stopped: string[] = [];
-  Reflect.apply(click, undefined, [
-    { stopPropagation: () => stopped.push("stop") },
-  ]);
-  assert.deepEqual(stopped, ["stop"]);
+  assert.equal(button?.["onClick"], undefined);
+});
+
+await test("CLV-357 an ended run shows no Steer form, also when the form was open, and keeps the reply of the last note", () => {
+  const html = rendered(
+    page(ended, {
+      steering: steers([], { open: "run-9", messages: { "run-9": "Sent." } }),
+    }),
+  );
+  assert.doesNotMatch(html, /steer-form|steer-open/);
+  assert.match(html, /<p class="steer-message" role="status">Sent\.<\/p>/);
 });
 
 await test("CLV-357 the ⋯ menu is a popover that opens on hover and on keyboard focus with a short close delay, in the page font, and does not move the page", () => {
