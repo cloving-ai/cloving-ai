@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { existsSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
 import {
@@ -23,11 +23,20 @@ import {
   stopHarnessGroups,
 } from "./harness-detached-fixture.ts";
 import type { TurnRunner } from "../src/turn-runner.ts";
-import { volumeName } from "../src/daemon/turn-runner-spawn.ts";
+import { runnerLaunch, volumeName } from "../src/daemon/turn-runner-spawn.ts";
+import { releasedLaunch } from "../src/daemon/detached-turn.ts";
 import { recordedLaunch } from "../src/turn-launch.ts";
 
 const signal = new AbortController().signal;
 const boxed = intent({ method: "run-turn:boxed" });
+const dockerEnvironment = {
+  DOCKER_HOST: "ssh://fixture-engine",
+  DOCKER_CONTEXT: "fixture-context",
+  DOCKER_CONFIG: "/fixture/docker-config",
+  DOCKER_TLS: "1",
+  DOCKER_TLS_VERIFY: "1",
+  DOCKER_CERT_PATH: "/fixture/docker-certificates",
+};
 
 function keptLaunch(scene: Scene): unknown {
   return field(record(scene, "operation-1/started.json"), "launch");
@@ -128,7 +137,7 @@ await test("CLV-349 a container turn keeps running through a restart, and the ne
     );
   }));
 
-await test("CLV-349 a kept container turn that the new worker refuses stops, and the new worker removes its runner folder, its container and its gh configuration", () =>
+await test("CLV-349 a refused kept container turn stops and removes its resources on its original Docker engine", () =>
   withScene(async (scene) => {
     const engine = fakeEngine(scene.directory, { access: "write" });
     const harness = gatedHarness(scene, {
@@ -141,10 +150,13 @@ await test("CLV-349 a kept container turn that the new worker refuses stops, and
       engine: engine.path,
       image: "fixture",
     };
+    const environment = dockerEnvironment;
     try {
       const first = scene.worker("unused", {
         ...harness.settings,
-        profiles: { boxed: { runner } },
+        profiles: {
+          boxed: { runner, env: { ...environment, ANTHROPIC_API_KEY: "key" } },
+        },
       });
       await first.deliver(boxed, signal);
       await until(
@@ -153,6 +165,10 @@ await test("CLV-349 a kept container turn that the new worker refuses stops, and
           keptLaunch(scene) !== undefined,
       );
       const launch = keptLaunch(scene);
+      assert.deepEqual(
+        field(field(field(launch, "runner"), "container"), "environment"),
+        environment,
+      );
       const folder = String(field(field(launch, "runner"), "folder"));
       const configuration = String(field(launch, "configuration"));
       const [started = []] = engine.calls().map(texts);
@@ -171,6 +187,7 @@ await test("CLV-349 a kept container turn that the new worker refuses stops, and
         [false, false],
       );
       assert.deepEqual(engine.calls().map(texts).at(-1), ["rm", "-f", name]);
+      assert.deepEqual(engine.environments(), [environment, environment]);
     } finally {
       stopHarnessGroups(harness);
     }
@@ -293,6 +310,41 @@ const recorded = {
   configuration: "/journal/gh-config",
 };
 
+await test("CLV-349 cleanup keeps engine settings absent at launch absent after a restart", () =>
+  withScene(async (scene) => {
+    const engine = fakeEngine(scene.directory, { access: "write" });
+    const folder = join(scene.directory, "launch");
+    mkdirSync(folder);
+    const launch = runnerLaunch(
+      {
+        runner: { kind: "container", engine: engine.path, image: "fixture" },
+        directory: scene.repository,
+        folder,
+      },
+      {
+        command: ["true"],
+        environment: { DOCKER_HOST: "ssh://original-engine" },
+        serviceEnvironment: {},
+      },
+    );
+    const restored = recordedLaunch({ ...recorded, runner: launch.place });
+    assert.ok(restored?.runner);
+    const previous = process.env["DOCKER_CONTEXT"];
+    process.env["DOCKER_CONTEXT"] = "different-engine";
+    try {
+      await releasedLaunch({
+        configuration: join(scene.directory, "gh-config"),
+        runner: restored.runner,
+      });
+      assert.deepEqual(engine.environments(), [
+        { DOCKER_HOST: "ssh://original-engine" },
+      ]);
+    } finally {
+      if (previous === undefined) delete process.env["DOCKER_CONTEXT"];
+      else process.env["DOCKER_CONTEXT"] = previous;
+    }
+  }));
+
 await test("CLV-349 a launch record keeps a valid transcript place and runner place, and a damaged one is no launch", () => {
   const transcript = { path: "/journal/turn.jsonl", offset: 12 };
   const runner = {
@@ -305,6 +357,24 @@ await test("CLV-349 a launch record keeps a valid transcript place and runner pl
     runner,
   });
   assert.deepEqual(recordedLaunch(recorded), recorded);
+  for (const environment of [{}, { DOCKER_HOST: "ssh://fixture-engine" }]) {
+    const withEnvironment = {
+      ...runner,
+      container: { ...runner.container, environment },
+    };
+    assert.deepEqual(
+      recordedLaunch({ ...recorded, runner: withEnvironment })?.runner,
+      withEnvironment,
+    );
+  }
+  for (const environment of [null, [], "engine", { DOCKER_HOST: 1 }])
+    assert.equal(
+      recordedLaunch({
+        ...recorded,
+        runner: { ...runner, container: { ...runner.container, environment } },
+      }),
+      undefined,
+    );
   for (const damaged of [
     { transcript: { path: "/journal/turn.jsonl" } },
     { transcript: { path: "/journal/turn.jsonl", offset: -1 } },

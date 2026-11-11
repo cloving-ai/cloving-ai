@@ -6,6 +6,9 @@ import { spawn } from "node:child_process";
 import { appendFileSync, chmodSync } from "node:fs";
 const args = process.argv.slice(2);
 appendFileSync(LOG, JSON.stringify(args) + "\\n");
+appendFileSync(LOG + ".environment", JSON.stringify(Object.fromEntries(
+  ["DOCKER_HOST", "DOCKER_CONTEXT", "DOCKER_CONFIG", "DOCKER_TLS", "DOCKER_TLS_VERIFY", "DOCKER_CERT_PATH"].filter((name) => process.env[name] !== undefined).map((name) => [name, process.env[name]])
+)) + "\\n");
 if (args[0] !== "run") process.exit(0);
 const valued = ["-v", "-w", "-e", "--name"];
 const options = { v: [], e: [], w: undefined };
@@ -50,6 +53,16 @@ child.on("exit", (code) => process.exit(code ?? 1));
 export interface FakeProgram {
   readonly path: string;
   readonly calls: () => readonly unknown[];
+  readonly environments: () => readonly unknown[];
+}
+
+function records(path: string): readonly unknown[] {
+  return existsSync(path)
+    ? readFileSync(path, "utf8")
+        .split("\n")
+        .filter(Boolean)
+        .map((line): unknown => JSON.parse(line))
+    : [];
 }
 
 function program(
@@ -65,13 +78,8 @@ function program(
   chmodSync(path, 0o755);
   return {
     path,
-    calls: () =>
-      existsSync(log)
-        ? readFileSync(log, "utf8")
-            .split("\n")
-            .filter(Boolean)
-            .map((line): unknown => JSON.parse(line))
-        : [],
+    calls: () => records(log),
+    environments: () => records(log + ".environment"),
   };
 }
 

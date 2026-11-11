@@ -28,6 +28,26 @@ export interface RunnerLaunch {
   readonly release: () => Promise<void>;
 }
 
+const engineVariables = [
+  "DOCKER_HOST",
+  "DOCKER_CONTEXT",
+  "DOCKER_CONFIG",
+  "DOCKER_TLS",
+  "DOCKER_TLS_VERIFY",
+  "DOCKER_CERT_PATH",
+] as const;
+
+function engineEnvironment(
+  environment: NodeJS.ProcessEnv,
+): Readonly<Record<string, string>> {
+  return Object.fromEntries(
+    engineVariables.flatMap((name) => {
+      const value = environment[name];
+      return value === undefined ? [] : [[name, value]];
+    }),
+  );
+}
+
 export function gitCommonFolder(directory: string): string {
   const dotGit = join(directory, ".git");
   if (!statSync(dotGit).isFile()) return dotGit;
@@ -84,11 +104,36 @@ export async function releasedRunner(
 ): Promise<void> {
   if (place === undefined) return;
   rmSync(place.folder, { recursive: true, force: true });
-  if (place.container !== undefined)
-    await removedContainer(place.container.engine, {
-      name: place.container.name,
-      environment,
-    });
+  const { container } = place;
+  if (container === undefined) return;
+  const cleanup = { ...environment };
+  if (container.environment !== undefined)
+    for (const name of engineVariables)
+      cleanup[name] = container.environment[name];
+  await removedContainer(container.engine, {
+    name: container.name,
+    environment: cleanup,
+  });
+}
+
+function runnerPlace(
+  runner: TurnRunner,
+  place: {
+    readonly folder: string;
+    readonly name: string;
+    readonly environment: NodeJS.ProcessEnv;
+  },
+): RunnerPlace {
+  const { folder, name, environment } = place;
+  if (runner.kind !== "container") return { folder };
+  return {
+    folder,
+    container: {
+      engine: runner.engine,
+      name,
+      environment: engineEnvironment(environment),
+    },
+  };
 }
 
 function places(
@@ -146,12 +191,11 @@ export function runnerLaunch(
     runner.kind === "seatbelt"
       ? { ...launch.environment, CLAUDE_CODE_TMPDIR: placed.temporary }
       : { ...launch.serviceEnvironment, ...launch.environment };
-  const place: RunnerPlace = {
+  const place = runnerPlace(runner, {
     folder,
-    ...(runner.kind === "container"
-      ? { container: { engine: runner.engine, name: placed.name } }
-      : {}),
-  };
+    name: placed.name,
+    environment,
+  });
   return {
     command: runnerCommand(runner, { command: launch.command, places: placed }),
     environment,

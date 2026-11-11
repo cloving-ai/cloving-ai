@@ -14,7 +14,25 @@ export interface TurnLaunch {
 
 export interface RunnerPlace {
   readonly folder: string;
-  readonly container?: { readonly engine: string; readonly name: string };
+  readonly container?: {
+    readonly engine: string;
+    readonly name: string;
+    readonly environment?: Readonly<Record<string, string>>;
+  };
+}
+
+function recordedEnvironment(
+  value: unknown,
+): { readonly environment?: Readonly<Record<string, string>> } | undefined {
+  if (value === undefined) return {};
+  const fields = record(value);
+  if (fields === undefined) return undefined;
+  const environment: Record<string, string> = {};
+  for (const [name, text] of Object.entries(fields)) {
+    if (typeof text !== "string") return undefined;
+    environment[name] = text;
+  }
+  return { environment };
 }
 
 function recordedContainer(
@@ -25,7 +43,9 @@ function recordedContainer(
   const engine = fields?.["engine"];
   const name = fields?.["name"];
   if (typeof engine !== "string" || typeof name !== "string") return undefined;
-  return { container: { engine, name } };
+  const environment = recordedEnvironment(fields?.["environment"]);
+  if (environment === undefined) return undefined;
+  return { container: { engine, name, ...environment } };
 }
 
 function recordedRunner(
