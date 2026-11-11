@@ -200,8 +200,10 @@ await import("./main.mjs");
     `import * as workflows from "./artifacts/client.mjs";
 import { POST } from "./artifacts/flow.mjs";
 import { startDaemon } from ${source("src/daemon/daemon.ts")};
+import { restartSettings } from ${source("tools/restart-settings.ts")};
 ${workflowBundleLoader()}
-const opening = await startDaemon({ ...JSON.parse(${JSON.stringify(JSON.stringify(settings))}), workflows, handler: POST, loadBundle: loadWorkflowBundle });
+const validateRestart = restartSettings({ ...${JSON.stringify({ repository, fileVariables: Object.keys(environment).filter((name) => process.env[name] === undefined) })}, environment: process.env });
+const opening = await startDaemon({ ...JSON.parse(${JSON.stringify(JSON.stringify(settings))}), workflows, handler: POST, loadBundle: loadWorkflowBundle, validateRestart });
 if (opening.kind !== "started") {
   process.stderr.write("The daemon did not start: " + opening.reason + ": " + opening.detail + "\\n");
   process.exit(1);

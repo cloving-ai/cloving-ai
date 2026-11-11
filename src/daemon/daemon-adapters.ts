@@ -33,6 +33,7 @@ import type { ProtectedIntent } from "../broker/actor/delivery-intents.ts";
 import { resumableHarness } from "./claude-recovery.ts";
 import type { RetentionSettings } from "../record-retention.ts";
 import type { MergeMode } from "../merge-mode.ts";
+import type { ValidateRestart } from "../restart-request.ts";
 import { clovingVersion } from "../cli/toolchain.ts";
 import type { RecordedSource } from "../project-settings.ts";
 import type { RunWaitChecks } from "../run-wait.ts";
@@ -62,6 +63,7 @@ export interface DaemonSettings extends HarnessSettings {
   readonly handler: WorkflowHandler;
   readonly loadBundle?: WorkflowBundleLoader;
   readonly reloadCommand?: readonly string[];
+  readonly validateRestart?: ValidateRestart;
   readonly command: readonly string[];
   readonly ticketCommand?: readonly string[];
   readonly nextCommand?: readonly string[];

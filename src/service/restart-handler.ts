@@ -185,6 +185,13 @@ async function pendingRestart(
       detail: `The restart cannot set ${set.key}. ${errorMessage(set.error)}`,
     });
   const mark = requestedMark(parameters, set.variables);
+  const refusal = await port.validate?.(mark);
+  if (refusal !== undefined)
+    return failed("invalid-restart-setting", {
+      commandId,
+      key: refusal.key,
+      detail: `The restart cannot set ${refusal.key}. ${refusal.detail}`,
+    });
   const unresumable =
     at === "now" ? { unresumableRuns: await port.unresumable() } : {};
   await port.request(mark);

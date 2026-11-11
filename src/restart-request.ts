@@ -55,12 +55,22 @@ export interface RestartRequest {
 }
 
 export interface RestartPort {
+  readonly validate?: ValidateRestart;
   readonly pending: () => Promise<RestartMark | undefined>;
   readonly request: (mark: RestartMark) => Promise<void>;
   readonly cancel: () => Promise<RestartCancel>;
   readonly unresumable: () => Promise<readonly string[]>;
   readonly failure: () => Promise<RestartFailure | undefined>;
 }
+
+export interface RestartSettingRefusal {
+  readonly key: string;
+  readonly detail: string;
+}
+
+export type ValidateRestart = (
+  mark: RestartMark,
+) => Promise<RestartSettingRefusal | undefined>;
 
 const restartTimes: readonly unknown[] = ["keep", "gap", "now"];
 
