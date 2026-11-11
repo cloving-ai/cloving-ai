@@ -12,6 +12,7 @@ import {
   recoverableTurn,
 } from "./claude-attach.ts";
 import { stoppedLaunch } from "./detached-process.ts";
+import { releasedLaunch } from "./detached-turn.ts";
 import { recordedLaunch, type TurnLaunch } from "../turn-launch.ts";
 import {
   located,
@@ -130,11 +131,13 @@ async function rejectedAttach(
     readonly launch: TurnLaunch | undefined;
   },
 ): Promise<AdapterOutcome> {
-  if (rejection.launch !== undefined)
+  if (rejection.launch !== undefined) {
     await stoppedLaunch(
       rejection.launch,
       parts.settings.stopMilliseconds ?? claudeLimits.stopMilliseconds,
     );
+    await releasedLaunch(rejection.launch);
+  }
   return interruptedReply(rejection.request, rejection.plan);
 }
 

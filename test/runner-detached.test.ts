@@ -128,6 +128,54 @@ await test("CLV-349 a container turn keeps running through a restart, and the ne
     );
   }));
 
+await test("CLV-349 a kept container turn that the new worker refuses stops, and the new worker removes its runner folder, its container and its gh configuration", () =>
+  withScene(async (scene) => {
+    const engine = fakeEngine(scene.directory, { access: "write" });
+    const harness = gatedHarness(scene, {
+      worker: "codex",
+      name: "codex",
+      output: harnessOutputs["codex"] ?? { head: [], tail: [] },
+    });
+    const runner: TurnRunner = {
+      kind: "container",
+      engine: engine.path,
+      image: "fixture",
+    };
+    try {
+      const first = scene.worker("unused", {
+        ...harness.settings,
+        profiles: { boxed: { runner } },
+      });
+      await first.deliver(boxed, signal);
+      await until(
+        () =>
+          harnessProcesses(harness).length === 1 &&
+          keptLaunch(scene) !== undefined,
+      );
+      const launch = keptLaunch(scene);
+      const folder = String(field(field(launch, "runner"), "folder"));
+      const configuration = String(field(launch, "configuration"));
+      const [started = []] = engine.calls().map(texts);
+      const name = started[started.indexOf("--name") + 1] ?? "";
+      await first.close({ turns: "keep" });
+      assert.deepEqual(
+        [existsSync(folder), existsSync(configuration)],
+        [true, true],
+      );
+      const next = scene.worker("unused", harness.settings);
+      const outcome = await next.reconcile(boxed, signal);
+      assert.equal(outcome.kind, "failed");
+      assert.equal(alive(Number(field(launch, "processId"))), false);
+      assert.deepEqual(
+        [existsSync(folder), existsSync(configuration)],
+        [false, false],
+      );
+      assert.deepEqual(engine.calls().map(texts).at(-1), ["rm", "-f", name]);
+    } finally {
+      stopHarnessGroups(harness);
+    }
+  }));
+
 const dockerImage = "alpine:3.21";
 
 function docker(program: string, parts: readonly string[]) {

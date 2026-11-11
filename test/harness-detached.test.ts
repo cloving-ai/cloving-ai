@@ -1,16 +1,19 @@
 import assert from "node:assert/strict";
 import {
+  chmodSync,
   existsSync,
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { delimiter, join } from "node:path";
 import { test } from "node:test";
 import { heldWork } from "../src/work-gap.ts";
 import { activityOutput } from "../src/daemon/turn-activity.ts";
+import { startTurn } from "../src/daemon/claude-turn.ts";
 import { hostWorkReads } from "../tools/self-update-host.ts";
 import {
   alive,
@@ -311,5 +314,41 @@ await test("CLV-349 a later attempt in the pipe start appends its transcript aft
     );
   } finally {
     rmSync(folder, { recursive: true, force: true });
+  }
+});
+
+const relativeCodex = [
+  "#!/bin/sh",
+  ...[
+    ...(harnessOutputs["codex"]?.head ?? []),
+    ...(harnessOutputs["codex"]?.tail ?? []),
+  ].map((line) => `printf '%s\\n' '${JSON.stringify(line)}'`),
+].join("\n");
+
+await test("CLV-349 a stream turn finds its program in a relative or empty PATH folder from its work tree, keeps it, and ends with its result", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "cloving-relative-path-"));
+  try {
+    const tree = join(directory, "tree");
+    mkdirSync(join(tree, "tools"), { recursive: true });
+    writeFileSync(join(tree, "tools", "relative-codex"), relativeCodex);
+    chmodSync(join(tree, "tools", "relative-codex"), 0o755);
+    for (const [place, folder] of [
+      ["tools", tree],
+      ["", join(tree, "tools")],
+    ] as const) {
+      const turn = startTurn({
+        worker: "codex",
+        command: ["relative-codex"],
+        directory: folder,
+        folder: directory,
+        prompt: "Research",
+        environment: { PATH: `${place}${delimiter}/usr/bin${delimiter}/bin` },
+      });
+      const ended = await turn.ended;
+      assert.equal(ended.result?.text, "Ticket status: complete", place);
+      assert.equal(typeof field(await turn.launch, "processId"), "number");
+    }
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
   }
 });

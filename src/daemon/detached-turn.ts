@@ -169,6 +169,13 @@ async function concluded(
   return { exitCode, reason, result: undefined };
 }
 
+export async function releasedLaunch(
+  launch: Pick<TurnLaunch, "configuration" | "runner">,
+): Promise<void> {
+  rmSync(launch.configuration, { recursive: true, force: true });
+  await releasedRunner(launch.runner, process.env);
+}
+
 function followed(start: FollowStart, parts: Followed) {
   const transcript = transcriptWriter(parts.files.transcript);
   const reader = harnessReader(
@@ -203,8 +210,7 @@ function followed(start: FollowStart, parts: Followed) {
       });
     } finally {
       transcript.close();
-      rmSync(parts.files.configuration, { recursive: true, force: true });
-      await releasedRunner(parts.files.runner, process.env);
+      await releasedLaunch(parts.files);
     }
   });
   return {

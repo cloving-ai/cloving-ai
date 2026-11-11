@@ -212,10 +212,9 @@ function commandFound(
   if (executable === "") return false;
   if (executable.includes("/"))
     return executableFile(resolve(place.directory, executable));
-  return (place.path ?? "")
-    .split(delimiter)
-    .filter((folder) => folder !== "")
-    .some((folder) => executableFile(join(folder, executable)));
+  return (place.path?.split(delimiter) ?? []).some((folder) =>
+    executableFile(resolve(place.directory, folder, executable)),
+  );
 }
 
 function launchedTurn(start: TurnStart): StartedTurn | undefined {
