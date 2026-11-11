@@ -51,6 +51,7 @@ import {
 } from "./self-host-project.ts";
 import { selfUpdateMilliseconds } from "./self-update-host.ts";
 import { hostedPrograms } from "./self-host-processes.ts";
+import { turnKeepingSignal } from "./self-host-children.ts";
 import { replacedHost } from "./self-host-replace.ts";
 import { productCommit } from "./self-host-restart.ts";
 import { workflowBundleLoader } from "./self-host-workflows.ts";
@@ -214,6 +215,7 @@ let closing;
 const stop = () => { closing ??= opening.daemon.close().then(() => process.exit(0)); };
 process.on("SIGINT", stop);
 process.on("SIGTERM", stop);
+process.on(${JSON.stringify(turnKeepingSignal)}, () => { closing ??= opening.daemon.close({ turns: "keep" }).then(() => process.exit(0)); });
 `,
   );
 }

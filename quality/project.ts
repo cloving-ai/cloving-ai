@@ -16,6 +16,7 @@ export interface ProjectOptions extends SourceOptions {
   readonly timeFactor?: number;
   readonly shard?: string;
   readonly testSet?: TestSet;
+  readonly changedPaths?: readonly string[];
   readonly coverage?: "on" | "off";
   readonly coverageDirectory?: string;
   readonly trustedCompilerConfiguration?: string;
@@ -28,18 +29,22 @@ export interface ProjectOptions extends SourceOptions {
 export interface ProjectReport {
   readonly files: string[];
   readonly completed: string[];
+  readonly leftOut: readonly LeftOutTest[];
   readonly timings: CheckTiming[];
   readonly warnings: string[];
 }
 
 export function writeProjectReport(
-  report: Pick<ProjectReport, "timings" | "warnings">,
+  report: Pick<ProjectReport, "timings" | "warnings"> &
+    Partial<Pick<ProjectReport, "leftOut">>,
   output: {
     readonly stdout: { write: (text: string) => boolean };
     readonly stderr: { write: (text: string) => boolean };
   } = process,
 ): void {
   output.stdout.write(JSON.stringify(report, null, 2) + "\n");
+  for (const entry of report.leftOut ?? [])
+    output.stderr.write(`Left out ${entry.file}: ${entry.reason}\n`);
   for (const warning of report.warnings)
     output.stderr.write(`Warning: ${warning}\n`);
 }
@@ -67,10 +72,19 @@ export async function checkProject(
           completed: new Array<string>(),
         };
   const { files, completed } = checked;
-  await checkProjectTests(directory, { ...checked, options: measured });
+  const { leftOut } = await checkProjectTests(directory, {
+    ...checked,
+    options: measured,
+  });
   completed.push("tests");
   if (!shard || shard.index === 1) assertCheckCoverage(completed);
-  return { files, completed, timings, warnings: checkTimeWarnings(timings) };
+  return {
+    files,
+    completed,
+    leftOut,
+    timings,
+    warnings: checkTimeWarnings(timings),
+  };
 }
 
 export async function checkProjectTestShard(
@@ -84,10 +98,14 @@ export async function checkProjectTestShard(
     commandOptions: { ...options.commandOptions, timings },
   };
   const files = await sourceFiles(directory, measured);
-  await checkProjectTests(directory, { files, options: measured });
+  const { leftOut } = await checkProjectTests(directory, {
+    files,
+    options: measured,
+  });
   return {
     files,
     completed: ["tests"],
+    leftOut,
     timings,
     warnings: checkTimeWarnings(timings),
   };
@@ -160,7 +178,7 @@ async function checkProjectTests(
     readonly files: readonly string[];
     readonly options: ProjectOptions;
   },
-): Promise<void> {
+): Promise<{ readonly leftOut: readonly LeftOutTest[] }> {
   const { program, files, options } = checked;
   const mapping = { files, roles: options.architecture.roles };
   const production = program
@@ -174,14 +192,15 @@ async function checkProjectTests(
       process.stderr.write(`Warning: ${text}\n`);
     },
   });
-  await checkTests(directory, {
+  return await checkTests(directory, {
     files,
     ...(options.commandOptions
       ? { commandOptions: options.commandOptions }
       : {}),
     timeFactor: options.timeFactor ?? 1,
-    ...(options.shard === undefined ? {} : { shard: options.shard }),
-    ...(options.testSet === undefined ? {} : { testSet: options.testSet }),
+    shard: options.shard,
+    testSet: options.testSet,
+    changedPaths: options.changedPaths,
     ...(options.coverageDirectory === undefined
       ? {}
       : { coverageDirectory: options.coverageDirectory }),
@@ -199,6 +218,7 @@ import { sourceFiles } from "./source-files.ts";
 import type { SourceOptions } from "./source-files.ts";
 import { inspectStructure } from "./structure.ts";
 import { checkTests } from "./test-execution.ts";
+import type { LeftOutTest } from "./test-shards.ts";
 import { tmpdir } from "node:os";
 import {
   processRunning,

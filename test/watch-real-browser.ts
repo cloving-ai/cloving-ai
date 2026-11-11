@@ -132,10 +132,20 @@ const settledScroll = `new Promise((resolve) => {
   requestAnimationFrame(step);
 })`;
 
-async function browserPage(
+async function pressTab(
   command: ReturnType<typeof protocol>,
-  viewport: { readonly width: number; readonly height: number },
-) {
+  sessionId: string,
+): Promise<void> {
+  for (const type of ["rawKeyDown", "keyUp"])
+    await command("Input.dispatchKeyEvent", {
+      sessionId,
+      params: { type, key: "Tab", code: "Tab", windowsVirtualKeyCode: 9 },
+    });
+}
+
+async function attachedSession(
+  command: ReturnType<typeof protocol>,
+): Promise<string> {
   const created = await command("Target.createTarget", {
     params: { url: "about:blank" },
   });
@@ -143,6 +153,47 @@ async function browserPage(
     params: { targetId: created["targetId"], flatten: true },
   });
   const sessionId = attached["sessionId"];
+  assert.ok(typeof sessionId === "string");
+  return sessionId;
+}
+
+function inputActions(command: ReturnType<typeof protocol>, sessionId: string) {
+  return {
+    async move(point: { readonly x: number; readonly y: number }) {
+      await command("Input.dispatchMouseEvent", {
+        sessionId,
+        params: { type: "mouseMoved", ...point },
+      });
+    },
+    async press(key: {
+      readonly key: string;
+      readonly code: number;
+      readonly text?: string;
+    }) {
+      const down = key.text === undefined ? "rawKeyDown" : "keyDown";
+      for (const type of [down, "keyUp"])
+        await command("Input.dispatchKeyEvent", {
+          sessionId,
+          params: {
+            type,
+            key: key.key,
+            code: key.key,
+            windowsVirtualKeyCode: key.code,
+            ...(type === "keyDown" ? { text: key.text } : {}),
+          },
+        });
+    },
+    async type(text: string) {
+      await command("Input.insertText", { sessionId, params: { text } });
+    },
+  };
+}
+
+async function browserPage(
+  command: ReturnType<typeof protocol>,
+  viewport: { readonly width: number; readonly height: number },
+) {
+  const sessionId = await attachedSession(command);
   await command("Emulation.setDeviceMetricsOverride", {
     sessionId,
     params: {
@@ -181,6 +232,8 @@ async function browserPage(
           params: { type, ...center, button: "left", clickCount: 1 },
         });
     },
+    pressTab: () => pressTab(command, sessionId),
+    ...inputActions(command, sessionId),
     async scroll(expression: string) {
       const gesture = await evaluate(expression);
       await command("Input.synthesizeScrollGesture", {

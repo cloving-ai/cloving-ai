@@ -79,6 +79,15 @@ export function steps(
   return job(workflow, name).steps;
 }
 
+export function runs(
+  workflow: ReleaseWorkflow,
+  name: keyof ReleaseWorkflow["jobs"],
+): readonly string[] {
+  return steps(workflow, name)
+    .map((step) => step.run)
+    .filter((run) => run !== undefined);
+}
+
 export function script(workflow: ReleaseWorkflow, id: string): string {
   const run = steps(workflow, "publish").find((step) => step.id === id)?.run;
   assert.ok(typeof run === "string", `Missing shell step: ${id}`);
@@ -282,4 +291,9 @@ export const gateRun = [
   "progress=$!",
   "trap 'kill \"$progress\"' EXIT",
   "npm run check:quality",
+].join("\n");
+
+export const changedPathsRun = [
+  'git diff --name-only --no-renames -z HEAD^1 HEAD > "$RUNNER_TEMP/changed-paths"',
+  'echo "CLOVING_CHANGED_PATHS=$RUNNER_TEMP/changed-paths" >> "$GITHUB_ENV"',
 ].join("\n");

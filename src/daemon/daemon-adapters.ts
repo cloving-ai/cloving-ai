@@ -1,3 +1,4 @@
+import { turnRecoveries, type TurnRecoveries } from "../turn-recovery.ts";
 import type { ThreadPoolSettings } from "../cli/thread-pool.ts";
 import type { HostSignals, QueueLimits } from "../queue-room.ts";
 import { join } from "node:path";
@@ -15,7 +16,11 @@ import {
 } from "./workflow-generations.ts";
 import { claudeWorker, type ClaudeWorker } from "./claude-worker.ts";
 import { githubWorker, type GithubWorker } from "./github-worker.ts";
-import { commandWorker, type CommandWorker } from "./command-worker.ts";
+import {
+  commandWorker,
+  type CommandWorker,
+  type CommandWorkerSettings,
+} from "./command-worker.ts";
 import { handoffWorker } from "./handoff-worker.ts";
 import type { EffectDelivery } from "./delivery-router.ts";
 import type { TurnProfiles } from "../turn-profile.ts";
@@ -92,6 +97,7 @@ export interface Adapters {
   readonly runs: StartDelivery;
   readonly handoff: EffectDelivery;
   readonly commands: CommandWorker;
+  readonly recoveries: TurnRecoveries;
 }
 
 function githubOf(
@@ -156,8 +162,10 @@ export function adapters(
     fallbackModels: settings.fallbackModels ?? [],
     tokenPrices: settings.tokenPrices ?? {},
   });
+  const recoveries = turnRecoveries();
   const worker = claudeWorker({
     ...workerHarness(settings),
+    recovered: recoveries.note,
     turnSettings: turnSettings.current,
     workflowId: async (runId) => (await given).workflow.id(runId),
     repository,
@@ -185,15 +193,25 @@ export function adapters(
         ?.workflow,
   });
   const handoff = handoffOf(settings, given);
-  const commands = commandWorker({
-    repository,
-    journal: join(directory, "commands"),
-    commands: settings.commands ?? {},
-    seconds: settings.commandSeconds ?? 60,
+  const commands = commandsOf(settings, {
     document,
     report,
+    recovered: recoveries.note,
   });
-  return { worker, github, runs, handoff, commands, turnSettings };
+  return { worker, github, runs, handoff, commands, turnSettings, recoveries };
+}
+
+function commandsOf(
+  settings: DaemonSettings,
+  effects: Pick<CommandWorkerSettings, "document" | "report" | "recovered">,
+): CommandWorker {
+  return commandWorker({
+    repository: settings.repository,
+    journal: join(settings.directory, "commands"),
+    commands: settings.commands ?? {},
+    seconds: settings.commandSeconds ?? 60,
+    ...effects,
+  });
 }
 
 function handoffOf(
@@ -217,10 +235,12 @@ export async function recoverCommands(
 }
 
 export async function recoverClaude(
-  worker: Pick<ClaudeWorker, "harness" | "recover">,
+  worker: Pick<ClaudeWorker, "harness" | "hold" | "recover">,
   ports: Pick<HostPorts, "state" | "operations">,
 ): Promise<void> {
-  for (const intent of await recoveryCalls(ports, "claude")) {
+  const intents = await recoveryCalls(ports, "claude");
+  for (const intent of intents) await worker.hold(intent);
+  for (const intent of intents) {
     if (!resumableHarness(await worker.harness(intent.operationId))) continue;
     if (!(await stillRecoverable(ports, intent))) continue;
     await worker.recover(intent);

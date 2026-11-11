@@ -4,6 +4,7 @@ import {
   checkProjectTestShard,
   writeProjectReport,
 } from "../quality/project.ts";
+import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { inspectGenerated } from "../quality/generated-output.ts";
 import { proposedModulePolicy } from "../quality/module-policy.ts";
@@ -12,6 +13,7 @@ import { productStepExports } from "../quality/product-steps.ts";
 import { parseCheckTimeFactor } from "../quality/test-execution.ts";
 import {
   checkTimeWarnings,
+  parseChangedPaths,
   parseTestCoverage,
   parseTestSet,
   parseTestShard,
@@ -28,6 +30,11 @@ const selected = parseTestShard(shard);
 const testSet = parseTestSet(process.env["CLOVING_TEST_SET"]);
 if (testSet === "platform" && !selected)
   throw new Error("CLOVING_TEST_SET=platform needs CLOVING_TEST_SHARD");
+const changedFile = process.env["CLOVING_CHANGED_PATHS"];
+const changed =
+  changedFile === undefined
+    ? {}
+    : { changedPaths: parseChangedPaths(readFileSync(changedFile, "utf8")) };
 const coverage = selected
   ? parseTestCoverage(process.env["CLOVING_TEST_COVERAGE"])
   : "on";
@@ -77,6 +84,7 @@ async function checkQuality(): Promise<void> {
       timeFactor,
       shard,
       testSet,
+      ...changed,
       coverage,
       ...(coverage === "off"
         ? {}
@@ -103,6 +111,7 @@ async function checkQuality(): Promise<void> {
   const generated = await inspectGenerated(process.cwd());
   const result = await checkProject(process.cwd(), {
     timeFactor,
+    ...changed,
     commandOptions,
     generated: generated.outputs,
     architecture: proposedModulePolicy(process.cwd()),

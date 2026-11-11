@@ -41,13 +41,20 @@ function recovery() {
   };
   const current = { run, operation, harness: "claude" };
   const calls: DeliveryIntent[] = [];
+  const events: string[] = [];
   return {
     current,
     calls,
+    events,
     worker: {
       harness: () => Promise.resolve(current.harness),
+      hold: (intent: DeliveryIntent) => {
+        events.push(`hold ${intent.operationId}`);
+        return Promise.resolve();
+      },
       recover: (intent: DeliveryIntent) => {
         calls.push(intent);
+        events.push(`recover ${intent.operationId}`);
         return Promise.resolve();
       },
     },
@@ -72,6 +79,20 @@ await test("CLV-239 startup recovers the current authority intent through the wo
       purpose: "reconcile",
       workflow: "workflow-1",
     },
+  ]);
+});
+
+await test("CLV-346 CLV-337 startup holds the kept turns of all operations before it recovers the first one", async () => {
+  const scene = recovery();
+  const second = { ...operation, operationId: "operation-2" };
+  scene.ports.operations = () =>
+    Promise.resolve([scene.current.operation, second]);
+  await recoverClaude(scene.worker, scene.ports);
+  assert.deepEqual(scene.events, [
+    "hold operation-1",
+    "hold operation-2",
+    "recover operation-1",
+    "recover operation-2",
   ]);
 });
 

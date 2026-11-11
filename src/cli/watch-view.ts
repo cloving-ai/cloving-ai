@@ -10,7 +10,9 @@ import type { CardControls } from "./watch-card-view.ts";
 import type { PhoneControls } from "./watch-phone-view.ts";
 import {
   BackLink,
+  BannerBack,
   Header,
+  type BannerBackProps,
   Queue,
   RefusedWorkflows,
   type QueueControls,
@@ -85,7 +87,9 @@ export function BannerDetail(props: Timed): Shown {
   ];
 }
 
-export function Banner(props: Timed): Shown {
+export function Banner(
+  props: Timed & { readonly back: BannerBackProps },
+): Shown {
   const { run, now } = props;
   const { tone, icon, label } = runTone(run);
   const name = element("span", { class: "name", children: runName(run) });
@@ -96,6 +100,7 @@ export function Banner(props: Timed): Shown {
   return element("section", {
     class: `banner ${tone}`,
     children: [
+      component(BannerBack, props.back),
       element("span", { class: "icon", children: icon }),
       element("div", { children: words }),
     ],
@@ -111,6 +116,7 @@ export function Run(
     readonly renaming?: RenameControls | undefined;
     readonly transcripts?: TranscriptControls | undefined;
     readonly turnId?: string | null | undefined;
+    readonly back?: BannerBackProps | undefined;
   },
 ): Shown {
   const { run, now, copying } = props;
@@ -125,7 +131,7 @@ export function Run(
     `${run.code}: ${run.detail}`,
   ];
   return [
-    component(Banner, { run, now }),
+    component(Banner, { run, now, back: props.back ?? { workflowId: null } }),
     component(RunHeading, { run, renaming: props.renaming }),
     component(RunDecisions, { run, copying, now, deciding: props.deciding }),
     loopText(run) === ""
@@ -197,17 +203,20 @@ export function Page(props: PageProps): Shown {
     return component(TerminalPage, { ...props, model, location });
   if (location.runId !== null) {
     const run = model.runs.find((item) => item.runId === location.runId);
+    const back = {
+      workflowId: location.workflowId,
+      repository: location.repository,
+    };
     return [
       component(Header, { model, stale, queue: props.queue, theme }),
       down,
       component(Queue, { model, words }),
       component(RefusedWorkflows, { model }),
-      component(BackLink, {
-        workflowId: location.workflowId,
-        repository: location.repository,
-      }),
       run === undefined
-        ? text("meta", "This run is not available.")
+        ? [
+            component(BackLink, back),
+            text("meta", "This run is not available."),
+          ]
         : component(Run, {
             key: run.runId,
             run,
@@ -219,6 +228,7 @@ export function Page(props: PageProps): Shown {
             renaming: props.renaming,
             transcripts: props.transcripts,
             turnId: location.turnId,
+            back: { ...back, words },
           }),
     ];
   }
@@ -264,6 +274,7 @@ export function FloorPage(
                 now,
                 words,
                 controlling,
+                renaming: props.renaming,
                 looping: props.loops,
               }),
               component(NeedsYou, {

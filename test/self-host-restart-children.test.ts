@@ -101,7 +101,7 @@ function signalled(root: string, name: string): Promise<string> {
   return readFile(join(root, `${name}-signals`), "utf8").catch(() => "");
 }
 
-await test("CLV-320 a restart stops the watch and the relay before the daemon and ends with exit 75, and a refused restart fails the test without a hang", () =>
+await test("CLV-320 CLV-337 a restart stops the watch and the relay before the daemon, stops the daemon with the signal that keeps turns, ends with exit 75, and a refused restart fails the test without a hang", () =>
   withChildren(
     { stuckPrograms: [], stopMilliseconds: testMilliseconds(10_000) },
     async ({ root, directory, hosting }) => {
@@ -109,7 +109,7 @@ await test("CLV-320 a restart stops the watch and the relay before the daemon an
       assert.equal(await endedOrRefused(directory, hosting), 75);
       assert.equal(await signalled(root, "watch"), "SIGTERM\n");
       assert.equal(await signalled(root, "relay"), "SIGTERM\n");
-      assert.equal(await signalled(root, "daemon"), "SIGTERM\n");
+      assert.equal(await signalled(root, "daemon"), "SIGUSR2\n");
       const starts = await readFile(join(root, "watch-starts"), "utf8");
       assert.equal(starts.trim().split("\n").length, 1);
       const daemonSignal = (await stat(join(root, "daemon-signals"))).mtimeMs;
@@ -137,7 +137,9 @@ await test("CLV-320 a child that ignores SIGTERM past the limit refuses the rest
         step: "stop",
         output: `${relay} relay`,
       });
-      assert.equal(existsSync(join(directory, "claimed-restart")), false);
+      await eventually(() =>
+        existsSync(join(directory, "claimed-restart")) ? undefined : true,
+      );
       assert.equal(await signalled(root, "daemon"), "");
       await eventually(() =>
         existsSync(join(root, "watch-2-ready")) ? true : undefined,

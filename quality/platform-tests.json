@@ -5,10 +5,12 @@
   "test/watch-card-browser.test.ts",
   "test/watch-floor-browser.test.ts",
   "test/watch-phone-browser.test.ts",
+  "test/watch-run-back-browser.test.ts",
   "test/watch-run-command-browser.test.ts",
   "test/watch-scrolling.test.ts",
   "test/watch-shelf-browser.test.ts",
   "test/watch-theme-browser.test.ts",
+  "test/watch-token-menu-browser.test.ts",
   "test/watch-transcript-browser.test.ts",
   "test/workflow-folder-capture.test.ts",
   "test/worktree-processes.test.ts"

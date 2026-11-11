@@ -85,6 +85,7 @@ function stop(signal) {
 }
 process.on("SIGINT", () => stop("SIGINT"));
 process.on("SIGTERM", () => stop("SIGTERM"));
+process.on("SIGUSR2", () => stop("SIGUSR2"));
 writeFileSync(${JSON.stringify(join(root, `${name}-ready`))}, String(process.pid));
 writeFileSync(${JSON.stringify(join(root, `${name}-runtime`))}, process.env.CLOVING_RUNTIME_DIR ?? "");
 ${

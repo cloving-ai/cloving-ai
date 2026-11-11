@@ -36,6 +36,7 @@ import { transcriptFunctions } from "./watch-transcript-view.ts";
 import { RunNotes } from "./watch-notes-view.ts";
 import { runActionFunctions } from "./watch-rename-view.ts";
 import { runCommandFunctions } from "./watch-run-command-view.ts";
+import { tokenMenuFunctions } from "./watch-token-menu-view.ts";
 import { watchRunCommandClient } from "./watch-run-command-client.ts";
 import { watchPhoneClient } from "./watch-phone-client.ts";
 import {
@@ -150,6 +151,7 @@ import {
 } from "./watch-view.ts";
 import {
   BackLink,
+  BannerBack,
   Brand,
   clove,
   Header,
@@ -163,6 +165,7 @@ import {
   skippedText,
   Version,
 } from "./watch-header-view.ts";
+import { restartPendingText } from "./restart-render.ts";
 
 const functions = [
   scheduleStatusLine,
@@ -199,6 +202,7 @@ const functions = [
   Brand,
   HeaderCounts,
   HeaderStatus,
+  restartPendingText,
   QueueControl,
   HeaderActions,
   Version,
@@ -234,6 +238,7 @@ const functions = [
   RunNotes,
   ...runActionFunctions,
   ...runCommandFunctions,
+  ...tokenMenuFunctions,
   Column,
   columnCollapsed,
   Board,
@@ -296,6 +301,7 @@ const functions = [
   Header,
   RefusedWorkflows,
   BackLink,
+  BannerBack,
   FloorPage,
   BoardPage,
   Page,

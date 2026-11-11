@@ -14,6 +14,7 @@ import {
 import { realpathSync } from "node:fs";
 import { delimiter, dirname, extname, join, resolve } from "node:path";
 import { main } from "./cli/main.ts";
+import { nodeRefusal } from "./cli/node-refusal.ts";
 import { parseInvocation } from "./cli/arguments.ts";
 import { repositoryArguments } from "./cli/repository-arguments.ts";
 import { integrationRequest } from "./cli/integration-arguments.ts";
@@ -39,6 +40,7 @@ import { stalledExit } from "./cli/thread-pool.ts";
 import { threadPoolStallExitCode } from "./thread-pool-check.ts";
 
 const [command, ...options] = process.argv.slice(2);
+const refusal = nodeRefusal(process.argv.slice(2), process.version);
 const integration = integrationRequest(
   repositoryArguments(process.argv.slice(2), {}),
 );
@@ -320,7 +322,13 @@ async function start(): Promise<number> {
   return status === 0 ? 0 : 1;
 }
 
-if (command === "workflows" && ["list", "test"].includes(options[0] ?? ""))
+if (refusal !== undefined) {
+  process.stderr.write(refusal);
+  process.exitCode = 1;
+} else if (
+  command === "workflows" &&
+  ["list", "test"].includes(options[0] ?? "")
+)
   process.exitCode = await toolProcess({
     tool: "workflow-command",
     argumentsList: options,

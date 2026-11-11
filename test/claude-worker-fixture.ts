@@ -32,7 +32,7 @@ const disposableNode = [
 
 const fakeClaude = `
 import { execFileSync, spawn } from "node:child_process";
-import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, fstatSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 
 const [mode = "complete", record = ""] = process.argv.slice(2);
 if (mode === "ignore-term") process.on("SIGTERM", () => undefined);
@@ -41,12 +41,12 @@ let prompt = "";
 process.stdin.setEncoding("utf8");
 for await (const chunk of process.stdin) prompt += String(chunk);
 const turn = readFileSync(record, "utf8").split("\\n").length;
-appendFileSync(record, JSON.stringify({ coverage: process.env.NODE_V8_COVERAGE ?? null, prompt, directory: process.cwd(), processId: process.pid, arguments: process.argv.slice(2), files: readdirSync("."), environment: Object.fromEntries(["ANTHROPIC_BASE_URL", "ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN", "CLAUDE_CONFIG_DIR", "HOME", "TMPDIR", "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"].filter((name) => process.env[name] !== undefined).map((name) => [name, process.env[name]])) }) + "\\n");
+appendFileSync(record, JSON.stringify({ coverage: process.env.NODE_V8_COVERAGE ?? null, prompt, directory: process.cwd(), processId: process.pid, parentId: process.ppid, outputFile: fstatSync(1).isFile(), errorFile: fstatSync(2).isFile(), arguments: process.argv.slice(2), files: readdirSync("."), environment: Object.fromEntries(["ANTHROPIC_BASE_URL", "ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN", "CLAUDE_CONFIG_DIR", "HOME", "TMPDIR", "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"].filter((name) => process.env[name] !== undefined).map((name) => [name, process.env[name]])) }) + "\\n");
 const print = (value) => process.stdout.write(JSON.stringify(value) + "\\n");
 const session = process.argv.includes("--resume") ? process.argv[process.argv.indexOf("--resume") + 1] : "session-" + turn;
 const result = (fields) => print({ type: "result", subtype: "success", is_error: false, result: "Done: " + prompt, total_cost_usd: 0.25, usage: { input_tokens: 1500, cache_read_input_tokens: 800, output_tokens: 150 }, session_id: session, num_turns: 3, ...fields });
 const git = (...parts) => execFileSync("git", parts, { stdio: "ignore" });
-const held = () => new Promise(() => { setInterval(() => undefined, 1000); });
+const held = () => new Promise(() => { setInterval(() => undefined, 1000); }); const gated = (each) => new Promise((settle) => { let line = 0; const timer = setInterval(() => { if (existsSync(record + ".gate")) { clearInterval(timer); settle(); return; } line += 1; each(line); }, 20); });
 if (mode !== "sessionless" && !(mode === "quiet-resume" && turn > 1)) print({ type: "system", subtype: "init", session_id: session });
 print({ type: "assistant", text: "the word \\"result\\" is in this line" });
 process.stdout.write("this line is no JSON text and has the word \\"result\\"\\n");
@@ -73,6 +73,7 @@ const modes = {
   "resume-once": () => { if (turn === 1) { result({ total_cost_usd: 1.2 }); return held(); } result({ total_cost_usd: 2, result: "Ticket status: complete" }); },
   "resume-graceful": () => modes["resume-once"](),
   "crash-once": () => turn === 1 ? held() : result({ result: "Ticket status: complete" }),
+  "gated-lines": async () => { await gated((line) => print({ type: "assistant", text: "line " + line })); result({ result: "Ticket status: complete" }); }, "gated-result": async () => { await gated(() => undefined); result({ result: "Ticket status: complete" }); }, background: async () => { spawn(process.execPath, ["-e", "const fs=require('node:fs');fs.writeFileSync(process.argv[1]+'.background-pid',String(process.pid));const timer=setInterval(()=>{if(!fs.existsSync(process.argv[1]+'.gate'))return;clearInterval(timer);fs.writeFileSync(process.argv[1]+'.background.part','background done');fs.renameSync(process.argv[1]+'.background.part',process.argv[1]+'.background');setInterval(()=>{},1000);},20);", record], { detached: true, stdio: "ignore" }).unref(); await gated(() => undefined); while (!existsSync(record + ".background")) await new Promise((settle) => setTimeout(settle, 20)); result({ result: readFileSync(record + ".background", "utf8") }); },
   "steer-capacity": () => {
     if (turn === 1) return held();
     if (turn === 2) return result({ is_error: true, result: "Selected model is at capacity. Please try a different model." });
@@ -137,6 +138,7 @@ export interface TurnRecord {
   readonly prompt: string;
   readonly directory: string;
   readonly processId: number;
+  readonly parentId: number;
   readonly arguments: readonly string[];
   readonly files: readonly string[];
   readonly environment: Readonly<Record<string, string>>;
@@ -288,6 +290,7 @@ export async function withScene<Result>(
     return await use(scene);
   } finally {
     for (const made of workers) await made.close();
+    for (const turn of scene.turns()) stopKeptTurn(turn);
     if (existsSync(turnLog + ".child")) {
       try {
         process.kill(
@@ -302,6 +305,11 @@ export async function withScene<Result>(
   }
 }
 
+function stopKeptTurn(turn: TurnRecord): void {
+  if (turn.parentId !== process.pid && alive(turn.processId))
+    process.kill(-turn.parentId, "SIGKILL");
+}
+
 function turnRecord(line: string): TurnRecord {
   const parsed: unknown = JSON.parse(line);
   const texts = (value: unknown): string[] =>
@@ -312,6 +320,7 @@ function turnRecord(line: string): TurnRecord {
     prompt: String(field(parsed, "prompt")),
     directory: String(field(parsed, "directory")),
     processId: Number(field(parsed, "processId")),
+    parentId: Number(field(parsed, "parentId")),
     arguments: texts(field(parsed, "arguments")),
     files: texts(field(parsed, "files")),
     environment: Object.fromEntries(
