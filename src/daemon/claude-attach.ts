@@ -2,7 +2,8 @@ import { turnHarness } from "../harness-defaults.ts";
 import { resumeReasonField } from "../worker-usage.ts";
 import { record } from "../protocol.ts";
 import type { ProtectedIntent } from "../broker/actor/delivery-intents.ts";
-import { located, readRecord } from "./operation-journal.ts";
+import { join } from "node:path";
+import { located, readRecord, writeRecord } from "./operation-journal.ts";
 import { keepTurn } from "./turn-owners.ts";
 import {
   priorEnd,
@@ -10,8 +11,13 @@ import {
   recordedTexts,
   recordedTree,
 } from "./claude-recovery.ts";
-import { launchState } from "./detached-process.ts";
-import { attemptNumber, keptLaunch, type TurnLaunch } from "../turn-launch.ts";
+import { foundLaunch, launchState, markerRecord } from "./detached-process.ts";
+import {
+  attemptNumber,
+  keptLaunch,
+  plannedLaunch,
+  type TurnLaunch,
+} from "../turn-launch.ts";
 import type { TurnAttach } from "./turn-attempts.ts";
 import { selectedProfile, type WorkerProfiles } from "./worker-profile.ts";
 
@@ -25,6 +31,60 @@ export async function attachableLaunch(
   const launch = keptLaunch({ started, entry });
   if (launch === undefined) return undefined;
   return (await launchState(launch)) === "gone" ? "gone" : launch;
+}
+
+async function connectedRecords(
+  folder: string,
+  found: {
+    readonly started: unknown;
+    readonly attempt: number;
+    readonly launch: TurnLaunch;
+  },
+): Promise<void> {
+  const { launch } = found;
+  const running = {
+    ...record(found.started),
+    phase: "running",
+    processId: launch.processId,
+    launch,
+  };
+  await writeRecord(folder, {
+    name: `attempt-${String(found.attempt)}.json`,
+    value: {
+      ...running,
+      startedAt: new Date(Date.parse(launch.processStart)).toISOString(),
+      sessionId: null,
+      sessionCostUsd: null,
+      costUsd: null,
+    },
+    permissions: "private",
+  });
+  await writeRecord(folder, {
+    name: "started.json",
+    value: running,
+    permissions: "private",
+  });
+}
+
+export async function markedTurn(
+  folder: string,
+  request: { readonly started: unknown; readonly stopMilliseconds: number },
+): Promise<TurnLaunch | "stopped" | undefined> {
+  const { started } = request;
+  const attempt = attemptNumber(started);
+  if (attempt === undefined || recordedField(started, "phase") !== "starting")
+    return undefined;
+  const place =
+    attempt === 1 ? folder : join(folder, `attempt-${String(attempt)}`);
+  const planned = plannedLaunch(await readRecord(place, markerRecord));
+  if (planned === undefined) return undefined;
+  const launch = await foundLaunch(planned, {
+    since: Date.parse(String(recordedField(started, "startedAt"))),
+    stopMilliseconds: request.stopMilliseconds,
+  });
+  if (launch === undefined || launch === "stopped") return launch;
+  await connectedRecords(folder, { started, attempt, launch });
+  return launch;
 }
 
 async function readAttach(

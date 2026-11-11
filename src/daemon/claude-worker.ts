@@ -5,7 +5,12 @@ import type {
   DeliveryIntent,
 } from "../broker/actor/delivery-intents.ts";
 import { begun } from "./claude-begin.ts";
-import { attachableLaunch, attachPlan, holdKeptTurn } from "./claude-attach.ts";
+import {
+  attachableLaunch,
+  attachPlan,
+  holdKeptTurn,
+  markedTurn,
+} from "./claude-attach.ts";
 import { stoppedLaunch } from "./detached-process.ts";
 import type { TurnLaunch } from "../turn-launch.ts";
 import {
@@ -95,26 +100,54 @@ async function reconcileOperation(
   if (parts.active.has(key)) return { kind: "accepted", receipt: key, worker };
   const started = await read(folder, "started.json");
   if (started === undefined) return { kind: "absent" };
-  const launch = await recordedLaunchOf({ folder, started, result });
-  if (launch === undefined && (await uncertainProcess(started)))
-    return { kind: "unknown", evidence: `claude-turn:${key}` };
-  return resumed(parts, {
+  const launch = await recordedLaunchOf(parts, { folder, started, result });
+  return launchedOrResumed(parts, {
     intent,
     key,
     folder,
     started,
     signal,
+    launch,
+  });
+}
+
+async function launchedOrResumed(
+  parts: Parts,
+  request: Located & {
+    readonly intent: DeliveryIntent;
+    readonly started: unknown;
+    readonly signal: AbortSignal;
+    readonly launch: TurnLaunch | "gone" | "stopped" | undefined;
+  },
+): Promise<AdapterOutcome> {
+  const { launch, ...rest } = request;
+  if (launch === "stopped")
+    return interruptedReply(rest, "claude-turn-interrupted");
+  if (launch === undefined && (await uncertainProcess(rest.started)))
+    return { kind: "unknown", evidence: `claude-turn:${rest.key}` };
+  return resumed(parts, {
+    ...rest,
     ...(launch === undefined || launch === "gone" ? {} : { launch }),
   });
 }
 
-function recordedLaunchOf(journal: {
-  readonly folder: string;
-  readonly started: unknown;
-  readonly result: unknown;
-}): Promise<TurnLaunch | "gone" | undefined> {
-  if (journal.result !== undefined) return Promise.resolve(undefined);
-  return attachableLaunch(journal.folder, journal.started);
+async function recordedLaunchOf(
+  parts: Parts,
+  journal: {
+    readonly folder: string;
+    readonly started: unknown;
+    readonly result: unknown;
+  },
+): Promise<TurnLaunch | "gone" | "stopped" | undefined> {
+  if (journal.result !== undefined) return undefined;
+  return (
+    (await attachableLaunch(journal.folder, journal.started)) ??
+    markedTurn(journal.folder, {
+      started: journal.started,
+      stopMilliseconds:
+        parts.settings.stopMilliseconds ?? claudeLimits.stopMilliseconds,
+    })
+  );
 }
 
 async function rejectedAttach(
