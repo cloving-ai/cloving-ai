@@ -68,9 +68,9 @@ await test("CLV-016 the watch page shows the state of the selected run first, as
     '<li class="phase done"><span class="mark">✓</span><span class="name">Agent turn</span><span class="time">7 min 38 s</span></li>',
     '<li class="phase active"><span class="mark">●</span><span class="name">Your review</span><span class="time">1 min 0 s</span></li>',
     '<li class="phase pending"><span class="mark">○</span><span class="name">Completed</span><span class="time"></span></li></ol>',
-    '<section class="turn code-window">',
     '<section class="events code-window"><div class="event">',
     "<dt>Reason</dt><dd>policy-approval: A person must approve.</dd><dt>Run</dt><dd>run-1</dd><dt>Turn target</dt><dd>clv-016-a6f7ef47</dd><dt>Workflow</dt><dd>develop-ticket</dd><dt>Effect units</dt><dd>1 of 8 effect units</dd>",
+    '<section class="turn-facts"><h4>Turn 1 · completed',
   ]);
   assert.deepEqual(
     found,
@@ -227,7 +227,7 @@ function assertOrdered(
   assert.notEqual(found[0], found[2]);
 }
 
-await test("CLV-062 the watch page shows each turn and each review of a run in order in both tabs, with the feedback of each denial", () => {
+await test("CLV-062 CLV-357 the watch page shows each turn and each review of a run in order in the Transcript tab, with the feedback of each denial", () => {
   const html = page(
     sampleModel([
       sampleRun({
@@ -254,18 +254,15 @@ await test("CLV-062 the watch page shows each turn and each review of a run in o
     ]),
     "run-1",
   );
-  const turn = '<section class="turn code-window">';
   const first =
     '<section class="review denied"><h3>Review 1 · denied</h3><p>Add a test for &lt;empty&gt; lists.</p></section>';
   const second =
     '<section class="review pending"><h3>Review 2 · waits for your decision</h3></section>';
   const transcript = '<section class="transcript code-window"';
   const tabs = html.indexOf('role="tablist"');
-  const panel = html.slice(html.indexOf('id="run-panel-turn"'));
-  const shown = html.slice(tabs, html.indexOf('id="run-panel-turn"'));
+  const shown = html.slice(tabs, html.indexOf('id="run-panel-pull"'));
   assert.ok(html.indexOf('<section class="decision" ') < tabs, html);
   assertOrdered(shown, [transcript, first, second]);
-  assertOrdered(panel, [turn, first, second]);
   assert.match(
     html,
     /<code>cloving deny run-1\/review-2 --text &quot;&lt;feedback&gt;&quot;<\/code>/,
@@ -305,7 +302,7 @@ await test("CLV-065 the watch page shows the pull request of a develop-issue run
   positions(page(sampleModel([issue])), [
     '<ol class="phases">',
     '<section class="pull">',
-    '<section class="turn code-window">',
+    '<section class="turn-facts">',
   ]);
   assert.equal(section(sampleRun()), "");
 });

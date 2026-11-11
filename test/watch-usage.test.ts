@@ -112,7 +112,7 @@ await test("CLV-094 run totals, turn headings and result activity retain tokens 
   for (const usage of scenarioUsage)
     assert.ok(
       runHtml.includes(
-        `Input tokens: ${String(usage.input_tokens)} · Cache read tokens: ${String(usage.cache_read_input_tokens)} · Output tokens: ${String(usage.output_tokens)}`,
+        `<dd>${String(usage.input_tokens)} input · ${String(usage.cache_read_input_tokens)} cache read · ${String(usage.output_tokens)} output</dd>`,
       ),
     );
   for (const turn of run.turns) {

@@ -27,15 +27,18 @@ const ready = `(async () => {
   return {};
 })()`;
 
+const until = (condition: string) =>
+  `for (let attempt = 0; attempt < 120 && !(${condition}); attempt++) await frame();`;
+
 const menuShown = `(async () => {
   ${frames}
-  await frame();
+  ${until('document.querySelector("#run-menu-run-7").matches(":popover-open")')}
   return { menu: (document.querySelector("#run-menu-run-7").matches(":popover-open") ? "visible" : "hidden") };
 })()`;
 
 const afterPick = `(async () => {
   ${frames}
-  await frame();
+  ${until('document.querySelector(".banner .rename-form") !== null')}
   await frame();
   const cancel = [...document.querySelectorAll(".banner .rename-form button")].find((node) => node.textContent === "Cancel");
   const box = cancel.getBoundingClientRect();
@@ -50,7 +53,7 @@ const afterPick = `(async () => {
 
 const afterCancel = `(async () => {
   ${frames}
-  await frame();
+  ${until('document.querySelector(".banner .rename-form") === null')}
   await frame();
   return {
     form: document.querySelector(".banner .rename-form") !== null,
@@ -68,7 +71,12 @@ await test("CLV-357 Rename in the ⋯ menu closes the menu at once while the poi
   const page = await browser.page({ width: 1280, height: 800 });
   await page.navigate(fixture.url);
   await page.evaluate(ready);
-  await page.click(".run-head-actions .token-menu-open");
+  const opener = await page.evaluate(`(() => {
+    const box = document.querySelector(".run-head-actions .token-menu-open").getBoundingClientRect();
+    return { x: box.left + box.width / 2, y: box.top + box.height / 2 };
+  })()`);
+  assert.ok(typeof opener["x"] === "number" && typeof opener["y"] === "number");
+  await page.move({ x: opener["x"], y: opener["y"] });
   assert.deepEqual(await page.evaluate(menuShown), { menu: "visible" });
   await page.click("#run-menu-run-7 .rename-open");
   assert.deepEqual(await page.evaluate(afterPick), {
@@ -93,9 +101,9 @@ const focusOn = (selector: string) => `(async () => {
   return {};
 })()`;
 
-const place = `(async () => {
+const place = (condition: string) => `(async () => {
   ${frames}
-  await frame();
+  ${until(condition)}
   await frame();
   return {
     focus: document.activeElement.getAttribute("class") ?? document.activeElement.getAttribute("name"),
@@ -105,7 +113,20 @@ const place = `(async () => {
   };
 })()`;
 
-await test("CLV-357 with the keyboard, Keep it gives the focus to ⋯ with the menu closed, Enter on ⋯ opens the menu, and Escape in the rename form gives the focus to the pencil", async () => {
+const enter = { key: "Enter", code: 13, text: "\r" };
+const shown = (
+  focus: string,
+  more: { menu: string; asking: boolean; form: boolean },
+) => ({
+  focus,
+  ...more,
+});
+
+async function withRunPage(
+  body: (
+    page: Awaited<ReturnType<Awaited<ReturnType<typeof realBrowser>>["page"]>>,
+  ) => Promise<void>,
+): Promise<void> {
   await using fixture = await watchPageServer(model, {
     hash: "#run=run-7",
     token: "a".repeat(64),
@@ -114,42 +135,54 @@ await test("CLV-357 with the keyboard, Keep it gives the focus to ⋯ with the m
   const page = await browser.page({ width: 1280, height: 800 });
   await page.navigate(fixture.url);
   await page.evaluate(ready);
-  await page.evaluate(focusOn(".run-head-actions .token-menu-open"));
-  await page.evaluate(focusOn("#run-menu-run-7 .run-command-drop"));
-  await page.press({ key: "Enter", code: 13, text: "\r" });
-  assert.deepEqual(await page.evaluate(place), {
-    focus: "drop-keep",
-    menu: "hidden",
-    asking: true,
-    form: false,
-  });
-  await page.press({ key: "Enter", code: 13, text: "\r" });
-  assert.deepEqual(await page.evaluate(place), {
-    focus: "token-menu-open",
-    menu: "hidden",
-    asking: false,
-    form: false,
-  });
-  await page.press({ key: "Enter", code: 13, text: "\r" });
-  assert.deepEqual(await page.evaluate(place), {
-    focus: "token-menu-open",
-    menu: "visible",
-    asking: false,
-    form: false,
-  });
-  await page.evaluate(focusOn("#run-menu-run-7 .rename-open"));
-  await page.press({ key: "Enter", code: 13, text: "\r" });
-  assert.deepEqual(await page.evaluate(place), {
-    focus: "title",
-    menu: "hidden",
-    asking: false,
-    form: true,
-  });
-  await page.press({ key: "Escape", code: 27 });
-  assert.deepEqual(await page.evaluate(place), {
-    focus: "name-edit",
-    menu: "hidden",
-    asking: false,
-    form: false,
-  });
-});
+  await body(page);
+}
+
+await test("CLV-357 with the keyboard, Keep it gives the focus to ⋯ with the menu closed, and Enter on ⋯ opens the menu", () =>
+  withRunPage(async (page) => {
+    await page.evaluate(focusOn(".run-head-actions .token-menu-open"));
+    await page.evaluate(focusOn("#run-menu-run-7 .run-command-drop"));
+    await page.press(enter);
+    assert.deepEqual(
+      await page.evaluate(
+        place('document.querySelector(".drop-question") !== null'),
+      ),
+      shown("drop-keep", { menu: "hidden", asking: true, form: false }),
+    );
+    await page.press(enter);
+    assert.deepEqual(
+      await page.evaluate(
+        place('document.querySelector(".drop-question") === null'),
+      ),
+      shown("token-menu-open", { menu: "hidden", asking: false, form: false }),
+    );
+    await page.press(enter);
+    assert.deepEqual(
+      await page.evaluate(
+        place(
+          'document.querySelector("#run-menu-run-7").matches(":popover-open")',
+        ),
+      ),
+      shown("token-menu-open", { menu: "visible", asking: false, form: false }),
+    );
+  }));
+
+await test("CLV-357 with the keyboard, Rename in the ⋯ menu puts the focus in the title with the menu closed, and Escape gives the focus to the pencil", () =>
+  withRunPage(async (page) => {
+    await page.evaluate(focusOn(".run-head-actions .token-menu-open"));
+    await page.evaluate(focusOn("#run-menu-run-7 .rename-open"));
+    await page.press(enter);
+    assert.deepEqual(
+      await page.evaluate(
+        place('document.querySelector(".banner .rename-form") !== null'),
+      ),
+      shown("title", { menu: "hidden", asking: false, form: true }),
+    );
+    await page.press({ key: "Escape", code: 27 });
+    assert.deepEqual(
+      await page.evaluate(
+        place('document.querySelector(".banner .rename-form") === null'),
+      ),
+      shown("name-edit", { menu: "hidden", asking: false, form: false }),
+    );
+  }));

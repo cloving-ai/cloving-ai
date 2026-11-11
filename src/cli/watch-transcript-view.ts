@@ -31,10 +31,10 @@ export interface TranscriptBox {
   readonly scrollHeight: number;
 }
 
-export type RunTab = "transcript" | "turn" | "pull" | "events" | "details";
+export type RunTab = "transcript" | "pull" | "events" | "details";
 
 export interface TranscriptControls {
-  readonly tab: RunTab;
+  readonly tab: string;
   readonly onTab: (tab: RunTab) => void;
   readonly view: (target: TranscriptTarget) => TranscriptView;
   readonly onToggle: (target: TranscriptTarget) => void;

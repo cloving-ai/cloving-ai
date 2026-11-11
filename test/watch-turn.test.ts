@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { component } from "../src/cli/watch-element.ts";
-import type { WatchItem } from "../src/cli/watch-render.ts";
 import { Decision } from "../src/cli/watch-decision-view.ts";
-import { Events, Turn } from "../src/cli/watch-turn.ts";
+import { Events } from "../src/cli/watch-turn.ts";
+import { TurnFacts } from "../src/cli/watch-run-tabs-view.ts";
 import { found, rendered } from "./watch-dom.ts";
 import {
   at,
@@ -14,56 +14,9 @@ import {
   shownClock,
 } from "./watch-sample.ts";
 
-const item = (kind: string, text: string): WatchItem => ({ kind, text });
-const activity = [
-  item("say", "I read <script>alert(1)</script>."),
-  item("tool", "Bash: git status"),
-  item("tool", "Read: /a/b.ts"),
-  item("error", "exit code 1"),
-  item("tool", "Bash: npm test"),
-  item("say", "The test fails as expected."),
-  item("tool", "Edit: /a/b.ts"),
-  item("result", "Done. (cost 1.03 USD)"),
-  item("tool", "Bash: sleep 1"),
-  item("tool", "Bash: <wait>"),
-];
-
 function includes(html: string, parts: readonly string[]): void {
   for (const part of parts) assert.ok(html.includes(part), `${part}\n${html}`);
 }
-
-await test("CLV-016 the watch page folds the tool calls between two messages of the worker into one group with its counts, and it shows each message, each result and a single tool call as a line", () => {
-  const turn = sampleTurn({ ...reviewedTurn, activity });
-  const html = rendered(component(Turn, { turn, now: at("21:40:00") }));
-  includes(html, [
-    '<section class="turn code-window"><h3 class="code-head">Agent turn · completed · 7 min 38 s · 1.03 USD</h3>',
-    '<p class="meta">Branch cloving/clv-016-a6f7ef47 · work tree clv-016-a6f7ef47</p>',
-    '<div class="activity"><div class="item say">I read &lt;script&gt;alert(1)&lt;/script&gt;.</div>',
-    '<details class="tools"><summary>3 tool calls · <span class="bad">1 error</span><span class="last">Bash: npm test</span></summary><div class="item tool" title="Bash: git status">Bash: git status</div>',
-    '<div class="item error">exit code 1</div>',
-    '</details><div class="item say">The test fails as expected.</div><div class="item tool" title="Edit: /a/b.ts">Edit: /a/b.ts</div><div class="item result">Done. (cost 1.03 USD)</div>',
-    '<details class="tools"><summary>2 tool calls<span class="last">Bash: &lt;wait&gt;</span></summary><div class="item tool" title="Bash: sleep 1">Bash: sleep 1</div><div class="item tool" title="Bash: &lt;wait&gt;">Bash: &lt;wait&gt;</div></details></div></section>',
-  ]);
-  assert.equal(html.includes("<script>"), false);
-  assert.equal(html.includes(" open>"), false);
-});
-
-await test("CLV-016 the watch page keeps the last group of tool calls open while the turn is in work, with a time span to the present time, and it shows a turn that failed with no time", () => {
-  const working = sampleTurn({ activity });
-  const html = rendered(
-    component(Turn, { turn: working, now: at("21:26:44") }),
-  );
-  includes(html, [
-    '<h3 class="code-head">Agent turn · in work · 42 s · Price not known</h3>',
-    '<details class="tools"><summary>3 tool calls',
-    '<details class="tools" open><summary>2 tool calls',
-  ]);
-  const failed = sampleTurn({ outcome: "failed" });
-  includes(rendered(component(Turn, { turn: failed, now: at("21:26:44") })), [
-    '<h3 class="code-head">Agent turn · failed · Price not known</h3>',
-    '<div class="activity"></div>',
-  ]);
-});
 
 await test("CLV-016 the watch page shows a pending decision with the commits, the changed files and the report of the worker, with the full text open and one command for each answer", () => {
   const html = rendered(
@@ -157,14 +110,7 @@ await test("CLV-016 CLV-357 the watch page lists the events of a run open, with 
   );
 });
 
-await test("CLV-098 turn, event and command code windows reuse headings and keep disclosure and copy controls", () => {
-  const turn = rendered(
-    component(Turn, { turn: sampleTurn(), now: at("21:26:44") }),
-  );
-  assert.match(
-    turn,
-    /<section class="turn code-window"><h3 class="code-head">Agent turn · in work · 42 s · Price not known<\/h3>/,
-  );
+await test("CLV-098 event and command code windows keep their headings and copy controls, and the event list has no disclosure", () => {
   assert.doesNotMatch(
     rendered(component(Events, { events: [] })),
     /<details|<summary/,
@@ -185,11 +131,11 @@ await test("CLV-098 turn, event and command code windows reuse headings and keep
   assert.match(decision, /<pre class="request">/);
 });
 
-await test("CLV-094 turn headings retain zero prices and selected counts beside unknown fields", () => {
+await test("CLV-094 CLV-357 the turn block of Details keeps zero prices and zero token counts and hides unknown prices and counts", () => {
   for (const [costUsd, price] of [
-    [null, "Price not known"],
-    [-1, "Price not known"],
-    [Infinity, "Price not known"],
+    [null, null],
+    [-1, null],
+    [Infinity, null],
     [0, "0.00 USD"],
     [0.25, "0.25 USD"],
   ] as const) {
@@ -201,11 +147,15 @@ await test("CLV-094 turn headings retain zero prices and selected counts beside 
         output_tokens: 2,
       },
     });
-    const html = rendered(component(Turn, { turn, now: at("21:40:00") }));
-    assert.match(
-      html,
-      /Input tokens: 0 · Cache read tokens: Token usage not known · Output tokens: 2/,
+    const html = rendered(
+      component(TurnFacts, { turn, position: 1, now: at("21:40:00") }),
     );
-    assert.ok(html.includes(price));
+    assert.match(html, /<dt>Tokens<\/dt><dd>0 input · 2 output<\/dd>/);
+    assert.doesNotMatch(html, /not known/);
+    assert.equal(
+      html.includes(price ?? "USD"),
+      price !== null,
+      String(costUsd),
+    );
   }
 });

@@ -24,7 +24,7 @@ const ready = `(async () => {
 
 const firstEvent = `(async () => {
   const frame = () => new Promise((resolve) => requestAnimationFrame(resolve));
-  await frame();
+  for (let attempt = 0; attempt < 120 && document.querySelector("#run-tab-events").getAttribute("aria-selected") !== "true"; attempt++) await frame();
   await frame();
   const row = document.querySelector("#run-panel-events .event");
   const box = row.getBoundingClientRect();

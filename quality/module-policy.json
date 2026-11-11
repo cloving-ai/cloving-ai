@@ -2089,6 +2089,8 @@
     "test/watch-run-command-view.test.ts": "test",
     "test/watch-run-command.test.ts": "test",
     "test/watch-run-menu-browser.test.ts": "test",
+    "test/watch-run-page-fixture.ts": "test",
+    "test/watch-run-page-tabs.test.ts": "test",
     "test/watch-run-page.test.ts": "test",
     "test/watch-run-tabs-browser.test.ts": "test",
     "test/watch-run-tabs.test.ts": "test",

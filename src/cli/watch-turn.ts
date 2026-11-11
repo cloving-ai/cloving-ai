@@ -1,46 +1,14 @@
-import { priceText, usageText, attemptText } from "./usage-render.ts";
-import { component, element, type Shown } from "./watch-element.ts";
+import { priceText } from "./usage-render.ts";
+import { element, type Shown } from "./watch-element.ts";
 import {
   clockTime,
   counted,
-  groupActivity,
   turnTime,
   type Copying,
   type WatchEvent,
-  type WatchItem,
   type WatchRun,
   type WatchTurn,
 } from "./watch-render.ts";
-
-export function Item(props: { readonly item: WatchItem }): Shown {
-  const { kind, text } = props.item;
-  const title = kind === "tool" ? text : undefined;
-  return element("div", { class: `item ${kind}`, title, children: text });
-}
-
-export function Group(props: {
-  readonly items: readonly WatchItem[];
-  readonly open: boolean;
-}): Shown {
-  const { items, open } = props;
-  const lines = items.map((item) => component(Item, { item }));
-  if (items.length < 2) return lines;
-  const errors = items.filter((item) => item.kind === "error").length;
-  const failed = element("span", {
-    class: "bad",
-    children: counted(errors, "error"),
-  });
-  const summary = [
-    counted(items.length - errors, "tool call"),
-    errors === 0 ? null : [" · ", failed],
-    element("span", { class: "last", children: items.at(-1)?.text }),
-  ];
-  return element("details", {
-    class: "tools",
-    open,
-    children: [element("summary", { children: summary }), lines],
-  });
-}
 
 export function turnHeading(
   turn: WatchTurn,
@@ -50,43 +18,6 @@ export function turnHeading(
   return [shown.label, turn.outcome, turnTime(turn, shown.now), cost]
     .filter((part) => part !== "")
     .join(" · ");
-}
-
-export function Turn(props: {
-  readonly turn: WatchTurn;
-  readonly now: string;
-}): Shown {
-  const { turn, now } = props;
-  const groups = groupActivity(turn.activity);
-  const working = turn.outcome === "in work";
-  const place = `Branch ${turn.branch} · work tree ${turn.worktree}`;
-  const activity = groups.map((items, index) =>
-    component(Group, { items, open: working && index === groups.length - 1 }),
-  );
-  return element("section", {
-    class: "turn code-window",
-    children: [
-      element("h3", {
-        class: "code-head",
-        children: turnHeading(turn, { label: "Agent turn", now }),
-      }),
-      element("p", { class: "meta", children: place }),
-      turn.harness === undefined
-        ? null
-        : element("p", { class: "meta", children: `Harness: ${turn.harness}` }),
-      element("p", {
-        class: "turn-usage",
-        children: usageText(turn.usage),
-      }),
-      ...(turn.attempts ?? []).map((attempt) =>
-        element("p", {
-          class: "turn-attempt",
-          children: attemptText(attempt),
-        }),
-      ),
-      element("div", { class: "activity", children: activity }),
-    ],
-  });
 }
 
 export function Work(props: { readonly turn: WatchTurn }): Shown {
@@ -216,9 +147,6 @@ export function Review(props: {
 
 export const turnFunctions = [
   turnHeading,
-  Item,
-  Group,
-  Turn,
   Work,
   Command,
   Events,

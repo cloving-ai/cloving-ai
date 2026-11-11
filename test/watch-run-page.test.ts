@@ -1,146 +1,20 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { test } from "node:test";
-import { component } from "../src/cli/watch-element.ts";
-import type { WatchModel, WatchRun } from "../src/cli/watch-render.ts";
-import type { RunCommandControls } from "../src/cli/watch-run-command-view.ts";
-import type { SteerControls } from "../src/cli/watch-steer-view.ts";
-import type { RenameControls } from "../src/cli/watch-rename-view.ts";
-import { Page } from "../src/cli/watch-view.ts";
 import { found, rendered } from "./watch-dom.ts";
 import { renameControls, type RenameCalls } from "./watch-rename-fixture.ts";
 import { rule, rules } from "./watch-style-fixture.ts";
 import {
-  at,
-  noCopy,
-  phases,
-  sampleModel,
-  sampleRun,
-  sampleTurn,
-} from "./watch-sample.ts";
-
-const quiet =
-  "No observation arrived in the liveness period. Silence alone is not a failure.";
-
-const working = sampleRun({
-  runId: "run-7",
-  state: "running",
-  code: "no-recent-observation",
-  detail: quiet,
-  decisions: [],
-  label: "#726",
-  title: "Find commit signatures",
-  phases: phases(["done", "done", "active"]),
-  turns: [
-    sampleTurn({ activity: [{ kind: "say", text: "I run the tests." }] }),
-  ],
-  pullRequest: {
-    number: 732,
-    url: "https://github.com/cloving-ai/cloving-ai/pull/732",
-  },
-  reviews: [
-    { round: 1, score: 4, commit: "0ff2f41aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
-    { round: 2, score: 3, commit: "ca90684aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
-  ],
-  claudeCostUsd: 9.24,
-  chain: { position: 1, limit: 5 },
-});
-
-const bare = sampleRun({
-  runId: "run-8",
-  state: "running",
-  code: "run-running",
-  detail: "The run is in work.",
-  decisions: [],
-  turns: [],
-  claudeCostUsd: null,
-  phases: phases(["done", "done", "active"]),
-});
-
-const ended = { ...working, runId: "run-9", state: "completed" };
-
-function model(): WatchModel {
-  return {
-    ...sampleModel([working, bare, ended]),
-    queue: {
-      state: "running",
-      busy: 1,
-      lanes: 3,
-      skipped: [{ ticketId: "234", reason: "ticket-active" }],
-    },
-  };
-}
-
-interface Controls {
-  readonly renaming?: RenameControls;
-  readonly controlling?: RunCommandControls;
-  readonly steering?: SteerControls;
-}
-
-function page(run: WatchRun, controls: Controls = {}) {
-  return component(Page, {
-    model: model(),
-    selected: `run=${run.runId}`,
-    now: at("21:34:41"),
-    stale: false,
-    copying: noCopy,
-    ...controls,
-  });
-}
-
-function commands(calls: string[]): RunCommandControls {
-  return {
-    busy: [],
-    messages: {},
-    asking: null,
-    onCommand: (runId, command) => calls.push(`${command} ${runId}`),
-    onAsk: (runId, place) => calls.push(`ask ${runId} ${place}`),
-    onKeep: () => calls.push("keep"),
-  };
-}
-
-function steers(
-  calls: string[],
-  changes: Partial<SteerControls> = {},
-): SteerControls {
-  return {
-    open: null,
-    note: "",
-    now: false,
-    busy: [],
-    messages: {},
-    onOpen: (runId) => calls.push(`steer ${runId}`),
-    onClose: () => undefined,
-    onNote: () => undefined,
-    onNow: () => undefined,
-    onSend: () => undefined,
-    ...changes,
-  };
-}
-
-function all(calls: string[]): Controls {
-  return {
-    renaming: renameControls({
-      opened: [],
-      saved: [],
-      cleared: [],
-      closed: [],
-    }),
-    controlling: commands(calls),
-    steering: steers(calls),
-  };
-}
-
-function banner(html: string): string {
-  const start = html.indexOf('<section class="banner');
-  return html.slice(start, html.indexOf("</section>", start));
-}
-
-function click(node: Readonly<Record<string, unknown>> | undefined): void {
-  const handler = node?.["onClick"];
-  assert.ok(typeof handler === "function");
-  Reflect.apply(handler, undefined, []);
-}
+  working,
+  bare,
+  ended,
+  page,
+  commands,
+  steers,
+  all,
+  banner,
+  click,
+} from "./watch-run-page-fixture.ts";
 
 await test("CLV-357 the banner holds the back link, the state icon, the label and the title, and one action bar with Steer, Pause and a ⋯ menu that holds Rename and Drop", () => {
   const html = banner(rendered(page(working, all([]))));
@@ -182,54 +56,6 @@ await test("CLV-357 the facts line shows the pull request with the latest review
   const plain = rendered(page(bare));
   const head = plain.slice(0, plain.indexOf('class="run-tabs"'));
   assert.doesNotMatch(head, /not known|run-facts/);
-});
-
-await test("CLV-357 the run page has five tabs, Details holds the totals, the reason, the IDs, the effect units and the chain, and the page has no queue details and no footer line", () => {
-  const html = rendered(page(working));
-  assert.deepEqual(
-    [...html.matchAll(/<button[^>]*role="tab"[^>]*>([^<]*)<\/button>/g)].map(
-      (match) => match[1],
-    ),
-    ["Transcript", "Agent turn", "Pull request", "Events (2)", "Details"],
-  );
-  const details = html.slice(html.indexOf('id="run-panel-details"'));
-  for (const part of [
-    "Run totals so far",
-    "9.24 USD",
-    "no-recent-observation: " + quiet,
-    "run-7",
-    "clv-016-a6f7ef47",
-    "develop-ticket",
-    "1 of 8 effect units",
-    "run 1 of 5",
-  ])
-    assert.ok(details.includes(part), part);
-  const pull = html.slice(
-    html.indexOf('id="run-panel-pull"'),
-    html.indexOf('id="run-panel-events"'),
-  );
-  assert.match(pull, /Round 1 · Review 4\/5 · commit 0ff2f41/);
-  assert.doesNotMatch(html, /queue-waiting|meta foot/);
-  assert.match(html, /1 of 3 lanes busy/);
-  const none = rendered(page(bare));
-  assert.match(
-    none.slice(none.indexOf('id="run-panel-transcript"')),
-    /^id="run-panel-transcript"[^>]*><p class="meta">No agent turn for this run\.<\/p>/,
-  );
-});
-
-await test("CLV-357 the Events tab shows the event rows at once, with no closed details wrapper and no All events toggle", () => {
-  const html = rendered(page(working));
-  const events = html.slice(
-    html.indexOf('id="run-panel-events"'),
-    html.indexOf('id="run-panel-details"'),
-  );
-  assert.doesNotMatch(events, /<details|<summary|All events/);
-  assert.match(
-    events,
-    /<section class="events code-window"><div class="event">[^<]* run\.created<\/div>/,
-  );
-  assert.match(html, /role="tab"[^>]*>Events \(2\)<\/button>/);
 });
 
 await test("CLV-357 the pencil and the menu open the rename, the form sits in the banner, Enter saves and Escape cancels", () => {
@@ -370,7 +196,7 @@ await test("CLV-357 the README describes the banner, the facts line and the tabs
     /The menu is the same popover as the token menu of the floor\. A pick in it closes it at once\. It also closes a moment after the pointer leaves, or with Escape\./,
     /\*\*Events\*\* shows the command effects and the list of all events, open at once with no further click, with the count in the tab name\./,
     /Under the banner, one line shows the pull request with its latest review score, the cost and the place of the run in its chain\. A fact that is not known does not show\./,
-    /\*\*Details\*\* shows the run totals, the reason code and text, the run ID, the turn target, the workflow, the effect units, the chain and the sources of the label and the title\./,
+    /\*\*Details\*\* shows the run totals, the reason code and text, the run ID, the turn target, the workflow, the effect units, the chain and the sources of the label and the title\. Under them, one block for each agent turn shows its state, its time, its cost, its branch, its work tree, its harness, its token counts and its attempts\. A value that is not known does not show\./,
   ])
     assert.match(readme, part);
 });
