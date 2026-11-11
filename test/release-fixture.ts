@@ -102,6 +102,8 @@ test() {
 curl() {
   [[ "\${*:1:10}" == '--fail --silent --show-error --location --retry 2 --connect-timeout 20 --max-time 60' && "\${11}" == -o ]] || exit 94
   printf 'curl %s %s\\n' "$(basename "\${12}")" "\${13}"
+  local host="\${13#https://}"
+  [[ " $CURL_DOWN " == *" \${host%%/*} "* ]] && return 6
   return "$CURL_STATUS"
 }
 sha256sum() {
