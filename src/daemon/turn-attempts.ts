@@ -313,5 +313,7 @@ export function kindOf(attempts: Attempts, end: TurnEnd) {
   if (output === "text" || !["claude", "codex"].includes(worker ?? "claude"))
     return null;
   if (worker !== "codex") return end.retryKind ?? retryKind(end.result);
-  return capacityRefusal(end.result) ? "capacity" : null;
+  return end.retryKind === "capacity" || capacityRefusal(end.result)
+    ? "capacity"
+    : null;
 }

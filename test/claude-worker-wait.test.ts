@@ -3,6 +3,8 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
 import type { TurnRecovery } from "../src/turn-recovery.ts";
+import { commandModel } from "../src/token-prices.ts";
+import { fallbackCommand } from "./fallback-worker-fixture.ts";
 import {
   field,
   intent,
@@ -261,4 +263,74 @@ await test("CLV-348 a saved wait with no valid wait end, turn start or work tree
       );
     }
     assert.equal(scene.turns().length, 1);
+  }));
+
+await test("CLV-348 the continued wait retires the shutdown result, and a crash during it ends the turn as interrupted", () =>
+  withScene(async (scene) => {
+    await waitingTurn(scene, "capacity-once");
+    savedWait(scene, 40_000);
+    const held = heldWaits();
+    const second = scene.worker("capacity-once", {
+      retryDelay: held.retryDelay,
+    });
+    assert.equal((await second.reconcile(intent(), signal)).kind, "accepted");
+    await until(() => held.calls.length === 1);
+    assert.equal(record(scene, "operation-1/result.json"), undefined);
+    const third = scene.worker("capacity-once");
+    const reply = await third.reconcile(intent(), signal);
+    assert.equal(field(reply, "reason"), "claude-turn-interrupted");
+    assert.equal(scene.turns().length, 1);
+    await second.close();
+  }));
+
+await test("CLV-348 the next attempt after a continued wait runs with no shutdown result", () =>
+  withScene(async (scene) => {
+    await waitingTurn(scene, "capacity-hold");
+    savedWait(scene, -1000);
+    const next = scene.worker("capacity-hold");
+    assert.equal((await next.reconcile(intent(), signal)).kind, "accepted");
+    await until(() => scene.turns().length === 2);
+    await until(
+      () =>
+        field(record(scene, "operation-1/started.json"), "phase") === "running",
+    );
+    assert.equal(record(scene, "operation-1/result.json"), undefined);
+    await next.close();
+  }));
+
+await test("CLV-348 a Codex turn that restarts in its second capacity wait starts the third attempt with the fallback model", () =>
+  withScene(async (scene) => {
+    const settings = {
+      worker: "codex",
+      command: fallbackCommand(scene),
+      fallbackModels: ["gpt-6-astra"],
+    };
+    const passed = passedWaits();
+    const held = heldWaits();
+    const first = scene.worker("unused", {
+      ...settings,
+      retryDelay: (milliseconds, stop) =>
+        passed.calls.length === 0
+          ? passed.retryDelay(milliseconds, stop)
+          : held.retryDelay(milliseconds, stop),
+    });
+    await first.deliver(intent(), signal);
+    await until(() => held.calls.length === 1);
+    assert.deepEqual([...passed.calls, ...held.calls], [60_000, 180_000]);
+    await first.close({ turns: "keep" });
+    const next = scene.worker("unused", {
+      ...settings,
+      retryDelay: () => Promise.resolve(),
+    });
+    assert.equal((await next.reconcile(intent(), signal)).kind, "accepted");
+    await until(() => scene.reports.length === 1);
+    assert.deepEqual(
+      scene.turns().map((turn) => commandModel(["worker", ...turn.arguments])),
+      ["gpt-6.1-sol", "gpt-6.1-sol", "gpt-6-astra"],
+    );
+    assert.equal(
+      field(record(scene, "operation-1/attempt-3.json"), "model"),
+      "gpt-6-astra",
+    );
+    assert.equal(scene.reports[0]?.outcome, "completed");
   }));

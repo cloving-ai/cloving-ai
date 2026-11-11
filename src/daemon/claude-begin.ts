@@ -3,6 +3,7 @@ import { profileCommand, type TurnProfile } from "../turn-profile.ts";
 import type { RunningTurn } from "./claude-turn.ts";
 import { turnOutcome } from "./turn-report.ts";
 import { startRetriedTurn } from "./retrying-turn.ts";
+import { retiredResult } from "./claude-wait.ts";
 import { reportOf, writeRecord as written } from "./operation-journal.ts";
 import type { TurnResume } from "./claude-recovery.ts";
 import type { TurnAttach, WaitResume } from "./turn-attempts.ts";
@@ -67,12 +68,14 @@ export async function begun(
   };
   start.signal.addEventListener("abort", cancel, { once: true });
   if (start.signal.aborted) cancel();
+  const environment = await turnStartEnvironment(parts.settings, start);
+  if (start.wait !== undefined) await retiredResult(folder);
   const turn = startRetriedTurn(
     {
       ...harness,
       resultBytes: claudeLimits.resultBytes,
       command: profileCommand(harness.command, start.profile),
-      environment: await turnStartEnvironment(parts.settings, start),
+      environment,
       turnId: `${intent.runId}-${key}`,
       directory: tree.path,
       folder,
