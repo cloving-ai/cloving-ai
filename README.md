@@ -60,7 +60,7 @@ an idea ─> idea-to-issue ──hand-off──> develop ─> merged pull reques
 - `review-day` hands work to the workflow ID `idea-to-issue`. To keep both copies of `idea-to-issue`, give the first copy another ID with `cloving templates copy idea-to-issue --id <id>`.
 - The three templates are in the package, and each template has its own tests. A copy is your code. Change it as you want.
 
-Open issues plan more built-in steps. These steps are not built yet: [#619](https://github.com/cloving-ai/cloving-ai/issues/619) adds a review panel to `develop`, and [#633](https://github.com/cloving-ai/cloving-ai/issues/633) answers review threads on pull requests that have no run.
+Open issues plan more built-in steps. Two of these steps are available: the `panel` option of `develop` adds a review panel ([#619](https://github.com/cloving-ai/cloving-ai/issues/619)), and the `answer-review` template answers review threads on pull requests that have no run ([#633](https://github.com/cloving-ai/cloving-ai/issues/633)).
 
 ### An example of a larger factory
 
@@ -92,7 +92,7 @@ npx cloving init
 Run the command in a git repository. You need these items:
 
 - macOS or Linux on arm64 or x64. Windows is not supported.
-- Node.js and npm in the ranges of `package.json` (see [Install](#install)).
+- Node 24.22.1 or a later Node 24 version, or Node 26.9.0 or a later Node 26 version (see [Install](#install)).
 - A git repository.
 - A coding agent on the search path, with its login: `claude`, `codex`, `cursor-agent`, `gemini`, `grok` or `opencode`. Another agent needs a one-shot command form.
 - For workflows that use GitHub: the `gh` command with a login, and an `origin` remote on GitHub or GitHub Enterprise. Cloving supports no other code host.
@@ -155,6 +155,16 @@ When you trust a step, change it to a hands-off option. Ask the setup agent agai
 npm install --global cloving --ignore-scripts
 ```
 
+When Cloving runs from `npx`, these commands start with `npx cloving@<version>`:
+
+- The commands for a second terminal that `cloving start` prints, for example `npx cloving@<version> --repository <repository> status`.
+- The decision commands that `cloving questions` prints.
+- The decision, resume and status commands in a notification.
+- The fixes that `cloving doctor` prints.
+- The start and first-run commands in the last message of the setup agent.
+
+The version is the version of the running package. These commands work in a new terminal, and they keep the client and the service on the same release. Other messages and the usage text show the `cloving` form. A global or project-local installation prints the `cloving` form for all commands.
+
 `npx` runs the install scripts of three dependencies: `esbuild`, `@swc/core` and the optional `cbor-extract`. To install with no scripts, run the command above first. Then run `cloving init`.
 
 ## Make the factory yours
@@ -196,7 +206,7 @@ Run `cloving workflows test <workflow-id>` after each change. Run `cloving reloa
 - `waitForRun({ runId, maximumWaitSeconds })` waits for the outcome of a run that this run started. The workflow can select its next step from that outcome, for example from its `promotionId`.
 - A chain of hand-offs has at most five runs. The first run of the chain counts. Cloving records the parent and the chain of each run, and the watch page links them.
 - A `schedule` in the declaration starts a workflow at a fixed interval. `review-day` uses a schedule.
-- A workflow with `"queue": true` takes ready tickets from your tracker through your commands, in up to four lanes.
+- A workflow with `"queue": true` takes ready tickets from your tracker through your commands, in up to 16 lanes.
 - The label `cloving: ready` can connect workflows through GitHub. `idea-to-issue` can add it, and your next-ticket command can select the issues that have it.
 
 ## Use Cloving in a team
@@ -258,7 +268,7 @@ Cloving develops itself through `develop`, a private copy of the develop templat
 
 ## Install
 
-Cloving supports macOS and Linux on arm64 and x64, with the Node and npm ranges in `package.json`. Workflow admission accepts the same Node range: Node 24.22.1 or a later Node 24 version, and Node 26.9.0 or a later Node 26 version. CI runs the developer gate and packed-install checks on macOS 15 arm64 and Ubuntu 24.04 x64 with Node 26.9.0 and npm 11.19.1. On a push to `main`, CI also runs the Ubuntu checks with Node 24.22.1. The `quality_linux` check passes only when each Ubuntu job of the run passes. A pull request runs the Ubuntu checks on Node 26.9.0 only, and it runs only the platform tests on macOS (see [Development of Cloving](#development-of-cloving)). Windows is unsupported.
+Cloving supports macOS and Linux on arm64 and x64. It supports Node 24.22.1 or a later Node 24 version, or Node 26.9.0 or a later Node 26 version. Workflow admission accepts the same Node versions. On an unsupported Node, each command stops with `unsupported-node` and exit status 1 before it does other work. The message names the supported Node versions and the fix. These commands still run: `cloving doctor`, `--help`, `--version` and the help of each command. A source checkout also needs npm 11.19.1 or a later npm 11 version. The `devEngines` field of `package.json` holds the Node and npm ranges, and npm checks them for `install`, `ci` and `run` in the checkout. CI runs the developer gate and packed-install checks on macOS 15 arm64 and Ubuntu 24.04 x64 with Node 26.9.0 and npm 11.19.1. On a push to `main`, CI also runs the Ubuntu checks with Node 24.22.1. The `quality_linux` check passes only when each Ubuntu job of the run passes. A pull request runs the Ubuntu checks on Node 26.9.0 only, and it runs only the platform tests on macOS (see [Development of Cloving](#development-of-cloving)). Windows is unsupported.
 
 A run needs these tools:
 
@@ -425,7 +435,7 @@ The panel leaves out a failed or blocked run when its work is finished:
 
 With watch actions on, each failed or blocked run in the panel has a **Dismiss** button. The button sends the same command as `cloving dismiss <run-id>`. The service records the dismissal as the event `run.dismissed` of the run, so the run stays out of the panel after a restart. A dismissal does not change the state, the files or the pull request of the run. When the run did not end, the service refuses the dismissal with `run-active`.
 
-With watch actions on, the run detail of an active run has **Pause** and **Drop**. When the run is paused, **Resume** replaces **Pause**. The card of an active run on a board and the token of an active run on the floor have the same controls in a small menu (`⋯`). Each paused run in **Needs you** has **Resume** and **Drop**. A run that ended has no control. Each control is a button that you can reach and press with the keyboard.
+With watch actions on, the run detail of an active run has **Pause** and **Drop**. When the run is paused, **Resume** replaces **Pause**. The card of an active run on a board has the same controls in a small menu (`⋯`). The token of an active run on the floor has these controls and **Rename** in a menu at the right end of the token (`⋯`). The menu opens when the pointer is on the `⋯`, when the `⋯` has the keyboard focus, or with a click or a tap, and it stays open while the pointer moves into it or while one of its fields has the focus. Escape, a click outside and the pointer leaving close it. Each paused run in **Needs you** has **Resume** and **Drop**. A run that ended has no control. Each control is a button that you can reach and press with the keyboard.
 
 - **Pause**, **Resume** and **Drop** send the same request as `cloving pause`, `cloving resume` and `cloving drop`, with the revision of the run on the page.
 - **Drop** first shows the line `Drop this run? Its work tree and pull request stay.` with **Drop the run** and **Keep it**, and the focus moves to **Keep it**. **Keep it** sends nothing and moves the focus back to **Drop**. Only the control that you pressed shows the line. A dropped run ends as `cancelled`. Its work tree and its pull request stay.
@@ -534,17 +544,17 @@ The run list has the active runs and the runs of the last 7 days. The run detail
 
 The run detail has one tab bar above the agent turns, with the tabs **Transcript** and **Agent turn**. **Transcript** is selected by default. It shows a transcript for each agent turn. **Agent turn** shows the detail of each turn: the branch, the work tree, the harness, the tokens and the list of tool calls. The code review of each round shows under its turn in both tabs. The selected tab stays selected when the page refreshes, and a link with a turn selects **Transcript**.
 
-The head of each transcript names its turn with its state, its time and its cost, for example `Turn 2 · in work · 2 h 37 min · 4.10 USD`. The transcript shows the turn as the terminal of Claude Code shows it, in a dark terminal panel. The panel is dark in each theme. It has its own color tokens (see the themes below). The panel of an open turn fills the height of the window below the header.
+The head of each transcript names its turn with its state, its time and its cost, for example `Turn 2 · in work · 2 h 37 min · 4.10 USD`. The transcript shows the turn as the terminal of Claude Code shows it, in a dark terminal panel. The panel is dark in each theme. It has its own color tokens (see the themes below). The lines of an open turn take at most 500 pixels of height, with their own scroll bar. A short turn takes only the height of its lines. The expand button `⤢` at the right end of the head of the turn shows all its lines in the page, and the collapse button `⤡` returns to 500 pixels. The full-screen view has no limit and no expand button. An expanded turn does not scroll the page by itself. When the end of the turn is below the window, **Jump to the end** counts the new entries and scrolls the page to the end of the turn.
 
 The turn in work is expanded and follows the stream while the agent works. When no turn is in work, the last agent turn (the turn that started last) is expanded. The other turns open with **Show**. The **Link** of a turn opens `#run=<run-id>&turn=<operation-id>`: the run detail with that turn expanded in place of the last turn. **Full screen** opens `#run=<run-id>&turn=<operation-id>&view=terminal`: only the panel of that turn, at the full size of the window. A transcript that you show or hide keeps that state until you leave the run detail.
 
 The service reads the `turn.jsonl` file of the journal folder of the turn and makes one entry from each line. The worker also keeps the prompt of each attempt in the file `turn-prompts.jsonl` of the same folder, with mode 600 and the same retention as `turn.jsonl`. The file has one line for each attempt, with the number of the attempt and its prompt. The watch page does not read the journal. An entry has one of these kinds:
 
 - `prompt`: the prompt of an attempt. It is the first entry of the attempt, after the `Attempt N` notice of a later attempt. The view shows `> ` and the first 12 lines of the prompt, and `… +N lines` opens the rest. An attempt from before Cloving kept the prompt has no `prompt` entry, also when a later attempt of the same turn has one.
-- `assistant`: the text of the agent. The view shows `⏺` and the text with its line breaks.
+- `assistant`: the text of the agent. The view shows `⏺` and the text with its Markdown: bold, italic and code text, headings, lists, fenced code and links. A run of blank lines shows as one gap.
 - `thinking`: the thinking of the agent. The view shows `✻ Thinking…`, closed until you open it.
 - `tool-call`: a tool call. The view shows `⏺ Tool(argument)` with the tool name in bold, and a click opens the full input. The argument is the first line of the command for `Bash` (at most 120 characters), the file path relative to the work tree for `Read`, `Write`, `Edit`, `MultiEdit` and `NotebookEdit`, the pattern and the path for `Grep`, the pattern for `Glob`, the URL for `WebFetch`, the query for `WebSearch` and the description for `Task` and `Agent`. For another tool, it is the first text field of the input.
-- `tool-result`: the output of a tool. The view folds it under its call to one dim line: an indented `⎿` and the count of lines, for example `⎿ 42 lines`. A click on that line opens all the lines of the output. An error result shows `⎿ Error · N lines` in red. An empty output shows `⎿ (No content)` and does not fold.
+- `tool-result`: the output of a tool. The view folds it to one dim count at the end of the line of its call: `⎿` and the count of lines, for example `⎿ 42 lines`. Thus each tool call takes one line. A click on the count opens all the lines of the output under the call. An error result shows `⎿ Error · N lines` in red. An empty output shows `⎿ (No content)` and does not fold.
 - `notice`: a system event, for example a started or ended background task, a retry or a rate limit. A line of another harness, or a line that the service cannot read, becomes a notice with its raw text. The view shows one dim line.
 - `result`: the end of the turn with its cost, its turns and its stop reason.
 
@@ -562,7 +572,7 @@ Cloving reads Claude stream JSON. The worker translates the stream of another ha
 
 The view scrolls with new entries while you are at the end. When you scroll up, it stops, and **Jump to the end** shows the count of new entries. The page keeps at most 2000 entries, and **Load earlier entries** loads the entries before them.
 
-The view shows text only. It never renders HTML or Markdown from a transcript. The service removes terminal control sequences, and replaces GitHub token patterns (`ghp_`, `gho_`, `ghu_`, `ghs_`, `ghr_` and `github_pat_`) and the texts of the private setting `privateTexts` with `[hidden]`. A text above 64 KiB is cut, and the entry tells how many bytes the cut left out. When the retention archived or removed the journal folder of a turn, the section shows `The transcript of this turn is not kept`, and the routes reply `410` with the code `transcript-not-kept`. When a read fails, the section shows the reason and a **Retry** button. The page does not read a failed or removed transcript again by itself.
+The view never renders HTML from a transcript: HTML in a text shows as text. A link opens in a new tab only when its address starts with `http://` or `https://`; another link shows as text. The service removes terminal control sequences, and replaces GitHub token patterns (`ghp_`, `gho_`, `ghu_`, `ghs_`, `ghr_` and `github_pat_`) and the texts of the private setting `privateTexts` with `[hidden]`. A text above 64 KiB is cut, and the entry tells how many bytes the cut left out. When the retention archived or removed the journal folder of a turn, the section shows `The transcript of this turn is not kept`, and the routes reply `410` with the code `transcript-not-kept`. When a read fails, the section shows the reason and a **Retry** button. The page does not read a failed or removed transcript again by itself.
 
 #### Themes of the watch page
 
@@ -1205,7 +1215,7 @@ The last worker report must end with exactly one line: `Ticket status: complete`
 
 After a merge, a protected GitHub operation updates the issue body and labels. Complete work closes the issue with reason `completed` and adds "Completed in pull request #M." to `## Cloving status`. Partial work keeps the issue open and appends `- Pull request #M: partial. Remaining: ...` to that section at the end of the body, preserving earlier partial lines and other body text. Items are separated by semicolons. The issue privacy check runs before new remaining text is written; a refusal uses "Remaining work is in the private run report." instead. No issue comment is posted. Status writes add and remove only workflow labels, preserving unrelated label edits. Before a body write, Cloving rereads the issue and refuses a changed body with `github-issue-conflict`; the merged outcome records `issueUpdate: failed`. GitHub does not support conditional PATCH requests for this endpoint, so this check cannot make the read and write atomic.
 
-Partial work removes `cloving: in progress` and adds `cloving: ready`, so the next queue cycle can select the same issue and read its remaining work from the issue body. The third partial run adds `cloving: blocked` instead of `cloving: ready`. Completion removes these workflow labels. Status operations reconcile the pull request number in the stored history after a restart to avoid duplicate writes. The unmodified develop template declares an effect limit of 31 units.
+Partial work removes `cloving: in progress` and adds `cloving: ready`, so the next queue cycle can select the same issue and read its remaining work from the issue body. The third partial run adds `cloving: blocked` instead of `cloving: ready`. Completion removes these workflow labels. Status operations reconcile the pull request number in the stored history after a restart to avoid duplicate writes. The unmodified develop template declares an effect limit of 87 units.
 
 When a worker turn ends with `claude-turn-interrupted`, the develop template runs the turn again once in the same work tree. This occurs when the daemon cannot resume an open turn after a restart, for example when the turn has no recorded session. The prompt of the new turn tells the worker that the earlier turn stopped before its report, and that the work tree holds its work. A second interruption of the same turn ends the run as blocked with the reason `turn-interrupted` and adds `cloving: blocked`. Other turn failures fail the run.
 
@@ -1575,7 +1585,7 @@ When a run stops and the pull request stays open, read the review. Fix the work 
 
 Know these limits before you start:
 
-- The cost limit of each Claude turn is 5 USD. A run of `develop` can have up to four Claude turns. `CLOVING_CLAUDE_COMMAND` changes the command and its limit.
+- The cost limit of each Claude turn is 5 USD. A run of `develop` can have up to six rounds, and each round has one Claude turn. An interrupted turn runs again once. `CLOVING_CLAUDE_COMMAND` changes the command and its limit.
 - The text of a pull request is public in a public repository. The worker gets an instruction to write no local file path in a file or in a commit message.
 - `CLOVING_PRIVATE_TEXTS` adds texts that the GitHub worker refuses to push, for example the names of private projects. The path of the home folder is always refused.
 - The default develop workflow runs `checks.beforeMerge` before merging. With no configured command, it stops with `check-not-configured` and leaves the pull request open. This repository commits `["npm", "run", "check:quality"]` as that command and requires the CI checks `quality` and `quality_linux` in `.cloving/config.json`. An environment or private-file override takes precedence.

@@ -33,32 +33,39 @@ interface RunCommandProps {
   readonly controlling: RunCommandControls | undefined;
 }
 
-export function RunCommandButtons(
-  props: RunCommandProps & { readonly controlling: RunCommandControls },
-): Shown {
-  const { runId, place, paused, controlling } = props;
-  const busy = controlling.busy.includes(runId) ? { disabled: true } : {};
+type CommandButtonProps = RunCommandProps & {
+  readonly controlling: RunCommandControls;
+};
+
+export function PauseButton(props: CommandButtonProps): Shown {
+  const { runId, paused, controlling } = props;
   const command = paused ? "resume" : "pause";
-  return [
-    element("button", {
-      type: "button",
-      class: `run-command-${command}`,
-      ...busy,
-      onClick: () => {
-        controlling.onCommand(runId, command);
-      },
-      children: paused ? "Resume" : "Pause",
-    }),
-    element("button", {
-      type: "button",
-      class: "run-command-drop",
-      ...busy,
-      onClick: () => {
-        controlling.onAsk(runId, place);
-      },
-      children: "Drop",
-    }),
-  ];
+  return element("button", {
+    type: "button",
+    class: `run-command-${command}`,
+    ...(controlling.busy.includes(runId) ? { disabled: true } : {}),
+    onClick: () => {
+      controlling.onCommand(runId, command);
+    },
+    children: paused ? "Resume" : "Pause",
+  });
+}
+
+export function DropButton(props: CommandButtonProps): Shown {
+  const { runId, place, controlling } = props;
+  return element("button", {
+    type: "button",
+    class: "run-command-drop",
+    ...(controlling.busy.includes(runId) ? { disabled: true } : {}),
+    onClick: () => {
+      controlling.onAsk(runId, place);
+    },
+    children: "Drop",
+  });
+}
+
+export function RunCommandButtons(props: CommandButtonProps): Shown {
+  return [component(PauseButton, props), component(DropButton, props)];
 }
 
 export function DropQuestion(props: {
@@ -203,6 +210,8 @@ export function RunCommandReplies(props: {
 }
 
 export const runCommandFunctions = [
+  PauseButton,
+  DropButton,
   RunCommandButtons,
   DropQuestion,
   RunCommandMessage,

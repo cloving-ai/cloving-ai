@@ -8,9 +8,14 @@ import {
   TerminalGroupView,
 } from "./watch-terminal-view.ts";
 import { Review, Turn, turnHeading } from "./watch-turn.ts";
+import {
+  ExpandButton,
+  transcriptExpandFunctions,
+} from "./watch-transcript-expand-view.ts";
 
 export interface TranscriptView {
   readonly shown: boolean;
+  readonly expanded: boolean;
   readonly entries: readonly TranscriptEntry[];
   readonly state: "loading" | "open" | "ended" | "not-kept" | "failed";
   readonly message: string;
@@ -38,6 +43,7 @@ export interface TranscriptControls {
   readonly onTab: (tab: RunTab) => void;
   readonly view: (target: TranscriptTarget) => TranscriptView;
   readonly onToggle: (target: TranscriptTarget) => void;
+  readonly onExpand: (target: TranscriptTarget) => void;
   readonly onLink: (target: TranscriptTarget) => void;
   readonly onScroll: (operationId: string, box: TranscriptBox) => void;
   readonly onJump: (target: TranscriptTarget) => void;
@@ -77,7 +83,7 @@ export function TranscriptLines(props: {
 }): Shown {
   const { target, view, controls, worktree } = props;
   return element("div", {
-    class: "transcript-lines",
+    class: view.expanded ? "transcript-lines expanded" : "transcript-lines",
     "data-transcript": target.operationId,
     onScroll: (event: { readonly currentTarget: TranscriptBox }) => {
       controls.onScroll(target.operationId, event.currentTarget);
@@ -201,6 +207,14 @@ export function TranscriptHead(props: {
       " ",
       link,
       layout === "terminal" ? null : [" ", full],
+      layout === "terminal" || view?.shown !== true || controls === undefined
+        ? null
+        : component(ExpandButton, {
+            expanded: view.expanded,
+            onExpand: () => {
+              controls.onExpand(target);
+            },
+          }),
     ],
   });
 }
@@ -350,6 +364,7 @@ export function RunTurns(props: {
 
 export const transcriptFunctions = [
   ...terminalFunctions,
+  ...transcriptExpandFunctions,
   waitingText,
   TranscriptButton,
   jumpLabel,

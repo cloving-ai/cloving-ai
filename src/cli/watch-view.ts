@@ -274,6 +274,7 @@ export function FloorPage(
                 now,
                 words,
                 controlling,
+                renaming: props.renaming,
                 looping: props.loops,
               }),
               component(NeedsYou, {

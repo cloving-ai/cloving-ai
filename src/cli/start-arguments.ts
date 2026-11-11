@@ -4,6 +4,7 @@ import { parseArgs } from "node:util";
 import {
   adoptionRecordPath,
   clientCommand,
+  clientProgram,
   legacyRuntimeDirectory,
   runtimeDirectory,
 } from "./runtime-directory.ts";
@@ -65,7 +66,9 @@ export function startArguments(input: StartRequest): readonly string[] {
     "--repository",
     repository ?? process.cwd(),
     "--client",
-    clientCommand(process.env, repository),
+    clientCommand(process.env, { repository }),
+    "--client-program",
+    clientProgram(),
   ];
   const record =
     repository === undefined
