@@ -82,14 +82,15 @@ await test("CLV-133 watch cards and run totals and turns use estimates in their 
   assert.equal(cardHtml.match(/USD/g)?.length, 1);
   assert.doesNotMatch(cardHtml, /tokens|Price not known/);
   assert.match(runHtml, /<p>≈ 2\.20 USD \(estimate\)<\/p>/);
-  assert.match(runHtml, /code-head">Agent turn · .*≈ 2\.20 USD \(estimate\)/);
+  assert.match(runHtml, /<h4>Turn 1 · .*≈ 2\.20 USD \(estimate\)<\/h4>/);
   assert.match(runHtml, /Output tokens: 170<\/p>/);
   assert.doesNotMatch(runHtml, /Price not known/);
   assert.match(
     runHtml,
     /code-head">Turn 1 · .*≈ 2\.20 USD \(estimate\) <button/,
   );
-  assert.equal(runHtml.match(/≈ 2\.20 USD \(estimate\)/g)?.length, 3);
+  assert.match(runHtml, /<p class="run-facts">≈ 2\.20 USD \(estimate\)<\/p>/);
+  assert.equal(runHtml.match(/≈ 2\.20 USD \(estimate\)/g)?.length, 4);
 });
 
 await test("CLV-133 help and README describe dated built-in prices and model overrides", () => {

@@ -5,6 +5,7 @@ import { test } from "node:test";
 import { processExists } from "../src/daemon/process-identity.ts";
 import { recordedLaunch } from "../src/turn-launch.ts";
 import { until } from "./claude-worker-fixture.ts";
+import { heldIdentityReads } from "./crashed-service-fixture.ts";
 import { queuePrelude } from "./daemon-queue-fixture.ts";
 import { withConsumer } from "./world-host-fixture.ts";
 
@@ -122,8 +123,24 @@ const launchRecorded = `async () => {
   return files.existsSync("command-pid") && files.existsSync("commands") && files.readdirSync("commands").some((name) => files.existsSync("commands/" + name + "/launch.json"));
 }`;
 
+const waitingScan = `writeFileSync("scan.mjs", 'import { appendFileSync, existsSync, writeFileSync } from "node:fs"; appendFileSync("calls", "one\\\\n"); writeFileSync("command-pid", String(process.pid)); const wait = setInterval(() => { if (!existsSync("go")) return; clearInterval(wait); process.stdout.write("done"); }, 20);');`;
+
+const connectedScene = `${commandPrelude}
+const daemon = await launch();
+try {
+  const runId = (await asked("status")).runs[0].runId;
+  writeFileSync("go", "");
+  await until(async () => (await commandShown(runId)).state === "completed");
+  const result = await output();
+  assert.equal(result.command.kind, "completed", JSON.stringify(result.command));
+  assert.equal(result.command.result, "done");
+  assert.equal(readFileSync("calls", "utf8"), "one\\n");
+} finally { await daemon.close(); }
+process.exit(0);
+`;
+
 const crashScene = `${commandPrelude}
-writeFileSync("scan.mjs", 'import { appendFileSync, existsSync, writeFileSync } from "node:fs"; appendFileSync("calls", "one\\\\n"); writeFileSync("command-pid", String(process.pid)); const wait = setInterval(() => { if (!existsSync("go")) return; clearInterval(wait); process.stdout.write("done"); }, 20);');
+${waitingScan}
 await launch();
 const admission = await submit();
 await until(${launchRecorded});
@@ -135,19 +152,7 @@ await test("CLV-337 after a daemon crash, the restarted daemon connects to the c
     try {
       const crashed = await consumer.runUntil("command-started", crashScene);
       assert.equal(crashed.status, null);
-      const restarted = await consumer.run(`${commandPrelude}
-const daemon = await launch();
-try {
-  const runId = (await asked("status")).runs[0].runId;
-  writeFileSync("go", "");
-  await until(async () => (await commandShown(runId)).state === "completed");
-  const result = await output();
-  assert.equal(result.command.kind, "completed", JSON.stringify(result.command));
-  assert.equal(result.command.result, "done");
-  assert.equal(readFileSync("calls", "utf8"), "one\\n");
-} finally { await daemon.close(); }
-process.exit(0);
-`);
+      const restarted = await consumer.run(connectedScene);
       assert.equal(restarted.status, 0, restarted.stderr);
     } finally {
       await stopCommand(consumer.directory);
@@ -158,7 +163,7 @@ await test("CLV-337 a daemon close that keeps work keeps a real command running,
   withConsumer(workflow, async (consumer) => {
     try {
       const kept = await consumer.run(`${commandPrelude}
-writeFileSync("scan.mjs", 'import { appendFileSync, existsSync, writeFileSync } from "node:fs"; appendFileSync("calls", "one\\\\n"); writeFileSync("command-pid", String(process.pid)); const wait = setInterval(() => { if (!existsSync("go")) return; clearInterval(wait); process.stdout.write("done"); }, 20);');
+${waitingScan}
 const daemon = await launch();
 await submit();
 await until(() => existsSync("command-pid"));
@@ -167,19 +172,7 @@ process.kill(Number(readFileSync("command-pid", "utf8")), 0);
 process.exit(0);
 `);
       assert.equal(kept.status, 0, kept.stderr);
-      const restarted = await consumer.run(`${commandPrelude}
-const daemon = await launch();
-try {
-  const runId = (await asked("status")).runs[0].runId;
-  writeFileSync("go", "");
-  await until(async () => (await commandShown(runId)).state === "completed");
-  const result = await output();
-  assert.equal(result.command.kind, "completed", JSON.stringify(result.command));
-  assert.equal(result.command.result, "done");
-  assert.equal(readFileSync("calls", "utf8"), "one\\n");
-} finally { await daemon.close(); }
-process.exit(0);
-`);
+      const restarted = await consumer.run(connectedScene);
       assert.equal(restarted.status, 0, restarted.stderr);
     } finally {
       await stopCommand(consumer.directory);
@@ -261,6 +254,31 @@ try {
 process.exit(0);
 `);
       assert.equal(retried.status, 0, retried.stderr);
+    } finally {
+      await stopCommand(consumer.directory);
+    }
+  }));
+
+await test("CLV-350 after a daemon crash before the launch record of a command, the restarted daemon connects to the command and the run completes with its result", () =>
+  withConsumer(workflow, async (consumer) => {
+    try {
+      const tools = heldIdentityReads(consumer.directory);
+      const crashed = await consumer.runUntil(
+        "command-started",
+        `${commandPrelude}
+process.env.PATH = ${JSON.stringify(tools)} + ":" + process.env.PATH;
+${waitingScan}
+await launch();
+const admission = await submit();
+await until(() => existsSync("command-pid"));
+assert.equal(await (${launchRecorded})(), false);
+await halt("command-started", { runId: admission.runId });
+`,
+      );
+      assert.equal(crashed.status, null);
+      assert.equal(launchGroups(consumer.directory).length, 0);
+      const restarted = await consumer.run(connectedScene);
+      assert.equal(restarted.status, 0, restarted.stderr);
     } finally {
       await stopCommand(consumer.directory);
     }

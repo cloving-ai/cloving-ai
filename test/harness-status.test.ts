@@ -4,7 +4,7 @@ import { call, field, parsed, runCli, withHarness } from "./service-fixture.ts";
 import { reportTurn, workerScene } from "./worker-report-fixture.ts";
 import { turnOf } from "../src/cli/watch-model.ts";
 import { statusTurns } from "../src/cli/watch-usage.ts";
-import { Turn } from "../src/cli/watch-turn.ts";
+import { TurnFacts } from "../src/cli/watch-run-tabs-view.ts";
 import { component } from "../src/cli/watch-element.ts";
 import { rendered } from "./watch-dom.ts";
 
@@ -60,8 +60,8 @@ await test("CLV-210 watch shows the harness for active, completed and restored t
   });
   assert.equal(Reflect.get(active, "harness"), "codex");
   assert.match(
-    rendered(component(Turn, { turn: active, now: "" })),
-    /Harness: codex/,
+    rendered(component(TurnFacts, { turn: active, position: 1, now: "" })),
+    /<dt>Harness<\/dt><dd>codex<\/dd>/,
   );
   const completed = turnOf({
     key: "key",
