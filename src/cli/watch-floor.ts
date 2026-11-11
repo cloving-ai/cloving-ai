@@ -83,6 +83,7 @@ function tokenOf(run: WatchRun): WatchToken {
     ticket: labelText(run),
     pullRequestNumber: run.pullRequest?.number ?? null,
     startedAt: run.currentStep.startedAt,
+    ...(run.manualName === true ? { manualName: true } : {}),
   };
 }
 

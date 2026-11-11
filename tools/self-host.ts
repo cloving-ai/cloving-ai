@@ -95,6 +95,7 @@ const updateMilliseconds = await selfUpdateMilliseconds({
 const checkout =
   extname(import.meta.filename) === ".ts" ? product : dirname(product);
 const client = flag("--client") ?? "cloving";
+const clientProgram = flag("--client-program") ?? "cloving";
 const project = join(directory, "project");
 const concurrency = Number(environment["CLOVING_HOST_BOUND"] ?? "8");
 const leaseText = environment["CLOVING_OWNERSHIP_LEASE_SECONDS"];
@@ -248,7 +249,7 @@ function guide(workflows: RegisteredWorkflows): string {
     ),
     "Commands for a second terminal:",
     ...(workflows.declarations.length === 0
-      ? ["No workflow. Run: cloving init"]
+      ? [`No workflow. Run: ${clientProgram} init`]
       : workflows.declarations.map(runCommand)),
     `  ${client} status`,
     `  ${client} questions`,

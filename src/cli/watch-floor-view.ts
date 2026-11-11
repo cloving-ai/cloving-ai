@@ -4,8 +4,9 @@ import type { LoopControls } from "./watch-loops-view.ts";
 import { LineNext, type LineLoop } from "./watch-line-next-view.ts";
 import { watchHash } from "./watch-navigation.ts";
 import { steerable } from "./watch-steer-view.ts";
+import type { RenameControls } from "./watch-rename-view.ts";
+import { TokenMenu } from "./watch-token-menu-view.ts";
 import {
-  RunCommandMenu,
   RunCommandReplies,
   type RunCommandControls,
 } from "./watch-run-command-view.ts";
@@ -78,6 +79,7 @@ export function Station(props: {
   readonly now: string;
   readonly words?: WatchWords | undefined;
   readonly controlling?: RunCommandControls | undefined;
+  readonly renaming?: RenameControls | undefined;
 }): Shown {
   const { station, now } = props;
   const lamp = station.lamp ?? "empty";
@@ -101,11 +103,11 @@ export function Station(props: {
                 key: token.runId,
                 children: [
                   component(Token, { token, now }),
-                  component(RunCommandMenu, {
-                    runId: token.runId,
-                    place: "token",
+                  component(TokenMenu, {
+                    token,
                     paused: token.lamp === "stopped",
                     controlling: props.controlling,
+                    renaming: props.renaming,
                   }),
                 ],
               }),
@@ -201,6 +203,7 @@ export function Line(
     readonly now: string;
     readonly words?: WatchWords | undefined;
     readonly controlling?: RunCommandControls | undefined;
+    readonly renaming?: RenameControls | undefined;
   },
 ): Shown {
   const { workflow, now, words, controlling } = props;
@@ -237,6 +240,7 @@ export function Line(
               now,
               words,
               controlling,
+              renaming: props.renaming,
             }),
           ),
         }),
@@ -257,6 +261,7 @@ export function Floor(props: {
   readonly now: string;
   readonly words?: WatchWords | undefined;
   readonly controlling?: RunCommandControls | undefined;
+  readonly renaming?: RenameControls | undefined;
   readonly looping?: LoopControls | undefined;
 }): Shown {
   const { model, now, words, controlling } = props;
@@ -287,6 +292,7 @@ export function Floor(props: {
             now,
             words,
             controlling,
+            renaming: props.renaming,
             loops: model.loops,
             looping: props.looping,
           })
@@ -313,6 +319,7 @@ export function Lines(props: {
   readonly now: string;
   readonly words?: WatchWords | undefined;
   readonly controlling?: RunCommandControls | undefined;
+  readonly renaming?: RenameControls | undefined;
   readonly loops?: readonly WatchLoop[] | undefined;
   readonly looping?: LoopControls | undefined;
 }): Shown {
@@ -331,6 +338,7 @@ export function Lines(props: {
         now,
         words,
         controlling,
+        renaming: props.renaming,
         loop: props.loops?.find(
           (loop) => loop.workflowId === workflow.workflowId,
         ),

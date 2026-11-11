@@ -92,7 +92,7 @@ await test("CLV-333 a turn with a prompt, text, a Bash call with 30 lines of out
   ]);
   assert.ok(
     html.includes(
-      '<div class="entry prompt"><span class="mark">&gt; </span><div class="output"><pre>Fix CLV-333.</pre></div></div><div class="entry assistant"><span class="mark">⏺</span><pre>I read the ticket.\nThen I test.</pre></div>',
+      '<div class="entry prompt"><span class="mark">&gt; </span><div class="output"><pre>Fix CLV-333.</pre></div></div><div class="entry assistant"><span class="mark">⏺</span><div class="markdown"><p>I read the ticket.\nThen I test.</p></div></div>',
     ),
     html,
   );

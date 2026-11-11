@@ -17,6 +17,8 @@ import {
   scheduleLines,
 } from "./schedule-render.ts";
 import { show, oneLine, visible } from "./terminal-text.ts";
+import { clientProgram } from "./runtime-directory.ts";
+import { decisionCommand, isDecisionCommand } from "./decision-command.ts";
 import {
   effectLeaseText,
   queueHeadline,
@@ -298,36 +300,30 @@ function decidedLines(value: unknown): readonly string[] {
   );
 }
 
-function binding(decision: unknown): string {
-  return `--expected-revision ${show(part(decision, "revision"))} --generation ${show(part(decision, "generation"))} --subject-digest ${show(part(decision, "subjectDigest"))}`;
-}
-
-function suggestion(decision: unknown, command: unknown): string {
-  const reference = part(decision, "label") ?? part(decision, "decisionId");
-  const head = `  cloving ${show(command)} ${show(reference)}`;
-  const tail = binding(decision);
-  if (command === "answer") return `${head} --text <answer> ${tail}`;
-  if (command === "deny") return `${head} --text "<feedback>" ${tail}`;
-  return `${head} ${tail}`;
-}
-
-export function decisionLines(decision: unknown): readonly string[] {
+export function decisionLines(
+  decision: unknown,
+  client: string,
+): readonly string[] {
   const allowed = part(decision, "allowed");
+  const names: readonly unknown[] = Array.isArray(allowed) ? allowed : [];
   const label = part(decision, "label");
   return [
     `${label === null ? "" : `${show(label)} `}${show(part(decision, "type"))} ${show(part(decision, "decisionId"))}`,
     `  Prompt: ${visible(part(decision, "prompt"))}`,
     ...feedbackLines(part(decision, "feedback")).map((line) => `  ${line}`),
-    ...(Array.isArray(allowed) ? allowed : []).map((command: unknown) =>
-      suggestion(decision, command),
-    ),
+    ...names
+      .filter(isDecisionCommand)
+      .map((name) => decisionCommand(decision, { name, client })),
   ];
 }
 
-export function decisionList(result: Fields): readonly string[] {
+export function decisionList(
+  result: Fields,
+  client: string,
+): readonly string[] {
   const decisions = result["decisions"];
   const lines = Array.isArray(decisions)
-    ? decisions.flatMap(decisionLines)
+    ? decisions.flatMap((decision: unknown) => decisionLines(decision, client))
     : [];
   return lines.length === 0 ? ["No decision waits."] : lines;
 }
@@ -359,7 +355,7 @@ const renderers = new Map<string, (result: Fields) => readonly string[]>([
   ["run-admitted", admitted],
   ["run-list", runList],
   ["run-status", runStatus],
-  ["decision-list", decisionList],
+  ["decision-list", (result) => decisionList(result, clientProgram())],
   ["decision-recorded", decisionRecorded],
   ["run-command", runCommandLines],
   ["run-continued", runContinuedLines],

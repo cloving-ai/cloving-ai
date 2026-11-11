@@ -133,3 +133,19 @@ console.log(JSON.stringify({ posts, requests, html: app.inner }));
   ]);
   assert.match(String(result["html"]), />Resume queue<\/button>/);
 });
+
+await test("CLV-358 the page script shows a pending restart in the header and still renders the page", () => {
+  const model = floorModel([], { restart: { activeRuns: 4 } });
+  const result = played(
+    model,
+    `
+location.hash = "";
+replies.push(JSON.parse(process.env.WATCH_MODEL));
+await load();
+console.log(JSON.stringify({ html: app.inner }));
+`,
+  );
+  const html = String(result["html"]);
+  assert.match(html, /Restart pending: 4 runs active/);
+  assert.match(html, /Floor/);
+});

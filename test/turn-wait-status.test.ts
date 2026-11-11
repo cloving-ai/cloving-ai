@@ -5,7 +5,8 @@ import { test } from "node:test";
 import { rendered as cliRendered } from "../src/cli/render.ts";
 import { component } from "../src/cli/watch-element.ts";
 import { turnOf } from "../src/cli/watch-model.ts";
-import { Turn } from "../src/cli/watch-turn.ts";
+import { workingDetail } from "../src/cli/watch-run-head-view.ts";
+import { TurnFacts } from "../src/cli/watch-run-tabs-view.ts";
 import { operationKey } from "../src/daemon/operation-journal.ts";
 import { turnWaitsPlace } from "../src/daemon/turn-details.ts";
 import { operationOf } from "./effect-fixture.ts";
@@ -150,17 +151,21 @@ await test("CLV-348 the watch page shows a turn in its retry wait as in work wit
     const turn = turnOf(shown);
     assert.equal(turn.outcome, "in work");
     assert.deepEqual(turn.wait, shownWait);
-    const html = rendered(component(Turn, { turn, now }));
+    const html = rendered(component(TurnFacts, { turn, position: 1, now }));
     assert.match(
       html,
-      /Waits for a retry: attempt 2 starts at [^<]+, 2 min 15 s left/,
+      /class="turn-wait">Waits for a retry: attempt 2 starts at [^<]+, 2 min 15 s left</,
+    );
+    assert.match(
+      rendered(workingDetail(turn, now)),
+      /class="now" title="Waits for a retry: [^"]+">Waits for a retry: attempt 2 starts at [^<]+, 2 min 15 s left</,
     );
   }
   const stopped = turnOf({ ...records, result: { outcome: "stopped" } });
   assert.equal(stopped.outcome, "stopped");
   assert.equal(stopped.wait, undefined);
   assert.doesNotMatch(
-    rendered(component(Turn, { turn: stopped, now })),
+    rendered(component(TurnFacts, { turn: stopped, position: 1, now })),
     /Waits for a retry/,
   );
 });
@@ -196,7 +201,7 @@ console.log(JSON.stringify({ html: app.inner }));
   );
   assert.match(
     String(result["html"]),
-    /class="now">Waits for a retry: attempt 2 starts at [^<]+, [^<]+ left</,
+    /class="now" title="[^"]+">Waits for a retry: attempt 2 starts at [^<]+, [^<]+ left</,
   );
   assert.match(
     String(result["html"]),

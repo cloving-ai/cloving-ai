@@ -1,73 +1,28 @@
 import assert from "node:assert/strict";
-import { appendFile, mkdir, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { appendFile, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import { test } from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
-import { located } from "../src/daemon/operation-journal.ts";
-import { transcriptFiles } from "../src/daemon/transcript-files.ts";
-import { operationOf } from "./effect-fixture.ts";
-import { requested, untilStates } from "./service-effect-fixture.ts";
-import { fields, withHarness, type Harness } from "./service-fixture.ts";
+import { fields, withHarness } from "./service-fixture.ts";
 import { testMilliseconds } from "./test-timing.ts";
 import { directWatch } from "./watch-direct-fixture.ts";
 import { realBrowser } from "./watch-real-browser.ts";
-import { reportTurn, workerScene } from "./worker-report-fixture.ts";
-
-const said = (words: string): string =>
-  JSON.stringify({
-    type: "assistant",
-    message: { content: [{ type: "text", text: words }] },
-  });
-const called = (command: string): string =>
-  JSON.stringify({
-    type: "assistant",
-    message: {
-      content: [{ type: "tool_use", name: "Bash", input: { command } }],
-    },
-  });
-const output = (text: string): string =>
-  JSON.stringify({
-    type: "user",
-    message: { content: [{ type: "tool_result", content: text }] },
-  });
-
-async function liveTurn(harness: Harness) {
-  const scene = await workerScene(harness);
-  await scene.service.close();
-  const root = dirname(harness.runtimeDirectory);
-  const service = await harness.start({
-    ...scene.options,
-    turnTranscript: {
-      read: transcriptFiles(root),
-      privateTexts: [],
-      cache: new Map(),
-    },
-  });
-  const live = { ...scene, service };
-  await requested(live, {
-    commandId: `request-${scene.runId}-1`,
-    round: 1,
-    capability: "claude",
-  });
-  await untilStates(live, ["running"]);
-  const operationId = operationOf(scene.runId, { round: 1 });
-  const { folder } = located(join(root, "journal"), operationId);
-  await mkdir(folder, { recursive: true });
-  await writeFile(
-    join(folder, "started.json"),
-    JSON.stringify({
-      operationId,
-      harness: "claude",
-      target: "clv-329",
-      branch: "cloving/clv-329",
-      worktree: "work",
-      startedAt: new Date().toISOString(),
-    }),
-  );
-  const stream = join(folder, "turn.jsonl");
-  await writeFile(stream, "");
-  return { live, operationId, folder, stream };
-}
+import { reportTurn } from "./worker-report-fixture.ts";
+import {
+  type BrowserPage,
+  called,
+  compactWait,
+  entriesWait,
+  expandWait,
+  jumpWait,
+  liveTurn,
+  output,
+  paired,
+  panelWait,
+  said,
+  turnAtTop,
+  waitedFor,
+} from "./watch-transcript-browser-fixture.ts";
 
 const entryCount = (count: number) => `(async () => {
   const frame = () => new Promise((resolve) => setTimeout(resolve, 20));
@@ -310,20 +265,22 @@ const colors = `(() => {
   return { light: measured("light"), dark: measured("dark") };
 })()`;
 
-const panelBox = `(async () => {
-  for (let attempt = 0; attempt < 500 && !document.querySelector(".transcript-lines .entry"); attempt++)
-    await new Promise((resolve) => setTimeout(resolve, 20));
-  const box = document.querySelector(".transcript").getBoundingClientRect();
-  return {
-    headers: document.querySelectorAll("header").length,
-    sections: document.querySelectorAll("section").length,
-    width: box.width,
-    height: box.height,
-    window: [innerWidth, innerHeight],
-  };
-})()`;
+async function expandChecked(page: BrowserPage): Promise<void> {
+  const capped = await waitedFor(page, expandWait("false"));
+  assert.ok(Math.abs(capped.height - 500) <= 1, JSON.stringify(capped));
+  assert.ok(capped.scroll > 500, JSON.stringify(capped));
+  assert.ok(capped.right >= capped.edge - 48, JSON.stringify(capped));
+  assert.ok(capped.bottom <= capped.top + 1, JSON.stringify(capped));
+  await page.click(".transcript-expand");
+  const open = await waitedFor(page, expandWait("true"));
+  assert.ok(open.height > 500, JSON.stringify(open));
+  assert.ok(Math.abs(open.height - open.scroll) <= 1, JSON.stringify(open));
+  await page.click(".transcript-expand");
+  const closed = await waitedFor(page, expandWait("false"));
+  assert.ok(Math.abs(closed.height - 500) <= 1, JSON.stringify(closed));
+}
 
-await test("CLV-333 the terminal panel is dark in the light and the dark scheme, the open panel fills the window below the header, and the full-screen link shows only the panel at the size of the window", () =>
+await test("CLV-333 CLV-355 the terminal panel is dark in the light and the dark scheme, a short open turn is short, a long one starts at 500 pixels with its own scroll and an expand button at the top right that shows all its lines and returns to 500 pixels, each tool call keeps its fold count on its own line, agent text shows its Markdown, and the full-screen link shows only the panel at the size of the window", () =>
   withHarness(async (harness) => {
     const turn = await liveTurn(harness);
     await appendFile(turn.stream, `${said("Done.")}\n`);
@@ -332,9 +289,19 @@ await test("CLV-333 the terminal panel is dark in the light and the dark scheme,
       await using browser = await realBrowser();
       const page = await browser.page({ width: 1200, height: 900 });
       await page.navigate(`${watch.address}#run=${turn.live.runId}`);
-      const detail = await page.evaluate(panelBox);
-      assert.ok(Number(detail["height"]) >= 900 - 160, JSON.stringify(detail));
-      assert.ok(Number(detail["height"]) <= 900, JSON.stringify(detail));
+      const detail = await waitedFor(page, panelWait);
+      assert.ok(detail.height < 200, JSON.stringify(detail));
+      const calls = Array.from({ length: 40 }, (_, index) => paired(index));
+      await appendFile(
+        turn.stream,
+        `${calls.join("\n")}\n${said("**Checked.** All `tests` pass.")}\n`,
+      );
+      const lines = await waitedFor(page, compactWait);
+      assert.equal(lines.calls, 40, JSON.stringify(lines));
+      assert.ok(lines.tallest <= 24, JSON.stringify(lines));
+      assert.equal(lines.sameRow, true, JSON.stringify(lines));
+      assert.equal(lines.strong, "Checked.", JSON.stringify(lines));
+      await expandChecked(page);
       const { light, dark } = await page.evaluate(colors);
       assert.ok(Number(fields(light)["page"]) > 0.8, JSON.stringify(light));
       assert.ok(Number(fields(dark)["page"]) < 0.2, JSON.stringify(dark));
@@ -352,13 +319,37 @@ await test("CLV-333 the terminal panel is dark in the light and the dark scheme,
       await page.navigate(
         `${watch.address}#run=${turn.live.runId}&turn=${encodeURIComponent(turn.operationId)}&view=terminal`,
       );
-      assert.deepEqual(await page.evaluate(panelBox), {
+      assert.deepEqual(await waitedFor(page, panelWait), {
         headers: 0,
         sections: 1,
         width: 1200,
         height: 900,
         window: [1200, 900],
       });
+    } finally {
+      assert.equal(await watch.stop(), 0);
+    }
+  }));
+
+await test("CLV-355 in an expanded turn, Jump to the end with its count stays in the window while the end of the turn is below it", () =>
+  withHarness(async (harness) => {
+    const turn = await liveTurn(harness);
+    const calls = Array.from({ length: 60 }, (_, index) => paired(index));
+    await appendFile(turn.stream, `${calls.join("\n")}\n`);
+    const watch = await directWatch(harness.runtimeDirectory);
+    try {
+      await using browser = await realBrowser();
+      const page = await browser.page({ width: 1200, height: 900 });
+      await page.navigate(`${watch.address}#run=${turn.live.runId}`);
+      await waitedFor(page, entriesWait(120));
+      await waitedFor(page, expandWait("false"));
+      await page.click(".transcript-expand");
+      await waitedFor(page, expandWait("true"));
+      await page.evaluate(turnAtTop);
+      await appendFile(turn.stream, `${said("one")}\n${said("two")}\n`);
+      const jump = await waitedFor(page, jumpWait(2));
+      assert.ok(jump.top >= 0, JSON.stringify(jump));
+      assert.ok(jump.bottom <= jump.window, JSON.stringify(jump));
     } finally {
       assert.equal(await watch.stop(), 0);
     }

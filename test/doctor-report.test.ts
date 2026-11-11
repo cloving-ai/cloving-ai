@@ -13,7 +13,7 @@ await test("CLV-207 optional failures do not fail the command; required failures
     result: "fail",
     required: false,
     detail: "unavailable",
-    fix: doctorFixes.service,
+    fix: doctorFixes("cloving").service,
   };
   assert.equal(doctorExitCode([optional]), 0);
   assert.equal(doctorExitCode([{ ...optional, required: true }]), 1);
@@ -36,13 +36,35 @@ await test("CLV-207 the Node check matches the workflow admission range", () => 
     nodeObservation("v25.9.0").detail,
     "Node v25.9.0; workflow admission requires Node >=24.22.1 <25 || >=26.9.0 <27",
   );
-  assert.match(doctorFixes["node-version"], /nvm install 26 && nvm use 26$/);
+  assert.match(
+    doctorFixes("cloving")["node-version"],
+    /nvm install 26 && nvm use 26$/,
+  );
 });
 
 await test("CLV-207 the private-text repair command contains valid JSON for the shell", () => {
   const value = /CLOVING_PRIVATE_TEXTS='([^']+)'/.exec(
-    doctorFixes["private-texts"],
+    doctorFixes("cloving")["private-texts"],
   )?.[1];
   assert.ok(value);
   assert.deepEqual(JSON.parse(value), ["TEXT TO KEEP PRIVATE"]);
+});
+
+await test("CLV-345 each doctor fix that names a cloving command starts it with the client program", () => {
+  const client = "npx cloving@1.8.0";
+  const fixes = doctorFixes(client);
+  assert.equal(fixes.service, `Start the service: ${client} start`);
+  assert.equal(fixes["no-workflow"], `${client} init`);
+  assert.match(fixes["thread-pool"], / npx cloving@1\.8\.0 start$/);
+  assert.match(
+    fixes.theme,
+    /: npx cloving@1\.8\.0 themes list; .*: npx cloving@1\.8\.0 config set watch\.theme auto$/,
+  );
+  for (const fix of Object.values(fixes))
+    assert.doesNotMatch(fix, /(^|\s)cloving /, fix);
+  assert.equal(
+    doctorFixes("cloving").service,
+    "Start the service: cloving start",
+  );
+  assert.equal(doctorFixes("cloving")["no-workflow"], "cloving init");
 });

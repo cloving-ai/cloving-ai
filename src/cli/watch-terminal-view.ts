@@ -2,6 +2,7 @@ import { record, type Fields } from "../protocol.ts";
 import type { TranscriptEntry } from "../turn-transcript.ts";
 import { component, element, type Shown } from "./watch-element.ts";
 import { counted } from "./watch-render.ts";
+import { EntryText, markdownFunctions } from "./watch-markdown-view.ts";
 import {
   EditLines,
   Gutter,
@@ -217,7 +218,7 @@ export function TerminalLine(props: {
       entry.kind === "assistant"
         ? element("span", { class: "mark", children: "⏺" })
         : null,
-      element("pre", { children: entry.text }),
+      component(EntryText, { kind: entry.kind, text: entry.text }),
       cut,
     ],
   });
@@ -243,6 +244,7 @@ export const terminalFunctions = [
   ToolResult,
   ToolLine,
   ...terminalPartFunctions,
+  ...markdownFunctions,
   CallDetail,
   ToolCall,
   TerminalLine,

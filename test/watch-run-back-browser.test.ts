@@ -51,7 +51,7 @@ const focused = `(() => {
 const narrow = `(() => {
   const root = document.documentElement;
   const link = document.querySelector(".banner-back").getBoundingClientRect();
-  const name = document.querySelector(".banner .name").getBoundingClientRect();
+  const name = document.querySelector(".banner .name-title").getBoundingClientRect();
   const apart = link.right <= name.left || link.left >= name.right || link.bottom <= name.top || link.top >= name.bottom;
   return {
     sideways: root.scrollWidth - root.clientWidth,

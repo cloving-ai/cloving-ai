@@ -6,7 +6,7 @@ let transcriptRound = 0;
 let transcriptTab = "transcript";
 function transcriptItem(target) {
   if (!Object.hasOwn(transcripts, target.operationId))
-    transcripts[target.operationId] = { runId: target.runId, shown: null, entries: [], state: "loading", message: "", earlier: false, unseen: 0, following: true, detached: false, latest: 0, source: null };
+    transcripts[target.operationId] = { runId: target.runId, shown: null, expanded: false, entries: [], state: "loading", message: "", earlier: false, unseen: 0, following: true, detached: false, latest: 0, source: null };
   return transcripts[target.operationId];
 }
 function transcriptPath(item, operationId, route) {
@@ -92,10 +92,32 @@ async function transcriptEarlier(target) {
   item.earlier = (item.entries[0]?.position ?? 1) > 1;
   draw();
 }
+function transcriptBox(operationId) {
+  const boxes = document.querySelectorAll?.("[data-transcript]") ?? [];
+  return [...boxes].find((box) => box.getAttribute("data-transcript") === operationId);
+}
+function transcriptPaged(item) {
+  return item.expanded && watchLocation(location.hash.slice(1)).view !== "terminal";
+}
+function transcriptEndSeen(box) {
+  return (box.getBoundingClientRect?.().bottom ?? 0) <= innerHeight + 24;
+}
+function transcriptPageScrolled() {
+  let changed = false;
+  for (const [operationId, item] of Object.entries(transcripts)) {
+    const box = transcriptPaged(item) ? transcriptBox(operationId) : undefined;
+    if (box === undefined) continue;
+    item.following = transcriptEndSeen(box);
+    if (item.following && item.unseen > 0 && !item.detached) { item.unseen = 0; changed = true; }
+  }
+  if (changed) draw();
+}
+addEventListener("scroll", transcriptPageScrolled, { passive: true });
 function transcriptJumped(target) {
   const item = transcriptItem(target);
   item.unseen = 0;
   item.following = true;
+  if (transcriptPaged(item)) transcriptBox(target.operationId)?.scrollIntoView({ block: "end" });
   if (!item.detached) { draw(); return; }
   transcriptClosed(item);
   item.detached = false;
@@ -126,12 +148,17 @@ function transcriptControls() {
       item.round = transcriptRound;
       const shown = item.shown ?? target.wanted;
       if (shown) transcriptOpened(item, target.operationId);
-      return { shown, entries: item.entries, state: item.state, message: item.message, earlier: item.earlier, unseen: item.unseen, detached: item.detached };
+      return { shown, expanded: transcriptPaged(item), entries: item.entries, state: item.state, message: item.message, earlier: item.earlier, unseen: item.unseen, detached: item.detached };
     },
     onToggle(target) {
       const item = transcriptItem(target);
       item.shown = !(item.shown ?? target.wanted);
       if (!item.shown) transcriptClosed(item);
+      draw();
+    },
+    onExpand(target) {
+      const item = transcriptItem(target);
+      item.expanded = !item.expanded;
       draw();
     },
     onLink(target) {
@@ -141,7 +168,7 @@ function transcriptControls() {
     },
     onScroll(operationId, box) {
       const item = transcripts[operationId];
-      if (item === undefined) return;
+      if (item === undefined || transcriptPaged(item)) return;
       item.following = box.scrollTop + box.clientHeight >= box.scrollHeight - 24;
       if (item.following && item.unseen > 0 && !item.detached) { item.unseen = 0; draw(); }
     },
@@ -159,7 +186,8 @@ function transcriptsFollowed(selected) {
   const boxes = document.querySelectorAll?.("[data-transcript]") ?? [];
   for (const box of boxes) {
     const item = transcripts[box.getAttribute("data-transcript")];
-    if (item?.following && !item.detached) box.scrollTop = box.scrollHeight;
+    if (item !== undefined && transcriptPaged(item)) item.following = transcriptEndSeen(box);
+    else if (item?.following && !item.detached) box.scrollTop = box.scrollHeight;
   }
   const { turnId } = watchLocation(selected);
   if (turnId === null || turnId === undefined) { state.turnShown = null; state.turnTabbed = null; return; }

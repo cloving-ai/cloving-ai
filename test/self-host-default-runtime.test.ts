@@ -4,9 +4,13 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { test } from "node:test";
 import { promisify } from "node:util";
-import { runtimeDirectory } from "../src/cli/runtime-directory.ts";
+import {
+  runtimeDirectory,
+  shellArgument,
+} from "../src/cli/runtime-directory.ts";
 import { retainWorkflowBundle } from "../tools/workflow-bundles.ts";
 import { fields } from "./service-fixture.ts";
+import { execCacheEntry, npxProgram } from "./exec-cache-fixture.ts";
 import { scene } from "./self-host-fixture.ts";
 import { stopChildGroup } from "./stop-child.ts";
 import { testMilliseconds } from "./test-timing.ts";
@@ -41,12 +45,13 @@ async function started(input: {
   readonly state: string;
   readonly argumentsList?: readonly string[];
   readonly variables?: NodeJS.ProcessEnv;
+  readonly entry?: string;
 }) {
   const environment = { ...hostEnvironment(input.state), ...input.variables };
   const child = spawn(
     process.execPath,
     [
-      entry,
+      input.entry ?? entry,
       "start",
       ...(input.argumentsList ?? ["--repository", input.repository]),
     ],
@@ -169,6 +174,31 @@ await test("CLV-306 the start guide warns when an environment value hides a proj
     const sources = fields(fields(JSON.parse(client.stdout))["settingSources"]);
     assert.equal(sources["merge.mode"], "environment");
     assert.equal(sources["queue.lanes"], "default");
+  } finally {
+    await stopChildGroup(host.child);
+  }
+});
+
+await test("CLV-345 a start from the exec cache of npm prints npx client commands for a second terminal", async () => {
+  const work = await scene();
+  const host = await started({
+    cwd: work.repository,
+    repository: work.repository,
+    state: join(work.root, "state"),
+    entry: await execCacheEntry(work.root),
+  });
+  try {
+    const client = `${npxProgram} --repository ${shellArgument(work.repository)}`;
+    for (const command of ["status", "questions", "watch"])
+      assert.ok(
+        host.output.includes(`\n  ${client} ${command}\n`),
+        host.output,
+      );
+    assert.ok(
+      host.output.includes(`\nNo workflow. Run: ${npxProgram} init\n`),
+      host.output,
+    );
+    assert.doesNotMatch(host.output, /(^|\s)cloving (init|status)/m);
   } finally {
     await stopChildGroup(host.child);
   }

@@ -1,5 +1,5 @@
 import { parseArgs } from "node:util";
-import { doctorFixes } from "../doctor-report.ts";
+import { nodeVersionFix } from "../doctor-report.ts";
 import { parseInvocation } from "./arguments.ts";
 import { startSelection } from "./start-arguments.ts";
 import { supportedNode, supportedNodes } from "./toolchain.ts";
@@ -9,7 +9,7 @@ export function nodeRefusal(
   nodeVersion: string,
 ): string | undefined {
   if (supportedNode(nodeVersion) || exempt(argumentsList)) return undefined;
-  return `unsupported-node: Node ${nodeVersion}. Cloving needs Node ${supportedNodes}. ${doctorFixes["node-version"]}\n`;
+  return `unsupported-node: Node ${nodeVersion}. Cloving needs Node ${supportedNodes}. ${nodeVersionFix}\n`;
 }
 
 function exempt(argumentsList: readonly string[]): boolean {
