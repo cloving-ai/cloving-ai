@@ -17,7 +17,6 @@ import {
 } from "./turn-activity.ts";
 import type { Worker, StreamResult } from "./claude-stream.ts";
 import type { TurnProgress } from "./turn-stream.ts";
-import { harnessReader } from "./harness-reader.ts";
 import type { ResumeReason, RetryKind } from "../worker-usage.ts";
 export { streamResult, capacityRefusal, retryKind } from "./claude-stream.ts";
 export type { Worker, StreamResult } from "./claude-stream.ts";
@@ -165,25 +164,10 @@ function turnOutput(
   const output = activityOutput(start);
   if (start.output === "text")
     return textOutput(child, { output, limit: start.resultBytes ?? 48_000 });
-  const reader = harnessReader(
-    {
-      ...start,
-      failed: () => {
-        signalTurn({ child, start }, "SIGKILL");
-      },
-    },
-    (text) => output.write(text),
-  );
-  child.stdout.setEncoding("utf8");
-  child.stdout.on("data", reader.text);
-  if (reader.error !== undefined) {
-    child.stderr.setEncoding("utf8");
-    child.stderr.on("data", reader.error);
-  }
-  return async (exitCode, close) => {
-    reader.finish({ exitCode, refused: close.refused });
+  child.stdout.pipe(output, { end: false });
+  return async () => {
     await ended(output);
-    return reader.result();
+    return undefined;
   };
 }
 
@@ -210,14 +194,6 @@ function signalTurn(
 
 function detachable(start: TurnStart): boolean {
   return start.output !== "text";
-}
-
-function launchPath(
-  start: TurnStart,
-  environment: NodeJS.ProcessEnv,
-): string | undefined {
-  const service = start.runner?.kind === "container" ? process.env : {};
-  return environment["PATH"] ?? service["PATH"];
 }
 
 function executableFile(path: string): boolean {
@@ -249,8 +225,7 @@ function launchedTurn(start: TurnStart): StartedTurn | undefined {
   const parts = shellCommand(start, { configuration, parts: turnParts });
   try {
     const program = runnerProgram(start.runner, parts);
-    const path = launchPath(start, environment);
-    if (!commandFound(program, { ...start, path })) {
+    if (!commandFound(program, { ...start, path: environment["PATH"] })) {
       rmSync(configuration, { recursive: true, force: true });
       return undefined;
     }

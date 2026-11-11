@@ -3,6 +3,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
 import {
+  alive,
   intent,
   git,
   journalKey,
@@ -323,4 +324,38 @@ await test("CLV-215 a generic shell harness runs its login function with literal
       resultOf(scene.reports[0].result)["summary"],
       "literal $(touch should-not-exist) 'text'",
     );
+  }));
+
+await test("CLV-349 a stop of a text shell harness turn signals the process group of the turn", () =>
+  withScene(async (scene) => {
+    const script = join(scene.directory, "held-text.mjs");
+    const marker = join(scene.directory, "held-child.pid");
+    writeFileSync(
+      script,
+      `import { spawn } from "node:child_process";
+import { renameSync, writeFileSync } from "node:fs";
+const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore" });
+writeFileSync(process.argv[2] + ".part", String(child.pid));
+renameSync(process.argv[2] + ".part", process.argv[2]);
+setInterval(() => {}, 1000);`,
+    );
+    const worker = scene.worker("bare", {
+      shell: "/bin/sh",
+      harness: {
+        name: "mytool",
+        kind: "shell",
+        turn: [process.execPath, script, marker],
+      },
+    });
+    const signal = new AbortController().signal;
+    await worker.deliver(intent(), signal);
+    await until(() => existsSync(marker));
+    const child = Number(readFileSync(marker, "utf8"));
+    try {
+      assert.equal(alive(child), true);
+      assert.equal((await worker.stop(intent(), signal)).kind, "stopped");
+      await until(() => !alive(child));
+    } finally {
+      if (alive(child)) process.kill(child, "SIGKILL");
+    }
   }));

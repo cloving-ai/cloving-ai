@@ -24,6 +24,7 @@ import {
 } from "./harness-detached-fixture.ts";
 import type { TurnRunner } from "../src/turn-runner.ts";
 import { volumeName } from "../src/daemon/turn-runner-spawn.ts";
+import { recordedLaunch } from "../src/turn-launch.ts";
 
 const signal = new AbortController().signal;
 const boxed = intent({ method: "run-turn:boxed" });
@@ -232,4 +233,36 @@ await test("CLV-349 a container turn under Docker keeps running through a restar
   await (missing === undefined
     ? withScene((scene) => dockerRestart(scene, program))
     : Promise.resolve());
+});
+
+const recorded = {
+  processId: 4242,
+  processStart: "Tue Nov 10 22:00:00 2026",
+  marker: "cloving-turn-marker",
+  output: "/journal/turn.harness.jsonl",
+  offset: 0,
+  exit: "/journal/turn.exit.json",
+  configuration: "/journal/gh-config",
+};
+
+await test("CLV-349 a launch record keeps a valid transcript place and runner place, and a damaged one is no launch", () => {
+  const transcript = { path: "/journal/turn.jsonl", offset: 12 };
+  const runner = {
+    folder: "/journal/runner-1",
+    container: { engine: "docker", name: "cloving-run-1" },
+  };
+  assert.deepEqual(recordedLaunch({ ...recorded, transcript, runner }), {
+    ...recorded,
+    transcript,
+    runner,
+  });
+  assert.deepEqual(recordedLaunch(recorded), recorded);
+  for (const damaged of [
+    { transcript: { path: "/journal/turn.jsonl" } },
+    { transcript: { path: "/journal/turn.jsonl", offset: -1 } },
+    { transcript: { path: "/journal/turn.jsonl", offset: 1.5 } },
+    { runner: { container: runner.container } },
+    { runner: { folder: runner.folder, container: { engine: "docker" } } },
+  ])
+    assert.equal(recordedLaunch({ ...recorded, ...damaged }), undefined);
 });
