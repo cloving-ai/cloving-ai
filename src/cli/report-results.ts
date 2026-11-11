@@ -6,10 +6,13 @@ import {
 } from "../report-effects.ts";
 import { send } from "./client.ts";
 
-const storedMethods: readonly unknown[] = ["wait-review", "merge"];
+interface ResultWindow {
+  readonly start: number;
+  readonly end: number;
+}
 
 interface StoredRead {
-  readonly runId: unknown;
+  readonly runId: string;
   readonly digest: string;
 }
 
@@ -22,26 +25,38 @@ function effectKey(event: Fields): string {
 
 function storedDigest(
   event: Fields,
-  methods: ReadonlyMap<string, unknown>,
+  context: {
+    readonly methods: ReadonlyMap<string, unknown>;
+    readonly window: ResultWindow;
+  },
 ): string | undefined {
   const digest = record(event["payload"])?.["result"];
   if (event["type"] !== "effect.reported" || !isReportResultDigest(digest))
     return undefined;
-  return storedMethods.includes(methods.get(effectKey(event)))
+  const at = event["at"];
+  if (typeof at !== "number" || !(at < context.window.end)) return undefined;
+  const method = context.methods.get(effectKey(event));
+  return method === "merge" ||
+    (method === "wait-review" && at >= context.window.start)
     ? digest
     : undefined;
 }
 
-function storedReads(effects: readonly Fields[]): readonly StoredRead[] {
+function storedReads(
+  effects: readonly Fields[],
+  window: ResultWindow,
+): readonly StoredRead[] {
   const methods = new Map<string, unknown>();
   const reads = new Map<string, StoredRead>();
   for (const event of effects) {
+    const runId = event["runId"];
+    if (typeof runId !== "string") continue;
     const key = effectKey(event);
     if (event["type"] === "effect.requested" && !methods.has(key))
       methods.set(key, record(event["payload"])?.["method"]);
-    const digest = storedDigest(event, methods);
+    const digest = storedDigest(event, { methods, window });
     if (digest !== undefined && !reads.has(digest))
-      reads.set(digest, { runId: event["runId"], digest });
+      reads.set(digest, { runId, digest });
   }
   return [...reads.values()];
 }
@@ -63,10 +78,18 @@ async function storedResult(
 
 export async function readReportEffectResults(
   runtime: string,
-  effects: readonly Fields[],
+  input: {
+    readonly effects: readonly Fields[];
+    readonly window: ResultWindow;
+  },
 ): Promise<ReportEffectResults> {
   const results: Record<string, ReportEffectResult> = {};
-  for (const read of storedReads(effects))
-    results[read.digest] = await storedResult(runtime, read);
+  const reads = storedReads(input.effects, input.window);
+  for (let index = 0; index < reads.length; index += 4)
+    await Promise.all(
+      reads.slice(index, index + 4).map(async (read) => {
+        results[read.digest] = await storedResult(runtime, read);
+      }),
+    );
   return results;
 }

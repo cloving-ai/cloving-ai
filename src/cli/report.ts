@@ -72,7 +72,10 @@ function appendEvents(
   }
 }
 
-async function daemonReport(runtime: string) {
+async function daemonReport(
+  runtime: string,
+  window: { readonly start: number; readonly end: number },
+) {
   const snapshot: DaemonSnapshot = {
     after: 0,
     latest: null,
@@ -102,7 +105,10 @@ async function daemonReport(runtime: string) {
       return {
         completions: [...snapshot.completions.values()],
         effects: snapshot.effects,
-        effectResults: await readReportEffectResults(runtime, snapshot.effects),
+        effectResults: await readReportEffectResults(runtime, {
+          effects: snapshot.effects,
+          window,
+        }),
         flowEvents: snapshot.flowEvents,
         observedSince: snapshot.observedSince,
       };
@@ -166,13 +172,12 @@ export async function reportCommand(
   environment: ReportEnvironment,
 ): Promise<number> {
   const now = environment.now ?? Date.now();
-  const since = new Date(
-    now - (invocation.since + 168) * 3_600_000,
-  ).toISOString();
+  const start = now - (invocation.since + 168) * 3_600_000;
+  const since = new Date(start).toISOString();
   const settings =
     environment.watchPr === undefined ? {} : { settings: environment.watchPr };
   const [daemonRead, githubRead] = await Promise.allSettled([
-    daemonReport(environment.runtimeDirectory),
+    daemonReport(environment.runtimeDirectory, { start, end: now }),
     readReportGithub({ since, ...settings }),
   ]);
   const daemon =
@@ -188,14 +193,14 @@ export async function reportCommand(
     githubRead.status === "fulfilled" ? { github: githubRead.value } : {};
   const costs = await reportCosts(environment.runtimeDirectory, {
     completions: daemon.completions ?? [],
-    start: Date.parse(since),
+    start,
     end: now,
     issues: githubRead.status === "fulfilled" ? githubRead.value.issues : null,
   });
   const calculated = loopReport({
     flow: await readReportFlow(environment.runtimeDirectory, {
       events: daemon.flowEvents,
-      start: Date.parse(since),
+      start,
       completions: daemon.completions,
     }),
     since: invocation.since,
