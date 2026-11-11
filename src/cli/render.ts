@@ -18,7 +18,7 @@ import {
 } from "./schedule-render.ts";
 import { show, oneLine, visible } from "./terminal-text.ts";
 import { clientProgram } from "./runtime-directory.ts";
-import { decisionCommand } from "./decision-command.ts";
+import { decisionCommand, isDecisionCommand } from "./decision-command.ts";
 import {
   effectLeaseText,
   queueHeadline,
@@ -313,14 +313,15 @@ export function decisionLines(
   client: string,
 ): readonly string[] {
   const allowed = part(decision, "allowed");
+  const names: readonly unknown[] = Array.isArray(allowed) ? allowed : [];
   const label = part(decision, "label");
   return [
     `${label === null ? "" : `${show(label)} `}${show(part(decision, "type"))} ${show(part(decision, "decisionId"))}`,
     `  Prompt: ${visible(part(decision, "prompt"))}`,
     ...feedbackLines(part(decision, "feedback")).map((line) => `  ${line}`),
-    ...(Array.isArray(allowed) ? allowed : []).map((name: unknown) =>
-      decisionCommand(decision, { name, client }),
-    ),
+    ...names
+      .filter(isDecisionCommand)
+      .map((name) => decisionCommand(decision, { name, client })),
   ];
 }
 

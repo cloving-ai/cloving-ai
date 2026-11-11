@@ -1,11 +1,18 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import {
+  decisionAlert,
+  runAlert,
+  stoppedScheduleAlert,
+} from "../src/alert-selection.ts";
 import { decisionLines } from "../src/cli/render.ts";
 import {
   decisionNotification,
+  notifyEvent,
   outcomeNotification,
   stoppedScheduleNotification,
 } from "../src/daemon/notify-message.ts";
+import { npxProgram } from "./exec-cache-fixture.ts";
 
 const run = { runId: "run-one", workflowId: "develop-ticket" };
 const question = {
@@ -143,4 +150,48 @@ await test("CLV-338 a continued or dismissed failed run gives no notification", 
     undefined,
   );
   assert.equal(outcomeNotification({ ...failed, dismissed: true }), undefined);
+});
+
+await test("CLV-345 from the exec cache, each command of a notification starts with the npx client program", () => {
+  const schedule = stoppedScheduleAlert({
+    workflowId: "review-queue",
+    state: "stopped",
+    stoppedSlot: 3,
+    failedRunIds: ["run-one", "run-two", "run-three"],
+  });
+  assert.ok(schedule);
+  assert.ok(
+    notifyEvent(schedule, npxProgram).message.body.endsWith(
+      `\n${npxProgram} schedule resume review-queue`,
+    ),
+  );
+  const failed = runAlert({
+    ...run,
+    state: "failed",
+    reason: { code: "turn-failed", detail: "The turn failed." },
+  });
+  assert.ok(failed);
+  assert.equal(
+    notifyEvent(failed, npxProgram).message.body,
+    `Reason: turn-failed: The turn failed.\n${npxProgram} status run-one`,
+  );
+  assert.ok(
+    notifyEvent(decisionAlert(run, question), npxProgram).message.body.includes(
+      `\n  ${npxProgram} answer Q1 --text <answer> `,
+    ),
+  );
+});
+
+await test("CLV-345 a decision notification with an allowed name that is not a decision command stays bounded and keeps its command", () => {
+  const decision = decisionNotification(run, {
+    ...question,
+    allowed: ["escalate", "answer"],
+    feedback: [{ decisionId: "prior", text: "f".repeat(8000) }],
+  });
+  assert.equal(decision.message.body.length, 4000);
+  assert.ok(
+    decision.message.body.endsWith(
+      String(decisionLines(question, "cloving").at(-1)),
+    ),
+  );
 });

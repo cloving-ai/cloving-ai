@@ -221,6 +221,15 @@ await test("CLV-345 each decision line of questions from the exec cache starts w
   );
 });
 
+await test("CLV-345 the decision lines of questions leave out an allowed name that is not a decision command", () => {
+  const decision = { ...question, allowed: ["escalate", 7, "answer"] };
+  assert.deepEqual(decisionList({ decisions: [decision] }, "cloving"), [
+    "Q1 question run-1/design-1",
+    "  Prompt: Which parser?",
+    "  cloving answer Q1 --text <answer> --expected-revision 1 --generation 1 --subject-digest sha256:bb",
+  ]);
+});
+
 await test("CLV-008 the human form of an event is one line", () => {
   const event = {
     sequence: 3,

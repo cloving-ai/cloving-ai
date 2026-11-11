@@ -5,6 +5,7 @@ import {
   type Alert,
 } from "../alert-selection.ts";
 import { operationalDecision } from "../decision-visibility.ts";
+import { isDecisionCommand } from "../cli/decision-command.ts";
 import { decisionLines, runStatus } from "../cli/render.ts";
 import { clientProgram } from "../cli/runtime-directory.ts";
 import type { Fields } from "../protocol.ts";
@@ -47,14 +48,19 @@ function message(
   };
 }
 
-function decisionEvent(alert: Extract<Alert, { kind: "decision" }>) {
+function decisionEvent(
+  alert: Extract<Alert, { kind: "decision" }>,
+  client: string,
+) {
   const { run, decision } = alert;
   const lines = decisionLines(
     operationalDecision(decision, String(run["workflowId"])),
-    clientProgram(),
+    client,
   );
   const allowed = decision["allowed"];
-  const count = Array.isArray(allowed) ? allowed.length : 0;
+  const count = Array.isArray(allowed)
+    ? allowed.filter(isDecisionCommand).length
+    : 0;
   const split = lines.length - count;
   return {
     key: alert.key,
@@ -65,7 +71,10 @@ function decisionEvent(alert: Extract<Alert, { kind: "decision" }>) {
   };
 }
 
-function scheduleEvent(alert: Extract<Alert, { kind: "schedule-stopped" }>) {
+function scheduleEvent(
+  alert: Extract<Alert, { kind: "schedule-stopped" }>,
+  client: string,
+) {
   const { workflowId, failedRunIds } = alert;
   return {
     key: alert.key,
@@ -76,7 +85,7 @@ function scheduleEvent(alert: Extract<Alert, { kind: "schedule-stopped" }>) {
           event: "schedule-stopped",
           body: body(
             `Schedule stopped after three failed runs:\n${failedRunIds.join("\n")}`,
-            [`cloving schedule resume ${workflowId}`],
+            [`${client} schedule resume ${workflowId}`],
           ),
         },
       ),
@@ -85,9 +94,12 @@ function scheduleEvent(alert: Extract<Alert, { kind: "schedule-stopped" }>) {
   };
 }
 
-export function notifyEvent(alert: Alert): NotifyEvent {
-  if (alert.kind === "decision") return decisionEvent(alert);
-  if (alert.kind === "schedule-stopped") return scheduleEvent(alert);
+export function notifyEvent(
+  alert: Alert,
+  client: string = clientProgram(),
+): NotifyEvent {
+  if (alert.kind === "decision") return decisionEvent(alert, client);
+  if (alert.kind === "schedule-stopped") return scheduleEvent(alert, client);
   const wanted = alert.kind === "blocked" ? "Outcome:" : "Reason:";
   const line = runStatus({ run: alert.run }).find((text) =>
     text.startsWith(wanted),
@@ -97,7 +109,7 @@ export function notifyEvent(alert: Alert): NotifyEvent {
     message: message(alert.run, {
       event: alert.kind,
       body: body(String(line), [
-        `cloving status ${String(alert.run["runId"])}`,
+        `${client} status ${String(alert.run["runId"])}`,
       ]),
     }),
   };
