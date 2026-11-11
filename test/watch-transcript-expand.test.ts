@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { component } from "../src/cli/watch-element.ts";
 import {
@@ -95,4 +96,16 @@ await test("CLV-355 a hidden turn and the full-screen view have no expand button
   );
   assert.doesNotMatch(hidden, /transcript-expand/);
   assert.doesNotMatch(full, /transcript-expand/);
+});
+
+await test("CLV-355 the README states how an expanded turn follows new entries", () => {
+  const readme = readFileSync(
+    new URL("../README.md", import.meta.url),
+    "utf8",
+  ).replaceAll("\n", " ");
+  assert.ok(
+    readme.includes(
+      "An expanded turn does not scroll the page by itself. When the end of the turn is below the window, **Jump to the end** counts the new entries and scrolls the page to the end of the turn.",
+    ),
+  );
 });

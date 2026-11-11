@@ -328,3 +328,35 @@ console.log(JSON.stringify({ before, opened, closed: { expanded: expand()?.getAt
     closed: { expanded: "false", lines: "transcript-lines" },
   });
 });
+
+await test("CLV-355 an expanded turn counts new entries when its end is below the window after a page scroll, and Jump to the end scrolls the page to its end", () => {
+  const result = transcriptPlayed(
+    { outcome: "in work" },
+    `
+send(streams[0], "entry", entryAt(1));
+await later();
+app.all("button").find((node) => node.getAttribute("class") === "transcript-expand")?.dispatch("click");
+await later();
+let bottom = 2000;
+const pageMoves = [];
+const box = { getAttribute: () => operationId, scrollTop: 0, scrollHeight: 0, getBoundingClientRect: () => ({ bottom }), scrollIntoView: (place) => { pageMoves.push(place.block); } };
+document.querySelectorAll = (selector) => (selector === "[data-transcript]" ? [box] : []);
+listeners.scroll?.();
+send(streams[0], "entry", entryAt(2));
+await later();
+const jump = button("Jump to the end")?.text ?? null;
+button("Jump to the end")?.dispatch("click");
+await later();
+bottom = 700;
+listeners.scroll?.();
+send(streams[0], "entry", entryAt(3));
+await later();
+console.log(JSON.stringify({ jump, scrolled: pageMoves, after: button("Jump to the end") === undefined }));
+`,
+  );
+  assert.deepEqual(result, {
+    jump: "Jump to the end · 1 new entry",
+    scrolled: ["end"],
+    after: true,
+  });
+});
