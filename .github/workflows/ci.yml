@@ -93,6 +93,23 @@
             "if-no-files-found": "error",
             "overwrite": true
           }
+        },
+        {
+          "id": "test-report",
+          "name": "Find the folder of the full test report",
+          "if": "${{ failure() }}",
+          "run": "echo \"directory=$(node -p \"require('node:os').tmpdir()\")\" >> \"$GITHUB_OUTPUT\""
+        },
+        {
+          "if": "${{ failure() }}",
+          "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02",
+          "with": {
+            "name": "test-report-macos-26.9.0-${{ matrix.shard }}",
+            "path": "${{ steps.test-report.outputs.directory }}/cloving-test-report-*.json",
+            "if-no-files-found": "ignore",
+            "retention-days": 7,
+            "overwrite": true
+          }
         }
       ],
       "strategy": {
@@ -179,6 +196,23 @@
             "name": "coverage-linux-${{ matrix.node }}-${{ matrix.shard }}",
             "path": "${{ runner.temp }}/cloving-coverage/shard",
             "if-no-files-found": "error",
+            "overwrite": true
+          }
+        },
+        {
+          "id": "test-report",
+          "name": "Find the folder of the full test report",
+          "if": "${{ failure() }}",
+          "run": "echo \"directory=$(node -p \"require('node:os').tmpdir()\")\" >> \"$GITHUB_OUTPUT\""
+        },
+        {
+          "if": "${{ failure() }}",
+          "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02",
+          "with": {
+            "name": "test-report-linux-${{ matrix.node }}-${{ matrix.shard }}",
+            "path": "${{ steps.test-report.outputs.directory }}/cloving-test-report-*.json",
+            "if-no-files-found": "ignore",
+            "retention-days": 7,
             "overwrite": true
           }
         }

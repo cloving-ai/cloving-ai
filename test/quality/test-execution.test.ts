@@ -31,8 +31,11 @@ await test("CLV-164 saves assertion diffs and stacks without expanding the failu
       assert.match(report, /expected/);
       assert.match(report, /AssertionError/);
       assert.match(report, /TestContext/);
-      assert.match(result.output, /^Failed tests:\ndeep assertion\n/);
-      assert.equal(result.output.trimEnd().split("\n").length, 4);
+      assert.match(
+        result.output,
+        /^Failed tests:\ndeep assertion\n {2}Expected values to be strictly deep-equal:\n {2}\+ actual - expected\n {2}\+ {3}value: 'actual'\n {2}- {3}value: 'expected'\n {2}at /,
+      );
+      assert.equal(result.output.trimEnd().split("\n").length, 7);
     },
   );
 });

@@ -297,3 +297,6 @@ export const changedPathsRun = [
   'git diff --name-only --no-renames -z HEAD^1 HEAD > "$RUNNER_TEMP/changed-paths"',
   'echo "CLOVING_CHANGED_PATHS=$RUNNER_TEMP/changed-paths" >> "$GITHUB_ENV"',
 ].join("\n");
+
+export const reportFolderRun =
+  'echo "directory=$(node -p "require(\'node:os\').tmpdir()")" >> "$GITHUB_OUTPUT"';

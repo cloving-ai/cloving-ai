@@ -11,6 +11,7 @@ import {
   metadata,
   prepareShellAttempt,
   releaseWorkflow,
+  reportFolderRun,
   runs,
   script,
   steps,
@@ -89,7 +90,7 @@ await test("CLV-097 CI checks main and version tag pushes, every pull request an
     const actions = steps(workflow, name)
       .map((step) => step.uses)
       .filter((action) => action !== undefined);
-    assert.equal(actions.length, name === "publish" ? 2 : 3);
+    assert.equal(actions.length, name === "publish" ? 2 : 4);
     for (const action of actions) {
       assert.ok(typeof action === "string");
       assert.match(
@@ -122,6 +123,7 @@ await test("CLV-266 only the first full shard and the macOS platform job run set
           step.run === "npm run check:setup" && name !== "publish",
           "${{ matrix.shard == '1' }}",
         ],
+        [/test-report/.test(JSON.stringify(step)), "${{ failure() }}"],
         [
           step.uses?.startsWith("actions/upload-artifact@") === true ||
             step.id === "changed-paths",
@@ -179,6 +181,7 @@ await test("CLV-097 quality qualifies the exact toolchain and completes the deve
     "npm run check:setup",
     changedPathsRun,
     gateRun,
+    reportFolderRun,
   ]);
 });
 
