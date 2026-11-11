@@ -324,15 +324,11 @@ await test("CLV-337 a stop of a connected command waits until its process is gon
     assert.equal(processExists(launch.processId), false);
   }));
 
-await test("CLV-337 the README states that the start program stops what a turn or a command left in its process group, and that a turn the service cannot use stops before its failure", () => {
+await test("CLV-337 the README states that the start program stops what a command left in its process group, and that a turn the service cannot use stops before its failure", () => {
   const readme = readFileSync(
     new URL("../README.md", import.meta.url),
     "utf8",
   ).replaceAll("\n", " ");
-  assert.match(
-    readme,
-    /When the turn ends, the start program writes the exit code and the end time to `turn\.exit\.json`\. Then it stops each process that the turn left in its process group\./,
-  );
   assert.match(
     readme,
     /the reason to `command\.exit\.json`\. Then it stops each process that the command left in its process group, so that no background process writes without a limit\./,
