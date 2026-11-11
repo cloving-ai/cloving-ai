@@ -100,7 +100,7 @@ test() {
   return "$ZSH_STATUS"
 }
 curl() {
-  [[ "\${*:1:8}" == '--fail --silent --show-error --location --connect-timeout 10 --max-time 20' && "\${9}" == -o ]] || exit 94
+  [[ "\${*:1:8}" == '--fail --silent --show-error --location --connect-timeout 20 --max-time 25' && "\${9}" == -o ]] || exit 94
   printf 'curl %s %s\\n' "$(basename "\${10}")" "\${11}"
   local host="\${11#https://}"
   [[ " $CURL_DOWN " == *" \${host%%/*} "* ]] && return 6

@@ -29,6 +29,10 @@ const checked = `${both}sha256sum\n`;
 const installed = `${checked}dpkg -i ${common} ${shell}\n`;
 const lastMirror = `${fetched(common, mirrors)}${fetched(shell, mirrors.slice(2))}sha256sum\ndpkg -i ${common} ${shell}\n`;
 
+function listed(run: string, loop: RegExp): readonly string[] {
+  return (loop.exec(run)?.[1] ?? "").trim().split(" ");
+}
+
 await test("CLV-266 Linux CI installs two pinned zsh packages from the first Ubuntu mirror that serves both, before setup, and propagates failures", async () => {
   const workflow = await releaseWorkflow();
   const linuxSteps = steps(workflow, "quality_linux_node");
@@ -42,7 +46,7 @@ await test("CLV-266 Linux CI installs two pinned zsh packages from the first Ubu
   for (const [zsh, download, down, check, install, status, output] of [
     ["0", "0", "", "0", "0", 0, ""],
     ["1", "0", "", "0", "0", 0, installed],
-    ["1", "22", "", "0", "0", 22, fetched(common, mirrors)],
+    ["1", "22", "", "0", "0", 22, fetched(common, [...mirrors, ...mirrors])],
     [
       "1",
       "0",
@@ -74,17 +78,17 @@ await test("CLV-266 Linux CI installs two pinned zsh packages from the first Ubu
   await rm(folder, { recursive: true, force: true });
 });
 
-await test("CLV-266 the zsh step fits its time limit when each mirror but the last one hangs until the download limit", async () => {
+await test("CLV-266 the zsh step fits its time limit when each download of two passes over the mirrors hangs until its limit", async () => {
   const workflow = await releaseWorkflow();
   const step = steps(workflow, "quality_linux_node").find(
     (candidate) => candidate.id === "prepare-shells",
   );
   const run = step?.run ?? "";
   assert.doesNotMatch(run, /--retry/);
-  const tried = /for mirror in ([^;]+);/.exec(run)?.[1]?.trim().split(" ");
-  assert.deepEqual(tried, [...mirrors]);
-  const downloadSeconds = Number(/--max-time (\d+)/.exec(run)?.[1]);
-  const worst = mirrors.length * 2 * downloadSeconds;
+  assert.deepEqual(listed(run, /for mirror in ([^;]+);/), [...mirrors]);
+  assert.equal(listed(run, /for attempt in ([^;]+);/).length, 2);
+  const downloadSeconds = Number(listed(run, /--max-time (\d+)/)[0]);
+  const worst = 2 * mirrors.length * 2 * downloadSeconds;
   const limit = (step?.["timeout-minutes"] ?? 0) * 60;
   assert.ok(
     worst + 60 <= limit,

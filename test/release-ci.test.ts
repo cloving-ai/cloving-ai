@@ -107,7 +107,7 @@ await test("CLV-266 only the first full shard and the macOS platform job run set
       assert.equal(step["continue-on-error"], undefined);
       assert.equal(
         step["timeout-minutes"],
-        step.id === "prepare-shells" ? 3 : undefined,
+        step.id === "prepare-shells" ? 6 : undefined,
       );
       const conditions = [
         [
