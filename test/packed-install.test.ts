@@ -51,6 +51,7 @@ import { field } from "./self-host-fixture.ts";
 import { testMilliseconds } from "./test-timing.ts";
 import { reviewStages } from "./watch-board-fixture.ts";
 import { record } from "../src/protocol.ts";
+import { metadata as releaseMetadata } from "./release-fixture.ts";
 
 const checkout = resolve(import.meta.dirname, "..");
 
@@ -198,6 +199,19 @@ await assert.rejects(import("cloving/workflows/steps/decision-gate"), { code: "E
   });
 }
 
+async function packedManifest(product: string): Promise<PackageMetadata> {
+  const parsed: unknown = JSON.parse(
+    await readFile(join(product, "package.json"), "utf8"),
+  );
+  assert.ok(packageMetadata(parsed));
+  assert.equal(field(parsed, "engines"), undefined);
+  assert.deepEqual(
+    field(parsed, "devEngines"),
+    (await releaseMetadata()).manifest.devEngines,
+  );
+  return parsed;
+}
+
 async function inventory(root: string): Promise<void> {
   const product = join(root, "node_modules/cloving");
   for (const name of [
@@ -229,11 +243,7 @@ async function inventory(root: string): Promise<void> {
   await assert.rejects(lstat(join(product, "dist/workflows")), {
     code: "ENOENT",
   });
-  const parsed: unknown = JSON.parse(
-    await readFile(join(product, "package.json"), "utf8"),
-  );
-  assert.ok(packageMetadata(parsed));
-  const metadata: PackageMetadata = parsed;
+  const metadata = await packedManifest(product);
   checkWorkflowExports(root, metadata);
   for (const entry of Object.values(metadata.exports)) {
     for (const target of Object.values(entry)) {

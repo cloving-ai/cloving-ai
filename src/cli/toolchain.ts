@@ -1,11 +1,11 @@
-import { findPackageJSON } from "node:module";
+import nodeModule from "node:module";
 import { createHash } from "node:crypto";
 import { access, readFile, realpath } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import packageMetadata from "#package" with { type: "json" };
 import type { ToolchainIdentity } from "../workflow-admission.ts";
 
-export const supportedNodes = packageMetadata.engines.node;
+export const supportedNodes = packageMetadata.devEngines.runtime.version;
 export const clovingVersion = packageMetadata.version;
 
 export function supportedNode(version: string): boolean {
@@ -115,7 +115,7 @@ async function packageDirectory(
   name: string,
 ): Promise<string | undefined> {
   try {
-    const file = findPackageJSON(name, join(start, "package.json"));
+    const file = nodeModule.findPackageJSON(name, join(start, "package.json"));
     return file === undefined ? undefined : dirname(await realpath(file));
   } catch (error) {
     if (
