@@ -152,6 +152,14 @@ async function workspaceArguments(root: string): Promise<readonly string[]> {
   return ["start", "--workspace"];
 }
 
+async function staleNotes(root: string): Promise<void> {
+  await writeFile(join(root, "restart-settings"), "files");
+  await writeFile(
+    join(root, "restart-variables"),
+    JSON.stringify({ CLOVING_QUEUE_LANES: "8" }),
+  );
+}
+
 async function started(
   statuses: readonly number[],
   options: StartOptions = {},
@@ -162,13 +170,7 @@ async function started(
       statuses,
       stallMilliseconds: options.stallMilliseconds ?? 0,
     });
-    if (options.files === "stale")
-      await writeFile(join(root, "restart-settings"), "files");
-    if (options.files === "stale")
-      await writeFile(
-        join(root, "restart-variables"),
-        JSON.stringify({ CLOVING_QUEUE_LANES: "8" }),
-      );
+    if (options.files === "stale") await staleNotes(root);
     if (options.adopt === true)
       spawnSync("git", ["init", "-q", join(root, "chosen")]);
     const command =
