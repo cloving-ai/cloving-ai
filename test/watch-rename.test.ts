@@ -63,7 +63,7 @@ await test("CLV-334 the token, the card, Needs you and the run detail show the l
   assert.match(
     detail,
     new RegExp(
-      `<p class="run-name"><span class="name-label">SID-4820</span><span class="name-title">${pullTitle}</span><span class="name-pull">PR #686</span></p>`,
+      `<h2 class="run-identity"><span class="name-label">SID-4820</span><span class="name-title">${pullTitle}</span></h2>[^]*<p class="run-facts"><a href="[^"]*">PR #686</a>`,
     ),
   );
   for (const html of [floor, board, detail, rendered(page("run=prompt-run"))])

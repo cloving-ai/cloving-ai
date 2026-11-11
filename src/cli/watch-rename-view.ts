@@ -168,32 +168,6 @@ export function RenameAction(props: {
   });
 }
 
-export function RunHeading(props: {
-  readonly run: NamedRun & {
-    readonly pullRequest: { readonly number: number } | null;
-  };
-  readonly renaming?: RenameControls | undefined;
-}): Shown {
-  const { run } = props;
-  return [
-    element("p", {
-      class: "run-name",
-      children: [
-        component(NameMark, { tone: "name-label", text: run.label }),
-        element("span", {
-          class: "name-title",
-          children: run.title ?? run.runId,
-        }),
-        component(NameMark, {
-          tone: "name-pull",
-          text: pullMark(run.pullRequest?.number ?? null),
-        }),
-      ],
-    }),
-    component(RenameAction, { run, renaming: props.renaming }),
-  ];
-}
-
 export const runActionFunctions = [
   ...steerFunctions,
   pullMark,
@@ -202,5 +176,4 @@ export const runActionFunctions = [
   RenameForm,
   RenameButtons,
   RenameAction,
-  RunHeading,
 ];

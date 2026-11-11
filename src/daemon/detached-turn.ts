@@ -10,6 +10,7 @@ import {
   inputDescriptor,
   intervals,
   launchedProcess,
+  launchMarker,
   type Watch,
 } from "./detached-process.ts";
 import {
@@ -185,7 +186,12 @@ export function detachedTurn(start: DetachedStart): FollowedTurn {
     environment: start.environment,
     directory: start.directory,
     descriptors: files.descriptors,
-    exit: files.exit,
+    marker: launchMarker(start.folder, {
+      output: files.path,
+      offset: files.offset,
+      exit: files.exit,
+      configuration: start.configuration,
+    }),
   });
   const launch = detached.launch.then((recorded) =>
     recorded === null

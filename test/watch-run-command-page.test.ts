@@ -45,7 +45,8 @@ const press = async (label, next) => {
   for (let turn = 0; turn < 5; turn++) await settled();
 };
 const message = () => app.all("p").find((node) => node.getAttribute("class") === "run-command-message")?.text ?? null;
-const labels = () => app.all("div").filter((node) => node.getAttribute("class") === "run-command").flatMap((node) => node.all("button").map((item) => item.text));
+const commandLabels = ["Pause", "Resume", "Drop", "Drop the run", "Keep it"];
+const labels = () => app.all("button").map((item) => item.text).filter((text) => commandLabels.includes(text));
 const seen = [];
 const look = (name) => { seen.push({ name, message: message(), labels: labels(), sent: posts.length, loads: requests.filter((address) => address === "data.json").length }); };
 location.hash = "#run=run-a";
@@ -92,7 +93,7 @@ const expectedLooks = [
   ["paused", "Paused", 4, 5, "Resume", "Drop"],
   ["stale", stale, 5, 6, "Resume", "Drop"],
   ["refused", refused, 6, 7, "Resume", "Drop"],
-  ["asked", refused, 6, 7, "Drop the run", "Keep it"],
+  ["asked", refused, 6, 7, "Resume", "Drop", "Drop the run", "Keep it"],
   ["kept", refused, 6, 7, "Resume", "Drop"],
   ["dropped", "Dropped", 7, 8],
 ];

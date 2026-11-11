@@ -1,10 +1,19 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { closeSync, openSync, rmSync, writeFileSync } from "node:fs";
+import {
+  closeSync,
+  openSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { record } from "../protocol.ts";
+import type { PlannedLaunch, TurnLaunch } from "../turn-launch.ts";
 import {
+  markedProcesses,
   processExists,
   processIdentity,
   processMatch,
@@ -42,8 +51,13 @@ export interface LauncherStart {
   readonly environment: NodeJS.ProcessEnv;
   readonly directory: string;
   readonly descriptors: readonly [number | "ignore", number, number];
-  readonly exit: string;
+  readonly marker: LaunchMarker;
   readonly limits?: LauncherLimits;
+}
+
+export interface LaunchMarker {
+  readonly path: string;
+  readonly launch: PlannedLaunch;
 }
 
 export interface LauncherLimits {
@@ -135,19 +149,20 @@ export function released(signal: AbortSignal): Promise<Watch> {
   });
 }
 
-function spawnedLauncher(
-  start: LauncherStart & { readonly marker: string },
-): ChildProcess {
+function spawnedLauncher(start: LauncherStart): ChildProcess {
   const { NODE_V8_COVERAGE: coverage = "", ...environment } = start.environment;
+  const { path, launch } = start.marker;
   try {
-    rmSync(start.exit, { force: true });
+    rmSync(launch.exit, { force: true });
+    writeFileSync(`${path}.staged`, JSON.stringify(launch), { mode: 0o600 });
+    renameSync(`${path}.staged`, path);
     return spawn(
       process.execPath,
       [
         "-e",
         launcher,
-        start.exit,
-        start.marker,
+        launch.exit,
+        launch.marker,
         coverage,
         JSON.stringify(start.limits ?? {}),
         start.executable,
@@ -178,8 +193,8 @@ function childEnding(child: ChildProcess, exit: string): Promise<Watch> {
 }
 
 export function launchedProcess(start: LauncherStart): LaunchedProcess {
-  const marker = `cloving-turn-${randomUUID()}`;
-  const child = spawnedLauncher({ ...start, marker });
+  const { marker, exit } = start.marker.launch;
+  const child = spawnedLauncher(start);
   child.unref();
   const processId = child.pid ?? null;
   const launch = (
@@ -187,7 +202,7 @@ export function launchedProcess(start: LauncherStart): LaunchedProcess {
   ).then((identity) =>
     identity === undefined || processId === null
       ? null
-      : { processId, processStart: identity.start, marker, exit: start.exit },
+      : { processId, processStart: identity.start, marker, exit },
   );
   return {
     child,
@@ -198,7 +213,7 @@ export function launchedProcess(start: LauncherStart): LaunchedProcess {
       const release = released(signal).finally(() => {
         child.unref();
       });
-      return Promise.race([childEnding(child, start.exit), release]);
+      return Promise.race([childEnding(child, exit), release]);
     },
     signal: (name) => {
       if (child.exitCode !== null || child.signalCode !== null) return;
@@ -207,7 +222,10 @@ export function launchedProcess(start: LauncherStart): LaunchedProcess {
   };
 }
 
-async function running(launch: ProcessLaunch, poll: number): Promise<boolean> {
+async function running(
+  launch: RecordedProcess,
+  poll: number,
+): Promise<boolean> {
   if (!processExists(launch.processId)) return false;
   if (poll % intervals.identity !== 0) return true;
   return (await processMatch(launch)) !== "other";
@@ -230,7 +248,7 @@ async function launchEnding(
 }
 
 async function sameSignalled(
-  launch: ProcessLaunch,
+  launch: RecordedProcess,
   request: { readonly name: NodeJS.Signals; readonly watching: AbortSignal },
 ): Promise<void> {
   for (;;) {
@@ -272,4 +290,60 @@ export async function stoppedLaunch(
   } finally {
     clearTimeout(forced);
   }
+}
+
+export const markerRecord = "launch-marker.json";
+
+export function launchMarker(
+  folder: string,
+  files: Omit<PlannedLaunch, "marker">,
+): LaunchMarker {
+  return {
+    path: join(folder, markerRecord),
+    launch: { marker: `cloving-turn-${randomUUID()}`, ...files },
+  };
+}
+
+async function stoppedMatch(
+  found: RecordedProcess,
+  milliseconds: number,
+): Promise<void> {
+  const watching = new AbortController();
+  const signalled = (name: NodeJS.Signals) =>
+    sameSignalled(found, { name, watching: watching.signal });
+  const forced = setTimeout(() => {
+    signalled("SIGKILL").catch(() => undefined);
+  }, milliseconds);
+  try {
+    await signalled("SIGTERM");
+    for (let poll = 0; await running(found, poll); poll += 1)
+      await delay(intervals.process);
+  } finally {
+    clearTimeout(forced);
+    watching.abort();
+  }
+}
+
+export interface FoundLaunch {
+  readonly launch: TurnLaunch;
+  readonly startedAt: number;
+}
+
+export async function foundLaunch(
+  planned: PlannedLaunch,
+  search: { readonly since: number; readonly stopMilliseconds: number },
+): Promise<FoundLaunch | "stopped" | "unknown" | undefined> {
+  const found = await markedProcesses({ ...search, marker: planned.marker });
+  if (found === undefined) return "unknown";
+  const launches = found.map(({ processId, processStart, startedAt }) => ({
+    launch: { processId, processStart, ...planned },
+    startedAt,
+  }));
+  if (launches.length === 1) return launches[0];
+  await Promise.all(
+    launches.map((match) =>
+      stoppedMatch(match.launch, search.stopMilliseconds),
+    ),
+  );
+  return launches.length === 0 ? undefined : "stopped";
 }
