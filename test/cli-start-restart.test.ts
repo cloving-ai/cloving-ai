@@ -192,6 +192,8 @@ async function started(
           root,
           "--client",
           `CLOVING_RUNTIME_DIR=${join(root, "run")} cloving`,
+          "--client-program",
+          "cloving",
           "--repository",
           "chosen",
           ...(options.arguments ?? []),

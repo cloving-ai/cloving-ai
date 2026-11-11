@@ -1,7 +1,8 @@
 import { repositoryFileName } from "../repository-identity.ts";
+import packageMetadata from "#package" with { type: "json" };
 import { createHash } from "node:crypto";
 import { readFileSync, realpathSync } from "node:fs";
-import { basename, isAbsolute, join } from "node:path";
+import { basename, isAbsolute, join, sep } from "node:path";
 import { record } from "../protocol.ts";
 
 type Environment = Readonly<Record<string, string | undefined>>;
@@ -16,14 +17,29 @@ export function shellArgument(value: string): string {
     : `'${value.replaceAll("'", "'\\''")}'`;
 }
 
+export interface ClientPackage {
+  readonly packagePath?: string;
+}
+
+export function clientProgram(running: ClientPackage = {}): string {
+  const path = running.packagePath ?? realpathSync(import.meta.dirname);
+  return path.split(sep).includes("_npx")
+    ? `npx cloving@${packageMetadata.version}`
+    : "cloving";
+}
+
 export function clientCommand(
   environment: Environment,
-  repository?: string,
+  options: ClientPackage & { readonly repository?: string | undefined } = {},
 ): string {
+  const program = clientProgram(options);
   const explicit = environment["CLOVING_RUNTIME_DIR"];
-  return given(explicit)
-    ? `CLOVING_RUNTIME_DIR=${shellArgument(explicit)} cloving`
-    : `cloving${repository === undefined ? "" : ` --repository ${shellArgument(repository)}`}`;
+  if (given(explicit))
+    return `CLOVING_RUNTIME_DIR=${shellArgument(explicit)} ${program}`;
+  const { repository } = options;
+  return repository === undefined
+    ? program
+    : `${program} --repository ${shellArgument(repository)}`;
 }
 
 function stateRoot(environment: Environment): string | undefined {
