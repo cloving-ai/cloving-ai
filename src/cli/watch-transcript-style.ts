@@ -52,7 +52,6 @@ export const transcriptStyle = `
 .transcript-lines .markdown p, .transcript-lines .markdown li { white-space: pre-wrap; overflow-wrap: anywhere; }
 .transcript-lines .markdown h1, .transcript-lines .markdown h2, .transcript-lines .markdown h3, .transcript-lines .markdown h4, .transcript-lines .markdown h5, .transcript-lines .markdown h6 { font: inherit; font-weight: 700; color: var(--color-terminal-tool); }
 .transcript-lines .markdown ul, .transcript-lines .markdown ol { padding-left: 3ch; }
-.transcript-lines .markdown .md-nested { margin-left: 3ch; }
 .transcript-lines .markdown strong, .transcript-lines .markdown code { color: var(--color-terminal-tool); }
 .transcript-lines .markdown .md-code { padding: 6px 10px; background: var(--terminal-edge); }
 .transcript-lines .markdown a { color: var(--color-terminal-green); }

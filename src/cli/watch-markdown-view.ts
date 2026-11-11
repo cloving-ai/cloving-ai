@@ -2,7 +2,13 @@ import { component, element, type Shown } from "./watch-element.ts";
 
 export interface MarkdownItem {
   readonly text: string;
-  readonly nested: boolean;
+  readonly lists: readonly MarkdownBlock[];
+}
+
+export interface ItemLine {
+  readonly text: string;
+  readonly indent: number;
+  readonly number: number | null;
 }
 
 export type MarkdownBlock =
@@ -57,29 +63,37 @@ export function markdownInline(text: string): Shown[] {
   return parts;
 }
 
-export function markdownItem(
-  line: string,
-): (MarkdownItem & { readonly number: number | null }) | undefined {
+export function markdownItem(line: string): ItemLine | undefined {
   const found = /^(\s*)(?:([-*+])|(\d+)[.)])\s+(.*)$/.exec(line);
   if (found === null) return undefined;
   return {
     text: found[4] ?? "",
-    nested: (found[1] ?? "").length >= 2,
+    indent: (found[1] ?? "").length,
     number: found[3] === undefined ? null : Number(found[3]),
   };
 }
 
+export function markdownFenceMark(line: string): string | undefined {
+  return /^\s*(`{3,}|~{3,})/.exec(line)?.[1];
+}
+
 export function markdownLineKind(line: string): string {
   if (line.trim() === "") return "blank";
-  if (/^\s*```/.test(line)) return "fence";
+  if (markdownFenceMark(line) !== undefined) return "fence";
   if (/^#{1,6}\s+\S/.test(line)) return "heading";
   return markdownItem(line) === undefined ? "text" : "item";
 }
 
 export function markdownFence(lines: readonly string[], index: number): Parsed {
-  const end = lines.findIndex(
-    (line, at) => at > index && /^\s*```\s*$/.test(line),
-  );
+  const opening = markdownFenceMark(lines[index] ?? "") ?? "```";
+  const end = lines.findIndex((line, at) => {
+    const closing = /^\s*(`+|~+)\s*$/.exec(line)?.[1] ?? "";
+    return (
+      at > index &&
+      closing[0] === opening[0] &&
+      closing.length >= opening.length
+    );
+  });
   const last = end < 0 ? lines.length : end;
   return {
     block: { kind: "code", text: lines.slice(index + 1, last).join("\n") },
@@ -89,13 +103,23 @@ export function markdownFence(lines: readonly string[], index: number): Parsed {
 
 export function markdownList(lines: readonly string[], index: number): Parsed {
   const first = markdownItem(lines[index] ?? "");
+  const indent = first?.indent ?? 0;
   const ordered = first?.number !== null;
-  const items: MarkdownItem[] = [];
+  const items: { text: string; lists: MarkdownBlock[] }[] = [];
   let next = index;
-  for (; next < lines.length; next += 1) {
+  while (next < lines.length) {
     const item = markdownItem(lines[next] ?? "");
-    if (item === undefined || (item.number !== null) !== ordered) break;
-    items.push({ text: item.text, nested: item.nested });
+    const last = items.at(-1);
+    if (item === undefined || item.indent < indent) break;
+    if (item.indent > indent && last !== undefined) {
+      const nested = markdownList(lines, next);
+      last.lists.push(nested.block);
+      next = nested.next;
+      continue;
+    }
+    if ((item.number !== null) !== ordered) break;
+    items.push({ text: item.text, lists: [] });
+    next += 1;
   }
   return {
     block: { kind: "list", ordered, start: first?.number ?? 1, items },
@@ -159,8 +183,12 @@ export function MarkdownBlockView(props: {
     start: block.ordered && block.start !== 1 ? String(block.start) : undefined,
     children: block.items.map((item) =>
       element("li", {
-        class: item.nested ? "md-nested" : undefined,
-        children: markdownInline(item.text),
+        children: [
+          markdownInline(item.text),
+          item.lists.map((list, index) =>
+            component(MarkdownBlockView, { key: String(index), block: list }),
+          ),
+        ],
       }),
     ),
   });
@@ -189,6 +217,7 @@ export const markdownFunctions = [
   markdownSpan,
   markdownInline,
   markdownItem,
+  markdownFenceMark,
   markdownLineKind,
   markdownFence,
   markdownList,

@@ -20,10 +20,35 @@ await test("CLV-355 agent text shows bold, italic and code text, headings, lists
   );
 });
 
-await test("CLV-355 a numbered list that starts at 3 keeps its start, and a nested item keeps its depth", () => {
+await test("CLV-355 a numbered list that starts at 3 keeps its start, and an indented list shows inside the item above it", () => {
   assert.equal(
     markdown("3. third\n4. fourth\n   - inner"),
-    '<div class="markdown"><ol start="3"><li>third</li><li>fourth</li></ol><ul><li class="md-nested">inner</li></ul></div>',
+    '<div class="markdown"><ol start="3"><li>third</li><li>fourth<ul><li>inner</li></ul></li></ol></div>',
+  );
+});
+
+await test("CLV-355 numbered substeps show as a nested list inside their main step, so the main steps keep the numbers 1 and 2", () => {
+  assert.equal(
+    markdown("1. First\n   1. a\n   2. b\n2. Second"),
+    '<div class="markdown"><ol><li>First<ol><li>a</li><li>b</li></ol></li><li>Second</li></ol></div>',
+  );
+});
+
+await test("CLV-355 a bulleted sublist shows inside its item, and a second sublist of another kind under the same item follows the first", () => {
+  assert.equal(
+    markdown("- one\n  - one a\n  - one b\n  1. step\n- two"),
+    '<div class="markdown"><ul><li>one<ul><li>one a</li><li>one b</li></ul><ol><li>step</li></ol></li><li>two</li></ul></div>',
+  );
+});
+
+await test("CLV-355 a code fence closes only on a fence of the same character that is at least as long, so a longer fence can hold a shorter one", () => {
+  assert.equal(
+    markdown("````md\n```js\ncode\n```\n````\nAfter the block."),
+    '<div class="markdown"><pre class="md-code"><code>```js\ncode\n```</code></pre><p>After the block.</p></div>',
+  );
+  assert.equal(
+    markdown("~~~\n```\n~~~\nAfter."),
+    '<div class="markdown"><pre class="md-code"><code>```</code></pre><p>After.</p></div>',
   );
 });
 
