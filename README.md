@@ -155,6 +155,8 @@ When you trust a step, change it to a hands-off option. Ask the setup agent agai
 npm install --global cloving --ignore-scripts
 ```
 
+When Cloving runs from `npx`, each command that it prints for you starts with `npx cloving@<version>`, for example `npx cloving@<version> --repository <repository> status`. The version is the version of the running package. These commands work in a new terminal, and they keep the client and the service on the same release. A global or project-local installation prints the `cloving` form.
+
 `npx` runs the install scripts of three dependencies: `esbuild`, `@swc/core` and the optional `cbor-extract`. To install with no scripts, run the command above first. Then run `cloving init`.
 
 ## Make the factory yours

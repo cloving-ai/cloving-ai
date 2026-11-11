@@ -6,6 +6,7 @@ import {
 } from "../alert-selection.ts";
 import { operationalDecision } from "../decision-visibility.ts";
 import { decisionLines, runStatus } from "../cli/render.ts";
+import { clientProgram } from "../cli/runtime-directory.ts";
 import type { Fields } from "../protocol.ts";
 
 export interface Notification {
@@ -50,6 +51,7 @@ function decisionEvent(alert: Extract<Alert, { kind: "decision" }>) {
   const { run, decision } = alert;
   const lines = decisionLines(
     operationalDecision(decision, String(run["workflowId"])),
+    clientProgram(),
   );
   const allowed = decision["allowed"];
   const count = Array.isArray(allowed) ? allowed.length : 0;

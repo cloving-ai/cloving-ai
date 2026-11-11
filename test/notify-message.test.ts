@@ -47,7 +47,10 @@ await test("CLV-242 a stopped schedule message names its three failures and resu
 
 await test("CLV-090 notification text matches questions, including question commands and feedback", () => {
   const notification = decisionNotification(run, question);
-  assert.equal(notification.message.body, decisionLines(question).join("\n"));
+  assert.equal(
+    notification.message.body,
+    decisionLines(question, "cloving").join("\n"),
+  );
   assert.equal(notification.key, "decision:run-one/design-1");
   assert.match(notification.message.body, /cloving answer Q1 --text <answer>/);
   assert.match(
@@ -64,7 +67,9 @@ await test("CLV-090 long feedback and failure reasons are bounded without clippi
   });
   assert.equal(decision.message.body.length, 4000);
   assert.ok(
-    decision.message.body.endsWith(String(decisionLines(question).at(-1))),
+    decision.message.body.endsWith(
+      String(decisionLines(question, "cloving").at(-1)),
+    ),
   );
   const failed = outcomeNotification({
     ...run,

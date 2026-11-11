@@ -4,6 +4,8 @@ import { resolve } from "node:path";
 import { test } from "node:test";
 import { withFiles } from "./quality/files-fixture.ts";
 import { fields, items } from "./service-fixture.ts";
+import { execCacheEntry, npxProgram } from "./exec-cache-fixture.ts";
+import { testMilliseconds } from "./test-timing.ts";
 
 await test("CLV-207 doctor reports a required git failure outside a repository", () =>
   withFiles({}, (directory) => {
@@ -46,4 +48,23 @@ await test("CLV-207 doctor help, invalid invocations and human output use the CL
       ["--unknown"],
     ])
       assert.equal(cli(...argumentsList).status, 2);
+  }));
+
+await test("CLV-345 doctor from the exec cache of npm names the npx client program in each cloving fix", () =>
+  withFiles({}, async (directory) => {
+    const result = spawnSync(
+      process.execPath,
+      [await execCacheEntry(directory), "doctor", "--json"],
+      { cwd: directory, encoding: "utf8", timeout: testMilliseconds(15000) },
+    );
+    assert.equal(result.status, 1, result.stderr || result.stdout);
+    const checks = items(fields(JSON.parse(result.stdout))["checks"]).map(
+      fields,
+    );
+    const fix = (code: string) =>
+      String(checks.find((check) => check["code"] === code)?.["fix"]);
+    assert.equal(fix("service"), `Start the service: ${npxProgram} start`);
+    assert.equal(fix("no-workflow"), `${npxProgram} init`);
+    for (const check of checks)
+      assert.doesNotMatch(String(check["fix"]), /(^|\s)cloving /);
   }));
