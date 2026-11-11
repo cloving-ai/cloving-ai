@@ -9,9 +9,11 @@ import {
   rendered,
 } from "../src/cli/render.ts";
 import {
+  clientProgram,
   legacyRuntimeDirectory,
   runtimeDirectory,
 } from "../src/cli/runtime-directory.ts";
+import { npxProgram } from "./exec-cache-fixture.ts";
 
 const receipt = {
   commandId: "c-1",
@@ -165,8 +167,10 @@ await test("CLV-008 the human form of a run list, a run command and a decision h
 });
 
 await test("CLV-008 the human form of the decisions gives the complete command line for each allowed command", () => {
-  assert.deepEqual(decisionList({ decisions: [] }), ["No decision waits."]);
-  assert.deepEqual(decisionList({ decisions: [question] }), [
+  assert.deepEqual(decisionList({ decisions: [] }, "cloving"), [
+    "No decision waits.",
+  ]);
+  assert.deepEqual(decisionList({ decisions: [question] }, "cloving"), [
     "Q1 question run-1/design-1",
     "  Prompt: Which parser?",
     "  cloving answer Q1 --text <answer> --expected-revision 1 --generation 1 --subject-digest sha256:bb",
@@ -195,6 +199,35 @@ await test("CLV-008 the human form of the decisions gives the complete command l
     pendingSummary({ decisions: [] }),
     "Pending decisions:\n  none\n",
   );
+});
+
+await test("CLV-345 each decision line of questions from the exec cache starts with the npx client program", () => {
+  const client = clientProgram({
+    packagePath: "/home/user/.npm/_npx/0a1b2c3d/node_modules/cloving",
+  });
+  assert.equal(client, npxProgram);
+  const tail =
+    "--expected-revision 1 --generation 1 --subject-digest sha256:bb";
+  assert.deepEqual(
+    decisionList(
+      { decisions: [{ ...question, allowed: ["approve", "deny", "answer"] }] },
+      client,
+    ).slice(2),
+    [
+      `  ${client} approve Q1 ${tail}`,
+      `  ${client} deny Q1 --text "<feedback>" ${tail}`,
+      `  ${client} answer Q1 --text <answer> ${tail}`,
+    ],
+  );
+});
+
+await test("CLV-345 the decision lines of questions leave out an allowed name that is not a decision command", () => {
+  const decision = { ...question, allowed: ["escalate", 7, "answer"] };
+  assert.deepEqual(decisionList({ decisions: [decision] }, "cloving"), [
+    "Q1 question run-1/design-1",
+    "  Prompt: Which parser?",
+    "  cloving answer Q1 --text <answer> --expected-revision 1 --generation 1 --subject-digest sha256:bb",
+  ]);
 });
 
 await test("CLV-008 the human form of an event is one line", () => {

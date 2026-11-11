@@ -5,6 +5,7 @@ import { dirname, join, resolve } from "node:path";
 import { test } from "node:test";
 import { operatorFiles } from "./workflow-folder-fixture.ts";
 import { settings, withDoctor } from "./doctor-fixture.ts";
+import { execCacheEntry, npxProgram } from "./exec-cache-fixture.ts";
 
 await test("CLV-225 init-prompt prints facts and setup instructions without running a worker", () =>
   withDoctor(async (scene) => {
@@ -96,4 +97,18 @@ await test("CLV-225 config alone gets first-workflow steps and private texts sta
     assert.match(result.stdout, /Make the first workflow/);
     assert.match(result.stdout, /\.cloving\/config\.json/);
     assert.doesNotMatch(result.stdout, /private example/);
+  }));
+
+await test("CLV-345 init-prompt from the exec cache of npm gives the npx client program in its facts", () =>
+  withDoctor(async (scene) => {
+    const result = spawnSync(
+      process.execPath,
+      [await execCacheEntry(scene.root), "init-prompt"],
+      { cwd: scene.repository, env: scene.environment, encoding: "utf8" },
+    );
+    assert.equal(result.status, 0, result.stderr);
+    assert.ok(
+      result.stdout.includes(`"client": "${npxProgram}"`),
+      result.stdout.slice(0, 2000),
+    );
   }));
