@@ -208,7 +208,8 @@ function recoveryPlan(
 ) {
   const { launch } = request;
   if (launch !== undefined) return attachPlan(settings, { ...request, launch });
-  if (request.wait !== undefined) return waitPlan(settings, request);
+  const { wait } = request;
+  if (wait !== undefined) return waitPlan(settings, { ...request, wait });
   return resumePlan(settings, request);
 }
 

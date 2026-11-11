@@ -82,6 +82,14 @@ function savedWait(scene: Scene, endsIn: number): number {
   return endsAt;
 }
 
+function rewritten(
+  scene: Scene,
+  file: { readonly name: string; readonly value: unknown },
+): void {
+  const path = join(scene.journal, journalKey("operation-1"), file.name);
+  writeFileSync(path, JSON.stringify(file.value));
+}
+
 function attemptStart(scene: Scene, attempt: number): number {
   const entry = record(scene, `operation-1/attempt-${String(attempt)}.json`);
   return Date.parse(String(field(entry, "startedAt")));
@@ -121,6 +129,11 @@ await test("CLV-348 a retry wait that ended while no service ran starts the next
   withScene(async (scene) => {
     await waitingTurn(scene, "capacity-once");
     savedWait(scene, -120_000);
+    const started = record(scene, "operation-1/started.json");
+    rewritten(scene, {
+      name: "started.json",
+      value: { ...Object(started), turnStartCommit: undefined },
+    });
     const next = scene.worker("capacity-once");
     const reconciled = Date.now();
     assert.equal((await next.reconcile(intent(), signal)).kind, "accepted");
@@ -221,5 +234,31 @@ await test("CLV-348 a continued wait whose profile is gone ends as an interrupte
     const next = scene.worker("capacity-once", { profiles: {} });
     const reply = await next.reconcile(operation, signal);
     assert.equal(field(reply, "reason"), "claude-turn-interrupted");
+    assert.equal(scene.turns().length, 1);
+  }));
+
+await test("CLV-348 a saved wait with no valid wait end, turn start or work tree ends as an interrupted turn", () =>
+  withScene(async (scene) => {
+    await waitingTurn(scene, "capacity-once");
+    const started = record(scene, "operation-1/started.json");
+    const result = record(scene, "operation-1/result.json");
+    for (const change of [
+      { waitingAt: "2026-13-45T10:01:00.000Z" },
+      { startedAt: undefined },
+      { worktree: undefined },
+    ]) {
+      rewritten(scene, {
+        name: "started.json",
+        value: { ...Object(started), ...change },
+      });
+      rewritten(scene, { name: "result.json", value: result });
+      const next = scene.worker("capacity-once");
+      const reply = await next.reconcile(intent(), signal);
+      assert.equal(
+        field(reply, "reason"),
+        "claude-turn-interrupted",
+        JSON.stringify(change),
+      );
+    }
     assert.equal(scene.turns().length, 1);
   }));
