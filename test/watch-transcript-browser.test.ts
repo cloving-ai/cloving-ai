@@ -15,6 +15,7 @@ import { reportTurn, workerScene } from "./worker-report-fixture.ts";
 import {
   called,
   compactLines,
+  expandBox,
   output,
   paired,
   panelBox,
@@ -300,7 +301,41 @@ const colors = `(() => {
   return { light: measured("light"), dark: measured("dark") };
 })()`;
 
-await test("CLV-333 CLV-355 the terminal panel is dark in the light and the dark scheme, a short open turn is short, a long one stops at 60 percent of the window with its own scroll, each tool call keeps its fold count on its own line, agent text shows its Markdown, and the full-screen link shows only the panel at the size of the window", () =>
+type BrowserPage = Awaited<
+  ReturnType<Awaited<ReturnType<typeof realBrowser>>["page"]>
+>;
+
+async function expandChecked(page: BrowserPage): Promise<void> {
+  const capped = fields(await page.evaluate(expandBox("false")));
+  assert.ok(
+    Math.abs(Number(capped["height"]) - 500) <= 1,
+    JSON.stringify(capped),
+  );
+  assert.ok(Number(capped["scroll"]) > 500, JSON.stringify(capped));
+  assert.ok(
+    Number(capped["right"]) >= Number(capped["edge"]) - 48,
+    JSON.stringify(capped),
+  );
+  assert.ok(
+    Number(capped["bottom"]) <= Number(capped["top"]) + 1,
+    JSON.stringify(capped),
+  );
+  await page.click(".transcript-expand");
+  const open = fields(await page.evaluate(expandBox("true")));
+  assert.ok(Number(open["height"]) > 500, JSON.stringify(open));
+  assert.ok(
+    Math.abs(Number(open["height"]) - Number(open["scroll"])) <= 1,
+    JSON.stringify(open),
+  );
+  await page.click(".transcript-expand");
+  const closed = fields(await page.evaluate(expandBox("false")));
+  assert.ok(
+    Math.abs(Number(closed["height"]) - 500) <= 1,
+    JSON.stringify(closed),
+  );
+}
+
+await test("CLV-333 CLV-355 the terminal panel is dark in the light and the dark scheme, a short open turn is short, a long one starts at 500 pixels with its own scroll and an expand button at the top right that shows all its lines and returns to 500 pixels, each tool call keeps its fold count on its own line, agent text shows its Markdown, and the full-screen link shows only the panel at the size of the window", () =>
   withHarness(async (harness) => {
     const turn = await liveTurn(harness);
     await appendFile(turn.stream, `${said("Done.")}\n`);
@@ -320,12 +355,8 @@ await test("CLV-333 CLV-355 the terminal panel is dark in the light and the dark
       assert.equal(lines["calls"], 40, JSON.stringify(lines));
       assert.ok(Number(lines["tallest"]) <= 24, JSON.stringify(lines));
       assert.equal(lines["sameRow"], true, JSON.stringify(lines));
-      assert.ok(Number(lines["box"]) <= 0.6 * 900 + 24, JSON.stringify(lines));
-      assert.ok(
-        Number(lines["scroll"]) > Number(lines["box"]),
-        JSON.stringify(lines),
-      );
       assert.equal(lines["strong"], "Checked.", JSON.stringify(lines));
+      await expandChecked(page);
       const { light, dark } = await page.evaluate(colors);
       assert.ok(Number(fields(light)["page"]) > 0.8, JSON.stringify(light));
       assert.ok(Number(fields(dark)["page"]) < 0.2, JSON.stringify(dark));

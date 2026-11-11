@@ -74,3 +74,21 @@ export const panelBox = `(async () => {
     window: [innerWidth, innerHeight],
   };
 })()`;
+
+export const expandBox = (expanded: "true" | "false") => `(async () => {
+  const button = () => document.querySelector(".transcript-expand");
+  for (let attempt = 0; attempt < 500 && button()?.getAttribute("aria-expanded") !== "${expanded}"; attempt++)
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  const box = document.querySelector(".transcript-lines");
+  const area = box.getBoundingClientRect();
+  const place = button().getBoundingClientRect();
+  return {
+    expanded: button().getAttribute("aria-expanded"),
+    height: area.height,
+    scroll: box.scrollHeight,
+    top: area.top,
+    right: place.right,
+    bottom: place.bottom,
+    edge: document.querySelector(".transcript").getBoundingClientRect().right,
+  };
+})()`;

@@ -21,6 +21,7 @@ export function terminal(...entries: readonly TranscriptEntry[]): string {
         onTab: () => undefined,
         view: () => ({
           shown: true,
+          expanded: false,
           entries,
           state: "open",
           message: "",
@@ -29,6 +30,7 @@ export function terminal(...entries: readonly TranscriptEntry[]): string {
           detached: false,
         }),
         onToggle: () => undefined,
+        onExpand: () => undefined,
         onLink: () => undefined,
         onScroll: () => undefined,
         onJump: () => undefined,

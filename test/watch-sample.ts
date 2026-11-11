@@ -145,6 +145,7 @@ export const wantedTranscripts: TranscriptControls = {
   onTab: () => undefined,
   view: (target) => ({
     shown: target.wanted,
+    expanded: false,
     entries: [],
     state: "loading",
     message: "",
@@ -153,6 +154,7 @@ export const wantedTranscripts: TranscriptControls = {
     detached: false,
   }),
   onToggle: () => undefined,
+  onExpand: () => undefined,
   onLink: () => undefined,
   onScroll: () => undefined,
   onJump: () => undefined,

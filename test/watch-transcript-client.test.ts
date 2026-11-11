@@ -298,3 +298,33 @@ console.log(JSON.stringify({ shown: ${hidden}, sections }));
   );
   assert.deepEqual(result, { shown: 2, sections: 2 });
 });
+
+await test("CLV-355 the expand button of a turn opens its whole lines area, the turn stays expanded when new entries arrive, and a second click collapses it", () => {
+  const result = transcriptPlayed(
+    { outcome: "in work" },
+    `
+send(streams[0], "entry", entryAt(1));
+await later();
+const expand = () => app.all("button").find((node) => node.getAttribute("class") === "transcript-expand");
+const lines = () => app.all("div").find((node) => node.getAttribute("data-transcript") === operationId)?.getAttribute("class");
+const before = { label: expand()?.getAttribute("aria-label"), lines: lines() };
+expand()?.dispatch("click");
+await later();
+send(streams[0], "entry", entryAt(2));
+await later();
+const opened = { expanded: expand()?.getAttribute("aria-expanded"), lines: lines(), entry: app.inner.includes("Entry 2") };
+expand()?.dispatch("click");
+await later();
+console.log(JSON.stringify({ before, opened, closed: { expanded: expand()?.getAttribute("aria-expanded"), lines: lines() } }));
+`,
+  );
+  assert.deepEqual(result, {
+    before: { label: "Expand transcript", lines: "transcript-lines" },
+    opened: {
+      expanded: "true",
+      lines: "transcript-lines expanded",
+      entry: true,
+    },
+    closed: { expanded: "false", lines: "transcript-lines" },
+  });
+});

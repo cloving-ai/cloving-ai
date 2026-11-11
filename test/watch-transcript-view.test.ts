@@ -37,6 +37,7 @@ function shown(
       asked.push(target);
       return {
         shown: true,
+        expanded: false,
         entries: [],
         state: "open",
         message: "",
@@ -47,6 +48,7 @@ function shown(
       };
     },
     onToggle: () => undefined,
+    onExpand: () => undefined,
     onLink: () => undefined,
     onScroll: () => undefined,
     onJump: () => undefined,
@@ -231,13 +233,14 @@ function handler(
   return callback;
 }
 
-await test("CLV-329 the buttons and the scroll box of a transcript call their controls", () => {
+await test("CLV-329 CLV-355 the buttons and the scroll box of a transcript call their controls", () => {
   const calls: unknown[] = [];
   const controls: TranscriptControls = {
     tab: "transcript",
     onTab: () => undefined,
     view: () => ({
       shown: true,
+      expanded: false,
       entries: [entry(1, { kind: "assistant", text: "a" })],
       state: "open",
       message: "",
@@ -246,6 +249,7 @@ await test("CLV-329 the buttons and the scroll box of a transcript call their co
       detached: false,
     }),
     onToggle: (target) => calls.push(["toggle", target.operationId]),
+    onExpand: (target) => calls.push(["expand", target.operationId]),
     onLink: (target) => calls.push(["link", target.operationId]),
     onScroll: (turn, box) => calls.push(["scroll", turn, box.scrollTop]),
     onJump: (target) => calls.push(["jump", target.operationId]),
@@ -272,6 +276,7 @@ await test("CLV-329 the buttons and the scroll box of a transcript call their co
   });
   assert.deepEqual(calls, [
     ["toggle", operationId],
+    ["expand", operationId],
     ["earlier", operationId],
     ["jump", operationId],
     ["link", operationId],
@@ -296,6 +301,7 @@ await test("CLV-329 the Retry button of a failed transcript read calls its contr
     onTab: () => undefined,
     view: () => ({
       shown: true,
+      expanded: false,
       entries: [],
       state: "failed",
       message: "The watch tool does not answer.",
@@ -304,6 +310,7 @@ await test("CLV-329 the Retry button of a failed transcript read calls its contr
       detached: false,
     }),
     onToggle: () => undefined,
+    onExpand: () => undefined,
     onLink: () => undefined,
     onScroll: () => undefined,
     onJump: () => undefined,

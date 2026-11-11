@@ -101,8 +101,13 @@ await test("CLV-333 the terminal panel has its own color tokens with dark defaul
   );
 });
 
-await test("CLV-355 an open turn shows at most 60 percent of the window with its own scroll, the full-screen view has no limit, and a tool call keeps its fold count on its own line", () => {
-  assert.match(rule(".transcript-lines"), /max-height: 60vh; overflow: auto;/);
+await test("CLV-355 an open turn shows at most 500 pixels with its own scroll, an expanded turn and the full-screen view have no limit, the expand button sits at the right in theme colors, and a tool call keeps its fold count on its own line", () => {
+  assert.match(rule(".transcript-lines"), /max-height: 500px; overflow: auto;/);
+  assert.match(rule(".transcript-lines.expanded"), /max-height: none;/);
+  assert.match(
+    rule(".transcript .transcript-expand"),
+    /margin-left: auto; font: 600 14px\/1 var\(--font-code\); color: var\(--color-terminal-text\); background: var\(--terminal-edge\);/,
+  );
   assert.doesNotMatch(rule(".transcript-lines"), /[{;] ?height:/);
   assert.match(
     rule(".terminal-page .transcript-lines"),

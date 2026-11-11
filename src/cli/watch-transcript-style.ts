@@ -8,10 +8,13 @@ export const transcriptStyle = `
 .transcript .code-head { display: flex; gap: 10px; align-items: center; background: var(--color-terminal-background); color: var(--color-terminal-dim); border-bottom: var(--shape-border) solid var(--terminal-edge); }
 .transcript-toggle, .transcript-jump, .transcript-earlier, .transcript-retry { font: 500 12px/1.4 var(--font-code); color: var(--color-terminal-text); background: var(--terminal-edge); border: 0; border-radius: var(--shape-cut); padding: 3px 10px; cursor: pointer; }
 .transcript-link, .transcript-full { color: var(--color-terminal-dim); }
+.transcript .transcript-expand { margin-left: auto; font: 600 14px/1 var(--font-code); color: var(--color-terminal-text); background: var(--terminal-edge); border: 0; border-radius: var(--shape-cut); padding: 4px 8px; cursor: pointer; clip-path: none; }
+.transcript .transcript-expand:hover { color: var(--color-terminal-tool); }
 .transcript .meta { padding: 8px 12px; margin: 0; color: var(--color-terminal-dim); }
 .transcript .bad { padding: 8px 12px; margin: 0; color: var(--color-terminal-red); }
 .transcript-earlier, .transcript-jump, .transcript-retry { margin: 8px 12px; }
-.transcript-lines { max-height: 60vh; overflow: auto; padding: 10px 14px 14px; font: 400 13px/1.5 var(--font-code); color: var(--color-terminal-text); background: var(--color-terminal-background); }
+.transcript-lines { max-height: 500px; overflow: auto; padding: 10px 14px 14px; font: 400 13px/1.5 var(--font-code); color: var(--color-terminal-text); background: var(--color-terminal-background); }
+.transcript-lines.expanded { max-height: none; }
 .transcript-lines pre { margin: 0; padding: 0; border: 0; border-radius: 0; white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; color: inherit; background: none; }
 .transcript-lines .entry { margin: 0 0 10px; }
 .transcript-lines .entry .entry { margin: 0; }

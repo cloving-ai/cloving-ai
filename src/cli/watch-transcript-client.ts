@@ -6,7 +6,7 @@ let transcriptRound = 0;
 let transcriptTab = "transcript";
 function transcriptItem(target) {
   if (!Object.hasOwn(transcripts, target.operationId))
-    transcripts[target.operationId] = { runId: target.runId, shown: null, entries: [], state: "loading", message: "", earlier: false, unseen: 0, following: true, detached: false, latest: 0, source: null };
+    transcripts[target.operationId] = { runId: target.runId, shown: null, expanded: false, entries: [], state: "loading", message: "", earlier: false, unseen: 0, following: true, detached: false, latest: 0, source: null };
   return transcripts[target.operationId];
 }
 function transcriptPath(item, operationId, route) {
@@ -126,12 +126,17 @@ function transcriptControls() {
       item.round = transcriptRound;
       const shown = item.shown ?? target.wanted;
       if (shown) transcriptOpened(item, target.operationId);
-      return { shown, entries: item.entries, state: item.state, message: item.message, earlier: item.earlier, unseen: item.unseen, detached: item.detached };
+      return { shown, expanded: item.expanded, entries: item.entries, state: item.state, message: item.message, earlier: item.earlier, unseen: item.unseen, detached: item.detached };
     },
     onToggle(target) {
       const item = transcriptItem(target);
       item.shown = !(item.shown ?? target.wanted);
       if (!item.shown) transcriptClosed(item);
+      draw();
+    },
+    onExpand(target) {
+      const item = transcriptItem(target);
+      item.expanded = !item.expanded;
       draw();
     },
     onLink(target) {

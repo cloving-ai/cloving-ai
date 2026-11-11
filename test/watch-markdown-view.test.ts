@@ -193,7 +193,7 @@ await test("CLV-355 an agent text entry of a turn shows its Markdown after the m
 await test("CLV-355 the README describes the height limit, the Markdown of agent text, the fold count at the end of the call line and the safe links", () => {
   const readme = readFileSync(new URL("../README.md", import.meta.url), "utf8");
   for (const sentence of [
-    "The lines of an open turn take at most 60 percent of the height of the window, with their own scroll bar. A short turn takes only the height of its lines.",
+    "The lines of an open turn take at most 500 pixels of height, with their own scroll bar. A short turn takes only the height of its lines. The expand button `⤢` at the right end of the head of the turn shows all its lines in the page, and the collapse button `⤡` returns to 500 pixels. The full-screen view has no limit and no expand button.",
     "The view shows `⏺` and the text with its Markdown: bold, italic and code text, headings, lists, fenced code and links. A run of blank lines shows as one gap.",
     "The view folds it to one dim count at the end of the line of its call: `⎿` and the count of lines, for example `⎿ 42 lines`.",
     "The view never renders HTML from a transcript: HTML in a text shows as text. A link opens in a new tab only when its address starts with `http://` or `https://`; another link shows as text.",
