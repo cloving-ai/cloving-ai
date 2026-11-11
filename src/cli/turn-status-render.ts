@@ -11,16 +11,15 @@ export function turnDetailsLines(value: unknown): readonly string[] {
   ];
 }
 
-function turnWaitLine(wait: unknown): readonly string[] {
-  const attempt = part(wait, "attempt");
-  const remaining = part(wait, "remainingMilliseconds");
-  if (typeof attempt !== "number" || typeof remaining !== "number") return [];
-  const seconds = Math.ceil(remaining / 1000);
-  return [
-    `Worker turn ${visible(part(wait, "operationId"))} waits for a retry: attempt ${String(attempt + 1)} starts at ${visible(part(wait, "waitEndsAt"))}, ${String(seconds)} s left`,
-  ];
-}
-
 export function turnWaitLines(value: unknown): readonly string[] {
-  return Array.isArray(value) ? value.flatMap(turnWaitLine) : [];
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((wait: unknown) => {
+    const attempt = part(wait, "attempt");
+    const remaining = part(wait, "remainingMilliseconds");
+    if (typeof attempt !== "number" || typeof remaining !== "number") return [];
+    const seconds = Math.ceil(remaining / 1000);
+    return [
+      `Worker turn ${visible(part(wait, "operationId"))} waits for a retry: attempt ${String(attempt + 1)} starts at ${visible(part(wait, "waitEndsAt"))}, ${String(seconds)} s left`,
+    ];
+  });
 }
