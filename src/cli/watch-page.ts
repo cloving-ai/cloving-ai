@@ -36,6 +36,7 @@ import { transcriptFunctions } from "./watch-transcript-view.ts";
 import { RunNotes } from "./watch-notes-view.ts";
 import { runActionFunctions } from "./watch-rename-view.ts";
 import { runCommandFunctions } from "./watch-run-command-view.ts";
+import { tokenMenuFunctions } from "./watch-token-menu-view.ts";
 import { watchRunCommandClient } from "./watch-run-command-client.ts";
 import { watchPhoneClient } from "./watch-phone-client.ts";
 import {
@@ -237,6 +238,7 @@ const functions = [
   RunNotes,
   ...runActionFunctions,
   ...runCommandFunctions,
+  ...tokenMenuFunctions,
   Column,
   columnCollapsed,
   Board,
