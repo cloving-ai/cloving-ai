@@ -59,10 +59,10 @@ export function markdownCode(text: string, at: number): InlineToken {
 
 export function markdownClose(
   text: string,
-  from: number,
-  mark: string,
+  place: { readonly from: number; readonly mark: string },
 ): number {
-  let at = from;
+  const { mark } = place;
+  let at = place.from;
   while (at < text.length && text[at] !== "\n") {
     if (text.startsWith(mark, at)) return at;
     if (markdownEscape(text, at) !== undefined) at += 2;
@@ -91,7 +91,7 @@ export function markdownStrong(
   at: number,
 ): InlineToken | undefined {
   if (!text.startsWith("**", at)) return undefined;
-  const close = markdownClose(text, at + 2, "**");
+  const close = markdownClose(text, { from: at + 2, mark: "**" });
   if (close <= at + 2) return undefined;
   return {
     shown: element("strong", {
@@ -105,14 +105,22 @@ export function markdownOutside(mark: string, char: string | undefined) {
   return (mark === "*" ? /[\w*]/ : /\w/).test(char ?? " ");
 }
 
-export function markdownOpens(text: string, at: number, mark: string) {
+export function markdownOpens(
+  text: string,
+  place: { readonly at: number; readonly mark: string },
+) {
+  const { at, mark } = place;
   const after = text[at + 1] ?? " ";
   return (
     !markdownOutside(mark, text[at - 1]) && !/\s/.test(after) && after !== mark
   );
 }
 
-export function markdownCloses(text: string, close: number, mark: string) {
+export function markdownCloses(
+  text: string,
+  place: { readonly close: number; readonly mark: string },
+) {
+  const { close, mark } = place;
   return (
     close >= 0 &&
     !/\s/.test(text[close - 1] ?? " ") &&
@@ -125,10 +133,10 @@ export function markdownEmphasis(
   at: number,
 ): InlineToken | undefined {
   const mark = text[at] ?? "";
-  if (!["*", "_"].includes(mark) || !markdownOpens(text, at, mark))
+  if (!["*", "_"].includes(mark) || !markdownOpens(text, { at, mark }))
     return undefined;
-  const close = markdownClose(text, at + 1, mark);
-  if (!markdownCloses(text, close, mark)) return undefined;
+  const close = markdownClose(text, { from: at + 1, mark });
+  if (!markdownCloses(text, { close, mark })) return undefined;
   return {
     shown: element("em", {
       children: markdownInline(text.slice(at + 1, close)),
