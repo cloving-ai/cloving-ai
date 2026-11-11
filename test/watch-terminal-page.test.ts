@@ -100,3 +100,43 @@ await test("CLV-333 the terminal panel has its own color tokens with dark defaul
     /color: var\(--color-terminal-tool\)/,
   );
 });
+
+await test("CLV-355 an open turn shows at most 500 pixels with its own scroll, an expanded turn and the full-screen view have no limit, the expand button sits at the right in theme colors, and a tool call keeps its fold count on its own line", () => {
+  assert.match(rule(".transcript-lines"), /max-height: 500px; overflow: auto;/);
+  assert.match(rule(".transcript-lines.expanded"), /max-height: none;/);
+  assert.match(
+    rule(".transcript .transcript-jump"),
+    /position: sticky; bottom: 8px;/,
+  );
+  assert.match(
+    rule(".transcript .transcript-expand"),
+    /margin-left: auto; font: 600 14px\/1 var\(--font-code\); color: var\(--color-terminal-text\); background: var\(--terminal-edge\);/,
+  );
+  assert.doesNotMatch(rule(".transcript-lines"), /[{;] ?height:/);
+  assert.match(
+    rule(".terminal-page .transcript-lines"),
+    /flex: 1; height: auto; min-height: 0; max-height: none;/,
+  );
+  assert.match(
+    rule(".transcript-lines .entry.tool-call"),
+    /display: grid; grid-template-columns: minmax\(0, 1fr\) auto; column-gap: 2ch; align-items: start; margin: 0 0 2px;/,
+  );
+  assert.match(
+    rule(".transcript-lines .entry.tool-call + .entry:not(.tool-call)"),
+    /margin-top: 8px;/,
+  );
+  assert.match(
+    rule(".transcript-lines .entry.tool-call > *"),
+    /grid-column: 1 \/ -1; margin: 0;/,
+  );
+  assert.match(
+    rule(".transcript-lines .entry.tool-call > .tool-line:not([open])"),
+    /grid-column: 1;/,
+  );
+  assert.match(
+    rule(
+      ".transcript-lines .entry.tool-call > .tool-line:not([open]) + .tool-result:not([open])",
+    ),
+    /grid-column: 2;/,
+  );
+});
