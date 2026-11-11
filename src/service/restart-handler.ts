@@ -46,7 +46,12 @@ async function pendingFields(
   context: ServiceContext,
   mark: RestartMark,
 ): Promise<Fields> {
-  return { ...mark, activeRuns: await activeRuns(context) };
+  const { variables, ...shown } = mark;
+  return {
+    ...shown,
+    ...(variables === undefined ? {} : { variables: Object.keys(variables) }),
+    activeRuns: await activeRuns(context),
+  };
 }
 
 function identityFields(context: ServiceContext): Fields {

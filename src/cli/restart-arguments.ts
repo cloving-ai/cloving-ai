@@ -47,6 +47,13 @@ function setValues(
   return pairs.length === given.length ? Object.fromEntries(pairs) : undefined;
 }
 
+function repeatedSetKey(options: readonly RestartOption[]): boolean {
+  const keys = options
+    .filter((option) => option.name === "set")
+    .map((option) => String(option.value).split("=")[0]);
+  return new Set(keys).size !== keys.length;
+}
+
 type GivenValues = Pick<
   RestartInvocation,
   "at" | "settings" | "set" | "within" | "commandId"
@@ -88,6 +95,7 @@ export function restartInvocation(request: {
       : ["at", "resume-queue", "set", "settings", "update", "within"]),
   ];
   if (names.some((name) => !allowed.includes(name))) return "unexpected-option";
+  if (repeatedSetKey(request.options)) return "repeated-option";
   const values = givenValues(request.options);
   if (values === undefined) return "invalid-option-value";
   return {

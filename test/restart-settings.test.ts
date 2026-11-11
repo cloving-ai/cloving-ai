@@ -49,6 +49,18 @@ await test("CLV-352 a restart note with a set value puts the variable into the n
     assert.equal(existsSync(join(directory, "restart-variables")), false);
   }));
 
+await test("CLV-352 a restart note with a variable that no setting has changes nothing in the new environment", () =>
+  inFolder(async (directory) => {
+    await writeFile(
+      join(directory, "restart-variables"),
+      JSON.stringify({ CLOVING_QUEUE_LANES: "8", PATH: "/tmp/bin" }),
+    );
+    assert.deepEqual(
+      await restartEnvironment(directory, startEnvironment),
+      startEnvironment,
+    );
+  }));
+
 await test("CLV-352 with --settings files and --set together, the new environment has no file variables except the set values", () =>
   inFolder(async (directory) => {
     await writeFile(join(directory, "restart-settings"), "files");
@@ -117,6 +129,10 @@ await test("CLV-352 cloving restart takes --set more than one time and refuses a
     "unexpected-option",
   );
   assert.equal(
+    codeOf(["restart", "--set", "queue.lanes=8", "--set", "queue.lanes=2"]),
+    "repeated-option",
+  );
+  assert.equal(
     codeOf(["restart", "--at", "now", "--at", "gap"]),
     "repeated-option",
   );
@@ -177,10 +193,34 @@ await test("CLV-352 cloving restart --set sends the values, and the request carr
       ],
     );
     const status = await call(harness, { operation: "status", parameters: {} });
-    assert.deepEqual(record(status["restart"])?.["variables"], {
-      CLOVING_QUEUE_LANES: "8",
-      CLOVING_REQUIRED_CHECKS: '["ci"]',
-      CLOVING_MERGE_MODE: "queue",
+    assert.deepEqual(record(status["restart"])?.["variables"], [
+      "CLOVING_QUEUE_LANES",
+      "CLOVING_REQUIRED_CHECKS",
+      "CLOVING_MERGE_MODE",
+    ]);
+  }));
+
+await test("CLV-352 the restart reply and the status name the set variables and show no value", () =>
+  withHarness(async (harness) => {
+    const marks: RestartMark[] = [];
+    await harness.start({ restart: recordingPort(marks), ...identity });
+    const reply = await call(harness, {
+      operation: "restart",
+      parameters: {
+        at: "keep",
+        commandId: "restart-private",
+        set: { privateTexts: '["acme-secret"]' },
+      },
+    });
+    const status = await call(harness, { operation: "status", parameters: {} });
+    for (const shown of [reply, status]) {
+      assert.deepEqual(record(shown["restart"])?.["variables"], [
+        "CLOVING_PRIVATE_TEXTS",
+      ]);
+      assert.doesNotMatch(JSON.stringify(shown), /acme-secret/);
+    }
+    assert.deepEqual(marks[0]?.variables, {
+      CLOVING_PRIVATE_TEXTS: '["acme-secret"]',
     });
   }));
 
@@ -192,6 +232,11 @@ const refusedSettings = [
     "harness.path",
     "/bin/claude",
     /invalid-setting: harness\.path has no environment variable/,
+  ],
+  [
+    "workflows.folder",
+    '"/tmp/a\\u0000b"',
+    /invalid-setting: workflows\.folder has a NUL character/,
   ],
 ] as const;
 

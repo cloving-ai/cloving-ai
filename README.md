@@ -1548,7 +1548,7 @@ cloving restart --set queue.lanes=8
 cloving restart --settings files --set queue.lanes=8 --set merge.mode=queue
 ```
 
-With `--settings files`, the restart first removes the file variables and then adds the `--set` values. Later restarts of the same `cloving start` keep the new values. An unknown key, a key with no variable or an invalid value refuses the restart with `invalid-restart-setting` and the key, before any stop, and the service keeps running. `cloving status --json` shows the variables of a pending restart in `restart.variables`. The restart does not change the settings files, so a new `cloving start` does not keep the value.
+With `--settings files`, the restart first removes the file variables and then adds the `--set` values. Later restarts of the same `cloving start` keep the new values. An unknown key, a key with no variable or an invalid value refuses the restart with `invalid-restart-setting` and the key, before any stop, and the service keeps running. `cloving status --json` shows the names of these variables for a pending restart in `restart.variables`, and no value. A key that occurs two times gives `repeated-option`. The restart does not change the settings files, so a new `cloving start` does not keep the value.
 
 To move the start variables into the private settings file, write each value with `cloving config set`, and then restart from the files:
 

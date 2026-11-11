@@ -120,7 +120,10 @@ function setVariable(key: string, text: string): readonly [string, string] {
   const variable = variableOf(key);
   const value = settingValue(text);
   validateSetting(key, value);
-  return [variable, typeof value === "string" ? value : JSON.stringify(value)];
+  const encoded = typeof value === "string" ? value : JSON.stringify(value);
+  if (encoded.includes("\u0000"))
+    throw new Error(`invalid-setting: ${key} has a NUL character`);
+  return [variable, encoded];
 }
 
 export function setVariables(
