@@ -164,7 +164,7 @@ h2, h3 { font-family: var(--font-heading); font-weight: 700; }
 .token-menu-open:hover { background: none; }
 .tokens li:hover .token-menu-open, .token-menu:focus-within .token-menu-open, .token-menu:has(.token-pop:popover-open) .token-menu-open { opacity: 1; }
 .tokens li:has(.token-menu) .token-time { padding-right: 26px; }
-.token-pop { position-anchor: --token; inset: auto; position-area: bottom span-left; position-try-fallbacks: flip-block, flip-inline; margin: 4px 0 0; padding: 4px; border: var(--shape-border) solid var(--color-line); background: var(--color-surface); color: var(--color-ink); box-shadow: var(--shadow); font: 500 13px/1.3 var(--font-ui); }
+.token-pop { position-anchor: --token; inset: auto; position-area: bottom span-left; position-try-fallbacks: flip-block, flip-inline; margin: 0; padding: 4px; border: var(--shape-border) solid var(--color-line); background: var(--color-surface); color: var(--color-ink); box-shadow: var(--shadow); font: 500 13px/1.3 var(--font-ui); }
 .token-pop:popover-open { display: block; min-width: 200px; padding: 4px; }
 .token-pop button, .token-pop input { font: 500 13px/1.6 var(--font-ui); }
 .token-pop .run-command { display: grid; gap: 2px; margin: 0; }
@@ -185,7 +185,6 @@ h2, h3 { font-family: var(--font-heading); font-weight: 700; }
 .rename-form label { display: grid; gap: 4px; font-size: 12px; color: var(--color-muted); }
 .rename-form input { padding: 6px 8px; border: var(--shape-border) solid var(--color-line); border-radius: calc(var(--shape-radius) / 2); background: var(--color-surface); color: var(--color-ink); font: inherit; }
 .rename-message { margin: 0; font-size: 12px; }
-.run-name { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; margin: 0; }
 .name-title { font: 700 18px/1.3 var(--font-heading); }
 .name-label, .need-label, .card-label { font-weight: 700; }
 .name-pull, .card-pull, .token-pull { color: var(--color-muted); }
@@ -307,16 +306,15 @@ header button:hover, .phone button:hover, .column-name button:hover, .add-card:h
 .good .icon, .phase.done .mark, p.good { color: var(--color-accent-strong); }
 .bad .icon, .phase.failed .mark, .bad, .down { color: var(--color-bad); }
 .attention .icon { color: var(--color-warn); }
-.working .icon, .phase.active .mark, .banner.working h2 { color: var(--color-accent-strong); }
+.working .icon, .phase.active .mark, .banner.working .run-status { color: var(--color-accent-strong); }
 .banner { position: sticky; top: 0; z-index: 1; display: flex; gap: 12px; background: var(--color-surface); box-shadow: var(--shadow); border: var(--shape-border) solid var(--color-line); border-left: 6px solid var(--color-muted); border-radius: var(--shape-radius); padding: 14px; }
 .banner.good, .banner.working { border-left-color: var(--color-accent-strong); }
 .banner.bad { border-left-color: var(--color-bad); }
 .banner.attention { border-left-color: var(--color-warn); }
-.banner div { min-width: 0; flex: 1; }
+.banner-main { min-width: 0; flex: 1; }
 .banner-back { flex: 0 1 auto; min-width: 0; max-width: 40%; align-self: flex-start; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-right: 12px; border-right: var(--shape-border) solid var(--color-line); font-weight: 600; line-height: 29px; }
 .banner .icon { font-size: 22px; line-height: 1.2; }
 .banner h2 { margin: 0; font-size: 20px; line-height: 1.45; }
-.banner .name { font: 400 13px/1.5 var(--font-ui); color: var(--color-muted); margin-left: 6px; }
 .banner p { margin: 2px 0 0; }
 .now { display: block; color: var(--color-muted); font: 12px/1.6 var(--font-code); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .banner p, .phase .time, h3 { font-variant-numeric: tabular-nums; }
@@ -376,8 +374,7 @@ button:focus-visible, .token:focus-visible { clip-path: none; }
 .last { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tools[open] .last { display: none; }
 .event { padding: 1px 12px; }
-.events { margin-top: 18px; padding-bottom: 10px; }
-.events > summary { color: var(--color-code-text); }
+.events { margin-top: 12px; padding: 10px 0; }
 .down { font-weight: 600; }
 .version { position: fixed; left: 12px; bottom: 8px; font: 12px/1.4 var(--font-code); color: var(--color-muted); pointer-events: none; }
 @media (max-width: 1100px) {

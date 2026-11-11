@@ -145,7 +145,7 @@ await test("CLV-335 the README describes the run controls of the watch page, the
     "utf8",
   );
   for (const part of [
-    /the run detail of an active run has \*\*Pause\*\* and \*\*Drop\*\*/,
+    /the run detail of an active run has \*\*Pause\*\* in its action bar and \*\*Drop\*\* in its `⋯` menu/,
     /\*\*Resume\*\* replaces \*\*Pause\*\*/,
     /`cloving pause`, `cloving resume` and `cloving drop`, with the revision of the run/,
     /`Drop this run\? Its work tree and pull request stay\.` with \*\*Drop the run\*\* and \*\*Keep it\*\*/,

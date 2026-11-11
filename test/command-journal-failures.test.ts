@@ -81,7 +81,7 @@ await withCommandScene(async (scene) => {
     assert.ok(descriptors.length >= 3, "open the stderr, stdout and input files before the start");
     for (const descriptor of descriptors)
       assert.throws(() => filesystem.fstatSync(descriptor), { code: "EBADF" });
-    assert.deepEqual(filesystem.readdirSync(scene.directory).sort(), ["command.stderr.log", "command.stdout"]);
+    assert.deepEqual(filesystem.readdirSync(scene.directory).sort(), ["command.stderr.log", "command.stdout", "launch-marker.json"]);
   } finally {
     filesystem.openSync = open;
     childProcess.spawn = spawn;
