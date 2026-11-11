@@ -1,4 +1,4 @@
-import { shellArgument } from "./runtime-directory.ts";
+import { clientProgram, shellArgument } from "./runtime-directory.ts";
 import { dirname, delimiter, join } from "node:path";
 import {
   doctorCodes,
@@ -97,10 +97,11 @@ export async function doctorReport(
     "node-version": nodeObservation(process.version),
     "git-repository": git,
   };
+  const fixes = doctorFixes(clientProgram());
   const checks = doctorCodes.map((code): DoctorCheck => ({
     code,
     required: found.required.includes(code),
-    fix: doctorFixes[code],
+    fix: fixes[code],
     ...(observations[code] ?? {
       result: "skip",
       detail: "Repository prerequisite unavailable",

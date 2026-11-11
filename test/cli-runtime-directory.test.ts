@@ -6,10 +6,12 @@ import { join, relative } from "node:path";
 import { test } from "node:test";
 import {
   clientCommand,
+  clientProgram,
   runtimeDirectory,
 } from "../src/cli/runtime-directory.ts";
 import { socketAddress } from "../src/broker/socket-address.ts";
 import { withFiles } from "./quality/files-fixture.ts";
+import { npxProgram } from "./exec-cache-fixture.ts";
 
 await test("CLV-204 two repositories have distinct default runtime directories", () =>
   withFiles({ "project/file": "", "site/file": "" }, (root) => {
@@ -37,7 +39,7 @@ await test("CLV-204 long repository runtime paths retain the socket byte limit",
 
 await test("CLV-204 guide command prefixes preserve repository and override shell arguments", () => {
   const repository = "/example/a project'with;$characters";
-  const prefix = clientCommand({}, repository);
+  const prefix = clientCommand({}, { repository });
   const output = execFileSync(
     "sh",
     ["-c", `set -- ${prefix}; printf '%s\\n' "$@"`],
@@ -50,9 +52,39 @@ await test("CLV-204 guide command prefixes preserve repository and override shel
   ]);
   assert.equal(prefix.includes("CLOVING_RUNTIME_DIR="), false);
   assert.equal(
-    clientCommand({ CLOVING_RUNTIME_DIR: "/explicit/run" }, repository),
+    clientCommand({ CLOVING_RUNTIME_DIR: "/explicit/run" }, { repository }),
     "CLOVING_RUNTIME_DIR=/explicit/run cloving",
   );
+});
+
+await test("CLV-345 a package in the exec cache of npm gives the npx client program with the package version", () => {
+  const repository = "/example/project";
+  const packagePath = "/home/user/.npm/_npx/0a1b2c3d/node_modules/cloving";
+  assert.equal(
+    clientCommand({}, { repository, packagePath }),
+    `${npxProgram} --repository /example/project`,
+  );
+  assert.equal(
+    clientCommand(
+      { CLOVING_RUNTIME_DIR: "/explicit/run" },
+      { repository, packagePath },
+    ),
+    `CLOVING_RUNTIME_DIR=/explicit/run ${npxProgram}`,
+  );
+});
+
+await test("CLV-345 a package in a global node_modules folder keeps the cloving client program", () => {
+  const packagePath = "/usr/local/lib/node_modules/cloving";
+  assert.equal(
+    clientCommand({}, { repository: "/example/project", packagePath }),
+    "cloving --repository /example/project",
+  );
+  assert.equal(clientProgram({ packagePath }), "cloving");
+  assert.equal(
+    clientProgram({ packagePath: "/home/user/_npx-old/cloving" }),
+    "cloving",
+  );
+  assert.equal(clientProgram(), "cloving");
 });
 
 await test("CLV-204 defaults use the canonical repository name, digest and root priority", () =>

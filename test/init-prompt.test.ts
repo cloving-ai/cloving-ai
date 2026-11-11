@@ -5,6 +5,7 @@ import { initPrompt, type InitPromptFacts } from "../src/cli/init-prompt.ts";
 
 const facts: InitPromptFacts = {
   version: "1.3.0",
+  client: "npx cloving@1.3.0",
   repository: "<repository>",
   origin: "git@github.com:example/project.git",
   login: "setup-user",
@@ -24,6 +25,33 @@ await test("CLV-303 setup walks through the lessons decision with the other deve
     initPrompt(facts),
     /all nine points: input, select, verify, accept, merge, partial, recovery, lessons and demo/,
   );
+});
+
+await test("CLV-345 the summary prints the start and first-run commands with the client of the facts and names the install command", () => {
+  const output = initPrompt(facts);
+  const summary = output.slice(
+    output.indexOf("The final summary must include:"),
+  );
+  assert.match(output, /"client": "npx cloving@1\.3\.0"/);
+  assert.match(
+    summary,
+    /Start each command with the `client` value of the facts, for example `<client> run develop --ticket <id>`/,
+  );
+  assert.match(
+    summary,
+    /Otherwise print `<client> start` and the first-run commands for the user, with the `client` value of the facts/,
+  );
+  assert.match(
+    summary,
+    /`npm install --global cloving --ignore-scripts`.*as an option/,
+  );
+  assert.doesNotMatch(summary, /`cloving (start|run)/);
+  const steps = output.slice(
+    output.indexOf("# Steps"),
+    output.indexOf("The final summary"),
+  );
+  assert.match(steps, /Run `cloving doctor --json`/);
+  assert.doesNotMatch(steps, /<client>|npx cloving/);
 });
 
 await test("CLV-228 first-workflow setup defers no-workflow to the template step and checks it after copying", () => {
