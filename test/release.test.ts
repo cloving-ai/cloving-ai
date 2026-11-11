@@ -80,7 +80,8 @@ await test("CLV-097 release fixtures reject malformed manifest and lock metadata
     { ...manifest, version: 100 },
     { ...manifest, os: ["darwin", 1] },
     { ...manifest, cpu: ["arm64", false] },
-    { ...manifest, engines: { node: 26, npm: "11" } },
+    { ...manifest, devEngines: { runtime: { name: "node", version: 26 } } },
+    { ...manifest, devEngines: { runtime: manifest.devEngines.runtime } },
     { ...manifest, dependencies: { workflow: 5 } },
     { ...manifest, repository: { type: true } },
   ])
@@ -127,20 +128,26 @@ await test("CLV-101 release metadata and both lock versions describe the public 
   assert.deepEqual(manifest.bugs, {
     url: "https://github.com/cloving-ai/cloving-ai/issues",
   });
-  assert.deepEqual(manifest.engines, {
-    node: ">=24.22.1 <25 || >=26.9.0 <27",
-    npm: ">=11.19.1 <12",
+  assert.equal(Object.hasOwn(manifest, "engines"), false);
+  assert.deepEqual(manifest.devEngines, {
+    runtime: {
+      name: "node",
+      version: ">=24.22.1 <25 || >=26.9.0 <27",
+      onFail: "error",
+    },
+    packageManager: { name: "npm", version: ">=11.19.1 <12", onFail: "error" },
   });
   assert.deepEqual(manifest.os, ["darwin", "linux"]);
   assert.deepEqual(manifest.cpu, ["arm64", "x64"]);
   assert.equal(lock.version, manifest.version);
   const root = lock.packages[""];
+  for (const name of ["engines", "devEngines"])
+    assert.equal(Object.hasOwn(root, name), false, name);
   for (const name of [
     "name",
     "version",
     "license",
     "bin",
-    "engines",
     "os",
     "cpu",
     "dependencies",

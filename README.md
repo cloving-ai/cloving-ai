@@ -92,7 +92,7 @@ npx cloving init
 Run the command in a git repository. You need these items:
 
 - macOS or Linux on arm64 or x64. Windows is not supported.
-- Node.js and npm in the ranges of `package.json` (see [Install](#install)).
+- Node 24.22.1 or a later Node 24 version, or Node 26.9.0 or a later Node 26 version (see [Install](#install)).
 - A git repository.
 - A coding agent on the search path, with its login: `claude`, `codex`, `cursor-agent`, `gemini`, `grok` or `opencode`. Another agent needs a one-shot command form.
 - For workflows that use GitHub: the `gh` command with a login, and an `origin` remote on GitHub or GitHub Enterprise. Cloving supports no other code host.
@@ -258,7 +258,7 @@ Cloving develops itself through `develop`, a private copy of the develop templat
 
 ## Install
 
-Cloving supports macOS and Linux on arm64 and x64, with the Node and npm ranges in `package.json`. Workflow admission accepts the same Node range: Node 24.22.1 or a later Node 24 version, and Node 26.9.0 or a later Node 26 version. CI runs the developer gate and packed-install checks on macOS 15 arm64 and Ubuntu 24.04 x64 with Node 26.9.0 and npm 11.19.1. On a push to `main`, CI also runs the Ubuntu checks with Node 24.22.1. The `quality_linux` check passes only when each Ubuntu job of the run passes. A pull request runs the Ubuntu checks on Node 26.9.0 only, and it runs only the platform tests on macOS (see [Development of Cloving](#development-of-cloving)). Windows is unsupported.
+Cloving supports macOS and Linux on arm64 and x64. It supports Node 24.22.1 or a later Node 24 version, or Node 26.9.0 or a later Node 26 version. Workflow admission accepts the same Node versions. On an unsupported Node, each command stops with `unsupported-node` and exit status 1 before it does other work. The message names the supported Node versions and the fix. These commands still run: `cloving doctor`, `--help`, `--version` and the help of each command. A source checkout also needs npm 11.19.1 or a later npm 11 version. The `devEngines` field of `package.json` holds the Node and npm ranges, and npm checks them for `install`, `ci` and `run` in the checkout. CI runs the developer gate and packed-install checks on macOS 15 arm64 and Ubuntu 24.04 x64 with Node 26.9.0 and npm 11.19.1. On a push to `main`, CI also runs the Ubuntu checks with Node 24.22.1. The `quality_linux` check passes only when each Ubuntu job of the run passes. A pull request runs the Ubuntu checks on Node 26.9.0 only, and it runs only the platform tests on macOS (see [Development of Cloving](#development-of-cloving)). Windows is unsupported.
 
 A run needs these tools:
 
