@@ -70,7 +70,7 @@ function entries(...items: readonly TranscriptEntry[]): string {
   return shown({ entries: items }).html;
 }
 
-await test("CLV-329 a transcript section shows assistant text as text, a tool call in one line that opens to the full input, and closed thinking", () => {
+await test("CLV-329 CLV-355 a transcript section shows assistant text with its Markdown and its HTML as text, a tool call in one line that opens to the full input, and closed thinking", () => {
   const html = entries(
     entry(1, { kind: "assistant", text: "**Bold** <b>tag</b>" }),
     entry(2, {
@@ -83,7 +83,7 @@ await test("CLV-329 a transcript section shows assistant text as text, a tool ca
   );
   assert.match(
     html,
-    /<div class="entry assistant"><span class="mark">⏺<\/span><pre>\*\*Bold\*\* &lt;b&gt;tag&lt;\/b&gt;<\/pre><\/div>/,
+    /<div class="entry assistant"><span class="mark">⏺<\/span><div class="markdown"><p><strong>Bold<\/strong> &lt;b&gt;tag&lt;\/b&gt;<\/p><\/div><\/div>/,
   );
   assert.match(
     html,

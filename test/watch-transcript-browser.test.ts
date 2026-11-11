@@ -12,24 +12,14 @@ import { testMilliseconds } from "./test-timing.ts";
 import { directWatch } from "./watch-direct-fixture.ts";
 import { realBrowser } from "./watch-real-browser.ts";
 import { reportTurn, workerScene } from "./worker-report-fixture.ts";
-
-const said = (words: string): string =>
-  JSON.stringify({
-    type: "assistant",
-    message: { content: [{ type: "text", text: words }] },
-  });
-const called = (command: string): string =>
-  JSON.stringify({
-    type: "assistant",
-    message: {
-      content: [{ type: "tool_use", name: "Bash", input: { command } }],
-    },
-  });
-const output = (text: string): string =>
-  JSON.stringify({
-    type: "user",
-    message: { content: [{ type: "tool_result", content: text }] },
-  });
+import {
+  called,
+  compactLines,
+  output,
+  paired,
+  panelBox,
+  said,
+} from "./watch-transcript-browser-fixture.ts";
 
 async function liveTurn(harness: Harness) {
   const scene = await workerScene(harness);
@@ -310,20 +300,7 @@ const colors = `(() => {
   return { light: measured("light"), dark: measured("dark") };
 })()`;
 
-const panelBox = `(async () => {
-  for (let attempt = 0; attempt < 500 && !document.querySelector(".transcript-lines .entry"); attempt++)
-    await new Promise((resolve) => setTimeout(resolve, 20));
-  const box = document.querySelector(".transcript").getBoundingClientRect();
-  return {
-    headers: document.querySelectorAll("header").length,
-    sections: document.querySelectorAll("section").length,
-    width: box.width,
-    height: box.height,
-    window: [innerWidth, innerHeight],
-  };
-})()`;
-
-await test("CLV-333 the terminal panel is dark in the light and the dark scheme, the open panel fills the window below the header, and the full-screen link shows only the panel at the size of the window", () =>
+await test("CLV-333 CLV-355 the terminal panel is dark in the light and the dark scheme, a short open turn is short, a long one stops at 60 percent of the window with its own scroll, each tool call keeps its fold count on its own line, agent text shows its Markdown, and the full-screen link shows only the panel at the size of the window", () =>
   withHarness(async (harness) => {
     const turn = await liveTurn(harness);
     await appendFile(turn.stream, `${said("Done.")}\n`);
@@ -333,8 +310,22 @@ await test("CLV-333 the terminal panel is dark in the light and the dark scheme,
       const page = await browser.page({ width: 1200, height: 900 });
       await page.navigate(`${watch.address}#run=${turn.live.runId}`);
       const detail = await page.evaluate(panelBox);
-      assert.ok(Number(detail["height"]) >= 900 - 160, JSON.stringify(detail));
-      assert.ok(Number(detail["height"]) <= 900, JSON.stringify(detail));
+      assert.ok(Number(detail["height"]) < 200, JSON.stringify(detail));
+      const calls = Array.from({ length: 40 }, (_, index) => paired(index));
+      await appendFile(
+        turn.stream,
+        `${calls.join("\n")}\n${said("**Checked.** All `tests` pass.")}\n`,
+      );
+      const lines = fields(await page.evaluate(compactLines));
+      assert.equal(lines["calls"], 40, JSON.stringify(lines));
+      assert.ok(Number(lines["tallest"]) <= 24, JSON.stringify(lines));
+      assert.equal(lines["sameRow"], true, JSON.stringify(lines));
+      assert.ok(Number(lines["box"]) <= 0.6 * 900 + 24, JSON.stringify(lines));
+      assert.ok(
+        Number(lines["scroll"]) > Number(lines["box"]),
+        JSON.stringify(lines),
+      );
+      assert.equal(lines["strong"], "Checked.", JSON.stringify(lines));
       const { light, dark } = await page.evaluate(colors);
       assert.ok(Number(fields(light)["page"]) > 0.8, JSON.stringify(light));
       assert.ok(Number(fields(dark)["page"]) < 0.2, JSON.stringify(dark));
