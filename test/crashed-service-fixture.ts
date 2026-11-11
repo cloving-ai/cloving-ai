@@ -15,6 +15,29 @@ const heldPs = [
   "",
 ].join("\n");
 
+const failedPs = [
+  "#!/bin/sh",
+  'case " $* " in *" -U "*) exit 1 ;; esac',
+  'PATH="${PATH#*:}" exec ps "$@"',
+  "",
+].join("\n");
+
+export async function withFailedSearches<T>(
+  directory: string,
+  use: () => Promise<T>,
+): Promise<T> {
+  const folder = join(directory, "failed-tools");
+  mkdirSync(folder, { recursive: true });
+  writeFileSync(join(folder, "ps"), failedPs, { mode: 0o700 });
+  const path = process.env["PATH"] ?? "";
+  process.env["PATH"] = `${folder}:${path}`;
+  try {
+    return await use();
+  } finally {
+    process.env["PATH"] = path;
+  }
+}
+
 export function heldIdentityReads(directory: string): string {
   const folder = join(directory, "held-tools");
   mkdirSync(folder, { recursive: true });

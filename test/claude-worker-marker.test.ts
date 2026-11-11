@@ -12,7 +12,12 @@ import {
   withScene,
   type Scene,
 } from "./claude-worker-fixture.ts";
-import { crashedService, markedProcess } from "./crashed-service-fixture.ts";
+import type { TurnRecovery } from "../src/turn-recovery.ts";
+import {
+  crashedService,
+  markedProcess,
+  withFailedSearches,
+} from "./crashed-service-fixture.ts";
 
 const signal = new AbortController().signal;
 
@@ -63,7 +68,7 @@ async function crashedTurn(scene: Scene, mode: string): Promise<void> {
 await test("CLV-350 a new worker connects to a turn whose service stopped before its launch record, and does not resume it", () =>
   withScene(async (scene) => {
     await crashedTurn(scene, "gated-lines");
-    const noted: unknown[] = [];
+    const noted: TurnRecovery[] = [];
     const next = scene.worker("gated-lines", {
       recovered: (recovery) => noted.push(recovery),
     });
@@ -119,7 +124,7 @@ await test("CLV-350 a turn with a marker and no matching process is not connecte
     const turn = keptTurn(scene);
     process.kill(-turn.parentId, "SIGKILL");
     await until(() => !alive(turn.processId) && !alive(turn.parentId));
-    const noted: unknown[] = [];
+    const noted: TurnRecovery[] = [];
     const next = scene.worker("gated-lines", {
       recovered: (recovery) => noted.push(recovery),
     });
@@ -129,5 +134,29 @@ await test("CLV-350 a turn with a marker and no matching process is not connecte
       ["failed", "claude-turn-interrupted"],
     );
     assert.deepEqual(noted, []);
+    assert.equal(scene.turns().length, 1);
+  }));
+
+await test("CLV-350 a failed process search keeps the turn in recovery, does not resume it, and a later reconcile connects to it", () =>
+  withScene(async (scene) => {
+    await crashedTurn(scene, "gated-lines");
+    const noted: TurnRecovery[] = [];
+    const next = scene.worker("gated-lines", {
+      recovered: (recovery) => noted.push(recovery),
+    });
+    const reply = await withFailedSearches(scene.directory, () =>
+      next.reconcile(intent(), signal),
+    );
+    assert.deepEqual(reply, {
+      kind: "unknown",
+      evidence: `claude-turn:${journalKey("operation-1")}`,
+    });
+    assert.deepEqual(noted, []);
+    assert.equal(scene.turns().length, 1);
+    assert.equal((await next.reconcile(intent(), signal)).kind, "accepted");
+    assert.deepEqual(noted, [{ runId: "run-1", way: "connected" }]);
+    writeFileSync(join(scene.directory, "turns.log.gate"), "");
+    await until(() => scene.reports.length === 1);
+    assert.equal(scene.reports[0]?.outcome, "completed");
     assert.equal(scene.turns().length, 1);
   }));

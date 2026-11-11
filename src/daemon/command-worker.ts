@@ -98,6 +98,8 @@ async function reconciled(
   const started = await readRecord(folder, "started.json");
   const launch = await keptLaunch(folder, started);
   if (inFlight()) return { kind: "accepted", receipt: key, worker: "command" };
+  if (launch === "unknown")
+    return { kind: "unknown", evidence: `command:${key}` };
   if (launch !== undefined && commandIntent(intent))
     return attached(parts, { intent, key, folder, started, launch });
   const duration =
@@ -132,12 +134,13 @@ function ending(end: CommandEnd, stopping: Active["stopping"]): Recorded {
 async function markedCommand(
   folder: string,
   started: unknown,
-): Promise<TurnLaunch | undefined> {
+): Promise<TurnLaunch | "unknown" | undefined> {
   const planned = plannedLaunch(await readRecord(folder, markerRecord));
   if (planned === undefined) return undefined;
   const since = Date.parse(String(record(started)?.["startedAt"]));
   const launch = await foundLaunch(planned, { since, stopMilliseconds: 0 });
-  if (launch === undefined || launch === "stopped") return undefined;
+  if (launch === "stopped") return undefined;
+  if (launch === undefined || launch === "unknown") return launch;
   await writeRecord(folder, { name: "launch.json", value: launch });
   return launch;
 }
@@ -145,13 +148,13 @@ async function markedCommand(
 async function keptLaunch(
   folder: string,
   started: unknown,
-): Promise<TurnLaunch | undefined> {
+): Promise<TurnLaunch | "unknown" | undefined> {
   const recorded = await readRecord(folder, "launch.json");
   const launch =
     recorded === undefined
       ? await markedCommand(folder, started)
       : recordedLaunch(recorded);
-  if (launch === undefined) return undefined;
+  if (launch === undefined || launch === "unknown") return launch;
   return (await launchState(launch)) === "gone" ? undefined : launch;
 }
 

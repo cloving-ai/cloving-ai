@@ -327,8 +327,9 @@ async function stoppedMatch(
 export async function foundLaunch(
   planned: PlannedLaunch,
   search: { readonly since: number; readonly stopMilliseconds: number },
-): Promise<TurnLaunch | "stopped" | undefined> {
+): Promise<TurnLaunch | "stopped" | "unknown" | undefined> {
   const found = await markedProcesses({ ...search, marker: planned.marker });
+  if (found === undefined) return "unknown";
   const launches = found.map((match) => ({ ...match, ...planned }));
   if (launches.length === 1) return launches[0];
   await Promise.all(

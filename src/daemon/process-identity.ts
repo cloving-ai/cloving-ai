@@ -88,7 +88,7 @@ function markedLine(
 
 export function markedProcesses(
   search: ProcessSearch,
-): Promise<readonly FoundProcess[]> {
+): Promise<readonly FoundProcess[] | undefined> {
   return new Promise((settle) => {
     execFile(
       "ps",
@@ -108,7 +108,7 @@ export function markedProcesses(
         settle(
           error === null
             ? stdout.split("\n").flatMap((line) => markedLine(line, search))
-            : [],
+            : undefined,
         );
       },
     );

@@ -8,8 +8,16 @@ import { located } from "../src/daemon/operation-journal.ts";
 import { processExists } from "../src/daemon/process-identity.ts";
 import type { TurnRecovery } from "../src/turn-recovery.ts";
 import { until } from "./claude-worker-fixture.ts";
-import { commandIntent, withCommandScene } from "./command-worker-fixture.ts";
-import { crashedService, markedProcess } from "./crashed-service-fixture.ts";
+import {
+  commandIntent,
+  signal,
+  withCommandScene,
+} from "./command-worker-fixture.ts";
+import {
+  crashedService,
+  markedProcess,
+  withFailedSearches,
+} from "./crashed-service-fixture.ts";
 
 type Scene = Parameters<Parameters<typeof withCommandScene>[0]>[0];
 
@@ -155,6 +163,34 @@ await test("CLV-350 a command with a marker and no matching process is interrupt
     assert.equal(existsSync(join(folder(scene), "launch.json")), false);
   }));
 
+await test("CLV-350 a failed process search keeps the command in recovery, and a later reconcile connects to it", () =>
+  withCommandScene(async (scene) => {
+    const group = await crashedCommand(scene);
+    try {
+      const second = scene.worker('throw new Error("must not run")');
+      const reply = await withFailedSearches(scene.directory, () =>
+        second.reconcile(commandIntent(), signal),
+      );
+      assert.deepEqual(reply, {
+        kind: "unknown",
+        evidence: `command:${located(scene.journal, "operation-1").key}`,
+      });
+      assert.equal(existsSync(join(folder(scene), "result.json")), false);
+      const again = await second.reconcile(commandIntent(), signal);
+      assert.equal(again.kind, "accepted");
+      writeFileSync(join(scene.directory, "go"), "");
+      await until(() => scene.reports.length === 1);
+      assert.equal(scene.reports[0]?.outcome, "completed");
+      assert.equal(scene.reports[0].result, "done");
+      assert.equal(
+        readFileSync(join(scene.directory, "calls"), "utf8"),
+        "one\n",
+      );
+    } finally {
+      if (processExists(group)) process.kill(-group, "SIGKILL");
+    }
+  }));
+
 await test("CLV-350 the README states that the service finds a kept turn or command by its marker when the service stopped before the launch record", () => {
   const readme = readFileSync(
     new URL("../README.md", import.meta.url),
@@ -171,5 +207,9 @@ await test("CLV-350 the README states that the service finds a kept turn or comm
   assert.match(
     readme,
     /More than one match: the service stops each matched process and records the turn or the command as interrupted\./,
+  );
+  assert.match(
+    readme,
+    /A failed search: the service does not end the turn or the command and sends no signal\. The effect stays in recovery, and the service searches again at the next recovery check\./,
   );
 });

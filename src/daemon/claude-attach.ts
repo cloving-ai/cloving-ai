@@ -69,7 +69,7 @@ async function connectedRecords(
 export async function markedTurn(
   folder: string,
   request: { readonly started: unknown; readonly stopMilliseconds: number },
-): Promise<TurnLaunch | "stopped" | undefined> {
+): Promise<TurnLaunch | "stopped" | "unknown" | undefined> {
   const { started } = request;
   const attempt = attemptNumber(started);
   if (attempt === undefined || recordedField(started, "phase") !== "starting")
@@ -82,7 +82,8 @@ export async function markedTurn(
     since: Date.parse(String(recordedField(started, "startedAt"))),
     stopMilliseconds: request.stopMilliseconds,
   });
-  if (launch === undefined || launch === "stopped") return launch;
+  if (launch === undefined || launch === "stopped" || launch === "unknown")
+    return launch;
   await connectedRecords(folder, { started, attempt, launch });
   return launch;
 }

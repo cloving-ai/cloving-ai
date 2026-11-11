@@ -1522,6 +1522,7 @@ The service writes the marker to `launch-marker.json` in the journal folder of t
 - Exactly one match: the service records the identity of the process and connects to it, as above. A turn does not resume.
 - No match: the result is the same as before. A command ends with `command-interrupted`.
 - More than one match: the service stops each matched process and records the turn or the command as interrupted.
+- A failed search: the service does not end the turn or the command and sends no signal. The effect stays in recovery, and the service searches again at the next recovery check.
 
 `--within <duration>` limits the wait, for example `--within 30m` or `--within 6h`. A duration is a whole number with `s`, `m` or `h`, up to `720h`. The default is `12h`. At the deadline, the service cancels the restart, the queue hold ends, and the command prints `restart-deadline` with the work that held the restart, for example the runs that were active. `--cancel` cancels a pending restart. When the restart already started, the cancel prints `Restart: started, cannot cancel`, and the restart continues.
 

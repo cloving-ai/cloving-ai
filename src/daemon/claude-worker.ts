@@ -117,13 +117,16 @@ async function launchedOrResumed(
     readonly intent: DeliveryIntent;
     readonly started: unknown;
     readonly signal: AbortSignal;
-    readonly launch: TurnLaunch | "gone" | "stopped" | undefined;
+    readonly launch: TurnLaunch | "gone" | "stopped" | "unknown" | undefined;
   },
 ): Promise<AdapterOutcome> {
   const { launch, ...rest } = request;
   if (launch === "stopped")
     return interruptedReply(rest, "claude-turn-interrupted");
-  if (launch === undefined && (await uncertainProcess(rest.started)))
+  if (
+    launch === "unknown" ||
+    (launch === undefined && (await uncertainProcess(rest.started)))
+  )
     return { kind: "unknown", evidence: `claude-turn:${rest.key}` };
   return resumed(parts, {
     ...rest,
@@ -138,7 +141,7 @@ async function recordedLaunchOf(
     readonly started: unknown;
     readonly result: unknown;
   },
-): Promise<TurnLaunch | "gone" | "stopped" | undefined> {
+): Promise<TurnLaunch | "gone" | "stopped" | "unknown" | undefined> {
   if (journal.result !== undefined) return undefined;
   return (
     (await attachableLaunch(journal.folder, journal.started)) ??
