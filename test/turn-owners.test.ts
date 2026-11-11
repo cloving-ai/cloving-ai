@@ -1,10 +1,14 @@
 import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
+import { once } from "node:events";
 import { mkdir, mkdtemp, readFile, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
+import { processIdentity } from "../src/daemon/process-identity.ts";
 import {
   activeOwners,
+  keepTurn,
   ownTurn,
   ownedProcesses,
 } from "../src/daemon/turn-owners.ts";
@@ -127,7 +131,38 @@ await test("CLV-346 a turn owns its work tree until it ends, also through a link
   }
 });
 
-await test("CLV-346 the README states that a turn end and a resume keep the processes of another active turn", async () => {
+await test("CLV-346 CLV-337 a kept turn stays an active turn while its root process lives, an owner of the same root replaces it, and it leaves when the root ends", async () => {
+  const folder = await mkdtemp(join(tmpdir(), "clv-346-kept-"));
+  const root = spawn("sleep", ["60"], { stdio: "ignore" });
+  try {
+    const processId = root.pid ?? 0;
+    const identity = await processIdentity(processId);
+    assert.ok(identity !== undefined);
+    const launch = {
+      processId,
+      processStart: identity.start,
+      marker: "sleep",
+      exit: join(folder, "exit.json"),
+    };
+    const owner = { runId: "run-k", processId };
+    keepTurn(folder, { runId: "run-k", launch });
+    keepTurn(folder, { runId: "run-k", launch });
+    assert.deepEqual(await activeOwners(folder), [owner]);
+    const ended = ownTurn(folder, owner);
+    assert.deepEqual(await activeOwners(folder), [owner]);
+    ended();
+    assert.deepEqual(await activeOwners(folder), []);
+    keepTurn(folder, { runId: "run-k", launch });
+    root.kill("SIGKILL");
+    await once(root, "exit");
+    assert.deepEqual(await activeOwners(folder), []);
+  } finally {
+    root.kill("SIGKILL");
+    await rm(folder, { recursive: true, force: true });
+  }
+});
+
+await test("CLV-346 CLV-337 the README states that a turn end and a resume keep the processes of another active turn, also of a kept turn", async () => {
   const readme = await readFile(
     new URL("../README.md", import.meta.url),
     "utf8",
@@ -139,6 +174,10 @@ await test("CLV-346 the README states that a turn end and a resume keep the proc
   assert.match(
     readme,
     /A process belongs to an active turn when it is the root process of the turn, a descendant of that root by parent process ID, or a member of the process group that the root leads\./,
+  );
+  assert.match(
+    readme,
+    /A turn that a restart keeps running stays an active turn while its start program runs: through the stop of the old service, and in the new service from its start, before the new service connects to the turn\./,
   );
   assert.match(
     readme,
