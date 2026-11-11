@@ -164,7 +164,7 @@ h2, h3 { font-family: var(--font-heading); font-weight: 700; }
 .token-menu-open:hover { background: none; }
 .tokens li:hover .token-menu-open, .token-menu:focus-within .token-menu-open, .token-menu:has(.token-pop:popover-open) .token-menu-open { opacity: 1; }
 .tokens li:has(.token-menu) .token-time { padding-right: 26px; }
-.token-pop { position-anchor: --token; inset: auto; position-area: bottom span-left; position-try-fallbacks: flip-block, flip-inline; margin: 4px 0 0; padding: 4px; border: var(--shape-border) solid var(--color-line); background: var(--color-surface); color: var(--color-ink); box-shadow: var(--shadow); font: 500 13px/1.3 var(--font-ui); }
+.token-pop { position-anchor: --token; inset: auto; position-area: bottom span-left; position-try-fallbacks: flip-block, flip-inline; margin: 0; padding: 4px; border: var(--shape-border) solid var(--color-line); background: var(--color-surface); color: var(--color-ink); box-shadow: var(--shadow); font: 500 13px/1.3 var(--font-ui); }
 .token-pop:popover-open { display: block; min-width: 200px; padding: 4px; }
 .token-pop button, .token-pop input { font: 500 13px/1.6 var(--font-ui); }
 .token-pop .run-command { display: grid; gap: 2px; margin: 0; }
