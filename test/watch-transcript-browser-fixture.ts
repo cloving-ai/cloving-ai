@@ -4,6 +4,7 @@ import { dirname, join } from "node:path";
 import { located } from "../src/daemon/operation-journal.ts";
 import { transcriptFiles } from "../src/daemon/transcript-files.ts";
 import type { Fields } from "../src/protocol.ts";
+import { replyReader, type ReplyRead } from "./checked-reply-fixture.ts";
 import { operationOf } from "./effect-fixture.ts";
 import { requested, untilStates } from "./service-effect-fixture.ts";
 import { fields, type Harness } from "./service-fixture.ts";
@@ -99,12 +100,6 @@ export type BrowserPage = Awaited<
   ReturnType<Awaited<ReturnType<typeof realBrowser>>["page"]>
 >;
 
-export interface ReplyRead {
-  readonly number: (key: string) => number;
-  readonly text: (key: string) => string;
-  readonly flag: (key: string) => boolean;
-}
-
 export interface PageWait<Reply> {
   readonly name: string;
   readonly ready: string;
@@ -155,25 +150,7 @@ export interface JumpReply {
 }
 
 export function replyOf<Reply>(wait: PageWait<Reply>, values: Fields): Reply {
-  const failed = (key: string, kind: string): string =>
-    `${wait.name}: ${key} is not ${kind}: ${JSON.stringify(values)}`;
-  return wait.reply({
-    number: (key) => {
-      const value = values[key];
-      assert.ok(typeof value === "number", failed(key, "a number"));
-      return value;
-    },
-    text: (key) => {
-      const value = values[key];
-      assert.ok(typeof value === "string", failed(key, "a text"));
-      return value;
-    },
-    flag: (key) => {
-      const value = values[key];
-      assert.ok(typeof value === "boolean", failed(key, "a flag"));
-      return value;
-    },
-  });
+  return wait.reply(replyReader(wait.name, values));
 }
 
 export function pagePoll(wait: {

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { replyReader } from "./checked-reply-fixture.ts";
 import {
   compactWait,
   entriesWait,
@@ -8,6 +9,10 @@ import {
   panelWait,
   replyOf,
 } from "./watch-transcript-browser-fixture.ts";
+import {
+  hiddenShown,
+  transcriptPlayed,
+} from "./watch-transcript-client-fixture.ts";
 
 const expandReply = {
   expanded: "true",
@@ -95,5 +100,46 @@ await test("CLV-355 a browser reply with a missing or wrong value fails with the
         strong: "Checked.",
       }),
     { message: /^compact-lines-missing: sameRow is not a flag: / },
+  );
+});
+
+await test("CLV-355 the shared reply readers check a text list, a text or null and a nested record, and name the field of a wrong value", () => {
+  const read = replyReader("sample", {
+    kept: ["a", "b"],
+    jump: null,
+    before: { label: "Expand transcript" },
+    mixed: ["a", 1],
+  });
+  assert.deepEqual(read.texts("kept"), ["a", "b"]);
+  assert.equal(read.textOrNull("jump"), null);
+  assert.equal(read.part("before").text("label"), "Expand transcript");
+  assert.throws(() => read.texts("mixed"), {
+    message: /^sample: mixed is not a text list: /,
+  });
+  assert.throws(() => read.part("before").number("label"), {
+    message: /^sample.before: label is not a number: /,
+  });
+  assert.throws(() => read.part("kept"), {
+    message: /^sample: kept is not a record: /,
+  });
+});
+
+await test("CLV-355 a transcript page scenario returns its checked reply, and a reply of the wrong type fails with the field on the first line", () => {
+  assert.deepEqual(
+    transcriptPlayed({
+      outcome: "in work",
+      reply: hiddenShown,
+      scenario: `console.log(JSON.stringify({ hidden: true, shown: false }));`,
+    }),
+    { hidden: true, shown: false },
+  );
+  assert.throws(
+    () =>
+      transcriptPlayed({
+        outcome: "in work",
+        reply: hiddenShown,
+        scenario: `console.log(JSON.stringify({ hidden: "yes", shown: false }));`,
+      }),
+    { message: /^transcript-scenario: hidden is not a flag: / },
   );
 });
