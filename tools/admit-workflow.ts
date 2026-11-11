@@ -10,7 +10,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { findPackageJSON } from "node:module";
+import nodeModule from "node:module";
 import { dirname, extname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -120,7 +120,7 @@ async function prepareCandidateProject(
   await mkdir(join(directory, "workflows"));
   await mkdir(join(directory, "node_modules"));
   await symlink(packageRoot, join(directory, "node_modules/cloving"));
-  const runtime = findPackageJSON("workflow", import.meta.url);
+  const runtime = nodeModule.findPackageJSON("workflow", import.meta.url);
   if (!runtime) throw new Error("candidate-runtime-unavailable");
   await symlink(dirname(runtime), join(directory, "node_modules/workflow"));
   await writeFile(
