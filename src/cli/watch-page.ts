@@ -39,6 +39,7 @@ import { runCommandFunctions } from "./watch-run-command-view.ts";
 import { runHeadFunctions } from "./watch-run-head-view.ts";
 import { runTabsFunctions } from "./watch-run-tabs-view.ts";
 import { runPageStyle } from "./watch-run-page-style.ts";
+import { tokenMenuFunctions } from "./watch-token-menu-view.ts";
 import { watchRunCommandClient } from "./watch-run-command-client.ts";
 import { watchPhoneClient } from "./watch-phone-client.ts";
 import {
@@ -240,6 +241,7 @@ const functions = [
   ...runCommandFunctions,
   ...runHeadFunctions,
   ...runTabsFunctions,
+  ...tokenMenuFunctions,
   Column,
   columnCollapsed,
   Board,

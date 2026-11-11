@@ -158,7 +158,27 @@ h2, h3 { font-family: var(--font-heading); font-weight: 700; }
 .drop-question { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0; font-size: 13px; }
 .run-menu summary { width: fit-content; padding: 0 8px; cursor: pointer; list-style: none; color: var(--color-muted); font: 700 16px/1.2 var(--font-ui); }
 .run-menu summary::-webkit-details-marker { display: none; }
-.tokens li { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; }
+.tokens li { position: relative; display: flex; max-width: 100%; }
+.token-menu { width: 0; anchor-scope: --token; }
+.token-menu-open { anchor-name: --token; position: absolute; inset: 0 0 0 auto; width: 24px; margin: 0; padding: 0; background: none; clip-path: none; color: var(--color-ink); font: 700 15px/1 var(--font-ui); cursor: pointer; opacity: 0; }
+.token-menu-open:hover { background: none; }
+.tokens li:hover .token-menu-open, .token-menu:focus-within .token-menu-open, .token-menu:has(.token-pop:popover-open) .token-menu-open { opacity: 1; }
+.tokens li:has(.token-menu) .token-time { padding-right: 26px; }
+.token-pop { position-anchor: --token; inset: auto; position-area: bottom span-left; position-try-fallbacks: flip-block, flip-inline; margin: 4px 0 0; padding: 4px; border: var(--shape-border) solid var(--color-line); background: var(--color-surface); color: var(--color-ink); box-shadow: var(--shadow); font: 500 13px/1.3 var(--font-ui); }
+.token-pop:popover-open { display: block; min-width: 200px; padding: 4px; }
+.token-pop button, .token-pop input { font: 500 13px/1.6 var(--font-ui); }
+.token-pop .run-command { display: grid; gap: 2px; margin: 0; }
+.token-pop .rename { display: grid; gap: 2px; }
+.token-pop button { width: 100%; padding: 6px 10px; background: none; clip-path: none; color: var(--color-ink); text-align: left; }
+.token-pop button:hover, .token-pop button:focus-visible { background: var(--color-panel); }
+.token-separator { margin: 4px 0; border: 0; border-top: var(--shape-border) solid var(--color-line); }
+.token-danger button { color: var(--color-state-failed); }
+.token-danger .drop-question { display: grid; gap: 2px; }
+.token-pop .rename-form { grid-template-columns: 1fr 1fr; gap: 6px; padding: 6px 10px; }
+.token-pop .rename-form label { grid-column: 1 / -1; }
+.token-pop .rename-form button { text-align: center; }
+.token-pop .rename-form button[type="submit"] { background: var(--color-accent); color: var(--color-on-accent); }
+.token-pop .rename-form button[type="button"] { background: none; color: var(--color-muted); }
 .run-menu[open] { flex-basis: 100%; }
 .rename, .rename-form { display: grid; gap: 6px; }
 .rename-open, .rename-clear { width: fit-content; }
@@ -210,12 +230,14 @@ h2, h3 { font-family: var(--font-heading); font-weight: 700; }
 .lamp.waiting, .lamp.stopped { box-shadow: none; }
 .station-name { color: var(--color-muted); font-size: 13px; overflow-wrap: anywhere; }
 .station:not(.empty) .station-name { color: var(--color-ink); font-weight: 600; }
-.tokens { display: flex; flex-direction: column; gap: 6px; list-style: none; margin: 2px 0 0; padding: 0; }
+.tokens { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; max-width: 100%; list-style: none; margin: 2px 0 0; padding: 0; }
 .token { display: inline-flex; align-items: stretch; color: var(--color-ink); text-decoration: none; font: 500 13px/1.2 var(--font-ui); font-variant-numeric: tabular-nums; white-space: nowrap; background: color-mix(in srgb, var(--state) 18%, var(--color-surface)); clip-path: var(--angled); }
 .token:hover { background: color-mix(in srgb, var(--state) 30%, var(--color-surface)); }
 .token-worker { display: grid; place-items: center; min-width: 26px; padding: 6px; background: var(--state); color: var(--on-lamp); font-weight: 700; }
 .token.waiting .token-worker { color: var(--on-waiting); }
 .token-ticket { padding: 6px 0 6px 10px; }
+.token { max-width: 100%; min-width: 0; }
+.token-ticket, .token-pull { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .token-time { padding: 6px 12px 6px 8px; color: var(--color-muted); }
 .line-end { display: flex; flex-direction: column; align-items: flex-end; justify-content: center; gap: 2px; min-width: 0; padding: 16px 20px; border-left: var(--shape-border) dashed var(--color-line); color: var(--color-muted); font-size: 13px; text-align: right; }
 .line-ready { color: var(--color-ink); font-weight: 600; font-variant-numeric: tabular-nums; }

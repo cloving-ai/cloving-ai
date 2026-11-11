@@ -151,12 +151,12 @@ await test("CLV-357 the banner holds the back link, the state icon, the label an
   const bar = html.slice(html.indexOf('<div class="run-head-actions">'));
   assert.match(
     bar,
-    /^<div class="run-head-actions"><button type="button" class="steer-open">Steer<\/button><button type="button" class="run-command-pause">Pause<\/button><div class="run-more">/,
+    /^<div class="run-head-actions"><button type="button" class="steer-open">Steer<\/button><button type="button" class="run-command-pause">Pause<\/button><div class="token-menu"><button type="button" class="token-menu-open" title="More run controls" aria-label="More run controls" popovertarget="run-menu-run-7" popovertargetaction="show">/,
   );
-  const menu = bar.slice(bar.indexOf('<div class="run-more-menu"'));
+  const menu = bar.slice(bar.indexOf('<div id="run-menu-run-7"'));
   assert.match(
     menu,
-    /^<div class="run-more-menu" aria-label="More run controls"><button type="button" class="rename-open">Rename<\/button><hr class="run-more-split">(?:<\/hr>)?<button type="button" class="run-command-drop">Drop<\/button><\/div>/,
+    /^<div id="run-menu-run-7" class="token-pop" popover="auto"><div class="run-more-items"><button type="button" class="rename-open">Rename<\/button><hr class="token-separator">(?:<\/hr>)?<div class="token-danger"><button type="button" class="run-command-drop">Drop<\/button><\/div><\/div><\/div>/,
   );
   assert.equal(html.match(/run-command-drop/g)?.length, 1);
   assert.equal(html.match(/rename-open/g)?.length, 1);
@@ -292,58 +292,29 @@ await test("CLV-357 Drop in the menu asks under the banner, and the steer form a
   assert.doesNotMatch(banner(asked), /steer-form|drop-question/);
 });
 
-function menuElement() {
-  const attributes = new Set<string>();
+function popover(state: "open" | "closed") {
+  const calls: string[] = [];
   return {
-    attributes,
-    setAttribute: (name: string) => {
-      attributes.add(name);
-    },
-    removeAttribute: (name: string) => {
-      attributes.delete(name);
-    },
+    calls,
+    matches: (selector: string) =>
+      selector === ":popover-open" && state === "open",
+    hidePopover: () => calls.push("hide"),
   };
 }
 
-await test("CLV-357 a pick in the ⋯ menu or Escape closes the menu at once, and a click on ⋯, the pointer leaving or entering, or the focus coming back opens it again", () => {
-  const more = found(page(working, all([])), "div").find(
-    (node) => node["class"] === "run-more",
+await test("CLV-357 the run page ⋯ uses the shared token menu shell, and a pick in its popover closes the popover at once", () => {
+  const pop = found(page(working, all([])), "div").find(
+    (node) => node["id"] === "run-menu-run-7",
   );
-  assert.ok(more !== undefined);
-  const box = menuElement();
-  const fire = (name: string, event: Readonly<Record<string, unknown>>) => {
-    const handler = more[name];
-    assert.ok(typeof handler === "function", name);
-    Reflect.apply(handler, undefined, [{ currentTarget: box, ...event }]);
-  };
-  const held = () => [...box.attributes];
-  const item = { closest: () => null };
-  const opener = {
-    closest: (selector: string) => (selector === ".run-more-open" ? {} : null),
-  };
-  fire("onClick", { target: item });
-  assert.deepEqual(held(), ["data-hold"]);
-  fire("onClick", { target: opener });
-  assert.deepEqual(held(), []);
-  fire("onClick", { target: item });
-  fire("onMouseLeave", {});
-  assert.deepEqual(held(), []);
-  fire("onClick", { target: item });
-  fire("onMouseEnter", {});
-  assert.deepEqual(held(), []);
-  fire("onClick", { target: item });
-  fire("onFocusIn", {});
-  assert.deepEqual(held(), []);
-  const blurred: string[] = [];
-  fire("onKeyDown", {
-    key: "Escape",
-    target: { blur: () => blurred.push("blur") },
-  });
-  assert.deepEqual([held(), blurred], [["data-hold"], ["blur"]]);
-  const button = found(more["children"], "button").find(
-    (node) => node["class"] === "run-more-open",
-  );
-  assert.equal(button?.["onClick"], undefined);
+  const picked = pop?.["onClick"];
+  assert.ok(typeof picked === "function");
+  const open = popover("open");
+  Reflect.apply(picked, undefined, [{ currentTarget: open }]);
+  const closed = popover("closed");
+  Reflect.apply(picked, undefined, [{ currentTarget: closed }]);
+  assert.deepEqual([open.calls, closed.calls], [["hide"], []]);
+  const floor = rendered(page(working, all([]))).replace(/run-menu-run-7/g, "");
+  assert.doesNotMatch(floor, /run-more-open|run-more-menu|data-hold/);
 });
 
 await test("CLV-357 an ended run shows no Steer form, also when the form was open, and keeps the reply of the last note", () => {
@@ -356,28 +327,19 @@ await test("CLV-357 an ended run shows no Steer form, also when the form was ope
   assert.match(html, /<p class="steer-message" role="status">Sent\.<\/p>/);
 });
 
-await test("CLV-357 the ⋯ menu is a popover that opens on hover and on keyboard focus with a short close delay, in the page font, and does not move the page", () => {
-  assert.match(rule(".run-more"), /position: relative/);
-  const menu = rule(".run-more-menu");
-  assert.match(menu, /position: absolute/);
-  assert.match(menu, /visibility: hidden/);
-  assert.match(menu, /font: [^;]*var\(--font-ui\)/);
-  assert.match(menu, /transition: [^;]*visibility 0s linear 200ms/);
-  const shown = rule(
-    ".run-more:hover .run-more-menu, .run-more:focus-within .run-more-menu",
+await test("CLV-357 the ⋯ of the run page is a visible button in the action bar, its popover is the shared token popover, and the bar buttons use the page font", () => {
+  const opener = rule(".run-head-actions .token-menu-open");
+  assert.match(opener, /position: static/);
+  assert.match(opener, /opacity: 1/);
+  assert.match(
+    rule(".run-head-actions > button, .run-head-actions .token-menu-open"),
+    /font: [^;]*var\(--font-ui\)/,
   );
-  assert.match(shown, /visibility: visible/);
-  assert.match(shown, /transition-delay: 0s/);
-  assert.match(rule(".run-head-actions button"), /font: [^;]*var\(--font-ui\)/);
-  const hold = rule(".run-more[data-hold] .run-more-menu");
-  assert.match(hold, /visibility: hidden/);
-  assert.match(hold, /transition: none/);
-  assert.ok(
-    rules.indexOf("\n.run-more[data-hold] .run-more-menu {") >
-      rules.indexOf(
-        "\n.run-more:hover .run-more-menu, .run-more:focus-within .run-more-menu {",
-      ),
+  assert.match(
+    rule(".token-danger button"),
+    /color: var\(--color-state-failed\)/,
   );
+  assert.doesNotMatch(rules, /\.run-more-menu|data-hold/);
   assert.match(
     rule(".run-identity:hover .name-edit, .name-edit:focus"),
     /opacity: 1/,
@@ -391,6 +353,7 @@ await test("CLV-357 the README describes the banner, the facts line and the tabs
   for (const part of [
     /The banner also shows the label and the title of the run, with a pencil that edits both in place: Enter saves and Escape cancels\./,
     /One action bar holds \*\*Steer\*\*, \*\*Pause\*\* or \*\*Resume\*\*, and a `⋯` menu with \*\*Rename\*\* and \*\*Drop\*\*\. The menu opens when the pointer rests on `⋯` or when `⋯` has the keyboard focus\./,
+    /The menu is the same popover as the token menu of the floor\. A pick in it closes it at once\. It also closes a moment after the pointer leaves, or with Escape\./,
     /Under the banner, one line shows the pull request with its latest review score, the cost and the place of the run in its chain\. A fact that is not known does not show\./,
     /\*\*Details\*\* shows the run totals, the reason code and text, the run ID, the turn target, the workflow, the effect units, the chain and the sources of the label and the title\./,
   ])

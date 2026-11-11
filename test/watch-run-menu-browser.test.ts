@@ -23,14 +23,14 @@ const frames = `const frame = () => new Promise((resolve) => requestAnimationFra
 
 const ready = `(async () => {
   ${frames}
-  for (let attempt = 0; attempt < 300 && !document.querySelector(".run-more-open"); attempt++) await frame();
+  for (let attempt = 0; attempt < 300 && !document.querySelector(".run-head-actions .token-menu-open"); attempt++) await frame();
   return {};
 })()`;
 
 const menuShown = `(async () => {
   ${frames}
   await frame();
-  return { menu: getComputedStyle(document.querySelector(".run-more-menu")).visibility };
+  return { menu: (document.querySelector("#run-menu-run-7").matches(":popover-open") ? "visible" : "hidden") };
 })()`;
 
 const afterPick = `(async () => {
@@ -41,7 +41,7 @@ const afterPick = `(async () => {
   const box = cancel.getBoundingClientRect();
   const hit = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
   return {
-    menu: getComputedStyle(document.querySelector(".run-more-menu")).visibility,
+    menu: (document.querySelector("#run-menu-run-7").matches(":popover-open") ? "visible" : "hidden"),
     focus: document.activeElement.getAttribute("name"),
     cancelOnTop: hit === cancel,
     cancelShown: box.width > 0 && box.height > 0,
@@ -54,7 +54,7 @@ const afterCancel = `(async () => {
   await frame();
   return {
     form: document.querySelector(".banner .rename-form") !== null,
-    menu: getComputedStyle(document.querySelector(".run-more-menu")).visibility,
+    menu: (document.querySelector("#run-menu-run-7").matches(":popover-open") ? "visible" : "hidden"),
     focus: document.activeElement.getAttribute("class"),
   };
 })()`;
@@ -68,9 +68,9 @@ await test("CLV-357 Rename in the ⋯ menu closes the menu at once while the poi
   const page = await browser.page({ width: 1280, height: 800 });
   await page.navigate(fixture.url);
   await page.evaluate(ready);
-  await page.click(".run-more-open");
+  await page.click(".run-head-actions .token-menu-open");
   assert.deepEqual(await page.evaluate(menuShown), { menu: "visible" });
-  await page.click(".run-more-menu .rename-open");
+  await page.click("#run-menu-run-7 .rename-open");
   assert.deepEqual(await page.evaluate(afterPick), {
     menu: "hidden",
     focus: "title",
@@ -99,7 +99,7 @@ const place = `(async () => {
   await frame();
   return {
     focus: document.activeElement.getAttribute("class") ?? document.activeElement.getAttribute("name"),
-    menu: getComputedStyle(document.querySelector(".run-more-menu")).visibility,
+    menu: (document.querySelector("#run-menu-run-7").matches(":popover-open") ? "visible" : "hidden"),
     asking: document.querySelector(".drop-question") !== null,
     form: document.querySelector(".banner .rename-form") !== null,
   };
@@ -114,38 +114,38 @@ await test("CLV-357 with the keyboard, Keep it gives the focus to ⋯ with the m
   const page = await browser.page({ width: 1280, height: 800 });
   await page.navigate(fixture.url);
   await page.evaluate(ready);
-  await page.evaluate(focusOn(".run-more-open"));
-  await page.evaluate(focusOn(".run-more-menu .run-command-drop"));
-  await page.press("Enter");
+  await page.evaluate(focusOn(".run-head-actions .token-menu-open"));
+  await page.evaluate(focusOn("#run-menu-run-7 .run-command-drop"));
+  await page.press({ key: "Enter", code: 13, text: "\r" });
   assert.deepEqual(await page.evaluate(place), {
     focus: "drop-keep",
     menu: "hidden",
     asking: true,
     form: false,
   });
-  await page.press("Enter");
+  await page.press({ key: "Enter", code: 13, text: "\r" });
   assert.deepEqual(await page.evaluate(place), {
-    focus: "run-more-open",
+    focus: "token-menu-open",
     menu: "hidden",
     asking: false,
     form: false,
   });
-  await page.press("Enter");
+  await page.press({ key: "Enter", code: 13, text: "\r" });
   assert.deepEqual(await page.evaluate(place), {
-    focus: "run-more-open",
+    focus: "token-menu-open",
     menu: "visible",
     asking: false,
     form: false,
   });
-  await page.evaluate(focusOn(".run-more-menu .rename-open"));
-  await page.press("Enter");
+  await page.evaluate(focusOn("#run-menu-run-7 .rename-open"));
+  await page.press({ key: "Enter", code: 13, text: "\r" });
   assert.deepEqual(await page.evaluate(place), {
     focus: "title",
     menu: "hidden",
     asking: false,
     form: true,
   });
-  await page.press("Escape");
+  await page.press({ key: "Escape", code: 27 });
   assert.deepEqual(await page.evaluate(place), {
     focus: "name-edit",
     menu: "hidden",

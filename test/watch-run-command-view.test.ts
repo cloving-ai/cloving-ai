@@ -186,8 +186,8 @@ await test("CLV-335 each card of an active run and each station token has the co
     0,
   );
   const floor = page("", controlling);
-  const tokens = found(floor, "details").filter(
-    (menu) => menu["class"] === "run-menu",
+  const tokens = found(floor, "div").filter(
+    (menu) => menu["class"] === "token-pop",
   );
   assert.deepEqual(tokens.map(inside).toSorted(), [
     ["Pause", "Drop"],

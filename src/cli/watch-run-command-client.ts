@@ -8,9 +8,10 @@ function runCommandMessage(reply) {
 function runCommandFocus(asking, name) {
   draw();
   if (asking.place === "detail" && name === "run-command-drop") {
-    const opener = document.querySelector(".run-more-open");
-    opener?.focus();
-    opener?.parentElement?.setAttribute("data-hold", "");
+    const menu = document.querySelector(".run-head-actions .token-menu");
+    menu?.querySelector(".token-menu-open")?.focus();
+    const pop = menu?.querySelector(".token-pop");
+    if (pop?.matches(":popover-open")) pop.hidePopover();
     return;
   }
   document.querySelector('.run-command[data-run="' + asking.runId + '"][data-place="' + asking.place + '"] .' + name)?.focus();

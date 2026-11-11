@@ -143,22 +143,6 @@ async function pressTab(
     });
 }
 
-const keys = {
-  Enter: { code: "Enter", windowsVirtualKeyCode: 13, text: "\r" },
-  Escape: { code: "Escape", windowsVirtualKeyCode: 27 },
-} as const;
-
-async function pressKey(
-  command: ReturnType<typeof protocol>,
-  press: { readonly sessionId: string; readonly key: keyof typeof keys },
-): Promise<void> {
-  for (const type of ["keyDown", "keyUp"])
-    await command("Input.dispatchKeyEvent", {
-      sessionId: press.sessionId,
-      params: { type, key: press.key, ...keys[press.key] },
-    });
-}
-
 async function attachedSession(
   command: ReturnType<typeof protocol>,
 ): Promise<string> {
@@ -171,6 +155,38 @@ async function attachedSession(
   const sessionId = attached["sessionId"];
   assert.ok(typeof sessionId === "string");
   return sessionId;
+}
+
+function inputActions(command: ReturnType<typeof protocol>, sessionId: string) {
+  return {
+    async move(point: { readonly x: number; readonly y: number }) {
+      await command("Input.dispatchMouseEvent", {
+        sessionId,
+        params: { type: "mouseMoved", ...point },
+      });
+    },
+    async press(key: {
+      readonly key: string;
+      readonly code: number;
+      readonly text?: string;
+    }) {
+      const down = key.text === undefined ? "rawKeyDown" : "keyDown";
+      for (const type of [down, "keyUp"])
+        await command("Input.dispatchKeyEvent", {
+          sessionId,
+          params: {
+            type,
+            key: key.key,
+            code: key.key,
+            windowsVirtualKeyCode: key.code,
+            ...(type === "keyDown" ? { text: key.text } : {}),
+          },
+        });
+    },
+    async type(text: string) {
+      await command("Input.insertText", { sessionId, params: { text } });
+    },
+  };
 }
 
 async function browserPage(
@@ -217,7 +233,7 @@ async function browserPage(
         });
     },
     pressTab: () => pressTab(command, sessionId),
-    press: (key: keyof typeof keys) => pressKey(command, { sessionId, key }),
+    ...inputActions(command, sessionId),
     async scroll(expression: string) {
       const gesture = await evaluate(expression);
       await command("Input.synthesizeScrollGesture", {

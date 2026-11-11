@@ -191,11 +191,20 @@ function renameDropped(runId) {
   const { [runId]: dropped, ...kept } = state.renameDrafts;
   return kept;
 }
+function renameFocus(runId) {
+  const pencil = document.querySelector(".name-edit");
+  if (pencil !== null) return pencil.focus();
+  const opener = document.querySelector('[popovertarget="token-menu-' + runId + '"]');
+  if (opener === null) return document.querySelector(".rename-open")?.focus();
+  const item = document.querySelector("#token-menu-" + runId + ":popover-open .rename-open");
+  (item ?? opener).focus();
+}
 function renameClose() {
-  state.renameDrafts = renameDropped(state.renameOpen);
+  const runId = state.renameOpen;
+  state.renameDrafts = renameDropped(runId);
   state.renameOpen = null;
   draw();
-  document.querySelector(".name-edit, .rename-open")?.focus();
+  renameFocus(runId);
 }
 function renameEdit(change) {
   const runId = state.renameOpen;
