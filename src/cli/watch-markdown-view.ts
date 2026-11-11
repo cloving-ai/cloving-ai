@@ -97,8 +97,26 @@ export function markdownListItem(
     return nested.next;
   }
   if ((item.number !== null) !== state.ordered) return undefined;
+  if (markdownFenceMark(item.text) !== undefined)
+    return markdownFencedItem(lines, { ...state, item });
   state.items.push({ text: item.text, blocks: [] });
   return state.next + 1;
+}
+
+export function markdownFencedItem(
+  lines: readonly string[],
+  state: ListState & { readonly item: ItemLine },
+): number {
+  const line = lines[state.next] ?? "";
+  const indent = " ".repeat(line.length - state.item.text.length);
+  const fenced = [
+    ...lines.slice(0, state.next),
+    indent + state.item.text,
+    ...lines.slice(state.next + 1),
+  ];
+  const fence = markdownFence(fenced, state.next);
+  state.items.push({ text: "", blocks: [fence.block] });
+  return fence.next;
 }
 
 export function markdownListGap(
@@ -263,6 +281,7 @@ export const markdownFunctions = [
   markdownFence,
   markdownIndent,
   markdownListItem,
+  markdownFencedItem,
   markdownListGap,
   markdownListMore,
   markdownListStep,

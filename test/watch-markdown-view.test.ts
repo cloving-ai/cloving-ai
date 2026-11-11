@@ -69,6 +69,13 @@ await test("CLV-355 an indented code fence under a step stays in the step withou
   );
 });
 
+await test("CLV-355 a code fence directly after a list marker is code in that item, and the next step stays outside the code", () => {
+  assert.equal(
+    markdown("1. ```sh\n   npm test\n   ```\n2. Done"),
+    '<div class="markdown"><ol><li><pre class="md-code"><code>npm test</code></pre></li><li>Done</li></ol></div>',
+  );
+});
+
 await test("CLV-355 a code fence closes only on a fence of the same character that is at least as long, so a longer fence can hold a shorter one", () => {
   assert.equal(
     markdown("````md\n```js\ncode\n```\n````\nAfter the block."),
