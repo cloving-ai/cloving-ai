@@ -206,7 +206,7 @@ await test("CLV-266 Linux shards qualify the selected toolchain before the gate"
 await test("CLV-097 Linux CI qualifies the lowest Node version of each engine range on main and tags, and a pull request runs the newest of them in six shards", async () => {
   const workflow = await releaseWorkflow();
   const { manifest } = await metadata();
-  const lowest = (manifest.engines["node"] ?? "")
+  const lowest = (manifest.devEngines.runtime["version"] ?? "")
     .split(" || ")
     .map((range) => /^>=(\d+\.\d+\.\d+) <\d+$/.exec(range)?.[1]);
   assert.deepEqual(lowest, ["24.22.1", "26.9.0"]);

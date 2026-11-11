@@ -44,12 +44,11 @@ export interface ReleaseWorkflow {
   };
 }
 
-export interface PackageMetadata {
+export interface PackageRoot {
   readonly name: string;
   readonly version: string;
   readonly license: string;
   readonly bin: StringRecord;
-  readonly engines: StringRecord;
   readonly os: readonly string[];
   readonly cpu: readonly string[];
   readonly dependencies: StringRecord;
@@ -60,9 +59,16 @@ export interface PackageMetadata {
   readonly bugs?: StringRecord;
 }
 
+export interface PackageMetadata extends PackageRoot {
+  readonly devEngines: {
+    readonly runtime: StringRecord;
+    readonly packageManager: StringRecord;
+  };
+}
+
 export interface PackageLock {
   readonly version: string;
-  readonly packages: { readonly "": PackageMetadata };
+  readonly packages: { readonly "": PackageRoot };
 }
 
 function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
@@ -169,10 +175,19 @@ export function isWorkflow(value: unknown): value is ReleaseWorkflow {
 }
 
 export function isPackageMetadata(value: unknown): value is PackageMetadata {
+  if (!isRecord(value) || !isPackageRoot(value)) return false;
+  const engines = value["devEngines"];
+  return (
+    isRecordOf(engines, isStringRecord) &&
+    ["runtime", "packageManager"].every((name) => name in engines)
+  );
+}
+
+function isPackageRoot(value: unknown): value is PackageRoot {
   if (!isRecord(value)) return false;
   return (
     ["name", "version", "license"].every((name) => isString(value[name])) &&
-    ["bin", "engines", "dependencies", "devDependencies"].every((name) =>
+    ["bin", "dependencies", "devDependencies"].every((name) =>
       isStringRecord(value[name]),
     ) &&
     isCommand(value["os"]) &&
@@ -191,6 +206,6 @@ export function isPackageLock(value: unknown): value is PackageLock {
   return (
     isString(value["version"]) &&
     isRecord(packages) &&
-    isPackageMetadata(packages[""])
+    isPackageRoot(packages[""])
   );
 }
