@@ -55,6 +55,13 @@ await test("CLV-355 one blank line between items keeps one list, and an indented
   );
 });
 
+await test("CLV-355 continuation lines after a blank line in an item join one paragraph, so their formatting is not split", () => {
+  assert.equal(
+    markdown("- First\n\n  **More\n  detail**"),
+    '<div class="markdown"><ul><li>First<p><strong>More\ndetail</strong></p></li></ul></div>',
+  );
+});
+
 await test("CLV-355 a paragraph after a list and two blank lines between items end the list", () => {
   assert.equal(
     markdown("1. a\n\nAfter the list.\n\n1. b\n\n\n1. c"),

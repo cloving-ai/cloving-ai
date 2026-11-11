@@ -1,3 +1,12 @@
+import { mkdir, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
+import { located } from "../src/daemon/operation-journal.ts";
+import { transcriptFiles } from "../src/daemon/transcript-files.ts";
+import { operationOf } from "./effect-fixture.ts";
+import { requested, untilStates } from "./service-effect-fixture.ts";
+import type { Harness } from "./service-fixture.ts";
+import { workerScene } from "./worker-report-fixture.ts";
+
 export const said = (words: string): string =>
   JSON.stringify({
     type: "assistant",
@@ -91,4 +100,58 @@ export const expandBox = (expanded: "true" | "false") => `(async () => {
     bottom: place.bottom,
     edge: document.querySelector(".transcript").getBoundingClientRect().right,
   };
+})()`;
+
+export async function liveTurn(harness: Harness) {
+  const scene = await workerScene(harness);
+  await scene.service.close();
+  const root = dirname(harness.runtimeDirectory);
+  const service = await harness.start({
+    ...scene.options,
+    turnTranscript: {
+      read: transcriptFiles(root),
+      privateTexts: [],
+      cache: new Map(),
+    },
+  });
+  const live = { ...scene, service };
+  await requested(live, {
+    commandId: `request-${scene.runId}-1`,
+    round: 1,
+    capability: "claude",
+  });
+  await untilStates(live, ["running"]);
+  const operationId = operationOf(scene.runId, { round: 1 });
+  const { folder } = located(join(root, "journal"), operationId);
+  await mkdir(folder, { recursive: true });
+  await writeFile(
+    join(folder, "started.json"),
+    JSON.stringify({
+      operationId,
+      harness: "claude",
+      target: "clv-329",
+      branch: "cloving/clv-329",
+      worktree: "work",
+      startedAt: new Date().toISOString(),
+    }),
+  );
+  const stream = join(folder, "turn.jsonl");
+  await writeFile(stream, "");
+  return { live, operationId, folder, stream };
+}
+
+export const pageAtTurn = `(async () => {
+  for (let attempt = 0; attempt < 500 && document.querySelectorAll(".transcript-lines .entry.tool-call").length < 60; attempt++)
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  scrollTo(0, document.querySelector(".transcript").getBoundingClientRect().top + scrollY - 10);
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  return { top: scrollY };
+})()`;
+
+export const jumpPlace = `(async () => {
+  const jump = () => document.querySelector(".transcript-jump");
+  for (let attempt = 0; attempt < 500 && !(jump()?.textContent ?? "").includes("2 new"); attempt++)
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  const place = jump().getBoundingClientRect();
+  return { text: jump().textContent, top: place.top, bottom: place.bottom, window: innerHeight };
 })()`;

@@ -105,6 +105,10 @@ await test("CLV-355 an open turn shows at most 500 pixels with its own scroll, a
   assert.match(rule(".transcript-lines"), /max-height: 500px; overflow: auto;/);
   assert.match(rule(".transcript-lines.expanded"), /max-height: none;/);
   assert.match(
+    rule(".transcript .transcript-jump"),
+    /position: sticky; bottom: 8px;/,
+  );
+  assert.match(
     rule(".transcript .transcript-expand"),
     /margin-left: auto; font: 600 14px\/1 var\(--font-code\); color: var\(--color-terminal-text\); background: var\(--terminal-edge\);/,
   );

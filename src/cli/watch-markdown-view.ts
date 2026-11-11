@@ -145,10 +145,27 @@ export function markdownListMore(
     return fence.next;
   }
   const gap = (lines[state.next - 1] ?? "").trim() === "";
-  if (gap || last.blocks.length > 0)
-    last.blocks.push({ kind: "text", text: line.trim() });
-  else last.text = `${last.text}\n${line.trim()}`;
+  markdownItemText(last, { text: line.trim(), gap });
   return state.next + 1;
+}
+
+export function markdownItemText(
+  item: ListState["items"][number],
+  more: { readonly text: string; readonly gap: boolean },
+): void {
+  const block = item.blocks.at(-1);
+  if (more.gap || (block !== undefined && block.kind !== "text")) {
+    item.blocks.push({ kind: "text", text: more.text });
+    return;
+  }
+  if (block === undefined) {
+    item.text = `${item.text}\n${more.text}`;
+    return;
+  }
+  item.blocks[item.blocks.length - 1] = {
+    kind: "text",
+    text: `${block.text}\n${more.text}`,
+  };
 }
 
 export function markdownListStep(
@@ -284,6 +301,7 @@ export const markdownFunctions = [
   markdownFencedItem,
   markdownListGap,
   markdownListMore,
+  markdownItemText,
   markdownListStep,
   markdownList,
   markdownText,

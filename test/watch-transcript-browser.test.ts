@@ -1,64 +1,25 @@
 import assert from "node:assert/strict";
-import { appendFile, mkdir, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { appendFile, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import { test } from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
-import { located } from "../src/daemon/operation-journal.ts";
-import { transcriptFiles } from "../src/daemon/transcript-files.ts";
-import { operationOf } from "./effect-fixture.ts";
-import { requested, untilStates } from "./service-effect-fixture.ts";
-import { fields, withHarness, type Harness } from "./service-fixture.ts";
+import { fields, withHarness } from "./service-fixture.ts";
 import { testMilliseconds } from "./test-timing.ts";
 import { directWatch } from "./watch-direct-fixture.ts";
 import { realBrowser } from "./watch-real-browser.ts";
-import { reportTurn, workerScene } from "./worker-report-fixture.ts";
+import { reportTurn } from "./worker-report-fixture.ts";
 import {
   called,
   compactLines,
+  jumpPlace,
+  liveTurn,
+  pageAtTurn,
   expandBox,
   output,
   paired,
   panelBox,
   said,
 } from "./watch-transcript-browser-fixture.ts";
-
-async function liveTurn(harness: Harness) {
-  const scene = await workerScene(harness);
-  await scene.service.close();
-  const root = dirname(harness.runtimeDirectory);
-  const service = await harness.start({
-    ...scene.options,
-    turnTranscript: {
-      read: transcriptFiles(root),
-      privateTexts: [],
-      cache: new Map(),
-    },
-  });
-  const live = { ...scene, service };
-  await requested(live, {
-    commandId: `request-${scene.runId}-1`,
-    round: 1,
-    capability: "claude",
-  });
-  await untilStates(live, ["running"]);
-  const operationId = operationOf(scene.runId, { round: 1 });
-  const { folder } = located(join(root, "journal"), operationId);
-  await mkdir(folder, { recursive: true });
-  await writeFile(
-    join(folder, "started.json"),
-    JSON.stringify({
-      operationId,
-      harness: "claude",
-      target: "clv-329",
-      branch: "cloving/clv-329",
-      worktree: "work",
-      startedAt: new Date().toISOString(),
-    }),
-  );
-  const stream = join(folder, "turn.jsonl");
-  await writeFile(stream, "");
-  return { live, operationId, folder, stream };
-}
 
 const entryCount = (count: number) => `(async () => {
   const frame = () => new Promise((resolve) => setTimeout(resolve, 20));
@@ -381,6 +342,33 @@ await test("CLV-333 CLV-355 the terminal panel is dark in the light and the dark
         height: 900,
         window: [1200, 900],
       });
+    } finally {
+      assert.equal(await watch.stop(), 0);
+    }
+  }));
+
+await test("CLV-355 in an expanded turn, Jump to the end with its count stays in the window while the end of the turn is below it", () =>
+  withHarness(async (harness) => {
+    const turn = await liveTurn(harness);
+    const calls = Array.from({ length: 60 }, (_, index) => paired(index));
+    await appendFile(turn.stream, `${calls.join("\n")}\n`);
+    const watch = await directWatch(harness.runtimeDirectory);
+    try {
+      await using browser = await realBrowser();
+      const page = await browser.page({ width: 1200, height: 900 });
+      await page.navigate(`${watch.address}#run=${turn.live.runId}`);
+      await page.evaluate(expandBox("false"));
+      await page.click(".transcript-expand");
+      await page.evaluate(expandBox("true"));
+      await page.evaluate(pageAtTurn);
+      await appendFile(turn.stream, `${said("one")}\n${said("two")}\n`);
+      const jump = fields(await page.evaluate(jumpPlace));
+      assert.match(String(jump["text"]), /2 new entries/);
+      assert.ok(Number(jump["top"]) >= 0, JSON.stringify(jump));
+      assert.ok(
+        Number(jump["bottom"]) <= Number(jump["window"]),
+        JSON.stringify(jump),
+      );
     } finally {
       assert.equal(await watch.stop(), 0);
     }
