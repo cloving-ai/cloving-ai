@@ -203,7 +203,7 @@ import { spawnSync } from "node:child_process";
 import { appendFileSync } from "node:fs";
 const args = process.argv.slice(2);
 appendFileSync(${JSON.stringify(log)}, JSON.stringify(args) + "\\n");
-if (args[0] !== "run") process.exit(0);
+if (args[0] !== "run" || !args.includes("sh")) process.exit(0);
 const environment = { PATH: process.env.PATH + ":/usr/bin:/bin" };
 args.forEach((item, index) => {
   if (args[index - 1] !== "-e") return;
@@ -286,6 +286,41 @@ await test("CLV-344 the check makes the test signature in the runner and environ
       shown["detail"],
       "A turn can sign commits (gpg.format ssh); profile open: A turn can sign commits (gpg.format ssh); profile hosted: A turn can sign commits (gpg.format ssh)",
     );
+  }));
+
+await test("CLV-344 the check tests each profile runner and environment also when the default turn does not sign", () =>
+  withDoctor(async (scene) => {
+    await signing(scene, { format: "ssh", body: agentSigner });
+    git(scene, ["config", "--unset", "commit.gpgsign"]);
+    const global = join(scene.root, "signing.gitconfig");
+    await writeFile(global, "[commit]\n\tgpgsign = true\n");
+    const log = join(scene.root, "engine-calls");
+    const engine = await scene.program("engine", engineBody(log));
+    const box = (image: string, env: Readonly<Record<string, string>>) => ({
+      runner: { kind: "container", engine, image },
+      env,
+    });
+    const keyed = { GIT_CONFIG_GLOBAL: global };
+    const shown = async (profiles: Readonly<Record<string, unknown>>) =>
+      check(await profiledReport(scene, profiles), "commit-signatures");
+    const failed = await shown({
+      boxed: box("no-agent", keyed),
+      open: box("agent", {}),
+    });
+    assert.equal(failed["result"], "fail");
+    assert.equal(
+      failed["detail"],
+      "profile boxed: A turn cannot sign commits (gpg.format ssh): error: signer: no SSH agent",
+    );
+    const signed = await shown({ open: box("agent", keyed) });
+    assert.equal(signed["result"], "ok");
+    assert.equal(
+      signed["detail"],
+      "Commit signatures are off; profile open: A turn can sign commits (gpg.format ssh)",
+    );
+    const off = await shown({ open: box("agent", {}) });
+    assert.equal(off["result"], "ok");
+    assert.equal(off["detail"], "Commit signatures are off");
   }));
 
 await test("CLV-344 a profiles file that is not valid skips the test signature", () =>

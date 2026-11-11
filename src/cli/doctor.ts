@@ -22,7 +22,7 @@ import {
   commitSignatureObservation,
   turnEnvironmentObservation,
 } from "./doctor-turns.ts";
-import { turnRunnerObservation } from "./doctor-runners.ts";
+import { profileRunners, turnRunnerObservation } from "./doctor-runners.ts";
 import { threadPoolObservation } from "./doctor-thread-pool.ts";
 import {
   commandLoginObservation,
@@ -173,17 +173,21 @@ async function settingObservations(context: {
   readonly probe: ProbeRunner;
 }): Promise<Observations> {
   const { environment } = context;
+  const runners = await profileRunners({
+    ...context,
+    profiles: context.profiles ?? {},
+  });
   return {
     "merge-mode": mergeModeObservation(environment["CLOVING_MERGE_MODE"]),
     "turn-environment": turnEnvironmentObservation(environment),
-    "commit-signatures": await commitSignatureObservation(context),
+    "commit-signatures": await commitSignatureObservation({
+      ...context,
+      runners,
+    }),
     "command-gh-no-login": commandLoginObservation(
       environment["CLOVING_COMMANDS"],
     ),
-    "turn-runners": await turnRunnerObservation({
-      ...context,
-      profiles: context.profiles ?? {},
-    }),
+    "turn-runners": turnRunnerObservation(runners),
   };
 }
 

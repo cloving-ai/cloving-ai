@@ -10,7 +10,7 @@ interface RunnerContext {
   readonly repository: string;
 }
 
-export async function configuredProfiles(
+async function configuredProfiles(
   environment: Readonly<NodeJS.ProcessEnv>,
   profiles: TurnProfiles,
 ): Promise<TurnProfiles | undefined> {
@@ -82,31 +82,52 @@ async function runnerProblem(
     : `sandbox runtime command not found: ${command}`;
 }
 
-export async function turnRunnerObservation(
+export interface ProfileRunners {
+  readonly profiles: TurnProfiles;
+  readonly boxed: readonly string[];
+  readonly problems: readonly {
+    readonly name: string;
+    readonly problem: string;
+  }[];
+}
+
+export async function profileRunners(
   context: RunnerContext & { readonly profiles: TurnProfiles },
-): Promise<DoctorObservation> {
+): Promise<ProfileRunners | undefined> {
   const profiles = await configuredProfiles(
     context.environment,
     context.profiles,
   );
-  if (profiles === undefined)
-    return { result: "fail", detail: "invalid-setting: profiles" };
+  if (profiles === undefined) return undefined;
   const boxed = Object.entries(profiles).flatMap(([name, profile]) =>
     profile.runner === undefined || profile.runner.kind === "host"
       ? []
       : [{ name, runner: profile.runner }],
   );
-  if (boxed.length === 0)
-    return { result: "ok", detail: "Each profile runs its turns on the host" };
-  const problems: string[] = [];
+  const problems: { readonly name: string; readonly problem: string }[] = [];
   for (const { name, runner } of boxed) {
     const problem = await runnerProblem(runner, context);
-    if (problem !== undefined) problems.push(`profile ${name}: ${problem}`);
+    if (problem !== undefined) problems.push({ name, problem });
   }
-  return problems.length === 0
+  return { profiles, boxed: boxed.map((item) => item.name), problems };
+}
+
+export function turnRunnerObservation(
+  runners: ProfileRunners | undefined,
+): DoctorObservation {
+  if (runners === undefined)
+    return { result: "fail", detail: "invalid-setting: profiles" };
+  if (runners.boxed.length === 0)
+    return { result: "ok", detail: "Each profile runs its turns on the host" };
+  return runners.problems.length === 0
     ? {
         result: "ok",
-        detail: `Each profile runner can start: ${boxed.map((item) => item.name).join(", ")}`,
+        detail: `Each profile runner can start: ${runners.boxed.join(", ")}`,
       }
-    : { result: "fail", detail: problems.join("; ") };
+    : {
+        result: "fail",
+        detail: runners.problems
+          .map((item) => `profile ${item.name}: ${item.problem}`)
+          .join("; "),
+      };
 }

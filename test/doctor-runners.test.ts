@@ -74,7 +74,16 @@ await test("CLV-311 doctor starts a test mount of the repository for a container
       .filter(Boolean)
       .map((line): unknown => JSON.parse(line));
     const mount = `${scene.repository}:${scene.repository}:ro`;
-    assert.deepEqual(calls, [
+    const signature = calls.at(-1);
+    assert.ok(Array.isArray(signature));
+    assert.deepEqual(signature.slice(-5), [
+      "git",
+      "config",
+      "--type=bool",
+      "--get",
+      "commit.gpgsign",
+    ]);
+    assert.deepEqual(calls.slice(0, -1), [
       ["--version"],
       ["image", "inspect", "cloving-turn"],
       [
@@ -124,4 +133,20 @@ await test("CLV-311 doctor fails the runner check for a profiles file that it ca
       assert.equal(shown["result"], "fail");
       assert.equal(shown["detail"], "invalid-setting: profiles");
     }
+  }));
+
+await test("CLV-344 commit-signatures does not test a profile whose runner cannot start, and the runner check reports it", () =>
+  withDoctor(async (scene) => {
+    const file = join(scene.root, "profiles.json");
+    const runner = {
+      kind: "container",
+      engine: "missing-engine",
+      image: "cloving-turn",
+    };
+    await writeFile(file, JSON.stringify({ profiles: { boxed: { runner } } }));
+    const report = await scene.report({ CLOVING_PROFILES: file });
+    assert.equal(check(report, "turn-runners")["result"], "fail");
+    const shown = check(report, "commit-signatures");
+    assert.equal(shown["result"], "ok");
+    assert.equal(shown["detail"], "Commit signatures are off");
   }));

@@ -1,9 +1,9 @@
 import { rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import type { DoctorObservation } from "../doctor-report.ts";
-import type { TurnProfile, TurnProfiles } from "../turn-profile.ts";
+import type { TurnProfile } from "../turn-profile.ts";
 import type { ProbeOutput, ProbeRunner } from "./probe-command.ts";
-import { configuredProfiles } from "./doctor-runners.ts";
+import type { ProfileRunners } from "./doctor-runners.ts";
 import { runnerSetup } from "./runner-setup.ts";
 import {
   commitSignaturesSetting,
@@ -177,36 +177,39 @@ async function targetSignature(
       );
 }
 
-function ownSignature(profile: TurnProfile): boolean {
-  const boxed = profile.runner !== undefined && profile.runner.kind !== "host";
-  return boxed || profile.env !== undefined;
+function signatureTargets(runners: ProfileRunners): SignatureTarget[] {
+  const stopped = new Set(runners.problems.map((item) => item.name));
+  return Object.entries(runners.profiles).flatMap(([name, profile]) => {
+    const boxed =
+      profile.runner !== undefined && profile.runner.kind !== "host";
+    const own = boxed || profile.env !== undefined;
+    return own && !stopped.has(name)
+      ? [{ label: `profile ${name}: `, profile }]
+      : [];
+  });
 }
 
 async function testSignatures(
   context: SignatureContext,
-  profiles: TurnProfiles,
+  runners: ProfileRunners,
 ): Promise<DoctorObservation> {
-  const first = await targetSignature(context, { label: "", profile: {} });
-  if (first.state === "off") return { result: "ok", detail: first.detail };
-  const results = [first];
-  for (const [name, profile] of Object.entries(profiles))
-    if (ownSignature(profile))
-      results.push(
-        await targetSignature(context, { label: `profile ${name}: `, profile }),
-      );
+  const results = [await targetSignature(context, { label: "", profile: {} })];
+  for (const target of signatureTargets(runners))
+    results.push(await targetSignature(context, target));
+  const joined = (items: readonly TargetResult[]) =>
+    items.map((item) => item.detail).join("; ");
   const failed = results.filter((item) => item.state === "fail");
-  const shown = failed.length === 0 ? results : failed;
-  return {
-    result: failed.length === 0 ? "ok" : "fail",
-    detail: shown.map((item) => item.detail).join("; "),
-  };
+  if (failed.length > 0) return { result: "fail", detail: joined(failed) };
+  if (results.every((item) => item.state === "off"))
+    return { result: "ok", detail: "Commit signatures are off" };
+  return { result: "ok", detail: joined(results) };
 }
 
 export async function commitSignatureObservation(context: {
   readonly repository: string;
   readonly environment: Readonly<NodeJS.ProcessEnv>;
   readonly probe: ProbeRunner;
-  readonly profiles?: TurnProfiles;
+  readonly runners: ProfileRunners | undefined;
 }): Promise<DoctorObservation> {
   const { environment } = context;
   const signatures = configuredSignatures(environment);
@@ -226,11 +229,7 @@ export async function commitSignatureObservation(context: {
       result: "skip",
       detail: "invalid-setting: CLOVING_TURN_ENVIRONMENT",
     };
-  const profiles = await configuredProfiles(
-    environment,
-    context.profiles ?? {},
-  );
-  if (profiles === undefined)
+  if (context.runners === undefined)
     return { result: "skip", detail: "invalid-setting: profiles" };
-  return testSignatures({ ...context, variables }, profiles);
+  return testSignatures({ ...context, variables }, context.runners);
 }
