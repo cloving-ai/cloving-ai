@@ -130,7 +130,7 @@ export function watchMembers(
   return workspace.members.map((member) => ({
     name: member.name,
     runtimeDirectory: member.runtime,
-    client: clientCommand(variables, member.repository),
+    client: clientCommand(variables, { repository: member.repository }),
     pullRequests: watchPr && {
       ...watchPr,
       repository: member.repository,

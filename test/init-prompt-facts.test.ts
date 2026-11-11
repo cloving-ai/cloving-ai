@@ -80,6 +80,7 @@ await test("CLV-225 failed fact probes remain unavailable and omit private setti
       environment: { HOME: repository, PATH: "" },
       probe: probe(),
     });
+    assert.equal(facts.client, "cloving");
     assert.equal(facts.origin, "unavailable");
     assert.equal(facts.login, "unavailable");
     assert.deepEqual(facts.templates, []);

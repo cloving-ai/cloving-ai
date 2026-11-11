@@ -133,7 +133,7 @@ function serviceCommand(
   const commandEnvironment: CommandEnvironment = {
     runtimeDirectory: runtimeDirectory(process.env, repository),
     ...watchSettings({ watchPr: context.watchPr, environment, repository }),
-    client: clientCommand(process.env, repository),
+    client: clientCommand(process.env, { repository }),
     workingDirectory: process.cwd(),
     terminal,
     identifier: randomUUID,
