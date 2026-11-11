@@ -8,6 +8,8 @@ import { turnHarness } from "../src/harness-defaults.ts";
 import {
   commitSignatureSettings,
   commitSignaturesSetting,
+  gitSettingsOf,
+  isGitSettingVariable,
   turnVariablesSetting,
   withGitSettings,
 } from "../src/turn-environment.ts";
@@ -187,4 +189,37 @@ await test("CLV-344 the git settings of a turn come after the git settings of it
       withGitSettings({ GIT_CONFIG_COUNT: count }, off)["GIT_CONFIG_COUNT"],
       "2",
     );
+});
+
+await test("CLV-344 the git settings of an environment are read in order, and a count above the variable count reads no more entries", () => {
+  assert.deepEqual(
+    gitSettingsOf({
+      GIT_CONFIG_COUNT: "2",
+      GIT_CONFIG_KEY_1: "core.second",
+      GIT_CONFIG_VALUE_1: "2",
+      GIT_CONFIG_KEY_0: "core.first",
+      GIT_CONFIG_VALUE_0: "1",
+    }),
+    [
+      ["core.first", "1"],
+      ["core.second", "2"],
+    ],
+  );
+  assert.deepEqual(gitSettingsOf({ PATH: "/bin" }), []);
+  assert.deepEqual(gitSettingsOf({ GIT_CONFIG_COUNT: "many" }), []);
+  assert.deepEqual(gitSettingsOf({ GIT_CONFIG_COUNT: "1000000000" }), [
+    ["", ""],
+  ]);
+  assert.deepEqual(
+    ["GIT_CONFIG_COUNT", "GIT_CONFIG_KEY_12", "GIT_CONFIG_VALUE_0"].map(
+      isGitSettingVariable,
+    ),
+    [true, true, true],
+  );
+  assert.deepEqual(
+    ["GIT_CONFIG_PARAMETERS", "GIT_CONFIG_KEY_", "XGIT_CONFIG_COUNT"].map(
+      isGitSettingVariable,
+    ),
+    [false, false, false],
+  );
 });

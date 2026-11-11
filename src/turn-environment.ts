@@ -173,12 +173,35 @@ export function gitSettingVariables(
   return Object.fromEntries(entries);
 }
 
+const gitVariable = /^GIT_CONFIG_(COUNT|KEY_\d+|VALUE_\d+)$/;
+
+export function isGitSettingVariable(name: string): boolean {
+  return gitVariable.test(name);
+}
+
+function gitSettingCount(environment: Variables): number {
+  const count = Number(environment["GIT_CONFIG_COUNT"] ?? "0");
+  return Number.isSafeInteger(count) && count >= 0 ? count : 0;
+}
+
+export function gitSettingsOf(environment: Variables): readonly GitSetting[] {
+  const length = Math.min(
+    gitSettingCount(environment),
+    Object.keys(environment).length,
+  );
+  return Array.from({ length }, (_, index): GitSetting => [
+    environment[`GIT_CONFIG_KEY_${String(index)}`] ?? "",
+    environment[`GIT_CONFIG_VALUE_${String(index)}`] ?? "",
+  ]);
+}
+
 export function withGitSettings(
   environment: Variables,
   settings: readonly GitSetting[],
 ): Readonly<Record<string, string | undefined>> {
   if (settings.length === 0) return environment;
-  const count = Number(environment["GIT_CONFIG_COUNT"] ?? "0");
-  const first = Number.isSafeInteger(count) && count >= 0 ? count : 0;
-  return { ...environment, ...gitSettingVariables(settings, first) };
+  return {
+    ...environment,
+    ...gitSettingVariables(settings, gitSettingCount(environment)),
+  };
 }

@@ -309,6 +309,7 @@
     "src/cli/restart-command.ts": "cli",
     "src/cli/restart-render.ts": "cli",
     "src/cli/run-command-render.ts": "cli",
+    "src/cli/runner-setup.ts": "cli",
     "src/cli/runtime-arguments.ts": "cli",
     "src/cli/runtime-directory.ts": "cli",
     "src/cli/runtime-invocation.ts": "cli",

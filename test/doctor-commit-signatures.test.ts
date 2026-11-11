@@ -164,6 +164,17 @@ await test("CLV-344 the default signature format is openpgp", () =>
     );
   }));
 
+await test("CLV-344 a commit.gpgsign value that git cannot read fails the check with the error of git", () =>
+  withDoctor(async (scene) => {
+    git(scene, ["config", "commit.gpgsign", "invalid"]);
+    const shown = check(await scene.report(), "commit-signatures");
+    assert.equal(shown["result"], "fail");
+    assert.equal(
+      shown["detail"],
+      "A turn cannot read commit.gpgsign: fatal: bad boolean config value 'invalid' for 'commit.gpgsign'",
+    );
+  }));
+
 await test("CLV-344 an invalid commit signature setting fails the check and names the variable", () =>
   withDoctor(async (scene) => {
     const shown = check(
@@ -185,6 +196,108 @@ await test("CLV-344 an invalid turns.environment skips the test signature", () =
     );
     assert.equal(shown["result"], "skip");
     assert.equal(shown["detail"], "invalid-setting: CLOVING_TURN_ENVIRONMENT");
+  }));
+
+const engineBody = (log: string) => `
+import { spawnSync } from "node:child_process";
+import { appendFileSync } from "node:fs";
+const args = process.argv.slice(2);
+appendFileSync(${JSON.stringify(log)}, JSON.stringify(args) + "\\n");
+if (args[0] !== "run") process.exit(0);
+const environment = { PATH: process.env.PATH + ":/usr/bin:/bin" };
+args.forEach((item, index) => {
+  if (args[index - 1] !== "-e") return;
+  const [name, ...value] = item.split("=");
+  environment[name] = value.length > 0 ? value.join("=") : process.env[name];
+});
+const at = args.indexOf("sh");
+if (args[at - 1] === "no-agent") delete environment.SSH_AUTH_SOCK;
+if (args[at - 1] === "slow" && args.includes("commit-tree")) setTimeout(() => undefined, 60_000);
+else process.exit(spawnSync(args[at], args.slice(at + 1), { cwd: args[args.indexOf("-w") + 1], env: environment, stdio: "inherit" }).status ?? 1);
+`;
+
+function words(line: string): readonly string[] {
+  const value: unknown = JSON.parse(line);
+  assert.ok(Array.isArray(value), line);
+  return value.map(String);
+}
+
+async function profiledReport(
+  scene: DoctorScene,
+  profiles: Readonly<Record<string, unknown>>,
+) {
+  const file = join(scene.root, "profiles.json");
+  await writeFile(file, JSON.stringify({ profiles }));
+  return scene.report({
+    ...agent(scene),
+    CLOVING_TURN_ENVIRONMENT: '["SSH_AUTH_SOCK"]',
+    CLOVING_PROFILES: file,
+  });
+}
+
+await test("CLV-344 the check makes the test signature in the runner and environment of each profile, and names each profile that cannot sign", () =>
+  withDoctor(async (scene) => {
+    await signing(scene, { format: "ssh", body: agentSigner });
+    const log = join(scene.root, "engine-calls");
+    const engine = await scene.program("engine", engineBody(log));
+    const box = (image: string) => ({
+      runner: { kind: "container", engine, image },
+    });
+    const before = repositoryState(scene);
+    const failed = check(
+      await profiledReport(scene, {
+        boxed: box("no-agent"),
+        slow: box("slow"),
+        open: box("agent"),
+        plain: { model: "fixture" },
+      }),
+      "commit-signatures",
+    );
+    assert.equal(failed["result"], "fail");
+    assert.equal(
+      failed["detail"],
+      "profile boxed: A turn cannot sign commits (gpg.format ssh): error: signer: no SSH agent; profile slow: A turn cannot sign commits (gpg.format ssh): the signature did not end in 10 seconds",
+    );
+    assert.equal(repositoryState(scene), before);
+    const calls = (await readFile(log, "utf8"))
+      .split("\n")
+      .filter(Boolean)
+      .map(words);
+    const signed = calls.filter((call) => call.includes("commit-tree"));
+    assert.deepEqual(
+      signed.map((call) => call[call.indexOf("sh") - 1]),
+      ["no-agent", "slow", "agent"],
+    );
+    const slow = signed[1] ?? [];
+    assert.deepEqual(
+      calls.filter((call) => call[0] === "rm"),
+      [["rm", "-f", slow[slow.indexOf("--name") + 1]]],
+    );
+    const shown = check(
+      await profiledReport(scene, {
+        open: box("agent"),
+        hosted: { runner: { kind: "host" }, env: { TZ: "UTC" } },
+        plain: { runner: { kind: "host" } },
+      }),
+      "commit-signatures",
+    );
+    assert.equal(shown["result"], "ok");
+    assert.equal(
+      shown["detail"],
+      "A turn can sign commits (gpg.format ssh); profile open: A turn can sign commits (gpg.format ssh); profile hosted: A turn can sign commits (gpg.format ssh)",
+    );
+  }));
+
+await test("CLV-344 a profiles file that is not valid skips the test signature", () =>
+  withDoctor(async (scene) => {
+    const file = join(scene.root, "profiles.json");
+    await writeFile(file, '{"profiles":1}');
+    const shown = check(
+      await scene.report({ CLOVING_PROFILES: file }),
+      "commit-signatures",
+    );
+    assert.equal(shown["result"], "skip");
+    assert.equal(shown["detail"], "invalid-setting: profiles");
   }));
 
 await test("CLV-344 the probe keeps the first error output and drops error output after its byte limit", async () => {

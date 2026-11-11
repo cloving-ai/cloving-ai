@@ -1,4 +1,8 @@
-import { gitSettingVariables, type GitSetting } from "./turn-environment.ts";
+import {
+  gitSettingVariables,
+  isGitSettingVariable,
+  type GitSetting,
+} from "./turn-environment.ts";
 
 export interface ContainerRunner {
   readonly kind: "container";
@@ -146,7 +150,10 @@ function containerCommand(
     places.directory,
     ...[
       ...gitArguments(places),
-      ...places.variables.filter((name) => !hostOnlyVariables.includes(name)),
+      ...places.variables.filter(
+        (name) =>
+          !hostOnlyVariables.includes(name) && !isGitSettingVariable(name),
+      ),
     ].flatMap((variable) => ["-e", variable]),
     runner.image,
     ...probed(start.command, places),

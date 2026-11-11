@@ -73,12 +73,13 @@ await test("CLV-344 with turns.commitSignatures off a turn commits and tags with
     );
   }));
 
-await test("CLV-344 with turns.commitSignatures off a container turn gets safe.directory and no commit signature", () =>
+await test("CLV-344 with turns.commitSignatures off a container turn gets safe.directory, the git settings of its profile and no commit signature", () =>
   withScene(async (scene) => {
     const engine = fakeEngine(scene.directory, { access: "write" });
     assert.deepEqual(
       await observed(scene, {
         profile: {
+          env: fixtureEntry,
           runner: {
             kind: "container",
             engine: engine.path,
@@ -87,6 +88,11 @@ await test("CLV-344 with turns.commitSignatures off a container turn gets safe.d
         },
         settings: { turnCommitSignatures: "off" },
       }),
-      { commit: "false", tag: "false", safe: "*", fixture: "" },
+      { commit: "false", tag: "false", safe: "*", fixture: "profile" },
     );
+    const run = engine.calls().find((call) => Array.isArray(call));
+    const passed = Array.isArray(run)
+      ? run.filter((item) => String(item).startsWith("GIT_CONFIG_COUNT"))
+      : [];
+    assert.deepEqual(passed, ["GIT_CONFIG_COUNT=4"]);
   }));

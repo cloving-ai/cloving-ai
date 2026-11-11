@@ -10,7 +10,7 @@ interface RunnerContext {
   readonly repository: string;
 }
 
-async function configuredProfiles(
+export async function configuredProfiles(
   environment: Readonly<NodeJS.ProcessEnv>,
   profiles: TurnProfiles,
 ): Promise<TurnProfiles | undefined> {
