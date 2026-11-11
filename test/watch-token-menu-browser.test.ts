@@ -78,7 +78,7 @@ const placed = `(() => {
   const next = document.querySelector('[popovertarget="token-menu-run-b"]').closest("li").getBoundingClientRect();
   return {
     below: pop.top >= open.bottom - 1 && pop.top <= open.bottom + 12,
-    gap: { x: pop.left + 8, y: (open.bottom + pop.top) / 2 },
+    under: { x: open.left + open.width / 2, y: open.bottom + 2 },
     inside: { x: pop.left + pop.width / 2, y: pop.top + pop.height / 2 },
     next: Math.round(next.top),
     font: getComputedStyle(document.querySelector("#token-menu-run-a button")).fontFamily === getComputedStyle(document.querySelector(".token")).fontFamily,
@@ -110,10 +110,12 @@ const waited = (expression: string, expected: object) => `(async () => {
   return { value };
 })()`;
 
+type MenuPage = Awaited<
+  ReturnType<Awaited<ReturnType<typeof realBrowser>>["page"]>
+>;
+
 async function reached(
-  page: {
-    readonly evaluate: (expression: string) => Promise<Record<string, unknown>>;
-  },
+  page: MenuPage,
   check: {
     readonly name: string;
     readonly expression: string;
@@ -133,10 +135,40 @@ async function reached(
   );
 }
 
+const bridged = `(() => {
+  const open = document.querySelector('[popovertarget="token-menu-run-a"]').getBoundingClientRect();
+  const x = open.left + open.width / 2;
+  return { under: [1, 2, 3].map((step) => document.elementFromPoint(x, open.bottom + step)?.closest(".token-menu")?.querySelector(".token-pop")?.id ?? null) };
+})()`;
+
 const placedParts = `(() => {
   const value = ${placed};
   return [value.below, value.next, value.font, value.list];
 })()`;
+
+async function pointerRests(page: MenuPage): Promise<void> {
+  const shown = await page.evaluate(placed);
+  await page.move(point(fields(shown["under"])));
+  await delay(400);
+  assert.deepEqual(
+    await page.evaluate(opened),
+    { open: "token-menu-run-a" },
+    "stays open under the menu button",
+  );
+  await page.move(point(fields(shown["inside"])));
+  await delay(400);
+  assert.deepEqual(
+    await page.evaluate(opened),
+    { open: "token-menu-run-a" },
+    "stays open in the popover",
+  );
+  await page.move({ x: 5, y: 830 });
+  await reached(page, {
+    name: "closed after leave",
+    expression: opened,
+    expected: { open: "" },
+  });
+}
 
 await test("CLV-354 the token menu sits inside each card with no empty row, a card fits its column, and the popover opens on hover next to the menu button without moving the cards", async () => {
   await using fixture = await watchPageServer(model("#727"), {
@@ -175,22 +207,12 @@ await test("CLV-354 the token menu sits inside each card with no empty row, a ca
     expression: placedParts,
     expected: [true, before["next"], true, true],
   });
-  const shown = await page.evaluate(placed);
-  await page.move(point(fields(shown["gap"])));
-  await delay(100);
-  await page.move(point(fields(shown["inside"])));
-  await delay(400);
-  assert.deepEqual(
-    await page.evaluate(opened),
-    { open: "token-menu-run-a" },
-    "stays open in the popover",
-  );
-  await page.move({ x: 5, y: 830 });
   await reached(page, {
-    name: "closed after leave",
-    expression: opened,
-    expected: { open: "" },
+    name: "no gap under the menu button",
+    expression: bridged,
+    expected: { under: Array(3).fill("token-menu-run-a") },
   });
+  await pointerRests(page);
 });
 
 function fields(value: unknown): Record<string, unknown> {
