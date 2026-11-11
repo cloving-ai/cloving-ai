@@ -168,7 +168,7 @@ function transcriptControls() {
     },
     onScroll(operationId, box) {
       const item = transcripts[operationId];
-      if (item === undefined) return;
+      if (item === undefined || transcriptPaged(item)) return;
       item.following = box.scrollTop + box.clientHeight >= box.scrollHeight - 24;
       if (item.following && item.unseen > 0 && !item.detached) { item.unseen = 0; draw(); }
     },
