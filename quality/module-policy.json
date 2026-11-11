@@ -2045,6 +2045,7 @@
     "test/watch-navigation.test.ts": "test",
     "test/watch-needs-style.test.ts": "test",
     "test/watch-needs-view.test.ts": "test",
+    "test/watch-page-script-names.test.ts": "test",
     "test/watch-page-server.ts": "test",
     "test/watch-page.test.ts": "test",
     "test/watch-pagination.test.ts": "test",
