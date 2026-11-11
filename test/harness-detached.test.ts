@@ -239,7 +239,7 @@ await test("CLV-349 a shell harness turn keeps its process group through a resta
     });
     const settings = {
       ...harness.settings,
-      shell: "/bin/sh",
+      shell: "/bin/bash",
       harness: { name: "codex", kind: "shell" } as const,
     };
     try {

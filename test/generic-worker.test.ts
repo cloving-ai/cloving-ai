@@ -340,7 +340,7 @@ renameSync(process.argv[2] + ".part", process.argv[2]);
 setInterval(() => {}, 1000);`,
     );
     const worker = scene.worker("bare", {
-      shell: "/bin/sh",
+      shell: "/bin/bash",
       harness: {
         name: "mytool",
         kind: "shell",
