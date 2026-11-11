@@ -15,7 +15,10 @@ import {
   type RetentionSettings,
 } from "../src/record-retention.ts";
 import { mergeMode, type MergeMode } from "../src/merge-mode.ts";
-import { turnVariablesSetting } from "../src/turn-environment.ts";
+import {
+  commitSignaturesSetting,
+  turnVariablesSetting,
+} from "../src/turn-environment.ts";
 import {
   listedSetting,
   queueInterval,
@@ -297,6 +300,9 @@ const retention = retentionSettings(environment);
 const turnVariables = turnVariablesSetting(
   environment["CLOVING_TURN_ENVIRONMENT"],
 );
+const turnCommitSignatures = commitSignaturesSetting(
+  environment["CLOVING_TURN_COMMIT_SIGNATURES"],
+);
 const merging = mergeMode(environment["CLOVING_MERGE_MODE"]);
 const places = {
   repository,
@@ -338,6 +344,7 @@ await launchers(
     resetQueue: flags.includes("--reset-queue"),
     retention,
     turnVariables,
+    turnCommitSignatures,
     notifyCommand: listed("CLOVING_NOTIFY_COMMAND"),
     githubCommand: listed("CLOVING_GH_COMMAND"),
     requiredChecks: listed("CLOVING_REQUIRED_CHECKS") ?? null,

@@ -224,3 +224,21 @@ await test("CLV-315 config set keeps an absolute demo.tool only in the private f
   assert.equal(relative.status, 2, relative.stdout + relative.stderr);
   assert.match(relative.stderr, /invalid-setting: demo.tool/);
 });
+
+await test("CLV-344 the fix command of commit-signatures keeps turns.commitSignatures off in the private file", () => {
+  using fixture = configScene();
+  const result = fixture.run([
+    "set",
+    "turns.commitSignatures",
+    "off",
+    "--private",
+  ]);
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  assert.deepEqual(fixture.read(fixture.privateFile), {
+    version: 1,
+    turns: { commitSignatures: "off" },
+  });
+  const refused = fixture.run(["set", "turns.commitSignatures", "on"]);
+  assert.equal(refused.status, 2, refused.stdout + refused.stderr);
+  assert.match(refused.stderr, /invalid-setting: turns.commitSignatures/);
+});

@@ -464,6 +464,10 @@
     "turns": {
       "type": "object",
       "properties": {
+        "commitSignatures": {
+          "type": "string",
+          "enum": ["keep", "off"]
+        },
         "environment": {
           "anyOf": [
             {

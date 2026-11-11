@@ -123,6 +123,7 @@ await test("CLV-215 generic commands win over turn and path only for the matchin
   assert.deepEqual(turnHarness({ harness }), {
     worker: "mytool",
     variables: [],
+    commitSignatures: "keep",
     command: ["winner", "{prompt}"],
     output: "text",
   });

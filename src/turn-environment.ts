@@ -133,3 +133,75 @@ export function withheldVariables(
     )
     .sort();
 }
+
+export type CommitSignatures = "keep" | "off";
+
+export function commitSignaturesSetting(
+  text: string | undefined,
+): CommitSignatures {
+  if (text === undefined || text === "keep") return "keep";
+  if (text === "off") return "off";
+  throw new Error("invalid-setting: CLOVING_TURN_COMMIT_SIGNATURES");
+}
+
+export type GitSetting = readonly [key: string, value: string];
+
+export function commitSignatureSettings(
+  signatures: CommitSignatures | undefined,
+): readonly GitSetting[] {
+  return signatures === "off"
+    ? [
+        ["commit.gpgsign", "false"],
+        ["tag.gpgsign", "false"],
+      ]
+    : [];
+}
+
+export function gitSettingVariables(
+  settings: readonly GitSetting[],
+  first: number,
+): Readonly<Record<string, string>> {
+  const entries: readonly (readonly [string, string])[] = [
+    ["GIT_CONFIG_COUNT", String(first + settings.length)],
+    ...settings.flatMap(
+      ([key, value], index): readonly (readonly [string, string])[] => [
+        [`GIT_CONFIG_KEY_${String(first + index)}`, key],
+        [`GIT_CONFIG_VALUE_${String(first + index)}`, value],
+      ],
+    ),
+  ];
+  return Object.fromEntries(entries);
+}
+
+const gitVariable = /^GIT_CONFIG_(COUNT|KEY_\d+|VALUE_\d+)$/;
+
+export function isGitSettingVariable(name: string): boolean {
+  return gitVariable.test(name);
+}
+
+function gitSettingCount(environment: Variables): number {
+  const count = Number(environment["GIT_CONFIG_COUNT"] ?? "0");
+  return Number.isSafeInteger(count) && count >= 0 ? count : 0;
+}
+
+export function gitSettingsOf(environment: Variables): readonly GitSetting[] {
+  const length = Math.min(
+    gitSettingCount(environment),
+    Object.keys(environment).length,
+  );
+  return Array.from({ length }, (_, index): GitSetting => [
+    environment[`GIT_CONFIG_KEY_${String(index)}`] ?? "",
+    environment[`GIT_CONFIG_VALUE_${String(index)}`] ?? "",
+  ]);
+}
+
+export function withGitSettings(
+  environment: Variables,
+  settings: readonly GitSetting[],
+): Readonly<Record<string, string | undefined>> {
+  if (settings.length === 0) return environment;
+  return {
+    ...environment,
+    ...gitSettingVariables(settings, gitSettingCount(environment)),
+  };
+}
