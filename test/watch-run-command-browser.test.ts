@@ -7,7 +7,7 @@ import { realBrowser } from "./watch-real-browser.ts";
 const ready = `(async () => {
   const frame = () => new Promise((resolve) => requestAnimationFrame(resolve));
   for (let attempt = 0; attempt < 300 && !document.querySelector(".need .run-command-drop"); attempt++) await frame();
-  return { tokens: document.querySelectorAll(".tokens .run-menu").length };
+  return { tokens: document.querySelectorAll(".tokens .token-menu").length };
 })()`;
 
 const focused = `(async () => {
@@ -85,9 +85,9 @@ await test("CLV-335 after Drop the run from a card menu or a station token menu,
     committed: { state: "cancelled", revision: 5 },
   };
   const results = [];
-  for (const [hash, place] of [
-    ["#workflow=develop-issue", ".card"],
-    ["", ".tokens"],
+  for (const [hash, place, opener] of [
+    ["#workflow=develop-issue", ".card", ".run-menu summary"],
+    ["", ".tokens", ".token-menu-open"],
   ] as const) {
     await using fixture = await watchPageServer(run("running"), {
       token: "a".repeat(64),
@@ -98,7 +98,7 @@ await test("CLV-335 after Drop the run from a card menu or a station token menu,
     const page = await browser.page({ width: 1280, height: 844 });
     await page.navigate(fixture.url);
     await page.evaluate(ready.replace(".need .run-command-drop", place));
-    await page.click(`${place} .run-menu summary`);
+    await page.click(`${place} ${opener}`);
     await page.click(`${place} .run-command-drop`);
     await page.click(`${place} .drop-confirm`);
     results.push(await page.evaluate(dropped));

@@ -144,6 +144,7 @@ export interface WatchToken {
   readonly ticket: string | null;
   readonly pullRequestNumber: number | null;
   readonly startedAt: string | null;
+  readonly manualName?: true | undefined;
 }
 
 export interface WatchStation {

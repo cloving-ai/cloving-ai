@@ -157,6 +157,38 @@ async function attachedSession(
   return sessionId;
 }
 
+function inputActions(command: ReturnType<typeof protocol>, sessionId: string) {
+  return {
+    async move(point: { readonly x: number; readonly y: number }) {
+      await command("Input.dispatchMouseEvent", {
+        sessionId,
+        params: { type: "mouseMoved", ...point },
+      });
+    },
+    async press(key: {
+      readonly key: string;
+      readonly code: number;
+      readonly text?: string;
+    }) {
+      const down = key.text === undefined ? "rawKeyDown" : "keyDown";
+      for (const type of [down, "keyUp"])
+        await command("Input.dispatchKeyEvent", {
+          sessionId,
+          params: {
+            type,
+            key: key.key,
+            code: key.key,
+            windowsVirtualKeyCode: key.code,
+            ...(type === "keyDown" ? { text: key.text } : {}),
+          },
+        });
+    },
+    async type(text: string) {
+      await command("Input.insertText", { sessionId, params: { text } });
+    },
+  };
+}
+
 async function browserPage(
   command: ReturnType<typeof protocol>,
   viewport: { readonly width: number; readonly height: number },
@@ -201,6 +233,7 @@ async function browserPage(
         });
     },
     pressTab: () => pressTab(command, sessionId),
+    ...inputActions(command, sessionId),
     async scroll(expression: string) {
       const gesture = await evaluate(expression);
       await command("Input.synthesizeScrollGesture", {
