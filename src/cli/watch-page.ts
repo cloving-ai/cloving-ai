@@ -167,6 +167,7 @@ import {
   skippedText,
   Version,
 } from "./watch-header-view.ts";
+import { restartPendingText } from "./restart-render.ts";
 
 const functions = [
   scheduleStatusLine,
@@ -203,6 +204,7 @@ const functions = [
   Brand,
   HeaderCounts,
   HeaderStatus,
+  restartPendingText,
   QueueControl,
   HeaderActions,
   Version,
