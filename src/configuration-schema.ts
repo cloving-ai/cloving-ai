@@ -7,6 +7,7 @@ import type { TurnProfiles } from "./turn-profile.ts";
 import type { TokenPrices } from "./token-prices.ts";
 import { isTurnCommand } from "./harness-defaults.ts";
 import type { TurnVariables } from "./turn-environment.ts";
+import { isQueuesSetting, type QueuesSetting } from "./queue-settings.ts";
 
 export interface RedGreenSettings {
   readonly test: readonly string[];
@@ -37,6 +38,7 @@ export interface Configuration {
     readonly maxMemoryPressure?: "normal" | "warn";
     readonly dailySpendLimitUsd?: number;
   };
+  readonly queues?: QueuesSetting;
   readonly limits?: {
     readonly effects?: number;
     readonly chain?: number;
@@ -153,6 +155,7 @@ const specialChecks: Readonly<Record<string, (value: unknown) => boolean>> = {
   "harness.turn": isTurnCommand,
   commands: validCommands,
   schedules: validSchedules,
+  queues: isQueuesSetting,
 };
 
 function scalar(value: unknown, checked: Checked): void {

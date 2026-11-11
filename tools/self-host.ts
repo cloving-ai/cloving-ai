@@ -18,11 +18,13 @@ import { mergeMode, type MergeMode } from "../src/merge-mode.ts";
 import { turnVariablesSetting } from "../src/turn-environment.ts";
 import {
   listedSetting,
-  queueInterval,
   queueLimits,
+  queueMilliseconds,
+  queuePlan,
   queueSpendLimit,
   spendScope,
   readyTicketCommand,
+  type QueuePlan,
 } from "./self-host-queue.ts";
 import {
   configurationDigests,
@@ -57,6 +59,7 @@ import { parseSchedulesSetting } from "../src/workflow-schedule.ts";
 import { checkSubmission } from "../src/submission.ts";
 import type { DeclaredWorkflow } from "../src/workflow-declaration.ts";
 import type { QueueLimits } from "../src/queue-room.ts";
+import type { QueueSource } from "../src/queue-settings.ts";
 import { workflowLimits } from "../src/workflow-limits.ts";
 
 const product = resolve(import.meta.dirname, "..");
@@ -150,6 +153,8 @@ interface Commands extends HarnessSettings {
   readonly mergeMode: MergeMode;
   readonly privateTexts: readonly string[] | undefined;
   readonly queueMilliseconds: number | undefined;
+  readonly queueIntervalSource?: QueueSource;
+  readonly queueState?: "off";
   readonly queueLanes: number;
   readonly queueLimits: QueueLimits;
   readonly queueDailySpendLimitUsd: number | undefined;
@@ -174,13 +179,6 @@ async function launchers(
   commands: Commands,
   workflows: RegisteredWorkflows,
 ): Promise<void> {
-  const queueEnabled =
-    commands.queueMilliseconds !== undefined &&
-    workflows.declarations.some((declaration) => declaration.queue === true);
-  if (queueEnabled && !commands.nextCommand?.length)
-    throw new Error("The daemon did not start: queue-needs-next-command");
-  if (queueEnabled && !commands.ticketCommand?.length)
-    throw new Error("The daemon did not start: queue-needs-ticket-command");
   const settings = {
     ...commands,
     directory,
@@ -288,11 +286,7 @@ const harness = configuration.harness ?? {};
 const command = turnHarness({ worker, workerCommands, harness }).command;
 const nextCommand = listed("CLOVING_NEXT_COMMAND");
 const ticketCommand = listed("CLOVING_TICKET_COMMAND");
-const queueDailySpendLimitUsd = queueSpendLimit(environment);
 const scope = spendScope(environment);
-const queueRoom = queueLimits(environment);
-const readyCommand = readyTicketCommand(environment);
-const queueMilliseconds = queueInterval(environment);
 const retention = retentionSettings(environment);
 const turnVariables = turnVariablesSetting(
   environment["CLOVING_TURN_ENVIRONMENT"],
@@ -311,6 +305,20 @@ const folders = {
 };
 const profilesPath = environment["CLOVING_PROFILES"];
 const manifests = await preparedProject({ product, project, ...folders });
+const plan = queuePlan(environment, {
+  declarations: manifests.declarations,
+  sources: configuration.sources,
+});
+const queueDailySpendLimitUsd = queueSpendLimit(environment, plan);
+const queueRoom = queueLimits(environment, plan);
+const readyCommand = readyTicketCommand(environment, plan);
+
+function queueSwitch(given: QueuePlan) {
+  if (given.kind === "off") return { queueState: "off" as const };
+  if (given.kind === "none") return {};
+  return { queueIntervalSource: given.values.everySeconds.source };
+}
+
 await launchers(
   {
     commands,
@@ -330,7 +338,8 @@ await launchers(
     nextCommand,
     readyCommand,
     workspacePermits: environment["CLOVING_WORKSPACE_PERMITS"],
-    queueMilliseconds,
+    queueMilliseconds: queueMilliseconds(plan),
+    ...queueSwitch(plan),
     queueLanes: queueRoom.lanes,
     queueLimits: queueRoom,
     queueDailySpendLimitUsd,

@@ -75,6 +75,10 @@ export function reloadedSettings(
     : { turnSettings, settingDigests, queueLimits };
 }
 
+function restartPart(digest: string | undefined): string | undefined {
+  return digest?.split(":")[0];
+}
+
 export function settingChanges(
   current: SettingDigests,
   next: SettingDigests,
@@ -82,13 +86,13 @@ export function settingChanges(
   const changed = [...new Set([...Object.keys(current), ...Object.keys(next)])]
     .filter((field) => current[field] !== next[field])
     .sort();
+  const reloaded = (field: string): boolean =>
+    field === "queues"
+      ? restartPart(current[field]) === restartPart(next[field])
+      : reloadedSettingFields.includes(field);
   return {
-    reloadedFields: changed.filter((field) =>
-      reloadedSettingFields.includes(field),
-    ),
-    restartFields: changed.filter(
-      (field) => !reloadedSettingFields.includes(field),
-    ),
+    reloadedFields: changed.filter((field) => reloaded(field)),
+    restartFields: changed.filter((field) => !reloaded(field)),
   };
 }
 

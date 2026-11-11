@@ -81,7 +81,9 @@ await test("CLV-228 setup queue guidance requires an explicit queue declaration"
     .split("\n")
     .find((line) => line.startsWith("- Queue facts"));
   assert.ok(queue);
-  assert.match(queue, /no workflow has `queue: true`, no queue starts/);
+  assert.match(queue, /no workflow declares a queue, no queue starts/);
+  assert.match(queue, /No interval setting is necessary/);
+  assert.match(queue, /`queues.<workflow>.state` is `off`, no queue starts/);
   assert.doesNotMatch(queue, /bundled|develop-issue/);
 });
 

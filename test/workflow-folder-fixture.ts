@@ -1,3 +1,4 @@
+import type { QueueDeclaration } from "../src/workflow-declaration.ts";
 import { join } from "node:path";
 import { cp, mkdir, readFile, writeFile } from "node:fs/promises";
 import {
@@ -132,7 +133,10 @@ export function folderInput(directory: string): WorkflowFolderInput {
   };
 }
 
-export async function writeQueueWorkflow(folder: string): Promise<void> {
+export async function writeQueueWorkflow(
+  folder: string,
+  options: { readonly queue?: QueueDeclaration } = {},
+): Promise<void> {
   await mkdir(folder, { recursive: true });
   await writeFile(
     join(folder, "queued.ts"),
@@ -145,7 +149,7 @@ export async function writeQueueWorkflow(folder: string): Promise<void> {
       workflow: {
         ...candidateDeclaration.workflow,
         workflowId: "queued",
-        queue: true,
+        queue: options.queue ?? true,
         input: { maximumBytes: 4096, fields: { ticket: { type: "ticket" } } },
       },
     }),

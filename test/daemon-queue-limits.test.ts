@@ -88,3 +88,51 @@ process.exit(0);
 `);
     assert.equal(result.status, 0, result.stderr);
   }));
+
+const queuesPrelude = `${limitsPrelude}
+const reloadedQueues = (queueLimits, queues) => {
+  writeFileSync("reload.json", JSON.stringify({ bundleDigest, manifests: settings.manifests, declarations: settings.declarations, workflowRefusals: [], turnSettings: { profiles: {}, fallbackModels: [], tokenPrices: {} }, settingDigests: { queues }, queueLimits }));
+  return asked("reload");
+};
+const started = { queueLanes: 2, queueLimits: { lanes: 2, workingLanes: 2, sources: { lanes: "declaration", workingLanes: "default" } }, queueIntervalSource: "declaration", reloadCommand, loadBundle, settingDigests: { queues: "restart-a:lanes-a" } };
+`;
+
+await test("CLV-359 a reload applies the queues lanes and working lanes at once with their sources", () =>
+  withConsumer(queueWorkflow, async (consumer) => {
+    const result = await consumer.run(`${queuesPrelude}
+const daemon = await launched(started);
+try {
+  await until(async () => (await runs()).length === 2);
+  assert.deepEqual((await queueOf()).settings, {
+    everySeconds: { value: 0.03, source: "declaration" },
+    lanes: { value: 2, source: "declaration" },
+    workingLanes: { value: 2, source: "default" },
+  });
+  const reply = await reloadedQueues({ lanes: 3, workingLanes: 3, sources: { lanes: "queues setting", workingLanes: "queues setting" } }, "restart-a:lanes-b");
+  assert.deepEqual([reply.status, reply.reloadedFields, reply.restartFields], ["reloaded", ["queues"], []]);
+  await until(async () => (await runs()).length === 3);
+  const queue = await queueOf();
+  assert.equal(queue.lanes, 3);
+  assert.deepEqual([queue.settings.lanes, queue.settings.workingLanes], [{ value: 3, source: "queues setting" }, { value: 3, source: "queues setting" }]);
+} finally { await daemon.close(); }
+process.exit(0);
+`);
+    assert.equal(result.status, 0, result.stderr);
+  }));
+
+await test("CLV-359 a reload lists queues in the restart fields when only the state or the interval changed", () =>
+  withConsumer(queueWorkflow, async (consumer) => {
+    const result = await consumer.run(`${queuesPrelude}
+const daemon = await launched({ ...started, queueMilliseconds: 60000 });
+try {
+  const limits = { lanes: 2, workingLanes: 2, sources: { lanes: "declaration", workingLanes: "default" } };
+  for (let round = 0; round < 2; round += 1) {
+    const reply = await reloadedQueues(limits, "restart-b:lanes-a");
+    assert.deepEqual([reply.reloadedFields, reply.restartFields], [[], ["queues"]]);
+  }
+  assert.deepEqual((await queueOf()).settings.everySeconds, { value: 60, source: "declaration" });
+} finally { await daemon.close(); }
+process.exit(0);
+`);
+    assert.equal(result.status, 0, result.stderr);
+  }));

@@ -66,7 +66,10 @@ export async function queueOverview(context: ServiceContext): Promise<Fields> {
   const workflow = context.registry.workflowIds
     .map((id) => currentLanes(context, context.registry.byId(id)))
     .find((workflow) => workflow?.admission !== undefined);
-  if (workflow?.admission === undefined) return {};
+  if (workflow?.admission === undefined) {
+    const off = context.queue?.control()?.off;
+    return off === undefined ? {} : { queueOff: { ...off } };
+  }
   const runs = await activeRuns(context, workflow.workflowId);
   const active = runs.map((run) => run.input);
   const activeTicketIds = active.flatMap((input) =>

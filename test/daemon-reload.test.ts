@@ -111,6 +111,29 @@ process.exit(0);
     assert.equal(result.status, 0, result.stderr);
   }));
 
+await test("CLV-359 a reload that changes the declared queue interval needs a restart and a declared lane change reloads", () =>
+  withConsumer(workflow, async (consumer) => {
+    const result =
+      await consumer.run(`${bundlePrelude}${workflowBundleLoader()}${reloadPrelude}
+const queued = { workflowId: "review-queue", functionName: "review", effectLimit: 1, capabilities: ["claude", "github"], input: { maximumBytes: 1000, fields: { ticket: { type: "ticket" } } }, queue: true };
+const manifests = { ...settings.manifests, review: settings.manifests.developTicket };
+const daemon = await launched({ bundleDigest: "0".repeat(64), queueMilliseconds: undefined, declarations: [queued], manifests, workflows: { ...settings.workflows, review: workflows.develop }, reloadCommand, loadBundle: loadWorkflowBundle });
+try {
+  const codes = [];
+  for (const queue of [{ everySeconds: 600 }, { everySeconds: 300, lanes: 2 }]) {
+    prepared({ bundleDigest, manifests, declarations: [{ ...queued, queue }] });
+    codes.push((await asked("reload")).code);
+  }
+  assert.deepEqual(codes, ["reload-needs-restart", "reload-needs-restart"]);
+  prepared({ bundleDigest, manifests, declarations: [{ ...queued, queue: { everySeconds: 120, lanes: 2 } }] });
+  const reloaded = await asked("reload");
+  assert.equal(reloaded.status, "reloaded", JSON.stringify(reloaded));
+} finally { await daemon.close(); }
+process.exit(0);
+`);
+    assert.equal(result.status, 0, result.stderr);
+  }));
+
 await test("CLV-252 a reload that changes the interval or the input of a schedule needs a restart", () =>
   withConsumer(workflow, async (consumer) => {
     const result =

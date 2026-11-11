@@ -1,4 +1,8 @@
 import { hasTicketField, type SubmissionContract } from "./submission.ts";
+import {
+  declaresQueue,
+  type WorkflowDeclaration,
+} from "./workflow-declaration.ts";
 
 export const doctorCodes = [
   "git-repository",
@@ -87,7 +91,7 @@ export function doctorExitCode(checks: readonly DoctorCheck[]): number {
 }
 
 export interface DoctorWorkflow {
-  readonly queue?: boolean;
+  readonly queue?: WorkflowDeclaration["queue"];
   readonly scope: "project" | "user";
   readonly workflowId: string;
   readonly capabilities: readonly string[];
@@ -109,7 +113,7 @@ export function requiredDoctorCodes(
     codes.add("gh-login");
     codes.add("github-origin");
   }
-  if (workflows.some((workflow) => workflow.queue === true)) {
+  if (workflows.some((workflow) => declaresQueue(workflow.queue))) {
     codes.add("next-command");
     codes.add("queue-interval");
   }
