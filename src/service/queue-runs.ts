@@ -1,4 +1,5 @@
 import type { Fields, Reply } from "../protocol.ts";
+import { maximumQueueLanes } from "../queue-room.ts";
 import {
   failed,
   invalidRequest,
@@ -14,10 +15,12 @@ export async function queueRunStatuses(
   if (
     !Array.isArray(runIds) ||
     runIds.length === 0 ||
-    runIds.length > 4 ||
+    runIds.length > maximumQueueLanes ||
     !runIds.every(isIdentifier)
   )
-    return invalidRequest("A queue status batch needs one to four run IDs.");
+    return invalidRequest(
+      `A queue status batch needs one to ${String(maximumQueueLanes)} run IDs.`,
+    );
   const state = await context.authority.state();
   const links = await context.authority.queries.runLinks();
   const runs: Fields[] = [];
