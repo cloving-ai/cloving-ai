@@ -191,7 +191,7 @@ function renameClose() {
   state.renameDrafts = renameDropped(state.renameOpen);
   state.renameOpen = null;
   draw();
-  document.querySelector(".rename-open")?.focus();
+  document.querySelector(".name-edit, .rename-open")?.focus();
 }
 function renameEdit(change) {
   const runId = state.renameOpen;

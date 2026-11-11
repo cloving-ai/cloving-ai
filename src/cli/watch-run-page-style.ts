@@ -3,7 +3,7 @@ export const runPageStyle = `
 .run-identity { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; margin: 0; font-size: 20px; line-height: 1.35; }
 .run-identity .name-label { font: 600 14px/1.4 var(--font-ui); color: var(--color-muted); }
 .name-edit { margin: 0; padding: 0 6px; font: 500 15px/1.4 var(--font-ui); color: var(--color-muted); background: none; clip-path: none; opacity: 0; }
-.run-identity:hover .name-edit, .name-edit:focus-visible { opacity: 1; }
+.run-identity:hover .name-edit, .name-edit:focus { opacity: 1; }
 .run-status { margin: 0; font: 600 13px/1.5 var(--font-ui); font-variant-numeric: tabular-nums; }
 .banner-detail { margin: 0; font-size: 13px; color: var(--color-muted); }
 .banner .rename-form { display: flex; flex-wrap: wrap; align-items: end; gap: 6px; }
@@ -20,6 +20,7 @@ export const runPageStyle = `
 .run-more-menu { position: absolute; top: 100%; right: 0; z-index: 3; display: grid; gap: 2px; min-width: 200px; margin-top: 6px; padding: 6px; border-radius: calc(var(--shape-radius) / 2); background: var(--color-surface); box-shadow: var(--shadow), inset 0 0 0 var(--shape-border) var(--color-line); font: 500 13px/1.4 var(--font-ui); visibility: hidden; opacity: 0; transition: visibility 0s linear 200ms, opacity 120ms ease 200ms; }
 .run-more-menu::before { content: ""; position: absolute; top: -8px; left: 0; right: 0; height: 8px; }
 .run-more:hover .run-more-menu, .run-more:focus-within .run-more-menu { visibility: visible; opacity: 1; transition-delay: 0s; }
+.run-more[data-hold] .run-more-menu { visibility: hidden; opacity: 0; transition: none; }
 .run-more-menu button { width: 100%; text-align: left; background: none; }
 .run-more-menu .run-command-drop { color: var(--color-state-failed); }
 .run-more-split { width: 100%; margin: 4px 0; border: 0; border-top: var(--shape-border) solid var(--color-line); }

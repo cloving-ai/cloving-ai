@@ -9,7 +9,7 @@ import type { RenameControls } from "../src/cli/watch-rename-view.ts";
 import { Page } from "../src/cli/watch-view.ts";
 import { found, rendered } from "./watch-dom.ts";
 import { renameControls, type RenameCalls } from "./watch-rename-fixture.ts";
-import { rule } from "./watch-style-fixture.ts";
+import { rule, rules } from "./watch-style-fixture.ts";
 import {
   at,
   noCopy,
@@ -290,6 +290,59 @@ await test("CLV-357 Drop in the menu asks under the banner, and the steer form a
   assert.doesNotMatch(banner(asked), /steer-form|drop-question/);
 });
 
+function menuElement() {
+  const attributes = new Set<string>();
+  return {
+    attributes,
+    setAttribute: (name: string) => {
+      attributes.add(name);
+    },
+    removeAttribute: (name: string) => {
+      attributes.delete(name);
+    },
+  };
+}
+
+await test("CLV-357 a pick in the ⋯ menu or Escape closes the menu at once, and the menu opens again when the pointer leaves or enters or the focus comes back", () => {
+  const more = found(page(working, all([])), "div").find(
+    (node) => node["class"] === "run-more",
+  );
+  assert.ok(more !== undefined);
+  const box = menuElement();
+  const fire = (name: string, event: Readonly<Record<string, unknown>>) => {
+    const handler = more[name];
+    assert.ok(typeof handler === "function", name);
+    Reflect.apply(handler, undefined, [{ currentTarget: box, ...event }]);
+  };
+  const held = () => [...box.attributes];
+  fire("onClick", {});
+  assert.deepEqual(held(), ["data-hold"]);
+  fire("onMouseLeave", {});
+  assert.deepEqual(held(), []);
+  fire("onClick", {});
+  fire("onMouseEnter", {});
+  assert.deepEqual(held(), []);
+  fire("onClick", {});
+  fire("onFocusIn", {});
+  assert.deepEqual(held(), []);
+  const blurred: string[] = [];
+  fire("onKeyDown", {
+    key: "Escape",
+    target: { blur: () => blurred.push("blur") },
+  });
+  assert.deepEqual([held(), blurred], [["data-hold"], ["blur"]]);
+  const opener = found(more["children"], "button").find(
+    (node) => node["class"] === "run-more-open",
+  );
+  const click = opener?.["onClick"];
+  assert.ok(typeof click === "function");
+  const stopped: string[] = [];
+  Reflect.apply(click, undefined, [
+    { stopPropagation: () => stopped.push("stop") },
+  ]);
+  assert.deepEqual(stopped, ["stop"]);
+});
+
 await test("CLV-357 the ⋯ menu is a popover that opens on hover and on keyboard focus with a short close delay, in the page font, and does not move the page", () => {
   assert.match(rule(".run-more"), /position: relative/);
   const menu = rule(".run-more-menu");
@@ -303,6 +356,19 @@ await test("CLV-357 the ⋯ menu is a popover that opens on hover and on keyboar
   assert.match(shown, /visibility: visible/);
   assert.match(shown, /transition-delay: 0s/);
   assert.match(rule(".run-head-actions button"), /font: [^;]*var\(--font-ui\)/);
+  const hold = rule(".run-more[data-hold] .run-more-menu");
+  assert.match(hold, /visibility: hidden/);
+  assert.match(hold, /transition: none/);
+  assert.ok(
+    rules.indexOf("\n.run-more[data-hold] .run-more-menu {") >
+      rules.indexOf(
+        "\n.run-more:hover .run-more-menu, .run-more:focus-within .run-more-menu {",
+      ),
+  );
+  assert.match(
+    rule(".run-identity:hover .name-edit, .name-edit:focus"),
+    /opacity: 1/,
+  );
 });
 
 await test("CLV-357 the README describes the banner, the facts line and the tabs of the run detail", async () => {

@@ -30,9 +30,18 @@ interface HeadControls {
   readonly renaming?: RenameControls | undefined;
 }
 
-interface KeyEvent {
+interface MenuEvent {
+  readonly currentTarget: unknown;
+}
+
+interface KeyEvent extends MenuEvent {
   readonly key: string;
   readonly target: unknown;
+}
+
+interface Marked {
+  readonly setAttribute: (name: string, value: string) => void;
+  readonly removeAttribute: (name: string) => void;
 }
 
 export function RunIdentity(props: {
@@ -119,8 +128,36 @@ export function blurrable(value: unknown): value is { blur: () => void } {
   );
 }
 
+export function marked(value: unknown): value is Marked {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "setAttribute" in value &&
+    typeof value.setAttribute === "function" &&
+    "removeAttribute" in value &&
+    typeof value.removeAttribute === "function"
+  );
+}
+
+export function holdMenu(event: MenuEvent): void {
+  if (marked(event.currentTarget))
+    event.currentTarget.setAttribute("data-hold", "");
+}
+
+export function releaseMenu(event: MenuEvent): void {
+  if (marked(event.currentTarget))
+    event.currentTarget.removeAttribute("data-hold");
+}
+
+export function keepMenu(event: {
+  readonly stopPropagation: () => void;
+}): void {
+  event.stopPropagation();
+}
+
 export function closeMenu(event: KeyEvent): void {
   if (event.key !== "Escape") return;
+  holdMenu(event);
   if (blurrable(event.target)) event.target.blur();
 }
 
@@ -157,10 +194,15 @@ export function RunMore(
   return element("div", {
     class: "run-more",
     onKeyDown: closeMenu,
+    onClick: holdMenu,
+    onMouseEnter: releaseMenu,
+    onMouseLeave: releaseMenu,
+    onFocusIn: releaseMenu,
     children: [
       element("button", {
         type: "button",
         class: "run-more-open",
+        onClick: keepMenu,
         title: "More run controls",
         "aria-haspopup": "true",
         children: [
@@ -319,6 +361,10 @@ export const runHeadFunctions = [
   RunStatus,
   PauseButton,
   blurrable,
+  marked,
+  holdMenu,
+  releaseMenu,
+  keepMenu,
   closeMenu,
   moreShown,
   RunMore,
