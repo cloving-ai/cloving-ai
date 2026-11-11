@@ -70,7 +70,7 @@ const launcher = [
   'const stopped=(reason)=>{let first=true;try{first=ending({exitCode:null,signal:"SIGKILL",reason});}finally{if(first)process.kill(-process.pid,"SIGKILL");}};',
   'const child=spawn(command,rest,{stdio:"inherit",env});',
   'child.on("error",()=>undefined);',
-  'child.on("close",(exitCode,signal)=>{ending({exitCode,signal});process.exit(0);});',
+  'child.on("close",(exitCode,signal)=>{ending({exitCode,signal});try{process.kill(-process.pid,"SIGKILL");}catch{}process.exit(0);});',
   "if(limits.milliseconds!==undefined)setTimeout(()=>{stopped(limits.reason);},limits.milliseconds);",
   "const over=(descriptor,bytes)=>fstatSync(descriptor).size>bytes;",
   "if(limits.outputBytes!==undefined)setInterval(()=>{",
@@ -255,4 +255,20 @@ export function attachedProcess(launch: ProcessLaunch): DetachedProcess {
       );
     },
   };
+}
+
+export async function stoppedLaunch(
+  launch: ProcessLaunch,
+  milliseconds: number,
+): Promise<void> {
+  const kept = attachedProcess(launch);
+  kept.signal("SIGTERM");
+  const forced = setTimeout(() => {
+    kept.signal("SIGKILL");
+  }, milliseconds);
+  try {
+    await kept.ending(new AbortController().signal);
+  } finally {
+    clearTimeout(forced);
+  }
 }

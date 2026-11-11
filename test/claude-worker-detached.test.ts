@@ -121,6 +121,22 @@ await test("CLV-337 a new worker connects to a running turn and reads each line 
     assert.equal(resultOf(scene.reports[0].result)["costUsd"], 0.25);
   }));
 
+await test("CLV-337 a running turn that the new worker cannot connect to stops before its failure is recorded", () =>
+  withScene(async (scene) => {
+    const review = intent({ method: "run-turn:review" });
+    const first = scene.worker("gated-lines", { profiles: { review: {} } });
+    await first.deliver(review, signal);
+    await until(() => lineNumbers(scene).length >= 2);
+    await first.close({ turns: "keep" });
+    const turn = keptTurn(scene);
+    assert.equal(alive(turn.processId), true);
+    const next = scene.worker("gated-lines", { profiles: {} });
+    const reply = await next.reconcile(review, signal);
+    assert.equal(reply.kind, "failed");
+    assert.equal(alive(turn.processId), false);
+    assert.equal(alive(turn.parentId), false);
+  }));
+
 await test("CLV-337 a turn that ends while no worker runs ends after the start", () =>
   withScene(async (scene) => {
     const first = scene.worker("gated-result");

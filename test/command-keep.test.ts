@@ -241,6 +241,24 @@ await test("CLV-337 a kept command stops at its time limit also when its exit re
     }
   }));
 
+await test("CLV-337 the end of a command stops the background processes that it left in its process group", () =>
+  withCommandScene(async (scene) => {
+    const leaving =
+      'const { spawn } = require("node:child_process"); const fs = require("node:fs"); spawn(process.execPath, ["-e", "require(\'node:fs\').writeFileSync(\'background-pid\', String(process.pid)); setInterval(() => process.stdout.write(\'x\'), 50);"], { stdio: "inherit" }).unref(); const wait = setInterval(() => { if (!fs.existsSync("background-pid")) return; clearInterval(wait); process.exit(0); }, 20);';
+    const worker = scene.worker(leaving);
+    await worker.deliver(commandIntent(), signal);
+    await until(() => scene.reports.length === 1);
+    assert.equal(scene.reports[0]?.outcome, "completed");
+    const background = Number(
+      readFileSync(join(scene.directory, "background-pid"), "utf8"),
+    );
+    try {
+      await until(() => !processExists(background));
+    } finally {
+      if (processExists(background)) process.kill(background, "SIGKILL");
+    }
+  }));
+
 await test("CLV-337 a kept command stops at its output limit while no worker runs", () =>
   withCommandScene(async (scene) => {
     const launch = await keptCommand(scene, { source: flooding });
@@ -305,3 +323,22 @@ await test("CLV-337 a stop of a connected command waits until its process is gon
     assert.equal((await stopping).kind, "stopped");
     assert.equal(processExists(launch.processId), false);
   }));
+
+await test("CLV-337 the README states that the start program stops what a turn or a command left in its process group, and that a turn the service cannot use stops before its failure", () => {
+  const readme = readFileSync(
+    new URL("../README.md", import.meta.url),
+    "utf8",
+  ).replaceAll("\n", " ");
+  assert.match(
+    readme,
+    /When the turn ends, the start program writes the exit code and the end time to `turn\.exit\.json`\. Then it stops each process that the turn left in its process group\./,
+  );
+  assert.match(
+    readme,
+    /the reason to `command\.exit\.json`\. Then it stops each process that the command left in its process group, so that no background process writes without a limit\./,
+  );
+  assert.match(
+    readme,
+    /When the service cannot use the turn, for example because its profile is gone or its harness changed, it stops the process group of the turn, waits for its end, and then records the failure\./,
+  );
+});

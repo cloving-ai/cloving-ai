@@ -6,6 +6,7 @@ import type {
 } from "../broker/actor/delivery-intents.ts";
 import { begun } from "./claude-begin.ts";
 import { attachableLaunch, attachPlan, holdKeptTurn } from "./claude-attach.ts";
+import { stoppedLaunch } from "./detached-process.ts";
 import type { TurnLaunch } from "../turn-launch.ts";
 import {
   located,
@@ -116,6 +117,22 @@ function recordedLaunchOf(journal: {
   return attachableLaunch(journal.folder, journal.started);
 }
 
+async function rejectedAttach(
+  parts: Parts,
+  rejection: {
+    readonly request: Located;
+    readonly plan: string;
+    readonly launch: TurnLaunch | undefined;
+  },
+): Promise<AdapterOutcome> {
+  if (rejection.launch !== undefined)
+    await stoppedLaunch(
+      rejection.launch,
+      parts.settings.stopMilliseconds ?? claudeLimits.stopMilliseconds,
+    );
+  return interruptedReply(rejection.request, rejection.plan);
+}
+
 async function resumed(
   parts: Parts,
   request: Located & {
@@ -136,7 +153,8 @@ async function resumed(
     ? resumePlan(settings, { folder, started, intent, signal })
     : attachPlan(settings, { folder, started, intent, launch }));
   if (aborted()) return failure("claude-start-aborted");
-  if (typeof plan === "string") return interruptedReply(request, plan);
+  if (typeof plan === "string")
+    return rejectedAttach(parts, { request, plan, launch });
   const prompt = await parts.settings.document(intent.payload);
   if (aborted()) return failure("claude-start-aborted");
   if (prompt === undefined)
