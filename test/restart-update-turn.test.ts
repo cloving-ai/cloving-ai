@@ -3,6 +3,7 @@ import { execFileSync } from "node:child_process";
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { test } from "node:test";
+import { staleBuild } from "../tools/restart-build.ts";
 import { field } from "./self-host-fixture.ts";
 import { call } from "./service-fixture.ts";
 import {
@@ -54,6 +55,13 @@ await test("CLV-347 cloving restart --update in the middle of a turn updates the
     },
     async (scene) => {
       const { fixture, product } = scene;
+      const git = productGit(product);
+      assert.equal(
+        await staleBuild(product, (argumentsList) =>
+          Promise.resolve(git(argumentsList)),
+        ),
+        false,
+      );
       const runId = await admittedTurn(fixture, "update");
       const writing = await writingTurn(scene, runId);
       const pinned = field(await runStatus(fixture, runId), "workflow");
@@ -63,7 +71,7 @@ await test("CLV-347 cloving restart --update in the middle of a turn updates the
       assert.deepEqual(otherBundles, []);
       const turns = await restartedTurns(fixture, ["--update"]);
       assert.deepEqual(field(turns, "connected"), [runId]);
-      assert.equal(productGit(product)(["rev-parse", "HEAD"]), update.target);
+      assert.equal(git(["rev-parse", "HEAD"]), update.target);
       const status = await call(fixture, {
         operation: "status",
         parameters: {},

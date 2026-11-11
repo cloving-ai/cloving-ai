@@ -15,6 +15,7 @@ import { transcriptKinds } from "../src/cli/watch-api-document.ts";
 import { record } from "../src/protocol.ts";
 import { recordedLaunch, type TurnLaunch } from "../src/turn-launch.ts";
 import type { TranscriptEntry } from "../src/turn-transcript.ts";
+import { rememberedBuild } from "../tools/restart-build.ts";
 import {
   field,
   items,
@@ -101,7 +102,6 @@ async function productCopy(root: string): Promise<string> {
   await writeFile(join(product, ".git/info/exclude"), "dist\nnode_modules\n");
   git(["add", "."]);
   git(["commit", "-qm", "Copy the product"]);
-  await writeFile(join(product, "dist/.restart-build"), "");
   return product;
 }
 
@@ -145,6 +145,7 @@ export async function withTurnHost(
   try {
     const product = await productCopy(productRoot);
     await options.prepare?.(product);
+    await rememberedBuild(product);
     await withoutChildren(async () => {
       const fixture = await scene(options.script, join(product, "src/cli.ts"));
       const workflows = join(fixture.repository, ".cloving/workflows");
