@@ -209,3 +209,77 @@ await test("CLV-354 Rename in the token menu keeps the popover open while its in
     [{ open: "token-menu-run-a" }, { text: true }],
   );
 });
+
+const focusedPart = `(() => {
+  const node = document.activeElement;
+  return {
+    name: node?.getAttribute("class") ?? null,
+    run: node?.closest(".run-command")?.getAttribute("data-run") ?? node?.getAttribute("popovertarget") ?? null,
+  };
+})()`;
+
+await test("CLV-354 Cancel of Rename in the second token menu puts the focus back on the Rename item of that token", async () => {
+  await using fixture = await watchPageServer(model("#727"), {
+    token: "a".repeat(64),
+  });
+  await using browser = await realBrowser();
+  const page = await browser.page({ width: 1280, height: 844 });
+  await page.navigate(fixture.url);
+  await page.evaluate(ready);
+  await page.move(
+    point(await page.evaluate(center('[popovertarget="token-menu-run-a"]'))),
+  );
+  await page.move(
+    point(await page.evaluate(center("#token-menu-run-a .rename-open"))),
+  );
+  await page.click("#token-menu-run-a .rename-open");
+  await page.click('#token-menu-run-a .rename-form button[type="button"]');
+  assert.deepEqual(
+    [await page.evaluate(focusedPart), await page.evaluate(opened)],
+    [{ name: "rename-open", run: "run-a" }, { open: "token-menu-run-a" }],
+  );
+});
+
+await test("CLV-354 a keyboard user opens the token menu, starts Rename, and Escape closes the form and the menu with the focus back on the menu button", async () => {
+  await using fixture = await watchPageServer(model("#727"), {
+    token: "a".repeat(64),
+  });
+  await using browser = await realBrowser();
+  const page = await browser.page({ width: 1280, height: 844 });
+  await page.navigate(fixture.url);
+  await page.evaluate(ready);
+  await page.evaluate(
+    `(() => { document.querySelector('[popovertarget="token-menu-run-a"]').focus(); return {}; })()`,
+  );
+  const menu = await page.evaluate(opened);
+  await page.evaluate(
+    `(() => { document.querySelector("#token-menu-run-a .rename-open").focus(); return {}; })()`,
+  );
+  await page.press({ key: "Enter", code: 13, text: "\r" });
+  const form = await page.evaluate(`(async () => {
+    const frame = () => new Promise((resolve) => requestAnimationFrame(resolve));
+    for (let attempt = 0; attempt < 120 && document.activeElement?.tagName !== "INPUT"; attempt++) await frame();
+    return { input: document.activeElement?.getAttribute("name") ?? null };
+  })()`);
+  await page.press({ key: "Escape", code: 27 });
+  const closed = await page.evaluate(`(async () => {
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    return { forms: document.querySelectorAll(".rename-form").length };
+  })()`);
+  assert.deepEqual(
+    [
+      menu,
+      form,
+      closed,
+      await page.evaluate(opened),
+      await page.evaluate(focusedPart),
+    ],
+    [
+      { open: "token-menu-run-a" },
+      { input: "title" },
+      { forms: 0 },
+      { open: "" },
+      { name: "token-menu-open", run: "token-menu-run-a" },
+    ],
+  );
+});

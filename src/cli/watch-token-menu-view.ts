@@ -9,15 +9,16 @@ import {
   type RunCommandControls,
 } from "./watch-run-command-view.ts";
 
-export interface MenuPopover {
+export interface MenuElement {
   readonly matches: (selector: string) => boolean;
   readonly showPopover: () => void;
   readonly hidePopover: () => void;
+  readonly focus: () => void;
 }
 
 export interface MenuNode {
   readonly dataset: Record<string, string | undefined>;
-  readonly querySelector: (selector: string) => MenuPopover | null;
+  readonly querySelector: (selector: string) => MenuElement | null;
 }
 
 interface MenuEvent {
@@ -25,12 +26,20 @@ interface MenuEvent {
     readonly contains: (node: unknown) => boolean;
   };
   readonly relatedTarget?: unknown;
+  readonly key?: string;
 }
 
 export function menuOpened(menu: MenuNode): void {
   clearTimeout(Number(menu.dataset["closing"]));
   const pop = menu.querySelector(".token-pop");
   if (pop !== null && !pop.matches(":popover-open")) pop.showPopover();
+}
+
+export function menuClosed(menu: MenuNode): void {
+  clearTimeout(Number(menu.dataset["closing"]));
+  const pop = menu.querySelector(".token-pop");
+  if (pop !== null && pop.matches(":popover-open")) pop.hidePopover();
+  menu.querySelector(".token-menu-open")?.focus();
 }
 
 export function menuLeft(menu: MenuNode): void {
@@ -123,6 +132,9 @@ export function TokenMenu(props: TokenMenuProps): Shown {
       menuLeft(event.currentTarget);
     },
     onFocusIn: opened,
+    onKeyDown: (event: MenuEvent) => {
+      if (event.key === "Escape") menuClosed(event.currentTarget);
+    },
     onFocusOut: (event: MenuEvent) => {
       if (!event.currentTarget.contains(event.relatedTarget))
         menuLeft(event.currentTarget);
@@ -149,6 +161,7 @@ export function TokenMenu(props: TokenMenuProps): Shown {
 
 export const tokenMenuFunctions = [
   menuOpened,
+  menuClosed,
   menuLeft,
   TokenDrop,
   TokenCommands,

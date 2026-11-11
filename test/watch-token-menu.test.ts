@@ -56,8 +56,12 @@ function menus(shown: unknown) {
   return found(shown, "div").filter((item) => item["class"] === "token-menu");
 }
 
-function labels(node: unknown): readonly unknown[] {
-  return found(node, "button").map((button) => button["children"]);
+function labels(node: unknown): readonly string[] {
+  return found(node, "button").map((button) => {
+    const label = button["children"];
+    assert.ok(typeof label === "string");
+    return label;
+  });
 }
 
 await test("CLV-354 each station token holds its run controls and Rename in a popover menu that opens at the menu button, and the floor has no run menu details", () => {
@@ -148,11 +152,20 @@ function menuNode() {
     },
   };
   const focus = { visible: false };
+  const opener = {
+    matches: () => false,
+    showPopover: () => undefined,
+    hidePopover: () => undefined,
+    focus: () => {
+      shown.push("focus");
+    },
+  };
   const menu = {
     dataset: {} as Record<string, string | undefined>,
     querySelector: (selector: string) => {
-      if (selector === ".token-pop") return pop;
-      return selector === ":focus-visible" && focus.visible ? pop : null;
+      if (selector === ".token-pop") return { ...pop, focus: () => undefined };
+      if (selector === ".token-menu-open") return opener;
+      return selector === ":focus-visible" && focus.visible ? opener : null;
     },
   };
   return { menu, pop, focus, shown };
@@ -269,5 +282,48 @@ await test("CLV-354 the token popover lists one item for each row in the card fo
   assert.match(
     rule('.token-pop .rename-form button[type="button"]'),
     /background: none/,
+  );
+});
+
+await test("CLV-354 the token menu element opens on pointer enter and focus in, closes after a pointer leave or a focus move out of the menu, and an Escape inside closes it at once with the focus back on its opener", async () => {
+  const [menu] = menus(floor({ controlling }));
+  assert.ok(menu);
+  const node = menuNode();
+  const inside = {};
+  const event = (fields: Record<string, unknown> = {}) => ({
+    currentTarget: {
+      ...node.menu,
+      contains: (item: unknown) => item === inside,
+    },
+    ...fields,
+  });
+  const handler = (name: string) => {
+    const value = menu[name];
+    assert.ok(typeof value === "function");
+    return (fields?: Record<string, unknown>) => {
+      Reflect.apply(value, undefined, [event(fields)]);
+    };
+  };
+  handler("onPointerEnter")();
+  handler("onPointerLeave")();
+  await delay(260);
+  handler("onFocusIn")();
+  handler("onFocusOut")({ relatedTarget: inside });
+  await delay(260);
+  const kept = node.pop.open;
+  handler("onFocusOut")({ relatedTarget: null });
+  await delay(260);
+  handler("onPointerEnter")();
+  handler("onKeyDown")({ key: "Enter" });
+  const afterEnter = node.pop.open;
+  handler("onKeyDown")({ key: "Escape" });
+  assert.deepEqual(
+    [kept, afterEnter, node.pop.open, node.shown],
+    [
+      true,
+      true,
+      false,
+      ["show", "hide", "show", "hide", "show", "hide", "focus"],
+    ],
   );
 });

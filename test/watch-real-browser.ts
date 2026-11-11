@@ -165,8 +165,13 @@ function inputActions(command: ReturnType<typeof protocol>, sessionId: string) {
         params: { type: "mouseMoved", ...point },
       });
     },
-    async press(key: { readonly key: string; readonly code: number }) {
-      for (const type of ["rawKeyDown", "keyUp"])
+    async press(key: {
+      readonly key: string;
+      readonly code: number;
+      readonly text?: string;
+    }) {
+      const down = key.text === undefined ? "rawKeyDown" : "keyDown";
+      for (const type of [down, "keyUp"])
         await command("Input.dispatchKeyEvent", {
           sessionId,
           params: {
@@ -174,6 +179,7 @@ function inputActions(command: ReturnType<typeof protocol>, sessionId: string) {
             key: key.key,
             code: key.key,
             windowsVirtualKeyCode: key.code,
+            ...(type === "keyDown" ? { text: key.text } : {}),
           },
         });
     },
