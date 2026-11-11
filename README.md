@@ -60,7 +60,7 @@ an idea ─> idea-to-issue ──hand-off──> develop ─> merged pull reques
 - `review-day` hands work to the workflow ID `idea-to-issue`. To keep both copies of `idea-to-issue`, give the first copy another ID with `cloving templates copy idea-to-issue --id <id>`.
 - The three templates are in the package, and each template has its own tests. A copy is your code. Change it as you want.
 
-Open issues plan more built-in steps. These steps are not built yet: [#619](https://github.com/cloving-ai/cloving-ai/issues/619) adds a review panel to `develop`, and [#633](https://github.com/cloving-ai/cloving-ai/issues/633) answers review threads on pull requests that have no run.
+Open issues plan more built-in steps. Two of these steps are available: the `panel` option of `develop` adds a review panel ([#619](https://github.com/cloving-ai/cloving-ai/issues/619)), and the `answer-review` template answers review threads on pull requests that have no run ([#633](https://github.com/cloving-ai/cloving-ai/issues/633)).
 
 ### An example of a larger factory
 
@@ -196,7 +196,7 @@ Run `cloving workflows test <workflow-id>` after each change. Run `cloving reloa
 - `waitForRun({ runId, maximumWaitSeconds })` waits for the outcome of a run that this run started. The workflow can select its next step from that outcome, for example from its `promotionId`.
 - A chain of hand-offs has at most five runs. The first run of the chain counts. Cloving records the parent and the chain of each run, and the watch page links them.
 - A `schedule` in the declaration starts a workflow at a fixed interval. `review-day` uses a schedule.
-- A workflow with `"queue": true` takes ready tickets from your tracker through your commands, in up to four lanes.
+- A workflow with `"queue": true` takes ready tickets from your tracker through your commands, in up to 16 lanes.
 - The label `cloving: ready` can connect workflows through GitHub. `idea-to-issue` can add it, and your next-ticket command can select the issues that have it.
 
 ## Use Cloving in a team
@@ -1205,7 +1205,7 @@ The last worker report must end with exactly one line: `Ticket status: complete`
 
 After a merge, a protected GitHub operation updates the issue body and labels. Complete work closes the issue with reason `completed` and adds "Completed in pull request #M." to `## Cloving status`. Partial work keeps the issue open and appends `- Pull request #M: partial. Remaining: ...` to that section at the end of the body, preserving earlier partial lines and other body text. Items are separated by semicolons. The issue privacy check runs before new remaining text is written; a refusal uses "Remaining work is in the private run report." instead. No issue comment is posted. Status writes add and remove only workflow labels, preserving unrelated label edits. Before a body write, Cloving rereads the issue and refuses a changed body with `github-issue-conflict`; the merged outcome records `issueUpdate: failed`. GitHub does not support conditional PATCH requests for this endpoint, so this check cannot make the read and write atomic.
 
-Partial work removes `cloving: in progress` and adds `cloving: ready`, so the next queue cycle can select the same issue and read its remaining work from the issue body. The third partial run adds `cloving: blocked` instead of `cloving: ready`. Completion removes these workflow labels. Status operations reconcile the pull request number in the stored history after a restart to avoid duplicate writes. The unmodified develop template declares an effect limit of 31 units.
+Partial work removes `cloving: in progress` and adds `cloving: ready`, so the next queue cycle can select the same issue and read its remaining work from the issue body. The third partial run adds `cloving: blocked` instead of `cloving: ready`. Completion removes these workflow labels. Status operations reconcile the pull request number in the stored history after a restart to avoid duplicate writes. The unmodified develop template declares an effect limit of 87 units.
 
 When a worker turn ends with `claude-turn-interrupted`, the develop template runs the turn again once in the same work tree. This occurs when the daemon cannot resume an open turn after a restart, for example when the turn has no recorded session. The prompt of the new turn tells the worker that the earlier turn stopped before its report, and that the work tree holds its work. A second interruption of the same turn ends the run as blocked with the reason `turn-interrupted` and adds `cloving: blocked`. Other turn failures fail the run.
 
@@ -1575,7 +1575,7 @@ When a run stops and the pull request stays open, read the review. Fix the work 
 
 Know these limits before you start:
 
-- The cost limit of each Claude turn is 5 USD. A run of `develop` can have up to four Claude turns. `CLOVING_CLAUDE_COMMAND` changes the command and its limit.
+- The cost limit of each Claude turn is 5 USD. A run of `develop` can have up to six rounds, and each round has one Claude turn. An interrupted turn runs again once. `CLOVING_CLAUDE_COMMAND` changes the command and its limit.
 - The text of a pull request is public in a public repository. The worker gets an instruction to write no local file path in a file or in a commit message.
 - `CLOVING_PRIVATE_TEXTS` adds texts that the GitHub worker refuses to push, for example the names of private projects. The path of the home folder is always refused.
 - The default develop workflow runs `checks.beforeMerge` before merging. With no configured command, it stops with `check-not-configured` and leaves the pull request open. This repository commits `["npm", "run", "check:quality"]` as that command and requires the CI checks `quality` and `quality_linux` in `.cloving/config.json`. An environment or private-file override takes precedence.
