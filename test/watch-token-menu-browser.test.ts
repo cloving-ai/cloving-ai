@@ -95,7 +95,7 @@ const point = (value: Record<string, unknown>) => ({
   y: Number(value["y"]),
 });
 
-const waited = (expression: string, expected: unknown) => `(async () => {
+const waited = (expression: string, expected: object) => `(async () => {
   const want = ${JSON.stringify(JSON.stringify(expected))};
   const frame = () => new Promise((resolve) => requestAnimationFrame(resolve));
   await document.fonts.ready;
@@ -117,12 +117,15 @@ async function reached(
   check: {
     readonly name: string;
     readonly expression: string;
-    readonly expected: unknown;
+    readonly expected: object;
   },
 ): Promise<void> {
-  const shown = (await page.evaluate(waited(check.expression, check.expected)))[
-    "value"
-  ];
+  const reply = await page.evaluate(waited(check.expression, check.expected));
+  const shown = reply["value"];
+  assert.ok(
+    typeof shown === "object" && shown !== null,
+    `${check.name}: ${JSON.stringify(shown)}`,
+  );
   assert.deepEqual(
     shown,
     check.expected,
@@ -144,7 +147,7 @@ await test("CLV-354 the token menu sits inside each card with no empty row, a ca
   await page.navigate(fixture.url);
   await reached(page, {
     name: "menus",
-    expression: ready,
+    expression: `({ menus: document.querySelectorAll(".tokens .token-menu").length })`,
     expected: { menus: 3 },
   });
   await reached(page, {
