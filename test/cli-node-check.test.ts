@@ -22,8 +22,11 @@ const refusedCommands = [
   ["phone", "pair"],
   ["themes", "list"],
   ["workflows", "list"],
+  ["workflows", "list", "--", "-h"],
+  ["workflows", "test", "--", "--help"],
   ["workflows", "validate", "workflow.json"],
   ["templates", "list"],
+  ["templates", "show", "--", "--help"],
   ["red-green"],
   ["red-green", "-h"],
   ["integrations", "mcp"],
@@ -91,11 +94,28 @@ function nodeVersion(version: string): NodeJS.ProcessEnv {
   };
 }
 
+function olderNode(version: string): NodeJS.ProcessEnv {
+  const hooks = `import { registerHooks } from "node:module";
+const names = Object.keys(process.getBuiltinModule("node:module")).filter((name) => name !== "findPackageJSON");
+const facade = "data:text/javascript," + encodeURIComponent(
+  "const m = process.getBuiltinModule('node:module'); export default m; " +
+    names.map((name) => "export const " + name + " = m." + name + ";").join(" "),
+);
+registerHooks({
+  resolve: (specifier, context, nextResolve) =>
+    specifier === "node:module" ? { url: facade, shortCircuit: true } : nextResolve(specifier, context),
+});`;
+  const encoded = Buffer.from(hooks).toString("base64");
+  return {
+    NODE_OPTIONS: `${nodeVersion(version)["NODE_OPTIONS"] ?? ""} --import=data:text/javascript;base64,${encoded}`,
+  };
+}
+
 function cli(
   scene: DoctorScene,
   input: {
     readonly argumentsList: readonly string[];
-    readonly version: string;
+    readonly environment: NodeJS.ProcessEnv;
   },
 ) {
   return spawnSync(
@@ -103,7 +123,7 @@ function cli(
     [resolve("src/cli.ts"), ...input.argumentsList],
     {
       cwd: scene.repository,
-      env: { ...scene.environment, ...nodeVersion(input.version) },
+      env: { ...scene.environment, ...input.environment },
       encoding: "utf8",
       timeout: 20000,
     },
@@ -126,7 +146,10 @@ await test("CLV-343 start and init on an unsupported Node write one line, exit 1
   withDoctor(async (scene) => {
     const fake = await harness(scene);
     for (const argumentsList of [["init", "--harness", fake], ["start"]]) {
-      const result = cli(scene, { argumentsList, version: "v24.18.0" });
+      const result = cli(scene, {
+        argumentsList,
+        environment: nodeVersion("v24.18.0"),
+      });
       assert.equal(result.status, 1, argumentsList.join(" "));
       assert.equal(result.stderr, refusal);
       assert.equal(result.stdout, "");
@@ -143,11 +166,14 @@ await test("CLV-343 version, help and doctor still run on an unsupported Node", 
   withDoctor(async (scene) => {
     const version = cli(scene, {
       argumentsList: ["--version"],
-      version: "v24.18.0",
+      environment: nodeVersion("v24.18.0"),
     });
     assert.equal(version.status, 0, version.stderr);
     assert.match(version.stdout, /^\d+\.\d+\.\d+\n$/);
-    const help = cli(scene, { argumentsList: ["--help"], version: "v24.18.0" });
+    const help = cli(scene, {
+      argumentsList: ["--help"],
+      environment: nodeVersion("v24.18.0"),
+    });
     assert.equal(help.status, 0, help.stderr);
     assert.match(help.stdout, /^Usage: cloving/);
     const report = await scene.report(nodeVersion("v24.18.0"));
@@ -158,12 +184,41 @@ await test("CLV-343 version, help and doctor still run on an unsupported Node", 
     );
   }));
 
+await test("CLV-343 a Node without findPackageJSON in node:module still gets the unsupported-node line", () =>
+  withDoctor(async (scene) => {
+    const environment = olderNode("v22.13.1");
+    const started = cli(scene, { argumentsList: ["start"], environment });
+    assert.equal(started.stderr, refusal.replace("v24.18.0", "v22.13.1"));
+    assert.equal(started.status, 1);
+    const version = cli(scene, { argumentsList: ["--version"], environment });
+    assert.equal(version.status, 0, version.stderr);
+    assert.match(version.stdout, /^\d+\.\d+\.\d+\n$/);
+    for (const argumentsList of [
+      ["--help"],
+      ["start", "--help"],
+      ["workflows", "list", "--help"],
+      ["workflows", "test", "-h"],
+      ["templates", "--help"],
+      ["red-green", "--help"],
+    ]) {
+      const help = cli(scene, { argumentsList, environment });
+      assert.equal(
+        help.status,
+        0,
+        `${argumentsList.join(" ")}: ${help.stderr}`,
+      );
+      assert.match(help.stdout, /^Usage: cloving/);
+    }
+    const report = await scene.report(environment);
+    assert.equal(check(report, "node-version")["result"], "fail");
+  }));
+
 await test("CLV-343 init on a supported Node starts the harness", () =>
   withDoctor(async (scene) => {
     const fake = await harness(scene);
     const result = cli(scene, {
       argumentsList: ["init", "--harness", fake],
-      version: "v26.12.1",
+      environment: nodeVersion("v26.12.1"),
     });
     assert.equal(result.status, 7, result.stderr);
     await access(join(scene.repository, "started.json"));

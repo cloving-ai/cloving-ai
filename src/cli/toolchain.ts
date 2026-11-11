@@ -1,4 +1,4 @@
-import { findPackageJSON } from "node:module";
+import nodeModule from "node:module";
 import { createHash } from "node:crypto";
 import { access, readFile, realpath } from "node:fs/promises";
 import { dirname, join } from "node:path";
@@ -115,7 +115,7 @@ async function packageDirectory(
   name: string,
 ): Promise<string | undefined> {
   try {
-    const file = findPackageJSON(name, join(start, "package.json"));
+    const file = nodeModule.findPackageJSON(name, join(start, "package.json"));
     return file === undefined ? undefined : dirname(await realpath(file));
   } catch (error) {
     if (
