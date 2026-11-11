@@ -15,6 +15,7 @@ import { doctorWorkflows, workflowObservation } from "./doctor-workflows.ts";
 import { runtimeObservation, serviceObservation } from "./doctor-runtime.ts";
 import type { ProbeRunner } from "./probe-command.ts";
 import type { TurnProfiles } from "../turn-profile.ts";
+import type { HarnessSettings } from "../harness-defaults.ts";
 import { harnessObservations } from "./doctor-harness.ts";
 import { retentionObservation } from "./doctor-retention.ts";
 import { themeObservation } from "./doctor-theme.ts";
@@ -168,6 +169,7 @@ async function repositoryObservations(
 
 async function settingObservations(context: {
   readonly environment: Readonly<NodeJS.ProcessEnv>;
+  readonly harness?: HarnessSettings["harness"];
   readonly profiles?: TurnProfiles;
   readonly repository: string;
   readonly probe: ProbeRunner;

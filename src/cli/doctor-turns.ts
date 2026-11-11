@@ -1,6 +1,9 @@
-import { rmSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { shellTurnCommand } from "../agent-harness-shell.ts";
 import type { DoctorObservation } from "../doctor-report.ts";
+import { turnShell, type HarnessSettings } from "../harness-defaults.ts";
 import type { TurnProfile } from "../turn-profile.ts";
 import type { ProbeOutput, ProbeRunner } from "./probe-command.ts";
 import type { ProfileRunners } from "./doctor-runners.ts";
@@ -70,11 +73,16 @@ function configuredSignatures(
 function signatureError(output: ProbeOutput): string {
   if (output.reason === "probe-timeout")
     return `the signature did not end in ${String(signatureMilliseconds / 1000)} seconds`;
-  const line = (output.stderr ?? "")
+  const lines = (output.stderr ?? "")
     .split("\n")
     .map((text) => text.trim())
-    .find((text) => text !== "");
-  return line ?? String(output.reason);
+    .filter((text) => text !== "");
+  const line = lines.find((text) => /^(?:error|fatal): /.test(text));
+  return line ?? lines[0] ?? String(output.reason);
+}
+
+function lastLine(output: ProbeOutput): string {
+  return output.stdout.trim().split("\n").at(-1)?.trim() ?? "";
 }
 
 interface SignatureContext {
@@ -82,6 +90,7 @@ interface SignatureContext {
   readonly environment: Readonly<NodeJS.ProcessEnv>;
   readonly probe: ProbeRunner;
   readonly variables: TurnVariables;
+  readonly harness?: HarnessSettings["harness"];
 }
 
 interface SignatureTarget {
@@ -94,9 +103,42 @@ interface TargetResult {
   readonly detail: string;
 }
 
+function turnShellOf(
+  context: SignatureContext,
+  profile: TurnProfile,
+): string | undefined {
+  const worker = context.environment["CLOVING_WORKER"];
+  return turnShell(
+    {
+      ...(worker === undefined ? {} : { worker }),
+      ...(context.harness === undefined ? {} : { harness: context.harness }),
+      shell: context.environment["SHELL"] ?? "/bin/sh",
+    },
+    profile,
+  );
+}
+
 async function targetGit(
   context: SignatureContext & { readonly profile: TurnProfile },
   parts: readonly string[],
+): Promise<ProbeOutput> {
+  const command = ["git", ...parts];
+  const shell = turnShellOf(context, context.profile);
+  if (shell === undefined) return runnerGit(context, command);
+  const configuration = mkdtempSync(join(tmpdir(), "cloving-doctor-gh-"));
+  try {
+    return await runnerGit(
+      context,
+      shellTurnCommand(shell, { configuration, parts: command }),
+    );
+  } finally {
+    rmSync(configuration, { recursive: true, force: true });
+  }
+}
+
+async function runnerGit(
+  context: SignatureContext & { readonly profile: TurnProfile },
+  command: readonly string[],
 ): Promise<ProbeOutput> {
   const { environment, probe, profile } = context;
   const setup = runnerSetup(
@@ -107,7 +149,7 @@ async function targetGit(
       turnId: "doctor-signature",
     },
     {
-      command: ["git", ...parts],
+      command,
       environment: {
         ...passedVariables(environment, {
           worker: profile.harness ?? environment["CLOVING_WORKER"] ?? "claude",
@@ -157,17 +199,17 @@ async function targetSignature(
       "fail",
       `A turn cannot read commit.gpgsign: ${signatureError(signing)}`,
     );
-  if (signing.stdout.trim() !== "true")
+  if (lastLine(signing) !== "true")
     return result("off", "Commit signatures are off");
   const configured = await git(["config", "--get", "gpg.format"]);
-  const format = configured.stdout.trim() || "openpgp";
+  const format = lastLine(configured) || "openpgp";
   const tree = await git(["hash-object", "-t", "tree", "/dev/null"]);
   const signed = await git([
     "commit-tree",
     "-S",
     "-m",
     "cloving doctor test signature",
-    tree.stdout.trim(),
+    lastLine(tree),
   ]);
   return signed.reason === null
     ? result("ok", `A turn can sign commits (gpg.format ${format})`)
@@ -210,6 +252,7 @@ export async function commitSignatureObservation(context: {
   readonly environment: Readonly<NodeJS.ProcessEnv>;
   readonly probe: ProbeRunner;
   readonly runners: ProfileRunners | undefined;
+  readonly harness?: HarnessSettings["harness"];
 }): Promise<DoctorObservation> {
   const { environment } = context;
   const signatures = configuredSignatures(environment);

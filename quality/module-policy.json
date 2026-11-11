@@ -1319,6 +1319,7 @@
     "test/doctor-runtime.test.ts": "test",
     "test/doctor-shell-harness.test.ts": "test",
     "test/doctor-shell.test.ts": "test",
+    "test/doctor-signature-fixture.ts": "test",
     "test/doctor-theme.test.ts": "test",
     "test/doctor-thread-pool.test.ts": "test",
     "test/doctor-turn-environment.test.ts": "test",

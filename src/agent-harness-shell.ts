@@ -22,6 +22,22 @@ shift
 ${shellRunScript}
 `;
 
+export function shellTurnCommand(
+  shell: string,
+  turn: { readonly configuration: string; readonly parts: readonly string[] },
+): string[] {
+  return [
+    shell,
+    "-l",
+    "-i",
+    "-c",
+    shellTurnScript,
+    "cloving-harness",
+    turn.configuration,
+    ...turn.parts,
+  ];
+}
+
 export const shellDiscoveryScript = `
 set +m
 if [ -z "\${ZSH_VERSION-}" ] && [ -z "\${BASH_VERSION-}" ]; then exit 64; fi

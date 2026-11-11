@@ -32,7 +32,7 @@ import { usageOf, type ResumeReason, type RetryKind } from "../worker-usage.ts";
 export { streamResult, capacityRefusal, retryKind } from "./claude-stream.ts";
 export type { Worker, StreamResult } from "./claude-stream.ts";
 export type { TurnProgress } from "./turn-stream.ts";
-import { shellTurnScript } from "../agent-harness-shell.ts";
+import { shellTurnCommand } from "../agent-harness-shell.ts";
 import type { TurnRunner } from "../turn-runner.ts";
 import { runnerLaunch, type RunnerLaunch } from "./turn-runner-spawn.ts";
 import { attachedTurn, detachedTurn, type TurnExit } from "./detached-turn.ts";
@@ -133,16 +133,7 @@ function spawnTurn(start: TurnStart): {
   const command =
     start.shell === undefined
       ? parts
-      : [
-          start.shell,
-          "-l",
-          "-i",
-          "-c",
-          shellTurnScript,
-          "cloving-harness",
-          configuration,
-          ...parts,
-        ];
+      : shellTurnCommand(start.shell, { configuration, parts });
   const environment = turnEnvironment(configuration, start);
   const launch = runnerLaunch(start, {
     command,

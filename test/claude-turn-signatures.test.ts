@@ -18,7 +18,8 @@ function printer(scene: Scene): readonly string[] {
     script,
     `import { spawnSync } from "node:child_process";
 for await (const chunk of process.stdin) String(chunk);
-const read = (key) => spawnSync("git", ["config", "--get", key], { encoding: "utf8" }).stdout.trim();
+const machine = { GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: "/dev/null" };
+const read = (key) => spawnSync("git", ["config", "--get", key], { encoding: "utf8", env: { ...process.env, ...machine } }).stdout.trim();
 const config = { commit: read("commit.gpgsign"), tag: read("tag.gpgsign"), safe: read("safe.directory"), fixture: read("core.fixture") };
 console.log(JSON.stringify({ type: "result", is_error: false, result: JSON.stringify({ config }) }));
 `,

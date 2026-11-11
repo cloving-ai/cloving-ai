@@ -168,6 +168,17 @@ function turnSettings(settings: HarnessSettings): {
   };
 }
 
+export function turnShell(
+  settings: HarnessSettings,
+  profile: { readonly harness?: string } = {},
+): string | undefined {
+  const name =
+    profile.harness ?? settings.worker ?? settings.harness?.name ?? "claude";
+  return matchingHarness(settings, name).kind === "shell"
+    ? (settings.shell ?? "/bin/sh")
+    : undefined;
+}
+
 export function turnHarness(
   settings: HarnessSettings,
   profile: { readonly harness?: string; readonly runner?: TurnRunner } = {},
@@ -182,12 +193,12 @@ export function turnHarness(
 } {
   const name =
     profile.harness ?? settings.worker ?? settings.harness?.name ?? "claude";
-  const saved = matchingHarness(settings, name);
+  const shell = turnShell(settings, profile);
   return {
     worker: name,
     ...turnSettings(settings),
     ...selectedCommand(settings, name),
-    ...(saved.kind === "shell" ? { shell: settings.shell ?? "/bin/sh" } : {}),
+    ...(shell === undefined ? {} : { shell }),
     ...(profile.runner === undefined ? {} : { runner: profile.runner }),
   };
 }
