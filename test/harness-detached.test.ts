@@ -1,7 +1,16 @@
 import assert from "node:assert/strict";
-import { existsSync, readFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { test } from "node:test";
 import { heldWork } from "../src/work-gap.ts";
+import { activityOutput } from "../src/daemon/turn-activity.ts";
 import { hostWorkReads } from "../tools/self-update-host.ts";
 import {
   alive,
@@ -280,4 +289,27 @@ await test("CLV-349 the README Restart section lists each kind of turn that keep
     section.replaceAll("\n", " "),
     /A turn of a text harness \(a harness with `turn` and no stream output\) and a turn that waits for a retry still stop at a restart\./,
   );
+});
+
+await test("CLV-349 a later attempt in the pipe start appends its transcript after a blank line", async () => {
+  const folder = mkdtempSync(join(tmpdir(), "cloving-activity-"));
+  try {
+    writeFileSync(join(folder, "turn.jsonl"), "first\n");
+    const output = activityOutput({
+      folder,
+      laterAttempt: { folder, attempt: 2 },
+      prompt: "Continue.",
+    });
+    await new Promise<void>((settle) => {
+      output.end("second\n", () => {
+        settle();
+      });
+    });
+    assert.equal(
+      readFileSync(join(folder, "turn.jsonl"), "utf8"),
+      "first\n\nsecond\n",
+    );
+  } finally {
+    rmSync(folder, { recursive: true, force: true });
+  }
 });
