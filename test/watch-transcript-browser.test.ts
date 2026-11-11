@@ -267,32 +267,17 @@ const colors = `(() => {
 
 async function expandChecked(page: BrowserPage): Promise<void> {
   const capped = await waitedFor(page, expandWait("false"));
-  assert.ok(
-    Math.abs(Number(capped["height"]) - 500) <= 1,
-    JSON.stringify(capped),
-  );
-  assert.ok(Number(capped["scroll"]) > 500, JSON.stringify(capped));
-  assert.ok(
-    Number(capped["right"]) >= Number(capped["edge"]) - 48,
-    JSON.stringify(capped),
-  );
-  assert.ok(
-    Number(capped["bottom"]) <= Number(capped["top"]) + 1,
-    JSON.stringify(capped),
-  );
+  assert.ok(Math.abs(capped.height - 500) <= 1, JSON.stringify(capped));
+  assert.ok(capped.scroll > 500, JSON.stringify(capped));
+  assert.ok(capped.right >= capped.edge - 48, JSON.stringify(capped));
+  assert.ok(capped.bottom <= capped.top + 1, JSON.stringify(capped));
   await page.click(".transcript-expand");
   const open = await waitedFor(page, expandWait("true"));
-  assert.ok(Number(open["height"]) > 500, JSON.stringify(open));
-  assert.ok(
-    Math.abs(Number(open["height"]) - Number(open["scroll"])) <= 1,
-    JSON.stringify(open),
-  );
+  assert.ok(open.height > 500, JSON.stringify(open));
+  assert.ok(Math.abs(open.height - open.scroll) <= 1, JSON.stringify(open));
   await page.click(".transcript-expand");
   const closed = await waitedFor(page, expandWait("false"));
-  assert.ok(
-    Math.abs(Number(closed["height"]) - 500) <= 1,
-    JSON.stringify(closed),
-  );
+  assert.ok(Math.abs(closed.height - 500) <= 1, JSON.stringify(closed));
 }
 
 await test("CLV-333 CLV-355 the terminal panel is dark in the light and the dark scheme, a short open turn is short, a long one starts at 500 pixels with its own scroll and an expand button at the top right that shows all its lines and returns to 500 pixels, each tool call keeps its fold count on its own line, agent text shows its Markdown, and the full-screen link shows only the panel at the size of the window", () =>
@@ -305,17 +290,17 @@ await test("CLV-333 CLV-355 the terminal panel is dark in the light and the dark
       const page = await browser.page({ width: 1200, height: 900 });
       await page.navigate(`${watch.address}#run=${turn.live.runId}`);
       const detail = await waitedFor(page, panelWait);
-      assert.ok(Number(detail["height"]) < 200, JSON.stringify(detail));
+      assert.ok(detail.height < 200, JSON.stringify(detail));
       const calls = Array.from({ length: 40 }, (_, index) => paired(index));
       await appendFile(
         turn.stream,
         `${calls.join("\n")}\n${said("**Checked.** All `tests` pass.")}\n`,
       );
       const lines = await waitedFor(page, compactWait);
-      assert.equal(lines["calls"], 40, JSON.stringify(lines));
-      assert.ok(Number(lines["tallest"]) <= 24, JSON.stringify(lines));
-      assert.equal(lines["sameRow"], true, JSON.stringify(lines));
-      assert.equal(lines["strong"], "Checked.", JSON.stringify(lines));
+      assert.equal(lines.calls, 40, JSON.stringify(lines));
+      assert.ok(lines.tallest <= 24, JSON.stringify(lines));
+      assert.equal(lines.sameRow, true, JSON.stringify(lines));
+      assert.equal(lines.strong, "Checked.", JSON.stringify(lines));
       await expandChecked(page);
       const { light, dark } = await page.evaluate(colors);
       assert.ok(Number(fields(light)["page"]) > 0.8, JSON.stringify(light));
@@ -363,11 +348,8 @@ await test("CLV-355 in an expanded turn, Jump to the end with its count stays in
       await page.evaluate(turnAtTop);
       await appendFile(turn.stream, `${said("one")}\n${said("two")}\n`);
       const jump = await waitedFor(page, jumpWait(2));
-      assert.ok(Number(jump["top"]) >= 0, JSON.stringify(jump));
-      assert.ok(
-        Number(jump["bottom"]) <= Number(jump["window"]),
-        JSON.stringify(jump),
-      );
+      assert.ok(jump.top >= 0, JSON.stringify(jump));
+      assert.ok(jump.bottom <= jump.window, JSON.stringify(jump));
     } finally {
       assert.equal(await watch.stop(), 0);
     }

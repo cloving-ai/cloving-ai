@@ -2135,6 +2135,7 @@
     "test/watch-transcript-expand.test.ts": "test",
     "test/watch-transcript-stream.test.ts": "test",
     "test/watch-transcript-view.test.ts": "test",
+    "test/watch-transcript-waits.test.ts": "test",
     "test/watch-turn.test.ts": "test",
     "test/watch-usage.test.ts": "test",
     "test/watch-version.test.ts": "test",
