@@ -1,3 +1,4 @@
+export const maximumQueueLanes = 16;
 export type MemoryPressure = "normal" | "warn" | "critical" | "unknown";
 
 export type PressureLimit = "normal" | "warn";
@@ -84,7 +85,8 @@ export function queueLimitsOf(value: unknown): QueueLimits | undefined {
   const workingLanes: unknown = Reflect.get(value, "workingLanes");
   const given: unknown = Reflect.get(value, "room");
   const reserve = reserveOf(value);
-  if (!wholeIn(lanes, 16) || !wholeIn(workingLanes, lanes)) return undefined;
+  if (!wholeIn(lanes, maximumQueueLanes) || !wholeIn(workingLanes, lanes))
+    return undefined;
   if (reserve === undefined) return undefined;
   const room = roomOf(given);
   if (given !== undefined && room === undefined) return undefined;

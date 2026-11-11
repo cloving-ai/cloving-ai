@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -13,6 +19,7 @@ import {
   withScene,
 } from "./claude-worker-fixture.ts";
 import { activeOwners, ownTurn } from "../src/daemon/turn-owners.ts";
+import { keptTurn } from "../src/daemon/claude-attach.ts";
 import { stopLeftProcesses } from "../src/daemon/worktree-processes.ts";
 import { resumeWorktree } from "../src/daemon/resume-worktree.ts";
 
@@ -204,7 +211,7 @@ await test("CLV-346 the resume cleanup stops the processes of the dead session a
     }
   }));
 
-await test("CLV-346 a running turn owns its work tree until its process exits", () =>
+await test("CLV-346 CLV-337 a running turn owns its work tree through its start program until its process exits", () =>
   withScene(async (scene) => {
     const worker = scene.worker("hold");
     await worker.deliver(intent(), signal);
@@ -213,9 +220,37 @@ await test("CLV-346 a running turn owns its work tree until its process exits", 
     assert.ok(turn !== undefined);
     await until(async () => (await activeOwners(turn.directory)).length === 1);
     assert.deepEqual(await activeOwners(turn.directory), [
-      { runId: "run-1", processId: turn.processId },
+      { runId: "run-1", processId: turn.parentId },
     ]);
     await worker.close();
     await until(() => !alive(turn.processId));
+    await until(async () => (await activeOwners(turn.directory)).length === 0);
+  }));
+
+await test("CLV-346 CLV-337 a kept turn stays an active turn when its worker closes, the journal names it as a kept turn, and a new worker that connects to it owns it until it ends", () =>
+  withScene(async (scene) => {
+    const first = scene.worker("gated-lines");
+    await first.deliver(intent(), signal);
+    await until(() => scene.turns().length === 1);
+    const [turn] = scene.turns();
+    assert.ok(turn !== undefined);
+    const owner = { runId: "run-1", processId: turn.parentId };
+    await until(async () => (await activeOwners(turn.directory)).length === 1);
+    assert.deepEqual(await activeOwners(turn.directory), [owner]);
+    await first.close({ turns: "keep" });
+    assert.equal(alive(turn.processId), true);
+    assert.deepEqual(await activeOwners(turn.directory), [owner]);
+    const kept = await keptTurn(scene.journal, intent());
+    assert.equal(kept?.directory, turn.directory);
+    assert.equal(kept.runId, "run-1");
+    assert.equal(kept.launch.processId, turn.parentId);
+    const next = scene.worker("gated-lines");
+    await next.hold(intent());
+    await next.hold(intent({ operationId: "operation-2" }));
+    assert.deepEqual(await activeOwners(turn.directory), [owner]);
+    assert.equal((await next.reconcile(intent(), signal)).kind, "accepted");
+    assert.deepEqual(await activeOwners(turn.directory), [owner]);
+    writeFileSync(join(scene.directory, "turns.log.gate"), "");
+    await until(() => scene.reports.length === 1);
     await until(async () => (await activeOwners(turn.directory)).length === 0);
   }));

@@ -4,6 +4,7 @@ import type {
   ProtectedIntent,
 } from "../broker/actor/delivery-intents.ts";
 import type { TurnSettings } from "../project-settings.ts";
+import type { TurnRecovery } from "../turn-recovery.ts";
 import type { Located, WorkerReport } from "./operation-journal.ts";
 import type { RetriedTurn, RetrySettings } from "./retrying-turn.ts";
 import type { NoteDesk, NotePort } from "./turn-notes.ts";
@@ -21,6 +22,7 @@ export interface ClaudeWorkerSettings
   readonly report: (report: WorkerReport) => Promise<unknown>;
   readonly stopMilliseconds?: number;
   readonly notes?: NotePort;
+  readonly recovered?: (recovery: TurnRecovery) => void;
 }
 
 export const claudeLimits = {
@@ -46,6 +48,7 @@ export interface Parts {
   readonly settings: ClaudeWorkerSettings;
   readonly active: Map<string, Active>;
   readonly stopping: AbortController;
+  readonly release: AbortController;
   readonly notes: NoteDesk;
 }
 

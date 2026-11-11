@@ -65,17 +65,31 @@ function launched(
   return { name: settings.name, child, ended };
 }
 
+export const turnKeepingSignal = "SIGUSR2";
+
+export interface ProgramStop {
+  readonly milliseconds: number;
+  readonly turns?: "keep";
+}
+
+function stopSignal(program: Program, stop: ProgramStop): NodeJS.Signals {
+  return stop.turns === "keep" && program.name === "daemon"
+    ? turnKeepingSignal
+    : "SIGTERM";
+}
+
 export async function stopped(
   programs: readonly Program[],
-  milliseconds: number,
+  stop: ProgramStop,
 ): Promise<void> {
+  const { milliseconds } = stop;
   for (const program of programs)
     if (
       !program.child.killed &&
       program.child.exitCode === null &&
       program.child.signalCode === null
     )
-      program.child.kill("SIGTERM");
+      program.child.kill(stopSignal(program, stop));
   await Promise.all(
     programs.map(async (program) => {
       const timer = setTimeout(() => {
@@ -261,6 +275,7 @@ async function stillRunning(
 
 export interface ChildrenStop {
   readonly stop: () => Promise<readonly string[]>;
+  readonly resume: () => void;
   readonly held: () => Promise<boolean> | undefined;
   readonly end: () => void;
 }
@@ -275,22 +290,26 @@ export function childrenStop(
       if (program.name === "relay" && !running(program))
         hosted.programs[index] = productChild(settings, ["relay"]);
   };
+  const resume = (): void => {
+    relaunched();
+    const pause = hold;
+    hold = undefined;
+    pause?.resolve(true);
+  };
   return {
     stop: async () => {
-      const pause = Promise.withResolvers<boolean>();
-      hold = pause;
+      hold = Promise.withResolvers<boolean>();
       const alive = await stillRunning(
         hosted.programs.filter((program) => program !== hosted.daemon),
         settings.stopMilliseconds ?? 60000,
       );
       if (alive.length === 0) return [];
-      relaunched();
-      hold = undefined;
-      pause.resolve(true);
+      resume();
       return alive.map(
         (program) => `${String(program.child.pid)} ${program.name}`,
       );
     },
+    resume,
     held: () => hold?.promise,
     end: () => {
       hold?.resolve(false);

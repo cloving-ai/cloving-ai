@@ -66,6 +66,9 @@ export async function restartFields(context: ServiceContext): Promise<Fields> {
     ...(context.settingSources === undefined
       ? {}
       : { settingSources: context.settingSources }),
+    ...(context.turnRecovery === undefined
+      ? {}
+      : { turnRecovery: context.turnRecovery.fields() }),
     ...(context.restart === undefined
       ? {}
       : {
@@ -132,7 +135,7 @@ export async function restartOperation(
   if (cancel === true)
     return result("restart", { restart: { state: await port.cancel() } });
   if (!isRestartTime(at))
-    return invalidRequest("A restart needs --at gap or --at now.");
+    return invalidRequest("A restart needs --at keep, --at gap or --at now.");
   if (parameters["update"] === true && typeof context.commit !== "string")
     return failed("update-unavailable", {
       commandId,
