@@ -1,6 +1,6 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { shellTurnCommand } from "../agent-harness-shell.ts";
 import type { DoctorObservation } from "../doctor-report.ts";
 import { turnShell, type HarnessSettings } from "../harness-defaults.ts";
@@ -73,16 +73,61 @@ function configuredSignatures(
 function signatureError(output: ProbeOutput): string {
   if (output.reason === "probe-timeout")
     return `the signature did not end in ${String(signatureMilliseconds / 1000)} seconds`;
-  const lines = (output.stderr ?? "")
+  const line = (output.stderr ?? "")
     .split("\n")
     .map((text) => text.trim())
-    .filter((text) => text !== "");
-  const line = lines.find((text) => /^(?:error|fatal): /.test(text));
-  return line ?? lines[0] ?? String(output.reason);
+    .find((text) => text !== "");
+  return line ?? String(output.reason);
 }
 
-function lastLine(output: ProbeOutput): string {
-  return output.stdout.trim().split("\n").at(-1)?.trim() ?? "";
+const frameScript = `
+marker=$1
+shift
+printf '%s\\n' "$marker"
+printf '%s\\n' "$marker" >&2
+"$@"
+code=$?
+printf '\\n%s\\n' "$marker" >&2
+printf '\\n%s %s\\n' "$marker" "$code"
+`;
+
+function framed(
+  text: string,
+  marker: string,
+): { readonly body: string; readonly rest: string } | undefined {
+  const start = `${marker}\n`;
+  const began = text.indexOf(start);
+  if (began < 0) return undefined;
+  const ended = text.indexOf(`\n${marker}`, began + start.length);
+  if (ended < 0) return undefined;
+  return {
+    body: text.slice(began + start.length, ended),
+    rest: text.slice(ended + marker.length + 1),
+  };
+}
+
+function frameOutput(
+  output: ProbeOutput,
+  frame: { readonly marker: string; readonly shell: string },
+): ProbeOutput {
+  if (output.reason === "probe-timeout") return output;
+  const stdout = framed(output.stdout, frame.marker);
+  const stderr = framed(output.stderr ?? "", frame.marker);
+  const status = /^ (\d+)\n/.exec(stdout?.rest ?? "")?.[1];
+  if (stdout === undefined || stderr === undefined || status === undefined)
+    return {
+      stdout: "",
+      stderr: `the login shell ${frame.shell} did not run git`,
+      exitCode: null,
+      reason: "shell-frame-missing",
+    };
+  const exitCode = Number(status);
+  return {
+    stdout: stdout.body,
+    stderr: stderr.body,
+    exitCode,
+    reason: exitCode === 0 ? null : "probe-exit",
+  };
 }
 
 interface SignatureContext {
@@ -126,11 +171,21 @@ async function targetGit(
   const shell = turnShellOf(context, context.profile);
   if (shell === undefined) return runnerGit(context, command);
   const configuration = mkdtempSync(join(tmpdir(), "cloving-doctor-gh-"));
+  const marker = `__CLOVING_GIT_${basename(configuration)}__`;
+  const framedCommand = [
+    shell,
+    "-c",
+    frameScript,
+    "cloving-frame",
+    marker,
+    ...command,
+  ];
   try {
-    return await runnerGit(
+    const output = await runnerGit(
       context,
-      shellTurnCommand(shell, { configuration, parts: command }),
+      shellTurnCommand(shell, { configuration, parts: framedCommand }),
     );
+    return frameOutput(output, { marker, shell });
   } finally {
     rmSync(configuration, { recursive: true, force: true });
   }
@@ -199,17 +254,17 @@ async function targetSignature(
       "fail",
       `A turn cannot read commit.gpgsign: ${signatureError(signing)}`,
     );
-  if (lastLine(signing) !== "true")
+  if (signing.stdout.trim() !== "true")
     return result("off", "Commit signatures are off");
   const configured = await git(["config", "--get", "gpg.format"]);
-  const format = lastLine(configured) || "openpgp";
+  const format = configured.stdout.trim() || "openpgp";
   const tree = await git(["hash-object", "-t", "tree", "/dev/null"]);
   const signed = await git([
     "commit-tree",
     "-S",
     "-m",
     "cloving doctor test signature",
-    lastLine(tree),
+    tree.stdout.trim(),
   ]);
   return signed.reason === null
     ? result("ok", `A turn can sign commits (gpg.format ${format})`)
@@ -219,12 +274,19 @@ async function targetSignature(
       );
 }
 
-function signatureTargets(runners: ProfileRunners): SignatureTarget[] {
+function signatureTargets(
+  context: SignatureContext,
+  runners: ProfileRunners,
+): SignatureTarget[] {
   const stopped = new Set(runners.problems.map((item) => item.name));
+  const shell = turnShellOf(context, {});
   return Object.entries(runners.profiles).flatMap(([name, profile]) => {
     const boxed =
       profile.runner !== undefined && profile.runner.kind !== "host";
-    const own = boxed || profile.env !== undefined;
+    const own =
+      boxed ||
+      profile.env !== undefined ||
+      turnShellOf(context, profile) !== shell;
     return own && !stopped.has(name)
       ? [{ label: `profile ${name}: `, profile }]
       : [];
@@ -236,7 +298,7 @@ async function testSignatures(
   runners: ProfileRunners,
 ): Promise<DoctorObservation> {
   const results = [await targetSignature(context, { label: "", profile: {} })];
-  for (const target of signatureTargets(runners))
+  for (const target of signatureTargets(context, runners))
     results.push(await targetSignature(context, target));
   const joined = (items: readonly TargetResult[]) =>
     items.map((item) => item.detail).join("; ");

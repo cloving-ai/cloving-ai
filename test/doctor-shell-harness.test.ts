@@ -76,7 +76,10 @@ await test("CLV-207 default-harness probes a saved shell harness from the reposi
 
 async function shellSigning(
   scene: DoctorScene,
-  startup: { readonly exportsAgent: boolean },
+  startup: {
+    readonly exportsAgent: boolean;
+    readonly lines?: readonly string[];
+  },
 ): Promise<void> {
   await signing(scene, { format: "ssh", body: agentSigner });
   await savedHarness(scene, { kind: "shell", path: "claude_alias" });
@@ -88,9 +91,15 @@ async function shellSigning(
       'echo "a startup note" >&2',
       `alias claude_alias='${join(scene.root, "bin", "claude")}'`,
       ...(startup.exportsAgent ? [agentLine] : []),
+      ...(startup.lines ?? []),
     ].join("\n"),
   );
 }
+
+const exitHook = [
+  'echo "error: a startup message" >&2',
+  "trap 'echo goodbye; echo \"error: an exit message\" >&2' EXIT",
+];
 
 await test("CLV-344 with a saved shell harness, commit-signatures gives ok when the login shell of a turn exports the SSH agent", () =>
   withDoctor(async (scene) => {
@@ -119,6 +128,64 @@ await test("CLV-344 with a saved shell harness whose login shell does not export
     );
   }));
 
+await test("CLV-344 with a login file that prints error lines and sets an exit hook, a turn that can sign gives ok, because the check reads only the output and the exit status of git", () =>
+  withDoctor(async (scene) => {
+    await shellSigning(scene, { exportsAgent: true, lines: exitHook });
+    const shown = check(
+      await scene.report({ SHELL: "/bin/bash" }),
+      "commit-signatures",
+    );
+    assert.equal(shown["result"], "ok");
+    assert.equal(shown["detail"], "A turn can sign commits (gpg.format ssh)");
+  }));
+
+await test("CLV-344 with a login file that prints error lines and sets an exit hook, a turn that cannot sign fails with the error line of git and is never read as off", () =>
+  withDoctor(async (scene) => {
+    await shellSigning(scene, { exportsAgent: false, lines: exitHook });
+    const shown = check(
+      await scene.report({ SHELL: "/bin/bash" }),
+      "commit-signatures",
+    );
+    assert.equal(shown["result"], "fail");
+    assert.equal(
+      shown["detail"],
+      "A turn cannot sign commits (gpg.format ssh): error: signer: no SSH agent",
+    );
+  }));
+
+await test("CLV-344 a login file that ends the shell before the command fails the check and says that the login shell did not run git", () =>
+  withDoctor(async (scene) => {
+    await shellSigning(scene, { exportsAgent: true, lines: ["exit 3"] });
+    const shown = check(
+      await scene.report({ SHELL: "/bin/bash" }),
+      "commit-signatures",
+    );
+    assert.equal(shown["result"], "fail");
+    assert.equal(
+      shown["detail"],
+      "A turn cannot read commit.gpgsign: the login shell /bin/bash did not run git",
+    );
+  }));
+
+await test("CLV-344 with a saved shell harness that exports the SSH agent, a profile with only another harness runs git with no shell, and the check names it when it cannot sign", () =>
+  withDoctor(async (scene) => {
+    await shellSigning(scene, { exportsAgent: true });
+    const file = join(scene.root, "profiles.json");
+    await writeFile(
+      file,
+      JSON.stringify({ profiles: { direct: { harness: "codex" } } }),
+    );
+    const shown = check(
+      await scene.report({ SHELL: "/bin/bash", CLOVING_PROFILES: file }),
+      "commit-signatures",
+    );
+    assert.equal(shown["result"], "fail");
+    assert.equal(
+      shown["detail"],
+      "profile direct: A turn cannot sign commits (gpg.format ssh): error: signer: no SSH agent",
+    );
+  }));
+
 async function signatureCalls(
   kind: "shell" | "file",
 ): Promise<readonly string[][]> {
@@ -135,7 +202,10 @@ async function signatureCalls(
       });
     },
     runners: {
-      profiles: { other: { harness: "codex", env: { NAME: "value" } } },
+      profiles: {
+        other: { harness: "codex", env: { NAME: "value" } },
+        direct: { harness: "codex" },
+      },
       boxed: [],
       problems: [],
     },
@@ -146,8 +216,8 @@ async function signatureCalls(
 
 const configRead = ["git", "config", "--type=bool", "--get", "commit.gpgsign"];
 
-await test("CLV-344 the test signature runs git through the login shell of a turn for a saved shell harness, and runs git directly for a file harness or a profile with another harness", async () => {
-  const [shell = [], shellProfile] = await signatureCalls("shell");
+await test("CLV-344 the test signature runs git in a marked frame through the login shell of a turn for a saved shell harness, and runs git directly for a file harness or a profile with another harness", async () => {
+  const [shell = [], other, direct] = await signatureCalls("shell");
   assert.deepEqual(shell.slice(0, 6), [
     "/bin/zsh",
     "-l",
@@ -156,8 +226,10 @@ await test("CLV-344 the test signature runs git through the login shell of a tur
     shellTurnScript,
     "cloving-harness",
   ]);
-  assert.deepEqual(shell.slice(7), configRead);
   assert.equal(existsSync(String(shell[6])), false);
-  assert.deepEqual(shellProfile, configRead);
+  assert.deepEqual(shell.slice(7, 9), ["/bin/zsh", "-c"]);
+  assert.match(String(shell[11]), /^__CLOVING_GIT_\S+__$/);
+  assert.deepEqual(shell.slice(12), configRead);
+  assert.deepEqual([other, direct], [configRead, configRead]);
   assert.deepEqual(await signatureCalls("file"), [configRead, configRead]);
 });

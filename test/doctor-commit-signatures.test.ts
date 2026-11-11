@@ -320,5 +320,6 @@ await test("CLV-344 the README describes the check and both fixes, and lists the
     readme,
     /the check runs git through the login shell of the turn/,
   );
-  assert.match(readme, /first `error:` or `fatal:` line of git/);
+  assert.match(readme, /reads only the output and the exit status of git/);
+  assert.match(readme, /changes whether a turn starts through the login shell/);
 });
