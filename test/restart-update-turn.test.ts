@@ -43,13 +43,6 @@ async function updatedOrigin(product: string): Promise<string> {
   return target;
 }
 
-async function builtUpdate(product: string): Promise<string> {
-  return await readFile(
-    join(product, "dist/src/steps/protected-effect.js"),
-    "utf8",
-  );
-}
-
 await test("CLV-347 cloving restart --update in the middle of a turn updates the checkout, and the turn goes on with its pinned bundle and ends with its result", async () => {
   const update = { target: "" };
   await withTurnHost(
@@ -76,7 +69,13 @@ await test("CLV-347 cloving restart --update in the middle of a turn updates the
         parameters: {},
       });
       assert.equal(status["serviceCommit"], update.target);
-      assert.match(await builtUpdate(product), /-after-update/);
+      assert.match(
+        await readFile(
+          join(product, "dist/src/steps/protected-effect.js"),
+          "utf8",
+        ),
+        /-after-update/,
+      );
       const updatedBundles = await workflowBundles(fixture.directory);
       assert.equal(updatedBundles.length, 2, updatedBundles.join(" "));
       assert.ok(updatedBundles.includes(String(bundle)));

@@ -73,8 +73,7 @@ await test("CLV-347 after a restart, the end of turn A in a shared work tree kee
     await writeFile(join(fixture.root, "end-a"), "");
     const endedA = await finishedRun(fixture, runA);
     assert.equal(field(endedA, "state"), "completed", JSON.stringify(endedA));
-    const startProgram = Number(field(turnB.launch, "processId"));
-    const processes = [startProgram, turnProcess, child];
+    const processes = [turnB.launch.processId, turnProcess, child];
     await until(
       () =>
         Promise.resolve(

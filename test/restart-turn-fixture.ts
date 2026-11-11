@@ -11,7 +11,10 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
+import { transcriptKinds } from "../src/cli/watch-api-document.ts";
 import { record } from "../src/protocol.ts";
+import { recordedLaunch, type TurnLaunch } from "../src/turn-launch.ts";
+import type { TranscriptEntry } from "../src/turn-transcript.ts";
 import {
   field,
   items,
@@ -26,6 +29,10 @@ const worktree = join(import.meta.dirname, "..");
 
 function noReply(): Readonly<Record<string, unknown>> {
   return {};
+}
+
+function failedCall(error: unknown): Readonly<Record<string, unknown>> {
+  return { kind: "error", detail: String(error) };
 }
 
 export const lineTurn = `
@@ -186,7 +193,7 @@ export async function admittedTurn(
 export interface StartedTurn {
   readonly operationId: string;
   readonly folder: string;
-  readonly launch: unknown;
+  readonly launch: TurnLaunch;
 }
 
 export async function startedTurn(
@@ -200,7 +207,7 @@ export async function startedTurn(
       const started: unknown = JSON.parse(
         await readFile(join(folder, "started.json"), "utf8").catch(() => "{}"),
       );
-      const launch = field(started, "launch");
+      const launch = recordedLaunch(field(started, "launch"));
       const operationId = String(field(started, "operationId"));
       if (operationId.includes(JSON.stringify(runId)) && launch !== undefined)
         return { operationId, folder, launch };
@@ -248,30 +255,64 @@ export async function finishedRun(
 }
 
 export interface TranscriptWatch {
-  readonly entries: () => readonly unknown[];
-  readonly closed: Promise<readonly unknown[]>;
+  readonly entries: () => readonly TranscriptEntry[];
+  readonly closed: Promise<readonly TranscriptEntry[]>;
+}
+
+function nullableText(value: unknown): boolean {
+  return value === null || typeof value === "string";
+}
+
+function isTranscriptEntry(value: unknown): value is TranscriptEntry {
+  const entry = record(value) ?? {};
+  return (
+    [entry["position"], entry["attempt"], entry["omittedBytes"]].every(
+      (count) => Number.isSafeInteger(count),
+    ) &&
+    transcriptKinds.some((kind) => kind === entry["kind"]) &&
+    [entry["text"], entry["summary"]].every(
+      (text) => typeof text === "string",
+    ) &&
+    [entry["tool"], entry["callId"]].every(nullableText) &&
+    typeof entry["error"] === "boolean"
+  );
+}
+
+function pageEntries(
+  page: Readonly<Record<string, unknown>>,
+): readonly TranscriptEntry[] {
+  const shown = items(page["entries"]);
+  const entries = shown.filter(isTranscriptEntry);
+  if (entries.length !== shown.length)
+    throw new Error(
+      `The transcript reply has an unknown entry: ${JSON.stringify(page)}`,
+    );
+  return entries;
 }
 
 export function watchedTranscript(
   scene: Pick<TurnHost, "fixture" | "ending">,
   turn: { readonly runId: string; readonly operationId: string },
 ): TranscriptWatch {
-  const entries: unknown[] = [];
-  const closed = (async () => {
-    let after = 0;
-    while (!scene.ending.aborted) {
-      const page = await call(scene.fixture, {
-        operation: "transcript",
-        parameters: { ...turn, after },
-      }).catch(noReply);
-      const shown = items(page["entries"]);
-      entries.push(...shown);
-      after = typeof page["nextAfter"] === "number" ? page["nextAfter"] : after;
-      if (page["open"] === false && shown.length === 0) return entries;
-      await delay(200);
-    }
-    return entries;
-  })();
+  const entries: TranscriptEntry[] = [];
+  const read = { after: 0, last: "no reply" };
+  const closed = until(async () => {
+    if (scene.ending.aborted) return entries;
+    const page = await call(scene.fixture, {
+      operation: "transcript",
+      parameters: { ...turn, after: read.after },
+    }).catch(failedCall);
+    read.last = JSON.stringify(page);
+    const shown = pageEntries(page);
+    entries.push(...shown);
+    if (typeof page["nextAfter"] === "number") read.after = page["nextAfter"];
+    return page["open"] === false && shown.length === 0 ? entries : undefined;
+  }).catch((error: unknown) => {
+    throw new Error(`The transcript did not close. Last reply: ${read.last}`, {
+      cause: error,
+    });
+  });
+  closed.catch(() => undefined);
   return { entries: () => entries, closed };
 }
 
@@ -282,10 +323,12 @@ export async function workflowBundles(
   return names.filter((name) => /^[0-9a-f]{64}$/.test(name)).sort();
 }
 
-export function assistantTexts(entries: readonly unknown[]): readonly string[] {
+export function assistantTexts(
+  entries: readonly TranscriptEntry[],
+): readonly string[] {
   return entries
-    .filter((entry) => field(entry, "kind") === "assistant")
-    .map((entry) => String(field(entry, "text")));
+    .filter((entry) => entry.kind === "assistant")
+    .map((entry) => entry.text);
 }
 
 export function writtenLines(processId: number): readonly string[] {
