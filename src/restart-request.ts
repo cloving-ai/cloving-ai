@@ -126,7 +126,10 @@ function selectedWorker(request: SetRequest): unknown {
 }
 
 function variableOf(key: string, request: SetRequest): string {
-  const variables = workerSettingVariables(selectedWorker(request));
+  const variables =
+    key === "harness.command"
+      ? workerSettingVariables(selectedWorker(request))
+      : settingVariables;
   const variable = Object.hasOwn(variables, key) ? variables[key] : undefined;
   if (variable !== undefined) return variable;
   settingScope(key);

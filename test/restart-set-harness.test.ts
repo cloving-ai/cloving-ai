@@ -105,6 +105,18 @@ const refusedCommands = [
     key: "harness.name",
     detail: /invalid-setting-value$/,
   },
+  {
+    worker: "codex",
+    set: { "queue.lanes": "8", "harness.name": "1e999" },
+    key: "harness.name",
+    detail: /invalid-setting-value$/,
+  },
+  {
+    worker: "codex",
+    set: { "queue.lanes": "8", "harness.name": "null" },
+    key: "harness.name",
+    detail: /invalid-setting: harness\.name$/,
+  },
 ] as const;
 
 await test("CLV-352 restart --set harness.command refuses a worker with no command variable, a value that is not a command list and an invalid worker name", async () => {
@@ -121,6 +133,11 @@ await test("CLV-352 restart --set harness.command refuses a worker with no comma
       assert.equal(reply["key"], key);
       assert.match(String(reply["detail"]), detail);
       assert.deepEqual(marks, []);
+      const status = await call(harness, {
+        operation: "status",
+        parameters: {},
+      });
+      assert.equal(status["restart"], null);
     });
 });
 
