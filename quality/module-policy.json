@@ -1890,6 +1890,7 @@
     "test/service-pin.test.ts": "test",
     "test/service-question-fixture.ts": "test",
     "test/service-queue-control.test.ts": "test",
+    "test/service-queue-runs.test.ts": "test",
     "test/service-queue-spend.test.ts": "test",
     "test/service-queue-statuses.test.ts": "test",
     "test/service-recovery.test.ts": "test",

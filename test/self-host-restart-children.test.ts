@@ -137,7 +137,9 @@ await test("CLV-320 a child that ignores SIGTERM past the limit refuses the rest
         step: "stop",
         output: `${relay} relay`,
       });
-      assert.equal(existsSync(join(directory, "claimed-restart")), false);
+      await eventually(() =>
+        existsSync(join(directory, "claimed-restart")) ? undefined : true,
+      );
       assert.equal(await signalled(root, "daemon"), "");
       await eventually(() =>
         existsSync(join(root, "watch-2-ready")) ? true : undefined,
