@@ -1,7 +1,7 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
-import { shellTurnCommand } from "../agent-harness-shell.ts";
+import { shellTurnCommand, shellTurnPrelude } from "../agent-harness-shell.ts";
 import type { DoctorObservation } from "../doctor-report.ts";
 import { turnShell, type HarnessSettings } from "../harness-defaults.ts";
 import type { TurnProfile } from "../turn-profile.ts";
@@ -80,15 +80,14 @@ function signatureError(output: ProbeOutput): string {
   return line ?? String(output.reason);
 }
 
-const frameScript = `
-marker=$1
+const frameScript = `${shellTurnPrelude}marker=$1
 shift
-printf '%s\\n' "$marker"
-printf '%s\\n' "$marker" >&2
-"$@"
+builtin printf '%s\\n' "$marker"
+builtin printf '%s\\n' "$marker" >&2
+command -- "$@"
 code=$?
-printf '\\n%s\\n' "$marker" >&2
-printf '\\n%s %s\\n' "$marker" "$code"
+builtin printf '\\n%s\\n' "$marker" >&2
+builtin printf '\\n%s %s\\n' "$marker" "$code"
 `;
 
 function framed(
@@ -172,18 +171,14 @@ async function targetGit(
   if (shell === undefined) return runnerGit(context, command);
   const configuration = mkdtempSync(join(tmpdir(), "cloving-doctor-gh-"));
   const marker = `__CLOVING_GIT_${basename(configuration)}__`;
-  const framedCommand = [
-    shell,
-    "-c",
-    frameScript,
-    "cloving-frame",
-    marker,
-    ...command,
-  ];
   try {
     const output = await runnerGit(
       context,
-      shellTurnCommand(shell, { configuration, parts: framedCommand }),
+      shellTurnCommand(shell, {
+        configuration,
+        parts: [marker, ...command],
+        script: frameScript,
+      }),
     );
     return frameOutput(output, { marker, shell });
   } finally {

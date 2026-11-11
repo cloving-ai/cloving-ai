@@ -14,24 +14,30 @@ else
 fi
 `;
 
-export const shellTurnScript = `
+export const shellTurnPrelude = `
 set +m
 builtin unset GH_TOKEN GITHUB_TOKEN GH_ENTERPRISE_TOKEN GITHUB_ENTERPRISE_TOKEN || exit
 builtin export GH_CONFIG_DIR="$1" || exit
 shift
-${shellRunScript}
+`;
+
+export const shellTurnScript = `${shellTurnPrelude}${shellRunScript}
 `;
 
 export function shellTurnCommand(
   shell: string,
-  turn: { readonly configuration: string; readonly parts: readonly string[] },
+  turn: {
+    readonly configuration: string;
+    readonly parts: readonly string[];
+    readonly script?: string;
+  },
 ): string[] {
   return [
     shell,
     "-l",
     "-i",
     "-c",
-    shellTurnScript,
+    turn.script ?? shellTurnScript,
     "cloving-harness",
     turn.configuration,
     ...turn.parts,

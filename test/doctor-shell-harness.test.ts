@@ -3,7 +3,10 @@ import { existsSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { test } from "node:test";
-import { shellTurnScript } from "../src/agent-harness-shell.ts";
+import {
+  shellTurnPrelude,
+  shellTurnScript,
+} from "../src/agent-harness-shell.ts";
 import { harnessObservations } from "../src/cli/doctor-harness.ts";
 import { commitSignatureObservation } from "../src/cli/doctor-turns.ts";
 import type { ProbeOptions, ProbeRunner } from "../src/cli/probe-command.ts";
@@ -186,6 +189,28 @@ await test("CLV-344 with a saved shell harness that exports the SSH agent, a pro
     );
   }));
 
+await test("CLV-344 a login file that exports BASH_ENV gives the check no extra variables: a turn starts its harness from the login shell with no second shell, so an agent socket in the BASH_ENV file does not let the check sign", () =>
+  withDoctor(async (scene) => {
+    const environmentFile = join(scene.root, "bash-environment.sh");
+    await writeFile(
+      environmentFile,
+      `export SSH_AUTH_SOCK='${join(scene.root, "agent.sock")}'\n`,
+    );
+    await shellSigning(scene, {
+      exportsAgent: false,
+      lines: [`export BASH_ENV='${environmentFile}'`],
+    });
+    const shown = check(
+      await scene.report({ SHELL: "/bin/bash" }),
+      "commit-signatures",
+    );
+    assert.equal(shown["result"], "fail");
+    assert.equal(
+      shown["detail"],
+      "A turn cannot sign commits (gpg.format ssh): error: signer: no SSH agent",
+    );
+  }));
+
 async function signatureCalls(
   kind: "shell" | "file",
 ): Promise<readonly string[][]> {
@@ -216,20 +241,16 @@ async function signatureCalls(
 
 const configRead = ["git", "config", "--type=bool", "--get", "commit.gpgsign"];
 
-await test("CLV-344 the test signature runs git in a marked frame through the login shell of a turn for a saved shell harness, and runs git directly for a file harness or a profile with another harness", async () => {
+await test("CLV-344 the test signature runs git in a marked frame in the one login shell call of a turn for a saved shell harness, and runs git directly for a file harness or a profile with another harness", async () => {
   const [shell = [], other, direct] = await signatureCalls("shell");
-  assert.deepEqual(shell.slice(0, 6), [
-    "/bin/zsh",
-    "-l",
-    "-i",
-    "-c",
-    shellTurnScript,
-    "cloving-harness",
-  ]);
+  assert.deepEqual(shell.slice(0, 4), ["/bin/zsh", "-l", "-i", "-c"]);
+  assert.ok(String(shell[4]).startsWith(shellTurnPrelude));
+  assert.notEqual(shell[4], shellTurnScript);
+  assert.equal(shell[5], "cloving-harness");
   assert.equal(existsSync(String(shell[6])), false);
-  assert.deepEqual(shell.slice(7, 9), ["/bin/zsh", "-c"]);
-  assert.match(String(shell[11]), /^__CLOVING_GIT_\S+__$/);
-  assert.deepEqual(shell.slice(12), configRead);
+  assert.match(String(shell[7]), /^__CLOVING_GIT_\S+__$/);
+  assert.deepEqual(shell.slice(8), configRead);
+  assert.equal(shell.filter((part) => part === "/bin/zsh").length, 1);
   assert.deepEqual([other, direct], [configRead, configRead]);
   assert.deepEqual(await signatureCalls("file"), [configRead, configRead]);
 });
