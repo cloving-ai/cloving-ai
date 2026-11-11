@@ -298,3 +298,92 @@ console.log(JSON.stringify({ shown: ${hidden}, sections }));
   );
   assert.deepEqual(result, { shown: 2, sections: 2 });
 });
+
+await test("CLV-355 the expand button of a turn opens its whole lines area, the turn stays expanded when new entries arrive, and a second click collapses it", () => {
+  const result = transcriptPlayed(
+    { outcome: "in work" },
+    `
+send(streams[0], "entry", entryAt(1));
+await later();
+const expand = () => app.all("button").find((node) => node.getAttribute("class") === "transcript-expand");
+const lines = () => app.all("div").find((node) => node.getAttribute("data-transcript") === operationId)?.getAttribute("class");
+const before = { label: expand()?.getAttribute("aria-label"), lines: lines() };
+expand()?.dispatch("click");
+await later();
+send(streams[0], "entry", entryAt(2));
+await later();
+const opened = { expanded: expand()?.getAttribute("aria-expanded"), lines: lines(), entry: app.inner.includes("Entry 2") };
+expand()?.dispatch("click");
+await later();
+console.log(JSON.stringify({ before, opened, closed: { expanded: expand()?.getAttribute("aria-expanded"), lines: lines() } }));
+`,
+  );
+  assert.deepEqual(result, {
+    before: { label: "Expand transcript", lines: "transcript-lines" },
+    opened: {
+      expanded: "true",
+      lines: "transcript-lines expanded",
+      entry: true,
+    },
+    closed: { expanded: "false", lines: "transcript-lines" },
+  });
+});
+
+await test("CLV-355 an expanded turn counts new entries when its end is below the window after a page scroll, and Jump to the end scrolls the page to its end", () => {
+  const result = transcriptPlayed(
+    { outcome: "in work" },
+    `
+send(streams[0], "entry", entryAt(1));
+await later();
+app.all("button").find((node) => node.getAttribute("class") === "transcript-expand")?.dispatch("click");
+await later();
+let bottom = 2000;
+const pageMoves = [];
+const box = { getAttribute: () => operationId, scrollTop: 0, scrollHeight: 0, getBoundingClientRect: () => ({ bottom }), scrollIntoView: (place) => { pageMoves.push(place.block); } };
+document.querySelectorAll = (selector) => (selector === "[data-transcript]" ? [box] : []);
+listeners.scroll?.();
+send(streams[0], "entry", entryAt(2));
+await later();
+const jump = button("Jump to the end")?.text ?? null;
+button("Jump to the end")?.dispatch("click");
+await later();
+bottom = 700;
+listeners.scroll?.();
+send(streams[0], "entry", entryAt(3));
+await later();
+console.log(JSON.stringify({ jump, scrolled: pageMoves, after: button("Jump to the end") === undefined }));
+`,
+  );
+  assert.deepEqual(result, {
+    jump: "Jump to the end · 1 new entry",
+    scrolled: ["end"],
+    after: true,
+  });
+});
+
+await test("CLV-355 the full-screen view of an expanded turn follows new entries in its own scroll box", () => {
+  const result = transcriptPlayed(
+    { outcome: "in work" },
+    `
+send(streams[0], "entry", entryAt(1));
+await later();
+app.all("button").find((node) => node.getAttribute("class") === "transcript-expand")?.dispatch("click");
+await later();
+const box = { getAttribute: () => operationId, scrollTop: 0, scrollHeight: 900, getBoundingClientRect: () => ({ bottom: 2000 }), scrollIntoView: () => undefined };
+location.hash = "#run=run-1&turn=" + encodeURIComponent(operationId) + "&view=terminal";
+replies.push(model, { run: archived });
+document.querySelectorAll = (selector) => (selector === "[data-transcript]" ? [box] : []);
+listeners.hashchange();
+await later();
+send(streams[0], "entry", entryAt(2));
+await later();
+const lines = app.all("div").find((node) => node.getAttribute("data-transcript") === operationId)?.getAttribute("class");
+console.log(JSON.stringify({ top: box.scrollTop, jump: button("Jump to the end") !== undefined, lines }));
+`,
+  );
+  assert.deepEqual(result, {
+    top: 900,
+    jump: false,
+    lines: "transcript-lines",
+  });
+});
