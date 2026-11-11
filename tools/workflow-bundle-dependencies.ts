@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { access, readFile, realpath } from "node:fs/promises";
-import { findPackageJSON } from "node:module";
+import nodeModule from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { record } from "../src/protocol.ts";
 
@@ -56,7 +56,7 @@ async function manifestFile(
   reference: PackageReference,
 ): Promise<string | undefined> {
   try {
-    const file = findPackageJSON(reference.name, from);
+    const file = nodeModule.findPackageJSON(reference.name, from);
     if (file !== undefined) return await realpath(file);
   } catch (error) {
     if (!(

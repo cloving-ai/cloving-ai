@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
-import { findPackageJSON } from "node:module";
+import nodeModule from "node:module";
 import { dirname, extname, join, resolve } from "node:path";
 import packageMetadata from "#package" with { type: "json" };
 import { record } from "../src/protocol.ts";
@@ -62,12 +62,15 @@ async function initializeProject(settings: ProjectSettings): Promise<void> {
       (name) => [name, join(product, "package.json")] as const,
     ),
   );
-  const sdk = findPackageJSON("workflow", join(product, "package.json"));
+  const sdk = nodeModule.findPackageJSON(
+    "workflow",
+    join(product, "package.json"),
+  );
   if (sdk === undefined)
     throw new Error("missing-runtime-dependency: workflow");
   dependencies.set("@workflow/core", sdk);
   for (const [name, from] of dependencies) {
-    const location = findPackageJSON(name, from);
+    const location = nodeModule.findPackageJSON(name, from);
     if (location === undefined)
       throw new Error(`missing-runtime-dependency: ${name}`);
     await mkdir(dirname(join(modules, name)), { recursive: true });
