@@ -247,7 +247,7 @@ await test("CLV-098 warning tags remain readable over a Stopped card's red tint"
 
 await test("CLV-098 run tones retain green, warning, red and neutral cues and readable code text", () => {
   for (const selector of [
-    ".working .icon, .phase.active .mark, .banner.working h2",
+    ".working .icon, .phase.active .mark, .banner.working .run-status",
     ".good .icon, .phase.done .mark, p.good",
   ])
     assert.match(rule(selector), /color: var\(--color-accent-strong\)/);
