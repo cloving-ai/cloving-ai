@@ -47,7 +47,7 @@ await test("CLV-320 a restart with an update stops the programs at the gap, then
     );
     assert.equal(
       await readFile(join(root, "daemon-signals"), "utf8"),
-      "SIGTERM\n",
+      "SIGUSR2\n",
     );
     assert.equal(await readFile(join(root, "npm-daemon"), "utf8"), "stopped\n");
   }));
@@ -190,6 +190,7 @@ async function checkoutWatch(scene: {
     environment: npmPath(bin),
     milliseconds: 50,
     stopChildren: () => Promise.resolve([]),
+    resumeChildren: () => undefined,
     stopping: scene.stopping.signal,
     stop: scene.stop,
     exclusive: scene.exclusive,

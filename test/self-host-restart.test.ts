@@ -89,7 +89,7 @@ async function openTurn(directory: string): Promise<string> {
   return turn;
 }
 
-await test("CLV-306 a restart at the next gap waits for the open turn and then stops the programs with exit 75", () =>
+await test("CLV-306 CLV-337 a restart at the next gap waits for the open turn and then stops the programs with exit 75, and the daemon gets the signal that keeps turns", () =>
   withHost({}, async ({ root, directory, hosted }) => {
     const turn = await openTurn(directory);
     const hosting = hosted();
@@ -105,12 +105,12 @@ await test("CLV-306 a restart at the next gap waits for the open turn and then s
     assert.equal(existsSync(join(directory, "restart-settings")), false);
     assert.equal(
       await readFile(join(root, "daemon-signals"), "utf8"),
-      "SIGTERM\n",
+      "SIGUSR2\n",
     );
     assert.equal(existsSync(join(directory, "pending-restart-one")), false);
   }));
 
-await test("CLV-306 a restart now stops the programs at once while a turn is open", () =>
+await test("CLV-306 CLV-337 a restart now stops the programs at once while a turn is open, and the daemon gets the signal that keeps turns", () =>
   withHost({}, async ({ root, directory, hosted }) => {
     await openTurn(directory);
     const hosting = hosted();
@@ -129,7 +129,7 @@ await test("CLV-306 a restart now stops the programs at once while a turn is ope
     );
     assert.equal(
       await readFile(join(root, "daemon-signals"), "utf8"),
-      "SIGTERM\n",
+      "SIGUSR2\n",
     );
     assert.equal(existsSync(join(directory, "pending-restart-one")), false);
   }));

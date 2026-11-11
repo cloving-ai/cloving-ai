@@ -150,6 +150,7 @@ import {
 } from "./watch-view.ts";
 import {
   BackLink,
+  BannerBack,
   Brand,
   clove,
   Header,
@@ -296,6 +297,7 @@ const functions = [
   Header,
   RefusedWorkflows,
   BackLink,
+  BannerBack,
   FloorPage,
   BoardPage,
   Page,

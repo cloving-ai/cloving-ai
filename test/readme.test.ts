@@ -224,6 +224,7 @@ function readmeFindings(text: string): readonly string[] {
             "CLOVING_RUN_ID",
             "CLOVING_OPERATION_ID",
             "CLOVING_CHECK_TIME_FACTOR",
+            "CLOVING_CHANGED_PATHS",
             "CLOVING_TEST_CONCURRENCY",
             "CLOVING_TEST_COVERAGE",
             "CLOVING_TEST_PROGRESS_FILE",

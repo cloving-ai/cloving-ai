@@ -77,7 +77,7 @@ await test("CLV-306 cloving restart waits for the new daemon and prints both com
     );
     assert.deepEqual(
       running.marks.map((mark) => [mark.at, mark.commandId, mark.resumeQueue]),
-      [["gap", "restart-one", false]],
+      [["keep", "restart-one", false]],
     );
   }));
 
@@ -182,7 +182,7 @@ await test("CLV-306 cloving restart refuses an unknown time and a cancel with a 
     String(commandUsage["restart"]),
     /--settings environment\|files/,
   );
-  assert.match(String(commandUsage["restart"]), /--at gap\|now/);
+  assert.match(String(commandUsage["restart"]), /--at keep\|gap\|now/);
   assert.match(String(commandUsage["restart"]), /--resume-queue/);
 });
 

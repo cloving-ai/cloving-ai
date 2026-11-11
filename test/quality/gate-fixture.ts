@@ -106,9 +106,12 @@ export async function runtimeGate(): Promise<Record<string, string>> {
         const { writeFileSync } = await import("node:fs");
         writeFileSync("coverage-options.json", JSON.stringify([options.coverage ?? null, options.coverageDirectory ?? null]));
         writeFileSync("test-set.json", JSON.stringify([options.testSet ?? null]));
+        writeFileSync("changed-paths.json", JSON.stringify(options.changedPaths ?? [null]));
         return { files: [], completed: ["tests"], timings: options.commandOptions.timings, warnings: [] };
       }
       export async function checkProject(directory, options) {
+        const { writeFileSync } = await import("node:fs");
+        writeFileSync("changed-paths.json", JSON.stringify(options.changedPaths ?? [null]));
         return { timings: options.commandOptions.timings, warnings: [] };
       }
     `,
@@ -141,6 +144,7 @@ export async function shardGate(
       stderr: result.stderr,
       recorded: await read("coverage-options.json"),
       testSet: await read("test-set.json"),
+      changedPaths: await read("changed-paths.json"),
     };
   });
 }

@@ -222,7 +222,7 @@ console.log(JSON.stringify({ first, refreshed: app.inner, hash: location.hash, r
   ]);
   assert.match(
     String(result["first"]),
-    /href="#workflow=develop-issue">← Back to develop-issue/,
+    /class="banner-back" href="#workflow=develop-issue">← develop-issue</,
   );
   assert.match(String(result["first"]), /class="banner attention"/);
   assert.doesNotMatch(String(result["first"]), /class="workflows"|class="run /);
