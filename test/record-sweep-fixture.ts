@@ -1,6 +1,6 @@
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rename, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import type { StoredRun } from "../src/record-retention.ts";
 import {
   recordSweep,
@@ -47,12 +47,14 @@ export async function withSweep(
     asked,
     folder: async (path, started) => {
       const folder = join(root, path);
-      await mkdir(folder, { recursive: true });
+      const staged = await mkdtemp(join(root, ".staged-"));
       await writeFile(
-        join(folder, "started.json"),
+        join(staged, "started.json"),
         typeof started === "string" ? started : JSON.stringify(started),
       );
-      await writeFile(join(folder, "result.json"), "{}");
+      await writeFile(join(staged, "result.json"), "{}");
+      await mkdir(dirname(folder), { recursive: true });
+      await rename(staged, folder);
       return folder;
     },
     settings: (overrides = {}) => ({

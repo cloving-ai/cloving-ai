@@ -1714,6 +1714,7 @@
     "test/relay-envelope-vectors.test.ts": "test",
     "test/relay-envelope.test.ts": "test",
     "test/relay-hpke.test.ts": "test",
+    "test/release-ci-changes.test.ts": "test",
     "test/release-ci-macos.test.ts": "test",
     "test/release-ci.test.ts": "test",
     "test/release-fixture.ts": "test",

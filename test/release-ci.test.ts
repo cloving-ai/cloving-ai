@@ -5,11 +5,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import {
+  changedPathsRun,
   gateRun,
   job,
   metadata,
   prepareShellAttempt,
   releaseWorkflow,
+  runs,
   script,
   steps,
 } from "./release-fixture.ts";
@@ -72,6 +74,7 @@ await test("CLV-097 CI checks main and version tag pushes, every pull request an
     );
     assert.deepEqual(checkout?.with, {
       ref: "${{ github.sha }}",
+      ...(name === "publish" ? {} : { "fetch-depth": 2 }),
       "persist-credentials": false,
     });
     const setup = steps(workflow, name).find((step) =>
@@ -120,7 +123,8 @@ await test("CLV-266 only the first full shard and the macOS platform job run set
           "${{ matrix.shard == '1' }}",
         ],
         [
-          step.uses?.startsWith("actions/upload-artifact@") === true,
+          step.uses?.startsWith("actions/upload-artifact@") === true ||
+            step.id === "changed-paths",
           "${{ github.event_name == 'pull_request' }}",
         ],
       ] as const;
@@ -156,9 +160,7 @@ await test("CLV-097 quality qualifies the exact toolchain and completes the deve
     CLOVING_CI_MACOS_VERSION: "15.*",
     NODE_OPTIONS: "--max-old-space-size=4096",
   });
-  const commands = steps(workflow, "quality_macos")
-    .map((step) => step.run)
-    .filter((run) => run !== undefined);
+  const commands = runs(workflow, "quality_macos");
   assert.deepEqual(commands.slice(0, 1), [
     "npm install --global npm@11.19.1 --ignore-scripts",
   ]);
@@ -175,18 +177,15 @@ await test("CLV-097 quality qualifies the exact toolchain and completes the deve
   assert.deepEqual(commands.slice(2), [
     "npm ci --ignore-scripts",
     "npm run check:setup",
+    changedPathsRun,
     gateRun,
   ]);
 });
 
 await test("CLV-266 Linux shards qualify the selected toolchain before the gate", async () => {
   const workflow = await releaseWorkflow();
-  const commands = steps(workflow, "quality_macos")
-    .map((step) => step.run)
-    .filter((run) => run !== undefined);
-  const linuxCommands = steps(workflow, "quality_linux_node")
-    .map((step) => step.run)
-    .filter((run) => run !== undefined);
+  const commands = runs(workflow, "quality_macos");
+  const linuxCommands = runs(workflow, "quality_linux_node");
   assert.equal(linuxCommands[0], commands[0]);
   const linuxQualification = linuxCommands[1];
   assert.ok(typeof linuxQualification === "string");
@@ -281,9 +280,7 @@ await test("CLV-097 publish uses same-revision successful quality and only versi
     contents: "write",
     "id-token": "write",
   });
-  const commands = steps(workflow, "publish")
-    .map((step) => step.run)
-    .filter((run) => run !== undefined);
+  const commands = runs(workflow, "publish");
   assert.equal(commands[0], script(workflow, "validate-tag"));
   assert.deepEqual(commands.slice(1, 4), [
     "npm install --global npm@11.19.1 --ignore-scripts",
