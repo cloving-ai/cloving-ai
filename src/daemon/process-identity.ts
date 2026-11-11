@@ -68,6 +68,8 @@ export interface ProcessSearch {
   readonly since: number;
 }
 
+const shownStartLagMilliseconds = 1000;
+
 function markedLine(
   line: string,
   search: ProcessSearch,
@@ -80,8 +82,9 @@ function markedLine(
     !parts.slice(6).includes(search.marker)
   )
     return [];
-  const second = Math.floor(search.since / 1000) * 1000;
-  return Date.parse(processStart) >= second
+  const earliest =
+    Math.floor(search.since / 1000) * 1000 - shownStartLagMilliseconds;
+  return Date.parse(processStart) >= earliest
     ? [{ processId, processStart }]
     : [];
 }

@@ -1,11 +1,22 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
 import { located } from "../src/daemon/operation-journal.ts";
-import { processExists } from "../src/daemon/process-identity.ts";
+import {
+  markedProcesses,
+  processExists,
+} from "../src/daemon/process-identity.ts";
 import type { TurnRecovery } from "../src/turn-recovery.ts";
 import { until } from "./claude-worker-fixture.ts";
 import {
@@ -17,6 +28,7 @@ import {
   crashedService,
   markedProcess,
   withFailedSearches,
+  withListedProcesses,
 } from "./crashed-service-fixture.ts";
 
 type Scene = Parameters<Parameters<typeof withCommandScene>[0]>[0];
@@ -102,13 +114,37 @@ function plannedCommand(scene: Scene, marker: string): void {
   );
 }
 
+await test("CLV-350 the marker search accepts a start that ps shows one second before the second of the recorded start, as Linux ps does, and refuses an earlier start", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "cloving-launch-marker-"));
+  const marker = `cloving-turn-${randomUUID()}`;
+  const listing = [
+    `  101 Wed Nov 11 09:59:59 2026 node start ${marker}`,
+    `  102 Wed Nov 11 09:59:58 2026 node start ${marker}`,
+    "  103 Wed Nov 11 10:00:00 2026 node start cloving-turn-other",
+    "",
+  ].join("\n");
+  try {
+    const found = await withListedProcesses({ directory, listing }, () =>
+      markedProcesses({
+        marker,
+        since: new Date(2026, 10, 11, 10, 0, 0, 400).getTime(),
+      }),
+    );
+    assert.deepEqual(found, [
+      { processId: 101, processStart: "Wed Nov 11 09:59:59 2026" },
+    ]);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 await test("CLV-350 a process with the marker that started before the recorded start of the command is not connected to or signaled", () =>
   withCommandScene(async (scene) => {
     const marker = `cloving-turn-${randomUUID()}`;
     const other = markedProcess(scene.directory, marker);
     try {
       await until(other.known);
-      await delay(1100);
+      await delay(2100);
       plannedCommand(scene, marker);
       const recoveries: TurnRecovery[] = [];
       const second = scene.worker('throw new Error("must not run")', {
@@ -203,6 +239,10 @@ await test("CLV-350 the README states that the service finds a kept turn or comm
   assert.match(
     readme,
     /It accepts only a process that started after the recorded start of the turn or the command\./,
+  );
+  assert.match(
+    readme,
+    /`ps` gives the start time in whole seconds\. On Linux, the time can be up to one second before the real start\. Thus the service accepts a start time up to one second before the second of the recorded start\./,
   );
   assert.match(
     readme,

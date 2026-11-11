@@ -22,20 +22,45 @@ const failedPs = [
   "",
 ].join("\n");
 
-export async function withFailedSearches<T>(
-  directory: string,
+async function withSearchTool<T>(
+  tool: { readonly folder: string; readonly script: string },
   use: () => Promise<T>,
 ): Promise<T> {
-  const folder = join(directory, "failed-tools");
-  mkdirSync(folder, { recursive: true });
-  writeFileSync(join(folder, "ps"), failedPs, { mode: 0o700 });
+  mkdirSync(tool.folder, { recursive: true });
+  writeFileSync(join(tool.folder, "ps"), tool.script, { mode: 0o700 });
   const path = process.env["PATH"] ?? "";
-  process.env["PATH"] = `${folder}:${path}`;
+  process.env["PATH"] = `${tool.folder}:${path}`;
   try {
     return await use();
   } finally {
     process.env["PATH"] = path;
   }
+}
+
+export function withFailedSearches<T>(
+  directory: string,
+  use: () => Promise<T>,
+): Promise<T> {
+  return withSearchTool(
+    { folder: join(directory, "failed-tools"), script: failedPs },
+    use,
+  );
+}
+
+export function withListedProcesses<T>(
+  request: { readonly directory: string; readonly listing: string },
+  use: () => Promise<T>,
+): Promise<T> {
+  const folder = join(request.directory, "listed-tools");
+  const listing = join(request.directory, "listed-processes");
+  writeFileSync(listing, request.listing);
+  const script = [
+    "#!/bin/sh",
+    `case " $* " in *" -U "*) exec cat '${listing}' ;; esac`,
+    'PATH="${PATH#*:}" exec ps "$@"',
+    "",
+  ].join("\n");
+  return withSearchTool({ folder, script }, use);
 }
 
 export function heldIdentityReads(directory: string): string {
