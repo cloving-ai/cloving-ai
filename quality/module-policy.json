@@ -2129,6 +2129,7 @@
     "test/watch-token-menu.test.ts": "test",
     "test/watch-transcript-browser-fixture.ts": "test",
     "test/watch-transcript-browser.test.ts": "test",
+    "test/watch-transcript-client-fixture.ts": "test",
     "test/watch-transcript-client.test.ts": "test",
     "test/watch-transcript-default.test.ts": "test",
     "test/watch-transcript-expand.test.ts": "test",

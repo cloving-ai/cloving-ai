@@ -1,54 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { played } from "./watch-browser.ts";
-import { sampleModel, sampleRun } from "./watch-sample.ts";
-
-const operationId = '["cloving-operation",1,"run-1","work","effect",1,null]';
-const streamPath = `api/v1/runs/run-1/turns/${encodeURIComponent(operationId)}/transcript-stream`;
-const turnHash = `#run=run-1&turn=${encodeURIComponent(operationId)}`;
-const heldRead = `
-const answered = globalThis.fetch;
-let release = () => undefined;
-globalThis.fetch = (address) => address.includes("/transcript?")
-  ? new Promise((settle) => { release = () => { settle(new Response(JSON.stringify({ entries: [], nextAfter: 1, open: true }))); }; })
-  : answered(address);
-streams[0].readyState = 2;
-streams[0].onerror();
-`;
-const turnSection = `document.querySelectorAll = () => [{ getAttribute: () => operationId, scrollIntoView: () => undefined }];`;
-
-function transcriptPlayed(
-  turn: { readonly outcome: string },
-  scenario: string,
-): Record<string, unknown> {
-  const [reviewed] = sampleRun().turns;
-  assert.ok(reviewed !== undefined);
-  const archived = sampleRun({
-    turns: [{ ...reviewed, operationId, outcome: turn.outcome }],
-  });
-  return played(
-    { ...sampleModel([]), archived },
-    `
-const { archived, ...model } = JSON.parse(process.env.WATCH_MODEL);
-const operationId = ${JSON.stringify(operationId)};
-const streams = [];
-globalThis.EventSource = class {
-  constructor(address) { this.address = address; this.listeners = {}; this.readyState = 1; streams.push(this); }
-  addEventListener(type, listener) { this.listeners[type] = listener; }
-  close() { this.readyState = 2; }
-};
-const send = (source, type, data) => source.listeners[type]?.({ data: JSON.stringify(data) });
-const entryAt = (position) => ({ position, attempt: 1, kind: "assistant", text: "Entry " + position, tool: null, summary: "", error: false, omittedBytes: 0 });
-const button = (text) => app.all("button").find((node) => node.inner.startsWith(text));
-const later = () => new Promise((settle) => { setTimeout(settle, 80); });
-location.hash = "#run=run-1";
-replies.push(model, { run: archived });
-await load();
-await settled();
-${scenario}
-`,
-  );
-}
+import {
+  heldRead,
+  streamPath,
+  transcriptPlayed,
+  turnHash,
+  turnSection,
+} from "./watch-transcript-client-fixture.ts";
 
 await test("CLV-329 the page opens the stream of the turn in work, shows the loading line, and shows each entry of the stream", () => {
   const result = transcriptPlayed(
@@ -386,4 +344,24 @@ console.log(JSON.stringify({ top: box.scrollTop, jump: button("Jump to the end")
     jump: false,
     lines: "transcript-lines",
   });
+});
+
+await test("CLV-355 a scroll event of the lines box of an expanded turn does not mark the reader at the end, so a new entry below the window is counted", () => {
+  const result = transcriptPlayed(
+    { outcome: "in work" },
+    `
+send(streams[0], "entry", entryAt(1));
+await later();
+app.all("button").find((node) => node.getAttribute("class") === "transcript-expand")?.dispatch("click");
+await later();
+const box = { getAttribute: () => operationId, scrollTop: 0, scrollHeight: 0, getBoundingClientRect: () => ({ bottom: 2000 }), scrollIntoView: () => undefined };
+document.querySelectorAll = (selector) => (selector === "[data-transcript]" ? [box] : []);
+listeners.scroll?.();
+app.all("div").find((node) => node.getAttribute("data-transcript") === operationId)?.dispatch("scroll", { currentTarget: { scrollTop: 0, clientHeight: 1314, scrollHeight: 1314 } });
+send(streams[0], "entry", entryAt(2));
+await later();
+console.log(JSON.stringify({ jump: button("Jump to the end")?.text ?? null }));
+`,
+  );
+  assert.deepEqual(result, { jump: "Jump to the end · 1 new entry" });
 });
