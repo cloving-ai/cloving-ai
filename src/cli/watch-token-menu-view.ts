@@ -2,7 +2,10 @@ import { component, element, type Shown } from "./watch-element.ts";
 import type { WatchToken } from "./watch-render.ts";
 import { RenameAction, type RenameControls } from "./watch-rename-view.ts";
 import {
-  RunCommandAction,
+  DropButton,
+  DropQuestion,
+  PauseButton,
+  RunCommandMessage,
   type RunCommandControls,
 } from "./watch-run-command-view.ts";
 
@@ -41,12 +44,72 @@ export function menuLeft(menu: MenuNode): void {
   );
 }
 
-export function TokenMenu(props: {
+interface TokenMenuProps {
   readonly token: Pick<WatchToken, "runId" | "title" | "ticket" | "manualName">;
   readonly paused: boolean;
   readonly controlling?: RunCommandControls | undefined;
   readonly renaming?: RenameControls | undefined;
+}
+
+export function TokenDrop(props: {
+  readonly runId: string;
+  readonly controlling: RunCommandControls;
 }): Shown {
+  const { runId, controlling } = props;
+  const asking = controlling.asking;
+  return [
+    element("hr", { class: "token-separator" }),
+    element("div", {
+      class: "token-danger",
+      children:
+        asking?.runId === runId && asking.place === "token"
+          ? component(DropQuestion, { runId, controlling })
+          : component(DropButton, {
+              runId,
+              place: "token",
+              paused: false,
+              controlling,
+            }),
+    }),
+  ];
+}
+
+export function TokenCommands(props: TokenMenuProps): Shown {
+  const { token, controlling } = props;
+  const runId = token.runId;
+  return element("div", {
+    class: "run-command",
+    "data-run": runId,
+    "data-place": "token",
+    children: [
+      controlling === undefined
+        ? null
+        : component(PauseButton, {
+            runId,
+            place: "token",
+            paused: props.paused,
+            controlling,
+          }),
+      component(RenameAction, {
+        run: {
+          runId,
+          title: token.title,
+          label: token.ticket,
+          ...(token.manualName === true ? { manualName: true } : {}),
+        },
+        renaming: props.renaming,
+      }),
+      controlling === undefined
+        ? null
+        : component(TokenDrop, { runId, controlling }),
+      component(RunCommandMessage, {
+        text: controlling?.messages[runId]?.text,
+      }),
+    ],
+  });
+}
+
+export function TokenMenu(props: TokenMenuProps): Shown {
   const { token, controlling, renaming } = props;
   if (controlling === undefined && renaming === undefined) return null;
   const id = `token-menu-${token.runId}`;
@@ -78,26 +141,16 @@ export function TokenMenu(props: {
         id,
         class: "token-pop",
         popover: "auto",
-        children: [
-          component(RunCommandAction, {
-            runId: token.runId,
-            place: "token",
-            paused: props.paused,
-            controlling,
-          }),
-          component(RenameAction, {
-            run: {
-              runId: token.runId,
-              title: token.title,
-              label: token.ticket,
-              ...(token.manualName === true ? { manualName: true } : {}),
-            },
-            renaming,
-          }),
-        ],
+        children: component(TokenCommands, props),
       }),
     ],
   });
 }
 
-export const tokenMenuFunctions = [menuOpened, menuLeft, TokenMenu];
+export const tokenMenuFunctions = [
+  menuOpened,
+  menuLeft,
+  TokenDrop,
+  TokenCommands,
+  TokenMenu,
+];

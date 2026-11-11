@@ -8,6 +8,7 @@ import type { RunCommandControls } from "../src/cli/watch-run-command-view.ts";
 import { menuLeft, menuOpened } from "../src/cli/watch-token-menu-view.ts";
 import { Page } from "../src/cli/watch-view.ts";
 import { found, rendered } from "./watch-dom.ts";
+import { rule } from "./watch-style-fixture.ts";
 import { floorModel, floorRun } from "./watch-floor-fixture.ts";
 import { renameControls, type RenameCalls } from "./watch-rename-fixture.ts";
 import { noCopy } from "./watch-sample.ts";
@@ -91,8 +92,8 @@ await test("CLV-354 each station token holds its run controls and Rename in a po
       String(left.buttons[0]).localeCompare(String(right.buttons[0])),
     ),
     [
-      { ...common, buttons: ["Pause", "Drop", "Rename"] },
-      { ...common, buttons: ["Resume", "Drop", "Rename"] },
+      { ...common, buttons: ["Pause", "Rename", "Drop"] },
+      { ...common, buttons: ["Resume", "Rename", "Drop"] },
     ],
   );
   assert.equal(
@@ -184,5 +185,89 @@ await test("CLV-354 the README describes the token menu of the floor with Rename
   assert.match(
     readme,
     /The token of an active run on the floor has these controls and \*\*Rename\*\* in a menu at the right end of the token \(`⋯`\)\. The menu opens when the pointer is on the `⋯`, when the `⋯` has the keyboard focus, or with a click or a tap, and it stays open while the pointer moves into it or while one of its fields has the focus\. Escape, a click outside and the pointer leaving close it\./,
+  );
+});
+
+function manual(run: Record<string, unknown>): Record<string, unknown> {
+  const status = run["status"];
+  return {
+    ...run,
+    status: {
+      ...(typeof status === "object" ? status : {}),
+      title: "My title",
+      titleSource: "manual",
+    },
+  };
+}
+
+await test("CLV-354 the token popover is one list: Pause or Resume, Rename, Use the automatic name when it applies, a separator, and Drop last in the danger part", () => {
+  const named = floorModel([
+    manual(floorRun("run-a", { operation: "claude-turn", minutes: 5 })),
+  ]);
+  const shown = component(Page, {
+    model: named,
+    selected: "",
+    now: named.updatedAt,
+    stale: false,
+    copying: noCopy,
+    controlling,
+    renaming: renameControls(calls()),
+  });
+  const [pop] = found(shown, "div").filter(
+    (item) => item["class"] === "token-pop",
+  );
+  assert.deepEqual(labels(pop?.["children"]), [
+    "Pause",
+    "Rename",
+    "Use the automatic name",
+    "Drop",
+  ]);
+  assert.match(
+    rendered(shown),
+    /id="token-menu-run-a"[^]*?class="run-command-pause"[^]*?class="rename"[^]*?<hr class="token-separator"[^]*?class="token-danger"><button[^>]*class="run-command-drop"/,
+  );
+  const [danger] = found(pop?.["children"], "div").filter(
+    (item) => item["class"] === "token-danger",
+  );
+  assert.deepEqual(labels(danger?.["children"]), ["Drop"]);
+  const asking = {
+    ...controlling,
+    asking: { runId: "run-a", place: "token" as const },
+  };
+  const [asked] = found(
+    component(Page, {
+      model: named,
+      selected: "",
+      now: named.updatedAt,
+      stale: false,
+      copying: noCopy,
+      controlling: asking,
+    }),
+    "div",
+  ).filter((item) => item["class"] === "token-danger");
+  assert.deepEqual(labels(asked?.["children"]), ["Drop the run", "Keep it"]);
+});
+
+await test("CLV-354 the token popover lists one item for each row in the card font, marks Drop in the stopped color, and puts Save and Cancel of the rename form side by side", () => {
+  assert.match(rule(".token-pop .run-command"), /display: grid/);
+  assert.match(rule(".token-pop button"), /width: 100%/);
+  assert.match(rule(".token-pop button"), /text-align: left/);
+  assert.match(rule(".token-separator"), /border-top: /);
+  assert.match(
+    rule(".token-danger button"),
+    /color: var\(--color-state-failed\)/,
+  );
+  assert.match(
+    rule(".token-pop .rename-form"),
+    /grid-template-columns: 1fr 1fr/,
+  );
+  assert.match(rule(".token-pop .rename-form label"), /grid-column: 1 \/ -1/);
+  assert.match(
+    rule('.token-pop .rename-form button[type="submit"]'),
+    /background: var\(--color-accent\); color: var\(--color-on-accent\)/,
+  );
+  assert.match(
+    rule('.token-pop .rename-form button[type="button"]'),
+    /background: none/,
   );
 });

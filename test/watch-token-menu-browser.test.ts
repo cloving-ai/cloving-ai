@@ -82,6 +82,11 @@ const placed = `(() => {
     inside: { x: pop.left + pop.width / 2, y: pop.top + pop.height / 2 },
     next: Math.round(next.top),
     font: getComputedStyle(document.querySelector("#token-menu-run-a button")).fontFamily === getComputedStyle(document.querySelector(".token")).fontFamily,
+    list: (() => {
+      const items = [...document.querySelectorAll("#token-menu-run-a button")].map((item) => item.getBoundingClientRect());
+      const tops = items.map((item) => Math.round(item.top));
+      return new Set(tops).size === items.length && new Set(items.map((item) => Math.round(item.left))).size === 1 && new Set(items.map((item) => Math.round(item.width))).size === 1;
+    })(),
   };
 })()`;
 
@@ -112,8 +117,8 @@ await test("CLV-354 the token menu sits inside each card with no empty row, a ca
   assert.deepEqual(await page.evaluate(opened), { open: "token-menu-run-a" });
   const shown = await page.evaluate(placed);
   assert.deepEqual(
-    [shown["below"], shown["next"], shown["font"]],
-    [true, before["next"], true],
+    [shown["below"], shown["next"], shown["font"], shown["list"]],
+    [true, before["next"], true, true],
   );
   await page.move(point(fields(shown["gap"])));
   await delay(100);
@@ -183,6 +188,11 @@ await test("CLV-354 Rename in the token menu keeps the popover open while its in
   await page.move({ x: 5, y: 830 });
   await delay(400);
   const editing = await page.evaluate(opened);
+  const buttons = await page.evaluate(`(() => {
+    const [save, cancel] = [...document.querySelectorAll("#token-menu-run-a .rename-form button")].map((item) => item.getBoundingClientRect());
+    return { row: Math.round(save.top) === Math.round(cancel.top), order: save.left < cancel.left };
+  })()`);
+  assert.deepEqual(buttons, { row: true, order: true });
   await page.evaluate(
     `(() => { const input = document.querySelector('#token-menu-run-a input[name="label"]'); input.select(); return {}; })()`,
   );
