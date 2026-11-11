@@ -152,16 +152,9 @@ export function Events(props: {
       children: `${clockTime(event.recordedAt)} ${event.type}`,
     }),
   );
-  return element("details", {
-    class: "events code-window",
-    children: [
-      element("summary", {
-        class: "code-head",
-        children: `All events (${String(events.length)})`,
-      }),
-      rows,
-    ],
-  });
+  if (events.length === 0)
+    return element("p", { class: "meta", children: "No events for this run." });
+  return element("section", { class: "events code-window", children: rows });
 }
 
 export function PullRequest(props: { readonly run: WatchRun }): Shown {

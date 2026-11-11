@@ -374,8 +374,7 @@ button:focus-visible, .token:focus-visible { clip-path: none; }
 .last { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tools[open] .last { display: none; }
 .event { padding: 1px 12px; }
-.events { margin-top: 18px; padding-bottom: 10px; }
-.events > summary { color: var(--color-code-text); }
+.events { margin-top: 12px; padding: 10px 0; }
 .down { font-weight: 600; }
 .version { position: fixed; left: 12px; bottom: 8px; font: 12px/1.4 var(--font-code); color: var(--color-muted); pointer-events: none; }
 @media (max-width: 1100px) {

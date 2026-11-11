@@ -218,6 +218,20 @@ await test("CLV-357 the run page has five tabs, Details holds the totals, the re
   );
 });
 
+await test("CLV-357 the Events tab shows the event rows at once, with no closed details wrapper and no All events toggle", () => {
+  const html = rendered(page(working));
+  const events = html.slice(
+    html.indexOf('id="run-panel-events"'),
+    html.indexOf('id="run-panel-details"'),
+  );
+  assert.doesNotMatch(events, /<details|<summary|All events/);
+  assert.match(
+    events,
+    /<section class="events code-window"><div class="event">[^<]* run\.created<\/div>/,
+  );
+  assert.match(html, /role="tab"[^>]*>Events \(2\)<\/button>/);
+});
+
 await test("CLV-357 the pencil and the menu open the rename, the form sits in the banner, Enter saves and Escape cancels", () => {
   const recorded: RenameCalls = {
     opened: [],
@@ -354,6 +368,7 @@ await test("CLV-357 the README describes the banner, the facts line and the tabs
     /The banner also shows the label and the title of the run, with a pencil that edits both in place: Enter saves and Escape cancels\./,
     /One action bar holds \*\*Steer\*\*, \*\*Pause\*\* or \*\*Resume\*\*, and a `⋯` menu with \*\*Rename\*\* and \*\*Drop\*\*\. The menu opens when the pointer rests on `⋯` or when `⋯` has the keyboard focus\./,
     /The menu is the same popover as the token menu of the floor\. A pick in it closes it at once\. It also closes a moment after the pointer leaves, or with Escape\./,
+    /\*\*Events\*\* shows the command effects and the list of all events, open at once with no further click, with the count in the tab name\./,
     /Under the banner, one line shows the pull request with its latest review score, the cost and the place of the run in its chain\. A fact that is not known does not show\./,
     /\*\*Details\*\* shows the run totals, the reason code and text, the run ID, the turn target, the workflow, the effect units, the chain and the sources of the label and the title\./,
   ])

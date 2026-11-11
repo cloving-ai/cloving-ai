@@ -2090,6 +2090,7 @@
     "test/watch-run-command.test.ts": "test",
     "test/watch-run-menu-browser.test.ts": "test",
     "test/watch-run-page.test.ts": "test",
+    "test/watch-run-tabs-browser.test.ts": "test",
     "test/watch-run-tabs.test.ts": "test",
     "test/watch-sample.ts": "test",
     "test/watch-schedule-fixture.ts": "test",

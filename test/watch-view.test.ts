@@ -69,7 +69,7 @@ await test("CLV-016 the watch page shows the state of the selected run first, as
     '<li class="phase active"><span class="mark">●</span><span class="name">Your review</span><span class="time">1 min 0 s</span></li>',
     '<li class="phase pending"><span class="mark">○</span><span class="name">Completed</span><span class="time"></span></li></ol>',
     '<section class="turn code-window">',
-    '<details class="events code-window"><summary class="code-head">All events (2)</summary>',
+    '<section class="events code-window"><div class="event">',
     "<dt>Reason</dt><dd>policy-approval: A person must approve.</dd><dt>Run</dt><dd>run-1</dd><dt>Turn target</dt><dd>clv-016-a6f7ef47</dd><dt>Workflow</dt><dd>develop-ticket</dd><dt>Effect units</dt><dd>1 of 8 effect units</dd>",
   ]);
   assert.deepEqual(

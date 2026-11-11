@@ -143,13 +143,17 @@ await test("CLV-016 a click on the copy control of a command gives that command 
   );
 });
 
-await test("CLV-016 the watch page folds the events of a run and shows their count", () => {
+await test("CLV-016 CLV-357 the watch page lists the events of a run open, with no toggle, and says when a run has no event", () => {
   const events = [
     { sequence: 1, recordedAt: at("21:26:00"), type: "run.<created>" },
   ];
   assert.equal(
     rendered(component(Events, { events })),
-    `<details class="events code-window"><summary class="code-head">All events (1)</summary><div class="event">${shownClock("21:26:00")} run.&lt;created&gt;</div></details>`,
+    `<section class="events code-window"><div class="event">${shownClock("21:26:00")} run.&lt;created&gt;</div></section>`,
+  );
+  assert.equal(
+    rendered(component(Events, { events: [] })),
+    '<p class="meta">No events for this run.</p>',
   );
 });
 
@@ -161,9 +165,9 @@ await test("CLV-098 turn, event and command code windows reuse headings and keep
     turn,
     /<section class="turn code-window"><h3 class="code-head">Agent turn · in work · 42 s · Price not known<\/h3>/,
   );
-  assert.match(
+  assert.doesNotMatch(
     rendered(component(Events, { events: [] })),
-    /<details class="events code-window"><summary class="code-head">All events \(0\)<\/summary>/,
+    /<details|<summary/,
   );
   const decision = rendered(
     component(Decision, {
