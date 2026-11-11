@@ -104,6 +104,32 @@ const exitHook = [
   "trap 'echo goodbye; echo \"error: an exit message\" >&2' EXIT",
 ];
 
+await test("CLV-344 an unsigned repository passes commit-signatures when the login file enables set -e", () =>
+  withDoctor(async (scene) => {
+    await savedHarness(scene, { kind: "shell", path: "claude_alias" });
+    await writeFile(join(scene.root, ".bash_profile"), "set -e\n");
+    const shown = check(
+      await scene.report({ SHELL: "/bin/bash" }),
+      "commit-signatures",
+    );
+    assert.equal(shown["result"], "ok");
+    assert.equal(shown["detail"], "Commit signatures are off");
+  }));
+
+await test("CLV-344 a failed signer reports its error when the login file enables set -e", () =>
+  withDoctor(async (scene) => {
+    await shellSigning(scene, { exportsAgent: false, lines: ["set -e"] });
+    const shown = check(
+      await scene.report({ SHELL: "/bin/bash" }),
+      "commit-signatures",
+    );
+    assert.equal(shown["result"], "fail");
+    assert.equal(
+      shown["detail"],
+      "A turn cannot sign commits (gpg.format ssh): error: signer: no SSH agent",
+    );
+  }));
+
 await test("CLV-344 with a saved shell harness, commit-signatures gives ok when the login shell of a turn exports the SSH agent", () =>
   withDoctor(async (scene) => {
     await shellSigning(scene, { exportsAgent: true });

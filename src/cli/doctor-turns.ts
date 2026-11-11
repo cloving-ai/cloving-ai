@@ -84,8 +84,8 @@ const frameScript = `${shellTurnPrelude}marker=$1
 shift
 builtin printf '%s\\n' "$marker"
 builtin printf '%s\\n' "$marker" >&2
-command -- "$@"
-code=$?
+code=0
+command -- "$@" || code=$?
 builtin printf '\\n%s\\n' "$marker" >&2
 builtin printf '\\n%s %s\\n' "$marker" "$code"
 `;
