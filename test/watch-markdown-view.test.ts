@@ -98,6 +98,48 @@ await test("CLV-355 snake_case names, a single star in a sentence and code text 
   );
 });
 
+const paragraph = (html: string): string =>
+  `<div class="markdown"><p>${html}</p></div>`;
+
+await test("CLV-355 combined and nested emphasis follows the CommonMark delimiter rules, with no stray stars", () => {
+  const cases: readonly (readonly [string, string])[] = [
+    ["**bold and *italic***", "<strong>bold and <em>italic</em></strong>"],
+    ["***text***", "<em><strong>text</strong></em>"],
+    ["*foo**bar**baz*", "<em>foo<strong>bar</strong>baz</em>"],
+    ["**foo*bar*baz**", "<strong>foo<em>bar</em>baz</strong>"],
+    ["*foo *bar**", "<em>foo <em>bar</em></em>"],
+    ["*foo**bar*", "<em>foo**bar</em>"],
+    ["*(*foo*)*", "<em>(<em>foo</em>)</em>"],
+    ["__strong__ and _em_", "<strong>strong</strong> and <em>em</em>"],
+  ];
+  for (const [text, html] of cases)
+    assert.equal(markdown(text), paragraph(html), text);
+});
+
+await test("CLV-355 a star works inside a word, an underscore does not, and an unmatched run stays as text", () => {
+  const cases: readonly (readonly [string, string])[] = [
+    ["foo*bar*", "foo<em>bar</em>"],
+    ["snake_case_name", "snake_case_name"],
+    ["_foo_bar_", "<em>foo_bar</em>"],
+    ["**foo", "**foo"],
+    ["**foo*", "*<em>foo</em>"],
+    ["a * b ** c", "a * b ** c"],
+  ];
+  for (const [text, html] of cases)
+    assert.equal(markdown(text), paragraph(html), text);
+});
+
+await test("CLV-355 text in square brackets with no link address stays as text, and a sublist before a blank line ends at the next item of its parent list", () => {
+  assert.equal(
+    markdown("[not a link] and [x](y z)"),
+    paragraph("[not a link] and [x](y z)"),
+  );
+  assert.equal(
+    markdown("- a\n  - b\n\n- c"),
+    '<div class="markdown"><ul><li>a<ul><li>b</li></ul></li><li>c</li></ul></div>',
+  );
+});
+
 await test("CLV-355 a backslash before ASCII punctuation shows the punctuation as plain text, and a backslash before another character stays", () => {
   assert.equal(
     markdown(
