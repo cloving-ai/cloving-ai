@@ -2,7 +2,7 @@ import { component, element, type Shown } from "./watch-element.ts";
 
 export interface MarkdownItem {
   readonly text: string;
-  readonly lists: readonly MarkdownBlock[];
+  readonly blocks: readonly MarkdownBlock[];
 }
 
 export interface ItemLine {
@@ -95,34 +95,86 @@ export function markdownFence(lines: readonly string[], index: number): Parsed {
     );
   });
   const last = end < 0 ? lines.length : end;
+  const pad = markdownIndent(lines[index] ?? "");
+  const code = lines
+    .slice(index + 1, last)
+    .map((line) => line.slice(Math.min(pad, markdownIndent(line))));
   return {
-    block: { kind: "code", text: lines.slice(index + 1, last).join("\n") },
+    block: { kind: "code", text: code.join("\n") },
     next: last + 1,
   };
+}
+
+export function markdownIndent(line: string): number {
+  return line.length - line.trimStart().length;
 }
 
 interface ListState {
   readonly next: number;
   readonly indent: number;
   readonly ordered: boolean;
-  readonly items: { readonly text: string; readonly lists: MarkdownBlock[] }[];
+  readonly items: { text: string; readonly blocks: MarkdownBlock[] }[];
+}
+
+export function markdownListItem(
+  lines: readonly string[],
+  state: ListState & { readonly item: ItemLine },
+): number | undefined {
+  const { item } = state;
+  const last = state.items.at(-1);
+  if (item.indent < state.indent) return undefined;
+  if (item.indent > state.indent && last !== undefined) {
+    const nested = markdownList(lines, state.next);
+    last.blocks.push(nested.block);
+    return nested.next;
+  }
+  if ((item.number !== null) !== state.ordered) return undefined;
+  state.items.push({ text: item.text, blocks: [] });
+  return state.next + 1;
+}
+
+export function markdownListGap(
+  lines: readonly string[],
+  state: ListState,
+): number | undefined {
+  const after = lines[state.next + 1] ?? "";
+  const item = markdownItem(after);
+  if (item !== undefined && item.indent >= state.indent) return state.next + 1;
+  if (after.trim() === "" || item !== undefined) return undefined;
+  const inside = state.items.length > 0 && markdownIndent(after) > state.indent;
+  return inside ? state.next + 1 : undefined;
+}
+
+export function markdownListMore(
+  lines: readonly string[],
+  state: ListState,
+): number | undefined {
+  const line = lines[state.next] ?? "";
+  const last = state.items.at(-1);
+  if (last === undefined || markdownIndent(line) <= state.indent)
+    return undefined;
+  if (markdownLineKind(line) === "fence") {
+    const fence = markdownFence(lines, state.next);
+    last.blocks.push(fence.block);
+    return fence.next;
+  }
+  const gap = (lines[state.next - 1] ?? "").trim() === "";
+  if (gap || last.blocks.length > 0)
+    last.blocks.push({ kind: "text", text: line.trim() });
+  else last.text = `${last.text}\n${line.trim()}`;
+  return state.next + 1;
 }
 
 export function markdownListStep(
   lines: readonly string[],
   state: ListState,
 ): number | undefined {
-  const item = markdownItem(lines[state.next] ?? "");
-  if (item === undefined || item.indent < state.indent) return undefined;
-  const last = state.items.at(-1);
-  if (item.indent > state.indent && last !== undefined) {
-    const nested = markdownList(lines, state.next);
-    last.lists.push(nested.block);
-    return nested.next;
-  }
-  if ((item.number !== null) !== state.ordered) return undefined;
-  state.items.push({ text: item.text, lists: [] });
-  return state.next + 1;
+  const line = lines[state.next];
+  if (line === undefined) return undefined;
+  const item = markdownItem(line);
+  if (item !== undefined) return markdownListItem(lines, { ...state, item });
+  if (line.trim() === "") return markdownListGap(lines, state);
+  return markdownListMore(lines, state);
 }
 
 export function markdownList(lines: readonly string[], index: number): Parsed {
@@ -208,8 +260,8 @@ export function MarkdownBlockView(props: {
       element("li", {
         children: [
           markdownInline(item.text),
-          item.lists.map((list, index) =>
-            component(MarkdownBlockView, { key: String(index), block: list }),
+          item.blocks.map((inner, index) =>
+            component(MarkdownBlockView, { key: String(index), block: inner }),
           ),
         ],
       }),
@@ -243,6 +295,10 @@ export const markdownFunctions = [
   markdownFenceMark,
   markdownLineKind,
   markdownFence,
+  markdownIndent,
+  markdownListItem,
+  markdownListGap,
+  markdownListMore,
   markdownListStep,
   markdownList,
   markdownText,

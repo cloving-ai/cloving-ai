@@ -41,6 +41,34 @@ await test("CLV-355 a bulleted sublist shows inside its item, and a second subli
   );
 });
 
+await test("CLV-355 an indented line under a step stays in that step, so the steps keep the numbers 1 and 2", () => {
+  assert.equal(
+    markdown("1. First\n   More detail\n1. Second"),
+    '<div class="markdown"><ol><li>First\nMore detail</li><li>Second</li></ol></div>',
+  );
+});
+
+await test("CLV-355 one blank line between items keeps one list, and an indented paragraph after a blank line stays in its item", () => {
+  assert.equal(
+    markdown("- one\n\n- two\n\n  More about two\n- three"),
+    '<div class="markdown"><ul><li>one</li><li>two<p>More about two</p></li><li>three</li></ul></div>',
+  );
+});
+
+await test("CLV-355 a paragraph after a list and two blank lines between items end the list", () => {
+  assert.equal(
+    markdown("1. a\n\nAfter the list.\n\n1. b\n\n\n1. c"),
+    '<div class="markdown"><ol><li>a</li></ol><p>After the list.</p><ol><li>b</li></ol><ol><li>c</li></ol></div>',
+  );
+});
+
+await test("CLV-355 an indented code fence under a step stays in the step without the indent of the step", () => {
+  assert.equal(
+    markdown("1. Run:\n   ```sh\n   npm test\n     --watch\n   ```\n2. Done"),
+    '<div class="markdown"><ol><li>Run:<pre class="md-code"><code>npm test\n  --watch</code></pre></li><li>Done</li></ol></div>',
+  );
+});
+
 await test("CLV-355 a code fence closes only on a fence of the same character that is at least as long, so a longer fence can hold a shorter one", () => {
   assert.equal(
     markdown("````md\n```js\ncode\n```\n````\nAfter the block."),
