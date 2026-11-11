@@ -20,8 +20,6 @@ export { Phases, RunTotals } from "./watch-run-parts.ts";
 import { component, element, type Shown } from "./watch-element.ts";
 import {
   completedDetail,
-  counted,
-  elapsed,
   runTone,
   waitingDetail,
   type Copying,
@@ -37,7 +35,11 @@ import {
 import { watchLocation } from "./watch-navigation.ts";
 import { Floor } from "./watch-floor-view.ts";
 import { Shelf } from "./watch-shelf-view.ts";
-import { NeedsYou, type ContinueControls } from "./watch-needs-view.ts";
+import {
+  NeedsYou,
+  reasonText,
+  type ContinueControls,
+} from "./watch-needs-view.ts";
 export type { ContinueControls } from "./watch-needs-view.ts";
 import { Today } from "./watch-today-view.ts";
 import type { LoopControls } from "./watch-loops-view.ts";
@@ -49,12 +51,12 @@ import {
 } from "./watch-transcript-view.ts";
 import { RunTurns } from "./watch-run-tabs-view.ts";
 import {
-  plainReason,
   RunFacts,
   RunHeadActions,
   RunIdentity,
   RunNotices,
   RunStatus,
+  workingDetail,
 } from "./watch-run-head-view.ts";
 export { PullRequest, Review } from "./watch-turn.ts";
 import type { RenameControls } from "./watch-rename-view.ts";
@@ -70,19 +72,8 @@ export function BannerDetail(props: Timed): Shown {
   if (run.state === "waiting_gate") return waitingDetail(run, now);
   if (run.state === "completed") return completedDetail(run);
   if (run.state !== "running" || turn?.outcome !== "in work")
-    return plainReason(run);
-  const calls = turn.activity.filter((item) => item.kind === "tool").length;
-  const quiet =
-    turn.activeAt === null
-      ? ""
-      : ` · last output ${elapsed(turn.activeAt, now)} ago`;
-  const last = turn.activity.at(-1)?.text ?? "The worker starts.";
-  const worker =
-    turn.harness === undefined ? "The worker" : `The ${turn.harness} worker`;
-  return [
-    `${worker} works for ${elapsed(turn.startedAt, now)} · ${counted(calls, "tool call")}${quiet}`,
-    element("span", { class: "now", children: last }),
-  ];
+    return run.state === "paused" ? reasonText(run) : run.detail;
+  return workingDetail(turn, now);
 }
 
 export function Banner(

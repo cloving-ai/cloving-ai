@@ -40,7 +40,7 @@ await test("CLV-357 the status line shows the state, the current phase and its t
   const html = banner(rendered(page(working)));
   assert.match(
     html,
-    /<p class="run-status">In work · Agent turn · 8 min 39 s<\/p><p class="banner-detail">The worker works for 8 min 39 s · 0 tool calls · last output 4 min 21 s ago<span class="now">I run the tests\.<\/span><\/p>/,
+    /<p class="run-status">In work · Agent turn · 8 min 39 s<\/p><p class="banner-detail">The worker works for 8 min 39 s · 0 tool calls · last output 4 min 21 s ago<span class="now" title="I run the tests\.">I run the tests\.<\/span><\/p>/,
   );
   const plain = banner(rendered(page(bare)));
   assert.match(plain, /<p class="banner-detail">The run is in work\.<\/p>/);
@@ -186,6 +186,18 @@ await test("CLV-357 the ⋯ of the run page is a visible button in the action ba
   );
 });
 
+await test("CLV-357 the live line of the banner stays on one line inside the banner width and cuts its end with an ellipsis", () => {
+  const live = rule(".now");
+  for (const part of [
+    /white-space: nowrap/,
+    /overflow: hidden/,
+    /text-overflow: ellipsis/,
+  ])
+    assert.match(live, part);
+  assert.match(rules, /\n\.banner-main \{ min-width: 0; flex: 1; \}/);
+  assert.match(rule(".banner-main > *"), /min-width: 0/);
+});
+
 await test("CLV-357 the README describes the banner, the facts line and the tabs of the run detail", async () => {
   const readme = (
     await readFile(new URL("../README.md", import.meta.url), "utf8")
@@ -193,6 +205,7 @@ await test("CLV-357 the README describes the banner, the facts line and the tabs
   for (const part of [
     /The banner also shows the label and the title of the run, with a pencil that edits both in place: Enter saves and Escape cancels\./,
     /One action bar holds \*\*Steer\*\*, \*\*Pause\*\* or \*\*Resume\*\*, and a `⋯` menu with \*\*Rename\*\* and \*\*Drop\*\*\. The menu opens when the pointer rests on `⋯` or when `⋯` has the keyboard focus\./,
+    /For a turn in work, that line ends with the first line of the latest agent output as plain text, cut at the banner width\. The full output shows when the pointer rests on it\./,
     /The menu is the same popover as the token menu of the floor\. A pick in it closes it at once\. It also closes a moment after the pointer leaves, or with Escape\./,
     /\*\*Events\*\* shows the command effects and the list of all events, open at once with no further click, with the count in the tab name\./,
     /Under the banner, one line shows the pull request with its latest review score, the cost and the place of the run in its chain\. A fact that is not known does not show\./,

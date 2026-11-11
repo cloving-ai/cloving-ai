@@ -1,5 +1,6 @@
 export const runPageStyle = `
 .banner-main { display: grid; gap: 2px; }
+.banner-main > * { min-width: 0; }
 .run-identity { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; margin: 0; font-size: 20px; line-height: 1.35; }
 .run-identity .name-label { font: 600 14px/1.4 var(--font-ui); color: var(--color-muted); }
 .name-edit { margin: 0; padding: 0 6px; font: 500 15px/1.4 var(--font-ui); color: var(--color-muted); background: none; clip-path: none; opacity: 0; }

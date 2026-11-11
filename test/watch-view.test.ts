@@ -92,15 +92,56 @@ await test("CLV-016 the banner of a run in work shows the time of the turn, the 
   ];
   assert.equal(
     banner({ ...working, turns: [sampleTurn({ activity })] }),
-    '<section class="banner working"><a class="banner-back" href="#">← Floor</a><span class="icon">●</span><div class="banner-main"><h2 class="run-identity"><span class="name-title">run-1</span></h2><p class="run-status">In work · Agent turn · 8 min 39 s</p><p class="banner-detail">The worker works for 8 min 39 s · 1 tool call · last output 4 min 21 s ago<span class="now">I run the gate &lt;now&gt;.</span></p></div>',
+    '<section class="banner working"><a class="banner-back" href="#">← Floor</a><span class="icon">●</span><div class="banner-main"><h2 class="run-identity"><span class="name-title">run-1</span></h2><p class="run-status">In work · Agent turn · 8 min 39 s</p><p class="banner-detail">The worker works for 8 min 39 s · 1 tool call · last output 4 min 21 s ago<span class="now" title="I run the gate &lt;now&gt;.">I run the gate &lt;now&gt;.</span></p></div>',
   );
   assert.match(
     banner({ ...working, turns: [sampleTurn({ activeAt: null })] }),
-    /<p class="banner-detail">The worker works for 8 min 39 s · 0 tool calls<span class="now">The worker starts\.<\/span><\/p>/,
+    /<p class="banner-detail">The worker works for 8 min 39 s · 0 tool calls<span class="now" title="The worker starts\.">The worker starts\.<\/span><\/p>/,
   );
   assert.match(
     banner({ ...working, turns: [] }),
     /<span class="name-title">run-1<\/span><\/h2><p class="run-status">In work · Agent turn · 8 min 39 s<\/p><p class="banner-detail">The run is in work\.<\/p>/,
+  );
+});
+
+await test("CLV-357 the live line of the banner shows the first line of the latest output as plain text and keeps the full output in its title", () => {
+  const working = {
+    state: "running",
+    code: "run-running",
+    detail: "The run is in work.",
+    decisions: [],
+    phases: phases(["done", "done", "active"]),
+  };
+  const line = (text: string): string => {
+    const html = banner({
+      ...working,
+      turns: [sampleTurn({ activity: [{ kind: "say", text }] })],
+    });
+    return html.slice(html.indexOf('<span class="now"'));
+  };
+  assert.equal(
+    line("\n  \n## Result: **Header** in `run_page` _now_ ok\n\nThe rest."),
+    '<span class="now" title="\n  \n## Result: **Header** in `run_page` _now_ ok\n\nThe rest.">Result: Header in run_page now ok</span></p></div>',
+  );
+  const shown = (text: string): string => {
+    const html = line(text);
+    return html.slice(html.indexOf(">") + 1, html.indexOf("</span>"));
+  };
+  assert.deepEqual(
+    [
+      "- **Done:** the `gate` passes",
+      "12. *First* step",
+      "* __Bold__ and ***strong*** words",
+      "### `check_quality_sources` and 2 * 3",
+      "> A quote",
+    ].map(shown),
+    [
+      "Done: the gate passes",
+      "First step",
+      "Bold and strong words",
+      "check_quality_sources and 2 * 3",
+      "A quote",
+    ],
   );
 });
 

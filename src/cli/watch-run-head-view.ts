@@ -1,5 +1,12 @@
 import { component, element, type Shown } from "./watch-element.ts";
-import { phaseTime, runTone, type WatchRun } from "./watch-render.ts";
+import {
+  counted,
+  elapsed,
+  phaseTime,
+  runTone,
+  type WatchRun,
+  type WatchTurn,
+} from "./watch-render.ts";
 import {
   DropButton,
   DropQuestion,
@@ -19,7 +26,6 @@ import {
   type SteerControls,
 } from "./watch-steer-view.ts";
 import { priceText } from "./usage-render.ts";
-import { reasonText } from "./watch-needs-view.ts";
 import { MenuShell, menuPicked } from "./watch-token-menu-view.ts";
 
 interface HeadControls {
@@ -217,8 +223,28 @@ export function RunNotices(
   ];
 }
 
-export function plainReason(run: WatchRun): string {
-  return run.state === "paused" ? reasonText(run) : run.detail;
+export function liveLine(text: string): string {
+  const line = text.split("\n").find((part) => part.trim() !== "") ?? "";
+  return line
+    .trim()
+    .replace(/^(?:#{1,6}|>|[-*+]|\d+[.)])\s+/u, "")
+    .replaceAll("`", "")
+    .replaceAll(/(\*{1,3}|(?<!\w)_{1,3})(?=\S)(.+?)(?<=\S)\1(?!\w)/gu, "$2");
+}
+
+export function workingDetail(turn: WatchTurn, now: string): Shown {
+  const calls = turn.activity.filter((item) => item.kind === "tool").length;
+  const quiet =
+    turn.activeAt === null
+      ? ""
+      : ` · last output ${elapsed(turn.activeAt, now)} ago`;
+  const last = turn.activity.at(-1)?.text ?? "The worker starts.";
+  const worker =
+    turn.harness === undefined ? "The worker" : `The ${turn.harness} worker`;
+  return [
+    `${worker} works for ${elapsed(turn.startedAt, now)} · ${counted(calls, "tool call")}${quiet}`,
+    element("span", { class: "now", title: last, children: liveLine(last) }),
+  ];
 }
 
 export function factParts(run: WatchRun): readonly Shown[] {
@@ -258,7 +284,8 @@ export const runHeadFunctions = [
   CommandNotice,
   SteerNotice,
   RunNotices,
-  plainReason,
+  liveLine,
+  workingDetail,
   factParts,
   RunFacts,
 ];

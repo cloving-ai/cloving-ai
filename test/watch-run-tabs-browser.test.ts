@@ -14,6 +14,24 @@ const model = sampleModel([
     phases: phases(["done", "done", "active"]),
     turns: [sampleTurn()],
   }),
+  sampleRun({
+    runId: "run-8",
+    state: "running",
+    code: "run-running",
+    detail: "The run is in work.",
+    decisions: [],
+    phases: phases(["done", "done", "active"]),
+    turns: [
+      sampleTurn({
+        activity: [
+          {
+            kind: "say",
+            text: `## Result **Header:** ${"the run page now puts the run first, with one action bar and the details in tabs, ".repeat(8)}\n\nThe second line.`,
+          },
+        ],
+      }),
+    ],
+  }),
 ]);
 
 const ready = `(async () => {
@@ -52,4 +70,39 @@ await test("CLV-357 a click on the Events tab shows the first event row at once,
     text: true,
     disclosures: 0,
   });
+});
+
+const liveLine = `(async () => {
+  const frame = () => new Promise((resolve) => requestAnimationFrame(resolve));
+  for (let attempt = 0; attempt < 300 && !document.querySelector(".banner .now"); attempt++) await frame();
+  await frame();
+  const banner = document.querySelector(".banner").getBoundingClientRect();
+  const line = document.querySelector(".banner .now");
+  const box = line.getBoundingClientRect();
+  const main = document.querySelector(".banner-main").getBoundingClientRect();
+  return {
+    inside: box.right <= banner.right && main.right <= banner.right,
+    oneLine: box.height < 30,
+    clipped: line.scrollWidth > line.clientWidth,
+    page: document.documentElement.scrollWidth <= innerWidth,
+    text: line.textContent.startsWith("Result Header: the run page"),
+    title: line.title.startsWith("## Result **Header:**"),
+  };
+})()`;
+
+await test("CLV-357 a long Markdown output keeps the live line of the banner on one line inside the banner, at a wide and a narrow width", async () => {
+  await using fixture = await watchPageServer(model, { hash: "#run=run-8" });
+  await using browser = await realBrowser();
+  for (const width of [1280, 600]) {
+    const page = await browser.page({ width, height: 800 });
+    await page.navigate(fixture.url);
+    assert.deepEqual(await page.evaluate(liveLine), {
+      inside: true,
+      oneLine: true,
+      clipped: true,
+      page: true,
+      text: true,
+      title: true,
+    });
+  }
 });
