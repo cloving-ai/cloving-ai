@@ -210,7 +210,7 @@ process.exit(0);
     }
   }));
 
-await test("CLV-178 failed command recovery releases the socket and ownership so startup can be retried", () =>
+await test("CLV-178 failed command recovery releases the socket and ownership so a new start can retry", () =>
   withConsumer(workflow, async (consumer) => {
     try {
       const crashed = await consumer.runUntil(
@@ -246,6 +246,10 @@ try {
   filesystem.writeFile = write;
   syncBuiltinESMExports();
 }
+process.exit(0);
+`);
+      assert.equal(restarted.status, 0, restarted.stderr);
+      const retried = await consumer.run(`${commandPrelude}
 writeFileSync("scan.mjs", 'process.stdout.write("recovered");');
 const daemon = await launch();
 try {
@@ -256,7 +260,7 @@ try {
 } finally { await daemon.close(); }
 process.exit(0);
 `);
-      assert.equal(restarted.status, 0, restarted.stderr);
+      assert.equal(retried.status, 0, retried.stderr);
     } finally {
       await stopCommand(consumer.directory);
     }
