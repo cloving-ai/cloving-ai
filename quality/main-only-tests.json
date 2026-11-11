@@ -1,0 +1,34 @@
+[
+  {
+    "files": ["test/packed-install.test.ts"],
+    "triggers": [
+      "assets/watch-fonts/",
+      "bin/",
+      "package-lock.json",
+      "package.json",
+      "templates/",
+      "test/packed-",
+      "themes/",
+      "tools/",
+      "tsconfig.build.json",
+      "tsconfig.json"
+    ]
+  },
+  {
+    "files": [
+      "test/quality/coverage-volume.test.ts",
+      "test/quality/project.test.ts",
+      "test/quality/quality-output.test.ts",
+      "test/quality/worker-hooks.test.ts"
+    ],
+    "triggers": [
+      ".github/workflows/",
+      "eslint.config.mjs",
+      "quality/",
+      "test/quality/",
+      "test/test-timing.ts",
+      "tools/",
+      "tsconfig.json"
+    ]
+  }
+]

@@ -144,14 +144,17 @@ assert.equal(currentClient.develop.workflowId, workflows.develop.workflowId);
 const { project: oldProject, ...builtins } = originalSettings.manifests;
 const manifests = Object.fromEntries(Object.keys(removed ? builtins : originalSettings.manifests).map(name => [name, directory + "/current-project/develop.workflow.json"]));
 const loaded = [];
+let startChecked;
+const checked = new Promise((resolve) => { startChecked = resolve; });
 const replays = [];
 const sweep = process.env.RETENTION === undefined ? {} : { retention: { days: 30, action: process.env.RETENTION, archiveFolder: null }, retentionClock: () => Date.now() + 40 * 86400000 };
 cpSync("bundle-project", "free-project", { recursive: true });
 writeFileSync("free-project/declarations.json", "[ ]");
 const freeDigest = await retainWorkflowBundle({ project: directory + "/free-project", repository: directory, directory: directory + "/workflow-bundles" });
-const daemon = await launched({ ...originalSettings, ...sweep, bundleDigest: currentDigest, manifests, declarations: removed ? [] : [projectDeclaration], workflows: { developTicket: currentClient.develop, developPrd: currentClient.develop, ...(removed ? {} : { project: currentClient.develop }) }, handler: currentHandler.POST, loadBundle: async (directory) => { loaded.push(directory); const bundle = await loadWorkflowBundle(directory); return { ...bundle, handler: async (request) => { const receipt = (await request.clone().json()).runId; const response = await bundle.handler(request); replays.push({ receipt, status: response.status }); return response; } }; } });
+const daemon = await launched({ ...originalSettings, ...sweep, bundleDigest: currentDigest, manifests, declarations: removed ? [] : [projectDeclaration], workflows: { developTicket: currentClient.develop, developPrd: currentClient.develop, ...(removed ? {} : { project: currentClient.develop }) }, handler: currentHandler.POST, loadBundle: async (directory) => { if (loaded.length > 0) await checked; loaded.push(directory); const bundle = await loadWorkflowBundle(directory); return { ...bundle, handler: async (request) => { const receipt = (await request.clone().json()).runId; const response = await bundle.handler(request); replays.push({ receipt, status: response.status }); return response; } }; } });
 try {
   assert.deepEqual(loaded, [directory + "/workflow-bundles/" + bundleDigest]);
+  startChecked();
   assert.equal(existsSync("workflow-bundles/" + freeDigest), process.env.RETENTION === undefined);
   for (const kept of [bundleDigest, currentDigest]) assert.equal(existsSync("workflow-bundles/" + kept + "/bundle.json"), true);
   await until(async () => (await shown(runId)).state === "waiting_gate");

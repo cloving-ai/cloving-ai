@@ -9,7 +9,7 @@ export interface WorkflowStep {
   readonly if?: string;
   readonly "continue-on-error"?: boolean;
   readonly "timeout-minutes"?: number;
-  readonly with?: Readonly<Record<string, string | boolean>>;
+  readonly with?: Readonly<Record<string, string | boolean | number>>;
   readonly env?: StringRecord;
 }
 
@@ -84,8 +84,8 @@ function isStringRecord(value: unknown): value is StringRecord {
   return isRecordOf(value, isString);
 }
 
-function isInput(value: unknown): value is string | boolean {
-  return typeof value === "string" || typeof value === "boolean";
+function isInput(value: unknown): value is string | boolean | number {
+  return ["string", "boolean", "number"].includes(typeof value);
 }
 
 function isCommand(value: unknown): value is Command {
