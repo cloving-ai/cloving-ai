@@ -47,7 +47,7 @@ export function restartInvocation(request: {
   if (names.some((name) => !allowed.includes(name))) return "unexpected-option";
   const valueOf = (name: string): string | undefined =>
     request.options.find((option) => option.name === name)?.value;
-  const at = valueOf("at") ?? "gap";
+  const at = valueOf("at") ?? "keep";
   const settings = valueOf("settings") ?? "environment";
   const commandId = givenCommandId(request.options);
   const within = withinSeconds(valueOf("within"));

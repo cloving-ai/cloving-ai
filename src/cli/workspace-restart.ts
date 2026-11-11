@@ -162,7 +162,7 @@ async function restartedMember(
     operation: "restart",
     parameters: {
       commandId: request.commandId,
-      at: "now",
+      at: request.at === "keep" ? "keep" : "now",
       ...request.options,
     },
     signal: AbortSignal.any([

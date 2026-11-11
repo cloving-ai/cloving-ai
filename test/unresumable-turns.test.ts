@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { execFileSync, spawn } from "node:child_process";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -97,6 +98,53 @@ await test("CLV-306 a service folder with no turn journal has no run that cannot
     await writeFile(join(directory, "journal"), "");
     await assert.rejects(unresumableRuns(directory), { code: "ENOTDIR" });
   } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+await test("CLV-337 a Claude turn that keeps running through the restart is not in the list, also before it records a session", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "cloving-unresumable-"));
+  const live = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], {
+    stdio: "ignore",
+  });
+  try {
+    const processId = live.pid ?? 0;
+    const output = execFileSync(
+      "ps",
+      ["-ww", "-o", "lstart=", "-o", "command=", "-p", String(processId)],
+      { encoding: "utf8" },
+    );
+    const launch = {
+      processId,
+      processStart: output.trim().split(/\s+/).slice(0, 5).join(" "),
+      marker: process.execPath,
+      output: join(directory, "turn.jsonl"),
+      offset: 0,
+      exit: join(directory, "turn.exit.json"),
+      configuration: join(directory, "gh-config"),
+    };
+    const running = { phase: "running", processId, launch };
+    await turn(directory, {
+      key: "claude-kept",
+      files: {
+        "started.json": { ...started("run-kept", "claude"), ...running },
+        "attempt-1.json": { attempt: 1, startedAt: "2026-11-05T10:00:00Z" },
+      },
+    });
+    await turn(directory, {
+      key: "claude-other-process",
+      files: {
+        "started.json": {
+          ...started("run-other", "claude"),
+          ...running,
+          launch: { ...launch, processStart: "Mon Jan  1 00:00:00 2024" },
+        },
+        "attempt-1.json": { attempt: 1, startedAt: "2026-11-05T10:00:00Z" },
+      },
+    });
+    assert.deepEqual(await unresumableRuns(directory), ["run-other"]);
+  } finally {
+    live.kill("SIGKILL");
     await rm(directory, { recursive: true, force: true });
   }
 });

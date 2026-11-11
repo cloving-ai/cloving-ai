@@ -38,13 +38,15 @@ export interface DoctorCheck extends DoctorObservation {
   readonly fix: string;
 }
 
+export const nodeVersionFix =
+  "Install a supported Node version: nvm install 26 && nvm use 26";
+
 export function doctorFixes(
   client: string,
 ): Readonly<Record<DoctorCode, string>> {
   return {
     "git-repository": "Change to the repository, or run: git init",
-    "node-version":
-      "Install a supported Node version: nvm install 26 && nvm use 26",
+    "node-version": nodeVersionFix,
     harnesses: "Install a harness: npm install -g @anthropic-ai/claude-code",
     "default-harness": `Install a harness: npm install -g @anthropic-ai/claude-code; select it: CLOVING_WORKER=claude ${client} doctor; clear command overrides: unset CLOVING_CLAUDE_COMMAND CLOVING_CODEX_COMMAND; edit private harness.command if configured; for another harness: ${client} config set harness.turn '[...]'`,
     "gh-login": "Log in with the configured GitHub command: gh auth login",

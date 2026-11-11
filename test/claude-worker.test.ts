@@ -43,13 +43,7 @@ await test("CLV-013 the Claude worker starts one turn in a new work tree on a ne
       ["operationId", "target", "branch", "worktree", "processId"].map((name) =>
         field(started, name),
       ),
-      [
-        "operation-1",
-        "ticket/one",
-        "cloving/ticket-one",
-        tree,
-        turn?.processId,
-      ],
+      ["operation-1", "ticket/one", "cloving/ticket-one", tree, turn?.parentId],
     );
     assert.deepEqual(
       [field(started, "startCommit"), typeof field(started, "startedAt")],

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { readFile, readdir } from "node:fs/promises";
-import { resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { test } from "node:test";
 import { testMilliseconds } from "../test-timing.ts";
 import { withFiles } from "./files-fixture.ts";
@@ -134,6 +134,50 @@ for (const [environment, message] of [
     assert.equal(result.status, 1);
     assert.match(result.stderr, new RegExp(message));
     assert.equal(result.testSet, null);
+  });
+
+for (const shard of [undefined, "1/3"])
+  await test(`the gate reads the changed paths of CLOVING_CHANGED_PATHS with ${String(shard)} shard`, async () => {
+    await withFiles(
+      {
+        "changed-paths": "package.json\0src/cli/watch-view.ts\0",
+        invalid: "/etc/hosts\0",
+      },
+      async (folder) => {
+        const shardSetting =
+          shard === undefined ? {} : { CLOVING_TEST_SHARD: shard };
+        const changed = await shardGate({
+          ...shardSetting,
+          CLOVING_CHANGED_PATHS: join(folder, "changed-paths"),
+        });
+        assert.equal(changed.status, 0, changed.stderr);
+        assert.deepEqual(changed.changedPaths, [
+          "package.json",
+          "src/cli/watch-view.ts",
+        ]);
+        const every = await shardGate({
+          ...shardSetting,
+          CLOVING_CHANGED_PATHS: undefined,
+        });
+        assert.equal(every.status, 0, every.stderr);
+        assert.deepEqual(every.changedPaths, [null]);
+        for (const [file, message] of [
+          [
+            "invalid",
+            /CLOVING_CHANGED_PATHS must name a file of NUL-separated relative paths/,
+          ],
+          ["missing", /ENOENT/],
+        ] as const) {
+          const refused = await shardGate({
+            ...shardSetting,
+            CLOVING_CHANGED_PATHS: join(folder, file),
+          });
+          assert.equal(refused.status, 1);
+          assert.match(refused.stderr, message);
+          assert.equal(refused.changedPaths, null);
+        }
+      },
+    );
   });
 
 for (const shard of [undefined, "1/2", "2/2"]) {

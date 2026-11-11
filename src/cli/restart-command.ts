@@ -194,6 +194,7 @@ async function restarted(
   };
   environment.interrupted().then(stop, stop);
   const unanswered: Unanswered = { since: undefined };
+  const recovering: Unanswered = { since: undefined };
   for (;;) {
     const waited = await delay(250, true, { signal: stopped.signal }).catch(
       () => false,
@@ -204,8 +205,23 @@ async function restarted(
       stopped: stopped.signal,
       unanswered,
     });
-    if (outcome !== undefined) return outcome;
+    if (outcome === undefined) continue;
+    if (!stillRecovering(environment, { outcome, recovering })) return outcome;
   }
+}
+
+function stillRecovering(
+  environment: RestartEnvironment,
+  waited: { readonly outcome: Waited; readonly recovering: Unanswered },
+): boolean {
+  const { outcome, recovering } = waited;
+  if (outcome.kind !== "restarted") return false;
+  if (record(outcome.after["turnRecovery"])?.["state"] !== "recovering")
+    return false;
+  recovering.since ??= Date.now();
+  return (
+    Date.now() - recovering.since < (environment.answerMilliseconds ?? 180_000)
+  );
 }
 
 const updateFailures: Readonly<Record<string, string>> = {

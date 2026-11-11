@@ -170,7 +170,7 @@ await test("CLV-052 a command whose turn is longer than the lease in each attemp
   assert.equal(receipt.reason, "authority-unavailable");
   assert.match(
     receipt.detail,
-    /^SyncTimeout: .* status=(claimed waitingOn=messageClaimed|ready waitingOn=notYetAvailable)$/,
+    /^SyncTimeout: .* status=(claimed waitingOn=messageClaimed|ready waitingOn=(?:notYetAvailable|readyUnclaimed))$/,
   );
   await delay(timing.callTimeoutMilliseconds);
   const after = await executePinned(authority, admission);

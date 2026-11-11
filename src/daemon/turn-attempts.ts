@@ -20,6 +20,8 @@ import {
 import { nativeHarness } from "../harness-defaults.ts";
 import { profileCommand } from "../turn-profile.ts";
 import type { TurnResume } from "./claude-recovery.ts";
+import type { TurnLaunch } from "../turn-launch.ts";
+import type { ResumeReason } from "../worker-usage.ts";
 import { steeredMetadata, type Steering } from "./turn-steering.ts";
 
 export interface RetrySettings {
@@ -32,8 +34,25 @@ export interface RetrySettings {
   readonly log?: (line: string) => void;
 }
 
+export type AttemptEntry = Readonly<Record<string, unknown>> & {
+  readonly attempt: number;
+  readonly startedAt: string;
+  readonly resumedAfter?: ResumeReason;
+};
+
+export interface TurnAttach {
+  readonly startedAt: string;
+  readonly turnStartCommit: string | null;
+  readonly ends: readonly TurnEnd[];
+  readonly steerNotes: readonly string[];
+  readonly entry: AttemptEntry;
+  readonly launch: TurnLaunch;
+}
+
 export interface RetryOptions extends RetrySettings {
+  readonly runId: string;
   readonly resume?: TurnResume;
+  readonly attach?: TurnAttach;
   readonly stopping?: AbortController;
   readonly stopMilliseconds?: number;
   readonly metadata: Readonly<Record<string, unknown>>;
@@ -49,6 +68,17 @@ export interface Attempts {
   readonly grace: { milliseconds: number };
   readonly ends: TurnEnd[];
   readonly steering: Steering;
+}
+
+export function attemptSince(attempt: {
+  readonly entry: AttemptEntry;
+  readonly start: TurnStart;
+}): number {
+  const since =
+    attempt.start.attach === undefined
+      ? Number.NaN
+      : Date.parse(attempt.entry.startedAt);
+  return Number.isNaN(since) ? Date.now() : since;
 }
 
 export function attemptMetadata(
