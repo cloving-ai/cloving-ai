@@ -38,8 +38,10 @@ import { runnerLaunch, type RunnerLaunch } from "./turn-runner-spawn.ts";
 import { attachedTurn, detachedTurn, type TurnExit } from "./detached-turn.ts";
 import type { TurnLaunch } from "../turn-launch.ts";
 import {
+  commitSignatureSettings,
   githubTokens,
   passedVariables,
+  withGitSettings,
   type CommitSignatures,
   type TurnVariables,
 } from "../turn-environment.ts";
@@ -281,7 +283,10 @@ function launchedTurn(start: TurnStart): StartedTurn | undefined {
   const { parts, standardInput } = turnCommand(start);
   const [executable = "", ...rest] = parts;
   const configuration = mkdtempSync(join(start.folder, "gh-config-"));
-  const environment = turnEnvironment(configuration, start);
+  const environment = withGitSettings(
+    turnEnvironment(configuration, start),
+    commitSignatureSettings(start.commitSignatures),
+  );
   try {
     if (!commandFound(executable, { ...start, path: environment["PATH"] })) {
       rmSync(configuration, { recursive: true, force: true });
