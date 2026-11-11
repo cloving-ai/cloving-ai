@@ -21,11 +21,13 @@ export interface MenuNode {
   readonly querySelector: (selector: string) => MenuElement | null;
 }
 
+export type MenuTarget = object;
+
 interface MenuEvent {
   readonly currentTarget: MenuNode & {
-    readonly contains: (node: unknown) => boolean;
+    readonly contains: (node: MenuTarget | null) => boolean;
   };
-  readonly relatedTarget?: unknown;
+  readonly relatedTarget?: MenuTarget | null;
   readonly key?: string;
 }
 
@@ -42,11 +44,22 @@ export function menuClosed(menu: MenuNode): void {
   menu.querySelector(".token-menu-open")?.focus();
 }
 
+export function menuEntered(menu: MenuNode): void {
+  menu.dataset["pointer"] = "inside";
+  menuOpened(menu);
+}
+
+export function menuExited(menu: MenuNode): void {
+  delete menu.dataset["pointer"];
+  menuLeft(menu);
+}
+
 export function menuLeft(menu: MenuNode): void {
   clearTimeout(Number(menu.dataset["closing"]));
   menu.dataset["closing"] = String(
     setTimeout(() => {
       const pop = menu.querySelector(".token-pop");
+      if (menu.dataset["pointer"] === "inside") return;
       if (menu.querySelector(":focus-visible") !== null) return;
       if (pop !== null && pop.matches(":popover-open")) pop.hidePopover();
     }, 200),
@@ -127,16 +140,18 @@ export function TokenMenu(props: TokenMenuProps): Shown {
   };
   return element("div", {
     class: "token-menu",
-    onPointerEnter: opened,
+    onPointerEnter: (event: MenuEvent) => {
+      menuEntered(event.currentTarget);
+    },
     onPointerLeave: (event: MenuEvent) => {
-      menuLeft(event.currentTarget);
+      menuExited(event.currentTarget);
     },
     onFocusIn: opened,
     onKeyDown: (event: MenuEvent) => {
       if (event.key === "Escape") menuClosed(event.currentTarget);
     },
     onFocusOut: (event: MenuEvent) => {
-      if (!event.currentTarget.contains(event.relatedTarget))
+      if (!event.currentTarget.contains(event.relatedTarget ?? null))
         menuLeft(event.currentTarget);
     },
     children: [
@@ -162,6 +177,8 @@ export function TokenMenu(props: TokenMenuProps): Shown {
 export const tokenMenuFunctions = [
   menuOpened,
   menuClosed,
+  menuEntered,
+  menuExited,
   menuLeft,
   TokenDrop,
   TokenCommands,

@@ -5,7 +5,13 @@ import { setTimeout as delay } from "node:timers/promises";
 import { component } from "../src/cli/watch-element.ts";
 import type { RenameControls } from "../src/cli/watch-rename-view.ts";
 import type { RunCommandControls } from "../src/cli/watch-run-command-view.ts";
-import { menuLeft, menuOpened } from "../src/cli/watch-token-menu-view.ts";
+import {
+  type MenuTarget,
+  menuEntered,
+  menuExited,
+  menuLeft,
+  menuOpened,
+} from "../src/cli/watch-token-menu-view.ts";
 import { Page } from "../src/cli/watch-view.ts";
 import { found, rendered } from "./watch-dom.ts";
 import { rule } from "./watch-style-fixture.ts";
@@ -285,22 +291,27 @@ await test("CLV-354 the token popover lists one item for each row in the card fo
   );
 });
 
+interface MenuFields {
+  readonly relatedTarget?: MenuTarget | null;
+  readonly key?: string;
+}
+
 await test("CLV-354 the token menu element opens on pointer enter and focus in, closes after a pointer leave or a focus move out of the menu, and an Escape inside closes it at once with the focus back on its opener", async () => {
   const [menu] = menus(floor({ controlling }));
   assert.ok(menu);
   const node = menuNode();
   const inside = {};
-  const event = (fields: Record<string, unknown> = {}) => ({
+  const event = (fields: MenuFields = {}) => ({
     currentTarget: {
       ...node.menu,
-      contains: (item: unknown) => item === inside,
+      contains: (item: MenuTarget | null) => item === inside,
     },
     ...fields,
   });
   const handler = (name: string) => {
     const value = menu[name];
     assert.ok(typeof value === "function");
-    return (fields?: Record<string, unknown>) => {
+    return (fields?: MenuFields) => {
       Reflect.apply(value, undefined, [event(fields)]);
     };
   };
@@ -326,4 +337,19 @@ await test("CLV-354 the token menu element opens on pointer enter and focus in, 
       ["show", "hide", "show", "hide", "show", "hide", "focus"],
     ],
   );
+});
+
+await test("CLV-354 the token menu stays open while the pointer is inside, also when the keyboard focus leaves it, and closes 200 ms after the pointer leaves too", async () => {
+  const node = menuNode();
+  menuEntered(node.menu);
+  node.focus.visible = true;
+  node.focus.visible = false;
+  menuLeft(node.menu);
+  await delay(260);
+  const kept = node.pop.open;
+  menuExited(node.menu);
+  await delay(100);
+  const waiting = node.pop.open;
+  await delay(160);
+  assert.deepEqual([kept, waiting, node.pop.open], [true, true, false]);
 });

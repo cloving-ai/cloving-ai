@@ -283,3 +283,32 @@ await test("CLV-354 a keyboard user opens the token menu, starts Rename, and Esc
     ],
   );
 });
+
+await test("CLV-354 the token menu stays open under the pointer when the keyboard focus moves out of its last item, and closes when the pointer leaves", async () => {
+  await using fixture = await watchPageServer(model("#727"), {
+    token: "a".repeat(64),
+  });
+  await using browser = await realBrowser();
+  const page = await browser.page({ width: 1280, height: 844 });
+  await page.navigate(fixture.url);
+  await page.evaluate(ready);
+  await page.move(
+    point(await page.evaluate(center('[popovertarget="token-menu-run-a"]'))),
+  );
+  await page.move(point(await page.evaluate(center("#token-menu-run-a"))));
+  await page.evaluate(
+    `(() => { document.querySelector("#token-menu-run-a .run-command-drop").focus(); return {}; })()`,
+  );
+  await page.pressTab();
+  await delay(400);
+  const left = await page.evaluate(`(() => ({
+    inside: document.querySelector("#token-menu-run-a").contains(document.activeElement),
+  }))()`);
+  const kept = await page.evaluate(opened);
+  await page.move({ x: 5, y: 830 });
+  await delay(400);
+  assert.deepEqual(
+    [left, kept, await page.evaluate(opened)],
+    [{ inside: false }, { open: "token-menu-run-a" }, { open: "" }],
+  );
+});
