@@ -13,6 +13,8 @@ import {
   type Scene,
 } from "./claude-worker-fixture.ts";
 import type { TurnRecovery } from "../src/turn-recovery.ts";
+import { activeOwners } from "../src/daemon/turn-owners.ts";
+import { stopLeftProcesses } from "../src/daemon/worktree-processes.ts";
 import {
   crashedService,
   markedProcess,
@@ -155,6 +157,31 @@ await test("CLV-350 a failed process search keeps the turn in recovery, does not
     assert.equal(scene.turns().length, 1);
     assert.equal((await next.reconcile(intent(), signal)).kind, "accepted");
     assert.deepEqual(noted, [{ runId: "run-1", way: "connected" }]);
+    writeFileSync(join(scene.directory, "turns.log.gate"), "");
+    await until(() => scene.reports.length === 1);
+    assert.equal(scene.reports[0]?.outcome, "completed");
+    assert.equal(scene.turns().length, 1);
+  }));
+
+await test("CLV-350 a new worker holds a turn that it finds by its marker before any recovery, so the cleanup of another run in the same work tree does not stop it", () =>
+  withScene(async (scene) => {
+    await crashedTurn(scene, "gated-lines");
+    const turn = keptTurn(scene);
+    const owner = { runId: "run-1", processId: turn.parentId };
+    const next = scene.worker("gated-lines");
+    await next.hold(intent());
+    assert.deepEqual(await activeOwners(turn.directory), [owner]);
+    await stopLeftProcesses({
+      directory: turn.directory,
+      runId: "run-2",
+      seconds: 60,
+      signal,
+      stopMilliseconds: 100,
+    });
+    assert.equal(alive(turn.processId), true);
+    assert.equal(alive(turn.parentId), true);
+    assert.equal((await next.reconcile(intent(), signal)).kind, "accepted");
+    assert.deepEqual(await activeOwners(turn.directory), [owner]);
     writeFileSync(join(scene.directory, "turns.log.gate"), "");
     await until(() => scene.reports.length === 1);
     assert.equal(scene.reports[0]?.outcome, "completed");

@@ -138,11 +138,11 @@ async function markedCommand(
   const planned = plannedLaunch(await readRecord(folder, markerRecord));
   if (planned === undefined) return undefined;
   const since = Date.parse(String(record(started)?.["startedAt"]));
-  const launch = await foundLaunch(planned, { since, stopMilliseconds: 0 });
-  if (launch === "stopped") return undefined;
-  if (launch === undefined || launch === "unknown") return launch;
-  await writeRecord(folder, { name: "launch.json", value: launch });
-  return launch;
+  const found = await foundLaunch(planned, { since, stopMilliseconds: 0 });
+  if (found === "stopped") return undefined;
+  if (found === undefined || found === "unknown") return found;
+  await writeRecord(folder, { name: "launch.json", value: found.launch });
+  return found.launch;
 }
 
 async function keptLaunch(

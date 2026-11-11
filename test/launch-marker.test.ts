@@ -12,13 +12,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
+import { markedTurn } from "../src/daemon/claude-attach.ts";
 import { located } from "../src/daemon/operation-journal.ts";
 import {
   markedProcesses,
   processExists,
 } from "../src/daemon/process-identity.ts";
 import type { TurnRecovery } from "../src/turn-recovery.ts";
-import { until } from "./claude-worker-fixture.ts";
+import { field, until } from "./claude-worker-fixture.ts";
 import {
   commandIntent,
   signal,
@@ -114,25 +115,117 @@ function plannedCommand(scene: Scene, marker: string): void {
   );
 }
 
-await test("CLV-350 the marker search accepts a start that ps shows one second before the second of the recorded start, as Linux ps does, and refuses an earlier start", async () => {
+function shownStart(time: number): string {
+  const [weekday, month, day, year] = new Date(time).toDateString().split(" ");
+  const clock = new Date(time).toTimeString().slice(0, 8);
+  return [weekday, month, Number(day), clock, year].join(" ");
+}
+
+async function listedSearch(request: {
+  readonly marker: string;
+  readonly since: number;
+  readonly lines: readonly string[];
+}) {
+  const directory = mkdtempSync(join(tmpdir(), "cloving-launch-marker-"));
+  const listing = [...request.lines, ""].join("\n");
+  try {
+    const before = Date.now();
+    const found = await withListedProcesses({ directory, listing }, () =>
+      markedProcesses({ marker: request.marker, since: request.since }),
+    );
+    return { found, before, after: Date.now() };
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+}
+
+await test("CLV-350 the marker search takes the start of a process from the elapsed time that ps shows, so a start that ps shows as a local time one hour early, as in the repeated hour at the end of daylight saving time, is accepted, and an earlier start is refused", async () => {
+  const marker = `cloving-turn-${randomUUID()}`;
+  const since = Date.now() - 1500;
+  const repeatedHour = shownStart(since + 500 - 3_600_000);
+  const { found, before, after } = await listedSearch({
+    marker,
+    since,
+    lines: [
+      `  101 ${repeatedHour} 00:01 node start ${marker}`,
+      `  102 ${shownStart(since - 500)} 00:02 node start ${marker}`,
+      `  103 ${shownStart(since - 58_500)} 01:00 node start ${marker}`,
+      `  104 ${shownStart(since + 500)} 00:01 node start cloving-turn-other`,
+      `  105 ${shownStart(since + 500)} - node start ${marker}`,
+    ],
+  });
+  assert.deepEqual(
+    found?.map(({ processId, processStart }) => ({ processId, processStart })),
+    [
+      { processId: 101, processStart: repeatedHour },
+      { processId: 102, processStart: shownStart(since - 500) },
+    ],
+  );
+  const [first, second] = found;
+  assert.ok(first !== undefined && second !== undefined);
+  assert.ok(
+    first.startedAt >= before - 1000 && first.startedAt <= after - 1000,
+  );
+  assert.ok(
+    second.startedAt >= before - 2000 && second.startedAt <= after - 2000,
+  );
+});
+
+await test("CLV-350 the marker search reads elapsed times with hours and with days, and accepts a start up to one second before the recorded start, as the whole seconds of ps can give", async () => {
+  const marker = `cloving-turn-${randomUUID()}`;
+  const since = Date.now() - 93_790_000;
+  const shown = shownStart(since);
+  const { found } = await listedSearch({
+    marker,
+    since,
+    lines: [
+      `  201 ${shown} 01-02:03:04 node start ${marker}`,
+      `  202 ${shown} 01-02:03:20 node start ${marker}`,
+      `  203 ${shown} 02:03:04 node start ${marker}`,
+      `  204 ${shown} 01-02:03:11 node start ${marker}`,
+    ],
+  });
+  assert.deepEqual(
+    found?.map(({ processId }) => processId),
+    [201, 203, 204],
+  );
+});
+
+await test("CLV-350 a turn found by its marker records the start from the elapsed time that ps shows, not from the local time that ps shows", async () => {
   const directory = mkdtempSync(join(tmpdir(), "cloving-launch-marker-"));
   const marker = `cloving-turn-${randomUUID()}`;
-  const listing = [
-    `  101 Wed Nov 11 09:59:59 2026 node start ${marker}`,
-    `  102 Wed Nov 11 09:59:58 2026 node start ${marker}`,
-    "  103 Wed Nov 11 10:00:00 2026 node start cloving-turn-other",
-    "",
-  ].join("\n");
+  const since = Date.now() - 1500;
+  writeFileSync(
+    join(directory, "launch-marker.json"),
+    JSON.stringify({
+      marker,
+      output: join(directory, "turn.jsonl"),
+      offset: 0,
+      exit: join(directory, "turn.exit.json"),
+      configuration: join(directory, "configuration"),
+    }),
+  );
+  const shown = shownStart(since + 500 - 3_600_000);
+  const listing = `  301 ${shown} 00:01 node start ${marker}\n`;
   try {
-    const found = await withListedProcesses({ directory, listing }, () =>
-      markedProcesses({
-        marker,
-        since: new Date(2026, 10, 11, 10, 0, 0, 400).getTime(),
+    const before = Date.now();
+    const launch = await withListedProcesses({ directory, listing }, () =>
+      markedTurn(directory, {
+        started: {
+          attempt: 1,
+          phase: "starting",
+          startedAt: new Date(since).toISOString(),
+        },
+        stopMilliseconds: 100,
       }),
     );
-    assert.deepEqual(found, [
-      { processId: 101, processStart: "Wed Nov 11 09:59:59 2026" },
-    ]);
+    const after = Date.now();
+    assert.equal(field(launch, "processId"), 301);
+    const attempt: unknown = JSON.parse(
+      readFileSync(join(directory, "attempt-1.json"), "utf8"),
+    );
+    const startedAt = Date.parse(String(field(attempt, "startedAt")));
+    assert.ok(startedAt >= before - 1000 && startedAt <= after - 1000);
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
@@ -144,7 +237,7 @@ await test("CLV-350 a process with the marker that started before the recorded s
     const other = markedProcess(scene.directory, marker);
     try {
       await until(other.known);
-      await delay(2100);
+      await delay(3000);
       plannedCommand(scene, marker);
       const recoveries: TurnRecovery[] = [];
       const second = scene.worker('throw new Error("must not run")', {
@@ -242,7 +335,11 @@ await test("CLV-350 the README states that the service finds a kept turn or comm
   );
   assert.match(
     readme,
-    /`ps` gives the start time in whole seconds\. On Linux, the time can be up to one second before the real start\. Thus the service accepts a start time up to one second before the second of the recorded start\./,
+    /The service calculates the start time of a process from the elapsed time that `ps` shows\. The start time that `ps` shows is a local time with no UTC offset, and at the end of daylight saving time the same local time occurs two times\. `ps` gives the elapsed time in whole seconds\. Thus the calculated start time can be up to one second before the real start, and the service accepts a start time up to one second before the recorded start\./,
+  );
+  assert.match(
+    readme,
+    /Before the new service connects to or resumes a turn, it holds each match of each turn with a marker and no launch record as an active turn\. Thus the cleanup of another turn in the same work tree does not stop the match\./,
   );
   assert.match(
     readme,

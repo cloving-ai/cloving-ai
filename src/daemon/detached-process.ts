@@ -324,16 +324,26 @@ async function stoppedMatch(
   }
 }
 
+export interface FoundLaunch {
+  readonly launch: TurnLaunch;
+  readonly startedAt: number;
+}
+
 export async function foundLaunch(
   planned: PlannedLaunch,
   search: { readonly since: number; readonly stopMilliseconds: number },
-): Promise<TurnLaunch | "stopped" | "unknown" | undefined> {
+): Promise<FoundLaunch | "stopped" | "unknown" | undefined> {
   const found = await markedProcesses({ ...search, marker: planned.marker });
   if (found === undefined) return "unknown";
-  const launches = found.map((match) => ({ ...match, ...planned }));
+  const launches = found.map(({ processId, processStart, startedAt }) => ({
+    launch: { processId, processStart, ...planned },
+    startedAt,
+  }));
   if (launches.length === 1) return launches[0];
   await Promise.all(
-    launches.map((launch) => stoppedMatch(launch, search.stopMilliseconds)),
+    launches.map((match) =>
+      stoppedMatch(match.launch, search.stopMilliseconds),
+    ),
   );
   return launches.length === 0 ? undefined : "stopped";
 }

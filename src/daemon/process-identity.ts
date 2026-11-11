@@ -61,6 +61,7 @@ export async function processMatch(
 export interface FoundProcess {
   readonly processId: number;
   readonly processStart: string;
+  readonly startedAt: number;
 }
 
 export interface ProcessSearch {
@@ -70,22 +71,33 @@ export interface ProcessSearch {
 
 const shownStartLagMilliseconds = 1000;
 
+const elapsedPattern = /^(?:(\d+)-)?(?:(\d+):)?(\d+):(\d+)$/;
+
+function elapsedMilliseconds(text: string): number {
+  const match = elapsedPattern.exec(text);
+  if (match === null) return Number.NaN;
+  const seconds = [match[2], match[3], match[4]].reduce(
+    (total, part) => total * 60 + Number(part ?? 0),
+    0,
+  );
+  return (Number(match[1] ?? 0) * 86_400 + seconds) * 1000;
+}
+
 function markedLine(
   line: string,
-  search: ProcessSearch,
+  search: ProcessSearch & { readonly now: number },
 ): readonly FoundProcess[] {
   const parts = line.trim().split(/\s+/);
   const processId = Number(parts[0]);
   const processStart = parts.slice(1, 6).join(" ");
   if (
     !Number.isSafeInteger(processId) ||
-    !parts.slice(6).includes(search.marker)
+    !parts.slice(7).includes(search.marker)
   )
     return [];
-  const earliest =
-    Math.floor(search.since / 1000) * 1000 - shownStartLagMilliseconds;
-  return Date.parse(processStart) >= earliest
-    ? [{ processId, processStart }]
+  const startedAt = search.now - elapsedMilliseconds(String(parts[6]));
+  return startedAt >= search.since - shownStartLagMilliseconds
+    ? [{ processId, processStart, startedAt }]
     : [];
 }
 
@@ -104,13 +116,18 @@ export function markedProcesses(
         "-o",
         "lstart=",
         "-o",
+        "etime=",
+        "-o",
         "command=",
       ],
       { encoding: "utf8", timeout: 5000, maxBuffer: 64 * 1024 * 1024 },
       (error, stdout) => {
+        const now = Date.now();
         settle(
           error === null
-            ? stdout.split("\n").flatMap((line) => markedLine(line, search))
+            ? stdout
+                .split("\n")
+                .flatMap((line) => markedLine(line, { ...search, now }))
             : undefined,
         );
       },
