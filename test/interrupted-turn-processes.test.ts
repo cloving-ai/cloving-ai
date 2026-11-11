@@ -59,6 +59,13 @@ await test("CLV-272 a leftover tool child stops before a killed turn without a s
     await scene.worker("tool-child").deliver(intent(), signal);
     const childFile = join(scene.directory, "turns.log.child");
     await until(() => existsSync(childFile + ".lines"));
+    await until(
+      () =>
+        typeof field(
+          record(scene, "operation-1/attempt-1.json"),
+          "sessionId",
+        ) === "string",
+    );
     const childId = Number(readFileSync(childFile, "utf8"));
     const first = scene.turns()[0];
     assert.ok(first);
