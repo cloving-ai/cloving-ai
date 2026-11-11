@@ -36,6 +36,9 @@ import { transcriptFunctions } from "./watch-transcript-view.ts";
 import { RunNotes } from "./watch-notes-view.ts";
 import { runActionFunctions } from "./watch-rename-view.ts";
 import { runCommandFunctions } from "./watch-run-command-view.ts";
+import { runHeadFunctions } from "./watch-run-head-view.ts";
+import { runTabsFunctions } from "./watch-run-tabs-view.ts";
+import { runPageStyle } from "./watch-run-page-style.ts";
 import { watchRunCommandClient } from "./watch-run-command-client.ts";
 import { watchPhoneClient } from "./watch-phone-client.ts";
 import {
@@ -235,6 +238,8 @@ const functions = [
   RunNotes,
   ...runActionFunctions,
   ...runCommandFunctions,
+  ...runHeadFunctions,
+  ...runTabsFunctions,
   Column,
   columnCollapsed,
   Board,
@@ -330,7 +335,7 @@ export function pageDocument(
     "<!doctype html>",
     '<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Cloving</title>',
     `<link rel="icon" href="data:image/svg+xml,${encodeURIComponent(icon)}">`,
-    `<style>${watchStyle}${artStyle}${transcriptStyle}</style><style id="theme-style">${themes.style}</style></head><body>`,
+    `<style>${watchStyle}${artStyle}${transcriptStyle}${runPageStyle}</style><style id="theme-style">${themes.style}</style></head><body>`,
     '<div id="app"></div>',
     `<script type="module">${script}</script></body></html>`,
     "",

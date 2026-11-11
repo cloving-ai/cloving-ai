@@ -1,11 +1,7 @@
 import { component, element, type Shown } from "./watch-element.ts";
 import type { WatchCard, WatchRun } from "./watch-render.ts";
 import type { RunCommand } from "./runtime-invocation.ts";
-import {
-  SteerAction,
-  steerable,
-  type SteerControls,
-} from "./watch-steer-view.ts";
+import { SteerAction, type SteerControls } from "./watch-steer-view.ts";
 
 export type RunCommandPlace = "detail" | "card" | "token" | "need";
 
@@ -149,27 +145,6 @@ export function RunCommandMenu(props: RunCommandProps): Shown {
   });
 }
 
-export function RunActions(props: {
-  readonly run: Pick<WatchRun, "runId" | "state">;
-  readonly steering: SteerControls | undefined;
-  readonly controlling: RunCommandControls | undefined;
-}): Shown {
-  const { run, controlling } = props;
-  if (!steerable(run.state))
-    return component(RunCommandMessage, {
-      text: dropReply(controlling, run.runId),
-    });
-  return [
-    component(SteerAction, { runId: run.runId, steering: props.steering }),
-    component(RunCommandAction, {
-      runId: run.runId,
-      place: "detail",
-      paused: run.state === "paused",
-      controlling,
-    }),
-  ];
-}
-
 export function CardActions(props: {
   readonly card: Pick<WatchCard, "runId" | "endedAt" | "paused">;
   readonly steering: SteerControls | undefined;
@@ -209,7 +184,6 @@ export const runCommandFunctions = [
   dropReply,
   RunCommandAction,
   RunCommandMenu,
-  RunActions,
   CardActions,
   RunCommandReplies,
 ];

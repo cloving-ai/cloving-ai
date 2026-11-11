@@ -170,13 +170,14 @@ await test("CLV-327 the Steer form has a note field and the check box Send to th
     "send run-a",
     "close",
   ]);
-  assert.deepEqual(buttons(shown).slice(-2), ["Send", "Cancel"]);
+  assert.deepEqual(buttons(props(form)["children"]), ["Send", "Cancel"]);
   const busy = page(model, {
     selected: "run=run-a",
     steering: { ...controls([], "run-a"), busy: ["run-a"] },
   });
+  const [busyForm] = found(busy, "form");
   assert.deepEqual(
-    found(busy, "button").map((button) => [
+    found(props(busyForm)["children"], "button").map((button) => [
       button["children"],
       button["disabled"],
     ]),

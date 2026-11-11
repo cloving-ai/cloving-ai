@@ -61,15 +61,16 @@ function banner(run: Partial<WatchRun>): string {
 await test("CLV-016 the watch page shows the state of the selected run first, as a banner with a tone, an icon and plain words, then the its pending decision, the steps of the run, its turn, its folded events and its identifiers", () => {
   const found = positions(page(model, "run-1"), [
     `<span>updated ${shownClock("21:34:41")}</span></div></header>`,
-    '<section class="banner attention"><a class="banner-back" href="#">← Floor</a><span class="icon">!</span><div><h2>Needs your decision <span class="name">clv-016-a6f7ef47</span></h2><p>A decision waits for you for 1 min 0 s. Examine the work, then approve or deny.</p></div></section>',
+    '<section class="banner attention"><a class="banner-back" href="#">← Floor</a><span class="icon">!</span><div class="banner-main"><h2 class="run-identity"><span class="name-title">run-1</span></h2><p class="run-status">Needs your decision · Your review · 1 min 0 s</p><p class="banner-detail">A decision waits for you for 1 min 0 s. Examine the work, then approve or deny.</p></div></section>',
     '<section class="decision" id="decision-run-1/review-1">',
+    '<p class="run-facts">1.03 USD</p>',
     `<ol class="phases"><li class="phase done"><span class="mark">✓</span><span class="name">Admitted</span><span class="time">${shownClock("21:26:00")}</span></li>`,
     '<li class="phase done"><span class="mark">✓</span><span class="name">Agent turn</span><span class="time">7 min 38 s</span></li>',
     '<li class="phase active"><span class="mark">●</span><span class="name">Your review</span><span class="time">1 min 0 s</span></li>',
     '<li class="phase pending"><span class="mark">○</span><span class="name">Completed</span><span class="time"></span></li></ol>',
     '<section class="turn code-window">',
     '<details class="events code-window"><summary class="code-head">All events (2)</summary>',
-    '<p class="meta foot">develop-ticket · run-1 · 1 of 8 effect units<br>policy-approval: A person must approve.</p>',
+    "<dt>Reason</dt><dd>policy-approval: A person must approve.</dd><dt>Run</dt><dd>run-1</dd><dt>Turn target</dt><dd>clv-016-a6f7ef47</dd><dt>Workflow</dt><dd>develop-ticket</dd><dt>Effect units</dt><dd>1 of 8 effect units</dd>",
   ]);
   assert.deepEqual(
     found,
@@ -91,15 +92,15 @@ await test("CLV-016 the banner of a run in work shows the time of the turn, the 
   ];
   assert.equal(
     banner({ ...working, turns: [sampleTurn({ activity })] }),
-    '<section class="banner working"><a class="banner-back" href="#">← Floor</a><span class="icon">●</span><div><h2>In work <span class="name">clv-016-a6f7ef47</span></h2><p>The worker works for 8 min 39 s · 1 tool call · last output 4 min 21 s ago<span class="now">I run the gate &lt;now&gt;.</span></p></div>',
+    '<section class="banner working"><a class="banner-back" href="#">← Floor</a><span class="icon">●</span><div class="banner-main"><h2 class="run-identity"><span class="name-title">run-1</span></h2><p class="run-status">In work · Agent turn · 8 min 39 s</p><p class="banner-detail">The worker works for 8 min 39 s · 1 tool call · last output 4 min 21 s ago<span class="now">I run the gate &lt;now&gt;.</span></p></div>',
   );
   assert.match(
     banner({ ...working, turns: [sampleTurn({ activeAt: null })] }),
-    /<p>The worker works for 8 min 39 s · 0 tool calls<span class="now">The worker starts\.<\/span><\/p>/,
+    /<p class="banner-detail">The worker works for 8 min 39 s · 0 tool calls<span class="now">The worker starts\.<\/span><\/p>/,
   );
   assert.match(
     banner({ ...working, turns: [] }),
-    /<h2>In work <span class="name">run-1<\/span><\/h2><p>run-running: The run is in work\.<\/p>/,
+    /<span class="name-title">run-1<\/span><\/h2><p class="run-status">In work · Agent turn · 8 min 39 s<\/p><p class="banner-detail">The run is in work\.<\/p>/,
   );
 });
 
@@ -116,7 +117,7 @@ await test("the banner of a run in work names the harness of the turn when the t
       ...working,
       turns: [sampleTurn({ activeAt: null, harness: "cursor-agent" })],
     }),
-    /<p>The cursor-agent worker works for 8 min 39 s · 0 tool calls<span/,
+    /<p class="banner-detail">The cursor-agent worker works for 8 min 39 s · 0 tool calls<span/,
   );
 });
 
@@ -124,48 +125,41 @@ await test("CLV-016 the banner of a run at its end shows the time and the cost o
   const ended = { decisions: [], state: "completed" };
   assert.match(
     banner(ended),
-    /^<section class="banner good"><a class="banner-back" href="#">← Floor<\/a><span class="icon">✓<\/span><div><h2>Completed .*<p>The run completed in 7 min 41 s · cost 1\.03 USD\.<\/p>/,
+    /^<section class="banner good"><a class="banner-back" href="#">← Floor<\/a><span class="icon">✓<\/span><div class="banner-main"><h2 class="run-identity">.*<p class="run-status">Completed[^<]*<\/p><p class="banner-detail">The run completed in 7 min 41 s · cost 1\.03 USD\.<\/p>/,
   );
   assert.match(
     banner({ ...ended, events: [], turns: [], claudeCostUsd: null }),
-    /<p>The run completed · cost Price not known\.<\/p>/,
+    /<p class="banner-detail">The run completed · cost Price not known\.<\/p>/,
   );
   assert.match(
     banner({ ...ended, decision: "approved" }),
-    /^<section class="banner good">.*<p>You approved the work\. The run completed in 7 min 41 s · cost 1\.03 USD\.<\/p>/,
+    /^<section class="banner good">.*<p class="banner-detail">You approved the work\. The run completed in 7 min 41 s · cost 1\.03 USD\.<\/p>/,
   );
   assert.match(
     banner({ ...ended, decision: "denied" }),
-    /^<section class="banner idle"><a class="banner-back" href="#">← Floor<\/a><span class="icon">✕<\/span><div><h2>Denied .*<p>You denied the work\. The run completed in 7 min 41 s · cost 1\.03 USD\.<\/p>/,
+    /^<section class="banner idle"><a class="banner-back" href="#">← Floor<\/a><span class="icon">✕<\/span><div class="banner-main">.*<p class="run-status">Denied[^<]*<\/p><p class="banner-detail">You denied the work\. The run completed in 7 min 41 s · cost 1\.03 USD\.<\/p>/,
   );
   const reason = { code: "world-run-failed", detail: "It failed & stopped." };
-  for (const [state, shown, why] of [
-    [
-      "failed",
-      'banner bad"><a class="banner-back" href="#">← Floor</a><span class="icon">✕</span><div><h2>Failed ',
-      "",
-    ],
-    [
-      "cancelled",
-      'banner bad"><a class="banner-back" href="#">← Floor</a><span class="icon">✕</span><div><h2>Dropped ',
-      "",
-    ],
+  const tone = (name: string, icon: string) =>
+    `banner ${name}"><a class="banner-back" href="#">← Floor</a><span class="icon">${icon}</span><div class="banner-main">`;
+  for (const [state, shown, label, why] of [
+    ["failed", tone("bad", "✕"), "Failed", ""],
+    ["cancelled", tone("bad", "✕"), "Dropped", ""],
     [
       "paused",
-      'banner attention"><a class="banner-back" href="#">← Floor</a><span class="icon">Ⅱ</span><div><h2>Paused ',
-      "Why it paused: ",
+      tone("attention", "Ⅱ"),
+      "Paused",
+      "Why it paused: world-run-failed: ",
     ],
-    [
-      "<new>",
-      'banner idle"><a class="banner-back" href="#">← Floor</a><span class="icon">○</span><div><h2>&lt;new&gt; ',
-      "",
-    ],
+    ["<new>", tone("idle", "○"), "&lt;new&gt;", ""],
   ] as const) {
     const html = banner({ ...ended, ...reason, state });
     positions(html, [
       shown,
-      `<p>${why}world-run-failed: It failed &amp; stopped.</p>`,
+      `<p class="run-status">${label}`,
+      `<p class="banner-detail">${why}It failed &amp; stopped.</p>`,
     ]);
+    assert.equal(html.includes("world-run-failed"), why !== "", state);
   }
 });
 
@@ -179,7 +173,8 @@ await test("CLV-016 the steps of a run that failed show the step that stopped an
     `<li class="phase failed"><span class="mark">✕</span><span class="name">Failed</span><span class="time">${shownClock("21:35:01")}</span></li></ol>`,
   ]);
   positions(page(sampleModel([{ ...done, decision: "denied" }])), [
-    '<section class="banner idle"><a class="banner-back" href="#">← Floor</a><span class="icon">✕</span><div><h2>Denied',
+    '<section class="banner idle"><a class="banner-back" href="#">← Floor</a><span class="icon">✕</span><div class="banner-main">',
+    '<p class="run-status">Denied',
   ]);
 });
 
@@ -187,10 +182,10 @@ await test("CLV-016 the full page shows a selected run and plain words for no tu
   positions(page(model), [
     '<a class="banner-back" href="#">← Floor</a>',
     '<p class="meta">No agent turn for this run.</p>',
-    '<p class="meta foot">develop-prompt · run-2 · 1 of 8 effect units<br>',
+    "<dt>Effect units</dt><dd>1 of 8 effect units</dd>",
   ]);
   positions(page(sampleModel([sampleRun({ spent: null, limit: null })])), [
-    '<p class="meta foot">develop-ticket · run-1<br>',
+    "<dt>Workflow</dt><dd>develop-ticket</dd></dl>",
   ]);
   positions(page({ ...model, service: "down", runs: [] }), [
     '<p class="down">The Cloving service does not answer. The page shows the last known records.</p>',

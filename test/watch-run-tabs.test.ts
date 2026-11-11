@@ -4,10 +4,10 @@ import { test } from "node:test";
 import { component, type Shown } from "../src/cli/watch-element.ts";
 import type { WatchTurn } from "../src/cli/watch-render.ts";
 import {
-  RunTurns,
   type RunTab,
   type TranscriptControls,
 } from "../src/cli/watch-transcript-view.ts";
+import { RunTurns } from "../src/cli/watch-run-tabs-view.ts";
 import { played } from "./watch-browser.ts";
 import { found, rendered } from "./watch-dom.ts";
 import { rule } from "./watch-style-fixture.ts";
@@ -67,6 +67,18 @@ function panels(shown: Shown) {
     .map((node) => [node["id"], node["aria-labelledby"], node["hidden"]]);
 }
 
+const unselected = [
+  ["Pull request", "false"],
+  ["Events (2)", "false"],
+  ["Details", "false"],
+];
+
+const closed = [
+  ["run-panel-pull", "run-tab-pull", true],
+  ["run-panel-events", "run-tab-events", true],
+  ["run-panel-details", "run-tab-details", true],
+];
+
 function tabs(shown: Shown) {
   return found(shown, "button").filter((node) => node["role"] === "tab");
 }
@@ -82,11 +94,12 @@ await test("CLV-341 the turns of a run have one tab bar with Transcript selected
   const html = rendered(shown);
   assert.match(
     html,
-    /<div class="run-tabs" role="tablist" aria-label="Turn views"><button type="button" role="tab" id="run-tab-transcript" aria-selected="true" aria-controls="run-panel-transcript" class="run-tab">Transcript<\/button><button type="button" role="tab" id="run-tab-turn" aria-selected="false" aria-controls="run-panel-turn" class="run-tab">Agent turn<\/button><\/div>/,
+    /<div class="run-tabs" role="tablist" aria-label="Run views"><button type="button" role="tab" id="run-tab-transcript" aria-selected="true" aria-controls="run-panel-transcript" class="run-tab">Transcript<\/button><button type="button" role="tab" id="run-tab-turn" aria-selected="false" aria-controls="run-panel-turn" class="run-tab">Agent turn<\/button><button type="button" role="tab" id="run-tab-pull" aria-selected="false" aria-controls="run-panel-pull" class="run-tab">Pull request<\/button><button type="button" role="tab" id="run-tab-events" aria-selected="false" aria-controls="run-panel-events" class="run-tab">Events \(2\)<\/button><button type="button" role="tab" id="run-tab-details" aria-selected="false" aria-controls="run-panel-details" class="run-tab">Details<\/button><\/div>/,
   );
   assert.deepEqual(panels(shown), [
     ["run-panel-transcript", "run-tab-transcript", false],
     ["run-panel-turn", "run-tab-turn", true],
+    ...closed,
   ]);
   const transcript = part(html, "run-panel-transcript");
   assert.deepEqual(
@@ -113,17 +126,21 @@ await test("CLV-341 a click on a tab asks for that tab, and the Agent turn tab s
     [
       ["Transcript", "false"],
       ["Agent turn", "true"],
+      ["Pull request", "false"],
+      ["Events (2)", "false"],
+      ["Details", "false"],
     ],
   );
   assert.deepEqual(panels(shown), [
     ["run-panel-transcript", "run-tab-transcript", true],
     ["run-panel-turn", "run-tab-turn", false],
+    ...closed,
   ]);
   for (const tab of tabs(shown)) {
     assert.ok(typeof tab["onClick"] === "function");
     Reflect.apply(tab["onClick"], undefined, []);
   }
-  assert.deepEqual(chosen, ["transcript", "turn"]);
+  assert.deepEqual(chosen, ["transcript", "turn", "pull", "events", "details"]);
 });
 
 await test("CLV-341 the code review of a round shows under its turn in both tabs", () => {
@@ -141,6 +158,7 @@ await test("CLV-341 with no transcript controls, the Transcript tab is selected 
   assert.deepEqual(panels(shown), [
     ["run-panel-transcript", "run-tab-transcript", false],
     ["run-panel-turn", "run-tab-turn", true],
+    ...closed,
   ]);
   for (const tab of tabs(shown)) {
     assert.ok(typeof tab["onClick"] === "function");
@@ -183,27 +201,15 @@ console.log(JSON.stringify({ first, clicked, refreshed, linked: tabs() }));
   );
   assert.deepEqual(result, {
     first: {
-      tabs: [
-        ["Transcript", "true"],
-        ["Agent turn", "false"],
-      ],
-      hidden: [null, "true"],
+      tabs: [["Transcript", "true"], ["Agent turn", "false"], ...unselected],
+      hidden: [null, "true", "true", "true", "true"],
     },
     clicked: {
-      tabs: [
-        ["Transcript", "false"],
-        ["Agent turn", "true"],
-      ],
-      hidden: ["true", null],
+      tabs: [["Transcript", "false"], ["Agent turn", "true"], ...unselected],
+      hidden: ["true", null, "true", "true", "true"],
     },
-    refreshed: [
-      ["Transcript", "false"],
-      ["Agent turn", "true"],
-    ],
-    linked: [
-      ["Transcript", "true"],
-      ["Agent turn", "false"],
-    ],
+    refreshed: [["Transcript", "false"], ["Agent turn", "true"], ...unselected],
+    linked: [["Transcript", "true"], ["Agent turn", "false"], ...unselected],
   });
 });
 
@@ -235,7 +241,7 @@ await test("CLV-341 the README describes the two tabs of the run detail and the 
   );
   assert.match(
     readme,
-    /The run detail has one tab bar above the agent turns, with the tabs \*\*Transcript\*\* and \*\*Agent turn\*\*\. \*\*Transcript\*\* is selected by default\./,
+    /The run detail has one tab bar, with the tabs \*\*Transcript\*\*, \*\*Agent turn\*\*, \*\*Pull request\*\*, \*\*Events\*\* and \*\*Details\*\*\. \*\*Transcript\*\* is selected by default\./,
   );
   assert.match(
     readme,
