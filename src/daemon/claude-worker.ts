@@ -5,9 +5,14 @@ import type {
   DeliveryIntent,
 } from "../broker/actor/delivery-intents.ts";
 import { begun } from "./claude-begin.ts";
-import { attachableLaunch, attachPlan, holdKeptTurn } from "./claude-attach.ts";
+import {
+  attachableLaunch,
+  attachPlan,
+  holdKeptTurn,
+  recoverableTurn,
+} from "./claude-attach.ts";
 import { stoppedLaunch } from "./detached-process.ts";
-import type { TurnLaunch } from "../turn-launch.ts";
+import { recordedLaunch, type TurnLaunch } from "../turn-launch.ts";
 import {
   located,
   readRecord as read,
@@ -49,7 +54,7 @@ export {
 } from "./claude-worker-parts.ts";
 
 export interface ClaudeWorker extends Delivery {
-  readonly hold: (intent: DeliveryIntent) => Promise<void>;
+  readonly hold: (intent: DeliveryIntent) => Promise<boolean>;
   readonly recover: (intent: DeliveryIntent) => Promise<void>;
   readonly harness: (operationId: string) => Promise<string | undefined>;
   readonly stop: NonNullable<Delivery["stop"]>;
@@ -249,7 +254,10 @@ async function stopped(
     return replied({ receipt: key, worker }, result);
   const started = await read(folder, "started.json");
   if (started === undefined) return { kind: "absent" };
-  if (!resumableHarness(recordedField(started, "harness")))
+  if (
+    !resumableHarness(recordedField(started, "harness")) &&
+    recordedLaunch(recordedField(started, "launch")) === undefined
+  )
     return reconcileOperation(parts, { intent, signal: parts.stopping.signal });
   if (processAlive(recordedField(started, "processId")))
     return { kind: "unknown", evidence: `claude-turn:${key}` };
@@ -312,13 +320,14 @@ export function claudeWorker(settings: ClaudeWorkerSettings): ClaudeWorker {
       : run();
   return {
     hold: (intent) => holdKeptTurn(settings.journal, intent),
-    recover: (intent) =>
-      turnIntent(intent)
-        ? recoverTurn(
-            { ...settings, intent, signal: parts.stopping.signal },
-            () => reconciled(parts, { intent, signal: parts.stopping.signal }),
-          )
-        : Promise.resolve(),
+    recover: async (intent) => {
+      if (!turnIntent(intent)) return;
+      if (!(await recoverableTurn(settings.journal, intent))) return;
+      await recoverTurn(
+        { ...settings, intent, signal: parts.stopping.signal },
+        () => reconciled(parts, { intent, signal: parts.stopping.signal }),
+      );
+    },
     harness: (operationId) => recordedHarness(settings.journal, operationId),
     deliver: (intent, signal) =>
       guarded(intent, () =>

@@ -16,10 +16,12 @@ import {
   type RunnerPlaces,
   type TurnRunner,
 } from "../turn-runner.ts";
+import type { RunnerPlace } from "../turn-launch.ts";
 
 export interface RunnerLaunch {
   readonly command: readonly string[];
   readonly environment: NodeJS.ProcessEnv;
+  readonly place?: RunnerPlace;
   readonly refusal: (
     error: NodeJS.ReadableStream,
   ) => (exitCode: number | null) => string | undefined;
@@ -43,7 +45,7 @@ function containerName(turnId: string | undefined): string {
   return `cloving-${name}-${Date.now().toString(36)}`;
 }
 
-function volumeName(directory: string): string {
+export function volumeName(directory: string): string {
   const name = basename(directory).replace(/[^A-Za-z0-9_.-]/g, "-");
   const digest = createHash("sha256").update(directory).digest("hex");
   return `cloving-modules-${name}-${digest.slice(0, 16)}`;
@@ -74,6 +76,19 @@ function removedContainer(
       },
     );
   });
+}
+
+export async function releasedRunner(
+  place: RunnerPlace | undefined,
+  environment: NodeJS.ProcessEnv,
+): Promise<void> {
+  if (place === undefined) return;
+  rmSync(place.folder, { recursive: true, force: true });
+  if (place.container !== undefined)
+    await removedContainer(place.container.engine, {
+      name: place.container.name,
+      environment,
+    });
 }
 
 function places(
@@ -131,17 +146,17 @@ export function runnerLaunch(
     runner.kind === "seatbelt"
       ? { ...launch.environment, CLAUDE_CODE_TMPDIR: placed.temporary }
       : { ...launch.serviceEnvironment, ...launch.environment };
+  const place: RunnerPlace = {
+    folder,
+    ...(runner.kind === "container"
+      ? { container: { engine: runner.engine, name: placed.name } }
+      : {}),
+  };
   return {
     command: runnerCommand(runner, { command: launch.command, places: placed }),
     environment,
+    place,
     refusal: refusalWatch(runner),
-    release: async () => {
-      rmSync(folder, { recursive: true, force: true });
-      if (runner.kind === "container")
-        await removedContainer(runner.engine, {
-          name: placed.name,
-          environment,
-        });
-    },
+    release: () => releasedRunner(place, environment),
   };
 }

@@ -7,8 +7,10 @@ import { keepTurn } from "./turn-owners.ts";
 import {
   priorEnd,
   recordedField,
+  recordedHarness,
   recordedTexts,
   recordedTree,
+  resumableHarness,
 } from "./claude-recovery.ts";
 import { launchState } from "./detached-process.ts";
 import { attemptNumber, keptLaunch, type TurnLaunch } from "../turn-launch.ts";
@@ -101,7 +103,18 @@ export async function keptTurn(
 export async function holdKeptTurn(
   journal: string,
   intent: { readonly runId: string; readonly operationId: string },
-): Promise<void> {
+): Promise<boolean> {
   const kept = await keptTurn(journal, intent);
-  if (kept !== undefined) keepTurn(kept.directory, kept);
+  if (kept === undefined) return false;
+  keepTurn(kept.directory, kept);
+  return true;
+}
+
+export async function recoverableTurn(
+  journal: string,
+  intent: { readonly runId: string; readonly operationId: string },
+): Promise<boolean> {
+  if (resumableHarness(await recordedHarness(journal, intent.operationId)))
+    return true;
+  return (await keptTurn(journal, intent)) !== undefined;
 }

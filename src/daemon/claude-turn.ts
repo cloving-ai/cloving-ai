@@ -9,31 +9,21 @@ import {
   statSync,
 } from "node:fs";
 import { delimiter, join, resolve } from "node:path";
-import { codexStream } from "./codex-stream.ts";
-import { cursorStream } from "./cursor-stream.ts";
-import { opencodeStream } from "./opencode-stream.ts";
 import { textOutput } from "./text-output.ts";
 import {
   activityOutput,
   recordPrompt,
   type LaterAttempt,
 } from "./turn-activity.ts";
-import { grokUsageWarnings } from "../grok-result.ts";
-import { geminiStream } from "./gemini-stream.ts";
 import type { Worker, StreamResult } from "./claude-stream.ts";
-import {
-  receivedLines,
-  receivedText,
-  streamEnd,
-  streamState,
-  type TurnProgress,
-} from "./turn-stream.ts";
-import { usageOf, type ResumeReason, type RetryKind } from "../worker-usage.ts";
+import type { TurnProgress } from "./turn-stream.ts";
+import { harnessReader } from "./harness-reader.ts";
+import type { ResumeReason, RetryKind } from "../worker-usage.ts";
 export { streamResult, capacityRefusal, retryKind } from "./claude-stream.ts";
 export type { Worker, StreamResult } from "./claude-stream.ts";
 export type { TurnProgress } from "./turn-stream.ts";
 import { shellTurnScript } from "../agent-harness-shell.ts";
-import type { TurnRunner } from "../turn-runner.ts";
+import { runnerProgram, type TurnRunner } from "../turn-runner.ts";
 import { runnerLaunch, type RunnerLaunch } from "./turn-runner-spawn.ts";
 import { attachedTurn, detachedTurn, type TurnExit } from "./detached-turn.ts";
 import type { TurnLaunch } from "../turn-launch.ts";
@@ -118,6 +108,23 @@ export function turnEnvironment(
   return environment;
 }
 
+function shellCommand(
+  start: TurnStart,
+  turn: { readonly configuration: string; readonly parts: readonly string[] },
+): readonly string[] {
+  if (start.shell === undefined) return turn.parts;
+  return [
+    start.shell,
+    "-l",
+    "-i",
+    "-c",
+    shellTurnScript,
+    "cloving-harness",
+    turn.configuration,
+    ...turn.parts,
+  ];
+}
+
 function spawnTurn(start: TurnStart): {
   readonly child: ChildProcessWithoutNullStreams;
   readonly configuration: string;
@@ -126,19 +133,7 @@ function spawnTurn(start: TurnStart): {
 } {
   const configuration = mkdtempSync(join(start.folder, "gh-config-"));
   const { parts, standardInput } = turnCommand(start);
-  const command =
-    start.shell === undefined
-      ? parts
-      : [
-          start.shell,
-          "-l",
-          "-i",
-          "-c",
-          shellTurnScript,
-          "cloving-harness",
-          configuration,
-          ...parts,
-        ];
+  const command = shellCommand(start, { configuration, parts });
   const environment = turnEnvironment(configuration, start);
   const launch = runnerLaunch(start, {
     command,
@@ -160,22 +155,6 @@ function spawnTurn(start: TurnStart): {
   }
 }
 
-function streamAdapter(
-  worker: Worker | undefined,
-  stderr: ChildProcessWithoutNullStreams["stderr"],
-) {
-  if (worker === "opencode") {
-    const translated = opencodeStream();
-    stderr.setEncoding("utf8");
-    stderr.on("data", translated.stderr);
-    return translated;
-  }
-  if (worker === "codex") return codexStream();
-  if (worker === "cursor-agent") return cursorStream();
-  if (worker === "gemini") return geminiStream();
-  return undefined;
-}
-
 function turnOutput(
   start: TurnStart,
   child: ChildProcessWithoutNullStreams,
@@ -186,40 +165,25 @@ function turnOutput(
   const output = activityOutput(start);
   if (start.output === "text")
     return textOutput(child, { output, limit: start.resultBytes ?? 48_000 });
-  const { stdout, stderr } = child;
-  const adapter = streamAdapter(start.worker, stderr);
-  const stream = streamState();
-  const input = {
-    progress: start.progress,
-    worker: start.worker,
-    failed: () => {
-      signalTurn({ child, start }, "SIGKILL");
+  const reader = harnessReader(
+    {
+      ...start,
+      failed: () => {
+        signalTurn({ child, start }, "SIGKILL");
+      },
     },
-  };
-  const written = (lines: readonly string[]): void => {
-    for (const line of lines) output.write(`${line}\n`);
-    receivedLines(stream, { ...input, lines });
-  };
-  stdout.setEncoding("utf8");
-  stdout.on("data", (chunk: string) => {
-    if (adapter === undefined) {
-      output.write(chunk);
-      receivedText(stream, { ...input, text: chunk });
-      return;
-    }
-    const lines = `${stream.pending}${chunk}`.split("\n");
-    stream.pending = lines.pop() ?? "";
-    written(lines.flatMap(adapter.line));
-  });
+    (text) => output.write(text),
+  );
+  child.stdout.setEncoding("utf8");
+  child.stdout.on("data", reader.text);
+  if (reader.error !== undefined) {
+    child.stderr.setEncoding("utf8");
+    child.stderr.on("data", reader.error);
+  }
   return async (exitCode, close) => {
-    if (adapter !== undefined) {
-      written(adapter.line(stream.pending));
-      written(close.refused ? [] : [adapter.result(exitCode)]);
-    }
+    reader.finish({ exitCode, refused: close.refused });
     await ended(output);
-    if (adapter === undefined)
-      receivedLines(stream, { ...input, lines: [stream.pending] });
-    return streamEnd(stream, start.command);
+    return reader.result();
   };
 }
 
@@ -245,12 +209,15 @@ function signalTurn(
 }
 
 function detachable(start: TurnStart): boolean {
-  return (
-    (start.worker ?? "claude") === "claude" &&
-    start.output !== "text" &&
-    start.shell === undefined &&
-    (start.runner === undefined || start.runner.kind === "host")
-  );
+  return start.output !== "text";
+}
+
+function launchPath(
+  start: TurnStart,
+  environment: NodeJS.ProcessEnv,
+): string | undefined {
+  const service = start.runner?.kind === "container" ? process.env : {};
+  return environment["PATH"] ?? service["PATH"];
 }
 
 function executableFile(path: string): boolean {
@@ -276,22 +243,31 @@ function commandFound(
 }
 
 function launchedTurn(start: TurnStart): StartedTurn | undefined {
-  const { parts, standardInput } = turnCommand(start);
-  const [executable = "", ...rest] = parts;
+  const { parts: turnParts, standardInput } = turnCommand(start);
   const configuration = mkdtempSync(join(start.folder, "gh-config-"));
   const environment = turnEnvironment(configuration, start);
+  const parts = shellCommand(start, { configuration, parts: turnParts });
   try {
-    if (!commandFound(executable, { ...start, path: environment["PATH"] })) {
+    const program = runnerProgram(start.runner, parts);
+    const path = launchPath(start, environment);
+    if (!commandFound(program, { ...start, path })) {
       rmSync(configuration, { recursive: true, force: true });
       return undefined;
     }
+    const launch = runnerLaunch(start, {
+      command: parts,
+      environment,
+      serviceEnvironment: process.env,
+    });
+    const [executable = "", ...rest] = launch.command;
     return detachedTurn({
       ...start,
       executable,
       arguments: rest,
-      environment,
+      environment: launch.environment,
       standardInput,
       configuration,
+      ...(launch.place === undefined ? {} : { runnerPlace: launch.place }),
     });
   } catch (error) {
     rmSync(configuration, { recursive: true, force: true });
@@ -310,11 +286,6 @@ function pipedTurn(start: TurnStart): StartedTurn {
   const { child, configuration, standardInput, launch } = spawnTurn(start);
   const refused = launch.refusal(child.stderr);
   const output = turnOutput(start, child);
-  const warnings = grokUsageWarnings();
-  if (start.worker === "grok") {
-    child.stderr.setEncoding("utf8");
-    child.stderr.on("data", warnings.write);
-  }
   child.stderr.pipe(createWriteStream(join(start.folder, "turn.stderr.log")));
   child.stdin.on("error", () => undefined);
   child.stdin.end(standardInput);
@@ -341,14 +312,10 @@ function pipedTurn(start: TurnStart): StartedTurn {
         const produced = await output(exitCode, {
           refused: reason !== undefined,
         });
-        const result = reason === undefined ? produced : undefined;
         return {
           exitCode,
           ...(reason === undefined ? {} : { reason }),
-          result:
-            result !== undefined && warnings.incomplete()
-              ? { ...result, usage: usageOf(null), costUsd: null }
-              : result,
+          result: reason === undefined ? produced : undefined,
         };
       })
       .finally(() => {

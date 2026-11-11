@@ -1,10 +1,12 @@
-import { fstatSync, openSync, rmSync, writeSync } from "node:fs";
+import { closeSync, fstatSync, openSync, rmSync, writeSync } from "node:fs";
 import { open, type FileHandle } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import type { StreamResult } from "./claude-stream.ts";
 import type { LaterAttempt } from "./turn-activity.ts";
-import type { TurnLaunch } from "../turn-launch.ts";
+import type { RunnerPlace, TurnLaunch } from "../turn-launch.ts";
+import { runnerRefused } from "../turn-runner.ts";
+import { releasedRunner } from "./turn-runner-spawn.ts";
 import {
   attachedProcess,
   inputDescriptor,
@@ -12,13 +14,12 @@ import {
   launchedProcess,
   type Watch,
 } from "./detached-process.ts";
+import type { TurnProgress } from "./turn-stream.ts";
 import {
-  receivedLines,
-  receivedText,
-  streamEnd,
-  streamState,
-  type TurnProgress,
-} from "./turn-stream.ts";
+  harnessReader,
+  translatedHarness,
+  type HarnessReader,
+} from "./harness-reader.ts";
 
 export type TurnExit = "exited" | "released";
 
@@ -28,6 +29,7 @@ export interface FollowedTurn {
   readonly exited: Promise<TurnExit>;
   readonly ended: Promise<{
     readonly exitCode: number | null;
+    readonly reason?: string;
     readonly result: StreamResult | undefined;
   }>;
   readonly stop: (graceMilliseconds: number) => void;
@@ -49,12 +51,16 @@ export interface DetachedStart extends FollowStart {
   readonly laterAttempt?: LaterAttempt | undefined;
   readonly standardInput: string | undefined;
   readonly configuration: string;
+  readonly runnerPlace?: RunnerPlace;
 }
 
 interface Followed {
   readonly processId: number | null;
   readonly launch: Promise<TurnLaunch | null>;
-  readonly files: Pick<TurnLaunch, "output" | "offset" | "configuration">;
+  readonly files: Pick<
+    TurnLaunch,
+    "output" | "offset" | "configuration" | "exit" | "transcript" | "runner"
+  >;
   readonly ending: (signal: AbortSignal) => Promise<Watch>;
   readonly signal: (name: NodeJS.Signals) => void;
 }
@@ -104,34 +110,102 @@ async function pumped(
   }
 }
 
-function followed(start: FollowStart, parts: Followed) {
-  const stream = streamState();
-  const input = {
-    progress: start.progress,
-    worker: start.worker,
-    failed: () => {
-      parts.signal("SIGKILL");
+function transcriptWriter(transcript: TurnLaunch["transcript"]) {
+  if (transcript === undefined)
+    return { write: () => undefined, close: () => undefined };
+  const descriptor = openSync(transcript.path, "a");
+  let written = Math.max(0, fstatSync(descriptor).size - transcript.offset);
+  let open = true;
+  return {
+    write: (text: string) => {
+      const bytes = Buffer.from(text, "utf8");
+      const skipped = Math.min(written, bytes.length);
+      written -= skipped;
+      if (skipped < bytes.length) writeSync(descriptor, bytes, skipped);
+    },
+    close: () => {
+      if (open) closeSync(descriptor);
+      open = false;
     },
   };
-  const reader = outputReader(parts.files, (text) => {
-    receivedText(stream, { ...input, text });
-  });
+}
+
+async function errorText(path: string, reader: HarnessReader): Promise<string> {
+  const handle = await open(path, "r").catch(() => undefined);
+  if (handle === undefined) return "";
+  const decoder = new TextDecoder("utf-8");
+  const buffer = Buffer.alloc(65_536);
+  let head = "";
+  try {
+    for (;;) {
+      const { bytesRead } = await handle.read(buffer, 0, buffer.length, null);
+      const text = decoder.decode(buffer.subarray(0, bytesRead), {
+        stream: bytesRead > 0,
+      });
+      if (head.length < 65_536) head += text;
+      reader.error?.(text);
+      const enough = reader.error === undefined && head.length >= 65_536;
+      if (bytesRead === 0 || enough) return head.slice(0, 65_536);
+    }
+  } finally {
+    await handle.close();
+  }
+}
+
+async function concluded(
+  files: Followed["files"],
+  ending: { readonly reader: HarnessReader; readonly exitCode: number | null },
+) {
+  const { reader, exitCode } = ending;
+  const unread = files.runner === undefined && reader.error === undefined;
+  const error = unread
+    ? ""
+    : await errorText(join(dirname(files.exit), "turn.stderr.log"), reader);
+  const reason =
+    files.runner === undefined ? undefined : runnerRefused({ exitCode, error });
+  reader.finish({ exitCode, refused: reason !== undefined });
+  const result = await reader.result();
+  if (reason === undefined) return { exitCode, result };
+  return { exitCode, reason, result: undefined };
+}
+
+function followed(start: FollowStart, parts: Followed) {
+  const transcript = transcriptWriter(parts.files.transcript);
+  const reader = harnessReader(
+    {
+      ...start,
+      failed: () => {
+        parts.signal("SIGKILL");
+      },
+    },
+    transcript.write,
+  );
+  const output = outputReader(parts.files, reader.text);
   const watching = new AbortController();
   const release = () => {
     watching.abort();
   };
   start.release?.addEventListener("abort", release, { once: true });
   if (start.release?.aborted === true) release();
-  const watch = pumped(reader, parts.ending(watching.signal));
+  const watch = pumped(output, parts.ending(watching.signal));
   const timers: NodeJS.Timeout[] = [];
   const ended = watch.then(async (state) => {
     start.release?.removeEventListener("abort", release);
     timers.forEach(clearTimeout);
-    if (state === "released") throw new Error("turn-released");
-    rmSync(parts.files.configuration, { recursive: true, force: true });
-    receivedLines(stream, { ...input, lines: [stream.pending] });
-    const exitCode = state === "gone" ? null : state.exitCode;
-    return { exitCode, result: await streamEnd(stream, start.command) };
+    if (state === "released") {
+      transcript.close();
+      throw new Error("turn-released");
+    }
+    try {
+      return await concluded(parts.files, {
+        reader,
+        exitCode: state === "gone" ? null : state.exitCode,
+      });
+    } finally {
+      transcript.close();
+      rmSync(parts.files.configuration, { recursive: true, force: true });
+      await releasedRunner(parts.files.runner, process.env);
+    }
   });
   return {
     processId: parts.processId,
@@ -161,19 +235,34 @@ function promptInput(start: DetachedStart): number | "ignore" {
   });
 }
 
-function launchFiles(start: DetachedStart) {
+function transcriptFile(start: DetachedStart) {
   const { laterAttempt } = start;
   const path = join(laterAttempt?.folder ?? start.folder, "turn.jsonl");
-  const output = openSync(path, laterAttempt === undefined ? "w" : "a");
-  if (laterAttempt !== undefined) writeSync(output, "\n");
-  const offset = fstatSync(output).size;
-  const error = openSync(join(start.folder, "turn.stderr.log"), "w");
-  const exit = join(start.folder, "turn.exit.json");
+  const descriptor = openSync(path, laterAttempt === undefined ? "w" : "a");
+  if (laterAttempt !== undefined) writeSync(descriptor, "\n");
+  return { descriptor, path, offset: fstatSync(descriptor).size };
+}
+
+function outputFile(start: DetachedStart) {
+  const transcript = transcriptFile(start);
+  if (!translatedHarness(start.worker)) return transcript;
+  closeSync(transcript.descriptor);
+  const path = join(start.folder, "turn.harness.jsonl");
   return {
+    descriptor: openSync(path, "w"),
     path,
-    offset,
-    exit,
-    descriptors: [promptInput(start), output, error] as const,
+    offset: 0,
+    transcript: { path: transcript.path, offset: transcript.offset },
+  };
+}
+
+function launchFiles(start: DetachedStart) {
+  const output = outputFile(start);
+  const error = openSync(join(start.folder, "turn.stderr.log"), "w");
+  return {
+    ...output,
+    exit: join(start.folder, "turn.exit.json"),
+    descriptors: [promptInput(start), output.descriptor, error] as const,
   };
 }
 
@@ -187,25 +276,18 @@ export function detachedTurn(start: DetachedStart): FollowedTurn {
     descriptors: files.descriptors,
     exit: files.exit,
   });
+  const recordedFiles = {
+    output: files.path,
+    offset: files.offset,
+    exit: files.exit,
+    configuration: start.configuration,
+    ...("transcript" in files ? { transcript: files.transcript } : {}),
+    ...(start.runnerPlace === undefined ? {} : { runner: start.runnerPlace }),
+  };
   const launch = detached.launch.then((recorded) =>
-    recorded === null
-      ? null
-      : {
-          ...recorded,
-          output: files.path,
-          offset: files.offset,
-          configuration: start.configuration,
-        },
+    recorded === null ? null : { ...recorded, ...recordedFiles },
   );
-  return followed(start, {
-    ...detached,
-    launch,
-    files: {
-      output: files.path,
-      offset: files.offset,
-      configuration: start.configuration,
-    },
-  });
+  return followed(start, { ...detached, launch, files: recordedFiles });
 }
 
 export function attachedTurn(

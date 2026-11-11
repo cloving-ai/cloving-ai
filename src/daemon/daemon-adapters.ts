@@ -238,9 +238,15 @@ export async function recoverClaude(
   ports: Pick<HostPorts, "state" | "operations">,
 ): Promise<void> {
   const intents = await recoveryCalls(ports, "claude");
-  for (const intent of intents) await worker.hold(intent);
+  const kept = new Set<string>();
+  for (const intent of intents)
+    if (await worker.hold(intent)) kept.add(intent.operationId);
   for (const intent of intents) {
-    if (!resumableHarness(await worker.harness(intent.operationId))) continue;
+    if (
+      !kept.has(intent.operationId) &&
+      !resumableHarness(await worker.harness(intent.operationId))
+    )
+      continue;
     if (!(await stillRecoverable(ports, intent))) continue;
     await worker.recover(intent);
   }
