@@ -98,6 +98,35 @@ await test("CLV-355 snake_case names, a single star in a sentence and code text 
   );
 });
 
+await test("CLV-355 a backslash before ASCII punctuation shows the punctuation as plain text, and a backslash before another character stays", () => {
+  assert.equal(
+    markdown(
+      "\\*literal\\* and \\_x\\_ and \\*\\*no\\*\\* and \\[a\\](https://example.com) and C:\\path and \\\\",
+    ),
+    '<div class="markdown"><p>*literal* and _x_ and **no** and [a](https://example.com) and C:\\path and \\</p></div>',
+  );
+});
+
+await test("CLV-355 an escaped backtick opens no code text, and a backslash inside code text stays", () => {
+  assert.equal(
+    markdown("\\`not code\\` and `a\\*b` and \\``code`"),
+    '<div class="markdown"><p>`not code` and <code>a\\*b</code> and `<code>code</code></p></div>',
+  );
+});
+
+await test("CLV-355 code text opens with a run of backticks and closes on a run of the same length, drops one space at each end, and shows its text with no formatting", () => {
+  assert.equal(
+    markdown(
+      "``a`b`` and `` `x` `` and `  ` and `**no** _x_ [l](https://example.com)`",
+    ),
+    '<div class="markdown"><p><code>a`b</code> and <code>`x`</code> and <code>  </code> and <code>**no** _x_ [l](https://example.com)</code></p></div>',
+  );
+  assert.equal(
+    markdown("a `` b ` c"),
+    '<div class="markdown"><p>a `` b ` c</p></div>',
+  );
+});
+
 await test("CLV-355 a fence with no end shows the rest of the text as code, and _word_ shows in italics", () => {
   assert.equal(
     markdown("Use _this_ form:\n```\nnpm test\nnpm run build"),

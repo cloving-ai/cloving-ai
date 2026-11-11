@@ -1,4 +1,8 @@
 import { component, element, type Shown } from "./watch-element.ts";
+import {
+  markdownInline,
+  markdownInlineFunctions,
+} from "./watch-markdown-inline.ts";
 
 export interface MarkdownItem {
   readonly text: string;
@@ -25,42 +29,6 @@ export type MarkdownBlock =
 interface Parsed {
   readonly block: MarkdownBlock;
   readonly next: number;
-}
-
-export function markdownLink(label: string, target: string): Shown {
-  if (!/^https?:[/][/]/i.test(target)) return `[${label}](${target})`;
-  return element("a", {
-    href: target,
-    rel: "noopener noreferrer",
-    target: "_blank",
-    children: markdownInline(label),
-  });
-}
-
-export function markdownSpan(token: string): Shown {
-  if (token.startsWith("`"))
-    return element("code", { children: token.slice(1, -1) });
-  if (token.startsWith("**"))
-    return element("strong", { children: markdownInline(token.slice(2, -2)) });
-  if (token.startsWith("[")) {
-    const split = token.indexOf("](");
-    return markdownLink(token.slice(1, split), token.slice(split + 2, -1));
-  }
-  return element("em", { children: markdownInline(token.slice(1, -1)) });
-}
-
-export function markdownInline(text: string): Shown[] {
-  const pattern =
-    /`[^`\n]+`|\*\*[^*\n]+\*\*|(?<![\w*])\*(?![\s*])[^*\n]*?[^\s*]\*(?![\w*])|(?<!\w)_(?![\s_])[^_\n]*?[^\s_]_(?!\w)|\[[^\]\n]+\]\([^()\s]*(?:\([^()\s]*\)[^()\s]*)*\)/g;
-  const parts: Shown[] = [];
-  let start = 0;
-  for (const match of text.matchAll(pattern)) {
-    if (match.index > start) parts.push(text.slice(start, match.index));
-    parts.push(markdownSpan(match[0]));
-    start = match.index + match[0].length;
-  }
-  if (start < text.length) parts.push(text.slice(start));
-  return parts;
 }
 
 export function markdownItem(line: string): ItemLine | undefined {
@@ -288,9 +256,7 @@ export function EntryText(props: {
 }
 
 export const markdownFunctions = [
-  markdownLink,
-  markdownSpan,
-  markdownInline,
+  ...markdownInlineFunctions,
   markdownItem,
   markdownFenceMark,
   markdownLineKind,
