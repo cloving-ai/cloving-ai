@@ -38,49 +38,47 @@ export interface DoctorCheck extends DoctorObservation {
   readonly fix: string;
 }
 
-export const doctorFixes: Readonly<Record<DoctorCode, string>> = {
-  "git-repository": "Change to the repository, or run: git init",
-  "node-version":
-    "Install a supported Node version: nvm install 26 && nvm use 26",
-  harnesses: "Install a harness: npm install -g @anthropic-ai/claude-code",
-  "default-harness":
-    "Install a harness: npm install -g @anthropic-ai/claude-code; select it: CLOVING_WORKER=claude cloving doctor; clear command overrides: unset CLOVING_CLAUDE_COMMAND CLOVING_CODEX_COMMAND; edit private harness.command if configured; for another harness: cloving config set harness.turn '[...]'",
-  "gh-login": "Log in with the configured GitHub command: gh auth login",
-  "github-origin":
-    "Set a GitHub origin: git remote add origin git@github.com:OWNER/REPO.git || git remote set-url origin git@github.com:OWNER/REPO.git",
-  "greptile-review":
-    "Install the Greptile app at https://github.com/apps/greptile, then open a first pull request: gh pr create",
-  "settings-files":
-    "Fix the project JSON: ${EDITOR:-vi} .cloving/config.json; for private JSON, edit <config>/cloving/projects/<repository-id>.json",
-  "no-workflow": "cloving init",
-  "runtime-directory":
-    'Select a private writable runtime: CLOVING_RUNTIME_DIR="$HOME/.local/state/cloving/doctor/run" cloving doctor',
-  service: "Start the service: cloving start",
-  "thread-pool":
-    "Stop the service with Control-C, then start it again: cloving start",
-  "ticket-command":
-    "Set tickets.command to an executable list: ${EDITOR:-vi} .cloving/config.json",
-  "next-command":
-    "Set tickets.nextCommand to an executable list: ${EDITOR:-vi} .cloving/config.json",
-  "check-command":
-    "Set checks.beforeMerge to an executable list: ${EDITOR:-vi} .cloving/config.json",
-  "merge-mode":
-    "Set the merge mode to direct or queue: cloving config set merge.mode direct",
-  "queue-interval":
-    "Set an interval from 10 to 3600: CLOVING_QUEUE_SECONDS=30 cloving doctor",
-  "private-texts": `Set a nonblank private text: CLOVING_PRIVATE_TEXTS='["TEXT TO KEEP PRIVATE"]' cloving doctor`,
-  "turn-environment": `Give a turn a variable that the project needs: cloving config set turns.environment '["NAME"]' --private`,
-  "turn-runners":
-    "Install the engine or the sandbox runtime of each profile runner, or set runner.kind to host",
-  "command-gh-no-login":
-    "Use the github methods in the workflow, for example issues, review-threads, comment-issue and label",
-  retention:
-    "Set a retention period: cloving config set retention.days 30 --private",
-  theme:
-    "See the refusal codes: cloving themes list; fix the theme folder, or select another theme: cloving config set watch.theme auto",
-  "demo-tool":
-    "Set the absolute path of the instruction file or folder of the demo tool: cloving config set demo.tool /ABSOLUTE/PATH",
-};
+export const nodeVersionFix =
+  "Install a supported Node version: nvm install 26 && nvm use 26";
+
+export function doctorFixes(
+  client: string,
+): Readonly<Record<DoctorCode, string>> {
+  return {
+    "git-repository": "Change to the repository, or run: git init",
+    "node-version": nodeVersionFix,
+    harnesses: "Install a harness: npm install -g @anthropic-ai/claude-code",
+    "default-harness": `Install a harness: npm install -g @anthropic-ai/claude-code; select it: CLOVING_WORKER=claude ${client} doctor; clear command overrides: unset CLOVING_CLAUDE_COMMAND CLOVING_CODEX_COMMAND; edit private harness.command if configured; for another harness: ${client} config set harness.turn '[...]'`,
+    "gh-login": "Log in with the configured GitHub command: gh auth login",
+    "github-origin":
+      "Set a GitHub origin: git remote add origin git@github.com:OWNER/REPO.git || git remote set-url origin git@github.com:OWNER/REPO.git",
+    "greptile-review":
+      "Install the Greptile app at https://github.com/apps/greptile, then open a first pull request: gh pr create",
+    "settings-files":
+      "Fix the project JSON: ${EDITOR:-vi} .cloving/config.json; for private JSON, edit <config>/cloving/projects/<repository-id>.json",
+    "no-workflow": `${client} init`,
+    "runtime-directory": `Select a private writable runtime: CLOVING_RUNTIME_DIR="$HOME/.local/state/cloving/doctor/run" ${client} doctor`,
+    service: `Start the service: ${client} start`,
+    "thread-pool": `Stop the service with Control-C, then start it again: ${client} start`,
+    "ticket-command":
+      "Set tickets.command to an executable list: ${EDITOR:-vi} .cloving/config.json",
+    "next-command":
+      "Set tickets.nextCommand to an executable list: ${EDITOR:-vi} .cloving/config.json",
+    "check-command":
+      "Set checks.beforeMerge to an executable list: ${EDITOR:-vi} .cloving/config.json",
+    "merge-mode": `Set the merge mode to direct or queue: ${client} config set merge.mode direct`,
+    "queue-interval": `Set an interval from 10 to 3600: CLOVING_QUEUE_SECONDS=30 ${client} doctor`,
+    "private-texts": `Set a nonblank private text: CLOVING_PRIVATE_TEXTS='["TEXT TO KEEP PRIVATE"]' ${client} doctor`,
+    "turn-environment": `Give a turn a variable that the project needs: ${client} config set turns.environment '["NAME"]' --private`,
+    "turn-runners":
+      "Install the engine or the sandbox runtime of each profile runner, or set runner.kind to host",
+    "command-gh-no-login":
+      "Use the github methods in the workflow, for example issues, review-threads, comment-issue and label",
+    retention: `Set a retention period: ${client} config set retention.days 30 --private`,
+    theme: `See the refusal codes: ${client} themes list; fix the theme folder, or select another theme: ${client} config set watch.theme auto`,
+    "demo-tool": `Set the absolute path of the instruction file or folder of the demo tool: ${client} config set demo.tool /ABSOLUTE/PATH`,
+  };
+}
 
 export function doctorExitCode(checks: readonly DoctorCheck[]): number {
   return checks.some((check) => check.required && check.result !== "ok")

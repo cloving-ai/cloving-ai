@@ -8,7 +8,7 @@ export async function notificationEvents(
   cache: OutcomeCache,
 ): Promise<readonly NotifyEvent[]> {
   const runs = await runScan(runtimeDirectory, cache);
-  return [...runs, ...(await scheduleAlerts(runtimeDirectory))].map(
-    notifyEvent,
+  return [...runs, ...(await scheduleAlerts(runtimeDirectory))].map((alert) =>
+    notifyEvent(alert),
   );
 }
