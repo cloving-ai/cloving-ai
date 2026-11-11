@@ -128,6 +128,32 @@ await test("CLV-327 the running card and the run detail show Steer with watch ac
   );
 });
 
+await test("CLV-327 CLV-357 a running card on a board has Steer, opens the Steer form in the card, and shows no reply line before a note", () => {
+  const calls: string[] = [];
+  const model = floorModel([runningRun([])]);
+  const quiet = { ...controls(calls, null), messages: {} };
+  const board = page(model, {
+    selected: "workflow=develop-issue",
+    steering: quiet,
+  });
+  assert.doesNotMatch(rendered(board), /steer-message|steer-form/);
+  const steer = found(board, "button").find(
+    (button) => button["children"] === "Steer",
+  );
+  const click = steer?.["onClick"];
+  assert.ok(typeof click === "function");
+  Reflect.apply(click, undefined, []);
+  assert.deepEqual(calls, ["open run-a"]);
+  const open = rendered(
+    page(model, {
+      selected: "workflow=develop-issue",
+      steering: { ...quiet, open: "run-a" },
+    }),
+  );
+  assert.match(open, /<div class="steer"><form class="steer-form"/);
+  assert.doesNotMatch(open, /class="steer-open"/);
+});
+
 await test("CLV-327 the Steer form has a note field and the check box Send to the turn in work now, sends with Send, and closes with Esc", () => {
   const calls: string[] = [];
   const model = floorModel([runningRun([])]);
