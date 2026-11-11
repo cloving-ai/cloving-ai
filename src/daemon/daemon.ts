@@ -48,6 +48,7 @@ import {
   noteReceiptsPlace,
   retentionExpiry,
   turnDetailsPlace,
+  turnWaitsPlace,
 } from "./turn-details.ts";
 import { transcriptFiles } from "./transcript-files.ts";
 import { githubReader } from "./github-read.ts";
@@ -214,6 +215,7 @@ function retentionReads(settings: DaemonSettings, ports: Promise<HostPorts>) {
     },
     retentionExpired: retentionExpiry(place),
     noteReceipts: noteReceiptsPlace(place),
+    turnWaits: turnWaitsPlace(place),
     githubRead: githubReader(settings),
   };
 }

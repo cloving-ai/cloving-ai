@@ -11,6 +11,7 @@ import type { PrIdentity, PrObservation } from "./watch-pr-identity.ts";
 import type { WorkflowRefusal } from "../workflow-refusals.ts";
 import type { Fields } from "../protocol.ts";
 import type { DailyNumbers } from "../report-days.ts";
+import type { WaitingTurn } from "../turn-launch.ts";
 
 export interface WatchItem {
   readonly kind: string;
@@ -20,6 +21,7 @@ export interface WatchItem {
 
 export interface WatchTurn {
   readonly attempts?: readonly WorkerAttemptUsage[];
+  readonly wait?: WaitingTurn;
   readonly harness?: string;
   readonly estimatedCostUsd: number | null;
   readonly operationId: string;

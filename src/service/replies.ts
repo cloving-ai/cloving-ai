@@ -16,6 +16,7 @@ import type { ThreadPoolCheck } from "../thread-pool-check.ts";
 import { serviceIdentity, type ServiceIdentity } from "./service-identity.ts";
 import type { EffectLeaseSource } from "../queue-room.ts";
 import type { ParsedTranscript, TranscriptFiles } from "../turn-transcript.ts";
+import type { WaitingTurn } from "../turn-launch.ts";
 
 export interface GithubReader {
   readonly read: (path: string) => Promise<unknown>;
@@ -36,6 +37,12 @@ export interface NoteReceipts {
   ) => Promise<Readonly<Record<string, string>>>;
 }
 
+export interface TurnWaits {
+  readonly read: (
+    operationIds: readonly string[],
+  ) => Promise<readonly WaitingTurn[]>;
+}
+
 export interface SteerReply {
   readonly delivery: "now" | "queued";
   readonly reason?: string;
@@ -54,6 +61,7 @@ export interface ServiceReads {
   readonly turnTranscript?: TranscriptReads;
   readonly workerHarness?: (operationId: string) => Promise<string | undefined>;
   readonly noteReceipts?: NoteReceipts;
+  readonly turnWaits?: TurnWaits;
   readonly turnSteering?: TurnSteering;
   readonly turnDetails?: (turns: RunTurns) => Promise<TurnDetails | undefined>;
   readonly retentionExpired?: (runId: string) => Promise<boolean>;
@@ -119,6 +127,7 @@ export function queryMetadata(
   | "queue"
   | "workerHarness"
   | "noteReceipts"
+  | "turnWaits"
   | "turnSteering"
   | "turnDetails"
   | "turnTranscript"
@@ -161,7 +170,10 @@ export function queryMetadata(
 
 function turnReads(
   options: ServiceReads,
-): Pick<ServiceReads, "workerHarness" | "noteReceipts" | "turnSteering"> {
+): Pick<
+  ServiceReads,
+  "workerHarness" | "noteReceipts" | "turnWaits" | "turnSteering"
+> {
   return {
     ...(options.workerHarness === undefined
       ? {}
@@ -169,6 +181,9 @@ function turnReads(
     ...(options.noteReceipts === undefined
       ? {}
       : { noteReceipts: options.noteReceipts }),
+    ...(options.turnWaits === undefined
+      ? {}
+      : { turnWaits: options.turnWaits }),
     ...(options.turnSteering === undefined
       ? {}
       : { turnSteering: options.turnSteering }),

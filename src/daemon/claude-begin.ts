@@ -5,7 +5,7 @@ import { turnOutcome } from "./turn-report.ts";
 import { startRetriedTurn } from "./retrying-turn.ts";
 import { reportOf, writeRecord as written } from "./operation-journal.ts";
 import type { TurnResume } from "./claude-recovery.ts";
-import type { TurnAttach } from "./turn-attempts.ts";
+import type { TurnAttach, WaitResume } from "./turn-attempts.ts";
 import { noteMetadata } from "./turn-notes.ts";
 import {
   claudeLimits,
@@ -55,6 +55,7 @@ export async function begun(
     readonly profile: TurnProfile;
     readonly resume?: TurnResume;
     readonly attach?: TurnAttach;
+    readonly wait?: WaitResume;
     readonly signal: AbortSignal;
   },
 ): Promise<void> {
@@ -83,6 +84,7 @@ export async function begun(
       ...start.turnSettings,
       ...(start.resume === undefined ? {} : { resume: start.resume }),
       ...(start.attach === undefined ? {} : { attach: start.attach }),
+      ...(start.wait === undefined ? {} : { waiting: start.wait }),
       runId: intent.runId,
       stopping: stopping.controller,
       metadata: turnMetadata(start),

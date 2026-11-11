@@ -24,6 +24,7 @@ import {
 } from "./queue-render.ts";
 import { threadPoolLines } from "./thread-pool-render.ts";
 import { noteLines, runNotedLines } from "./note-render.ts";
+import { turnDetailsLines, turnWaitLines } from "./turn-status-render.ts";
 import { reloadFieldLines } from "./reload-render.ts";
 import { restartLines, serviceLines } from "./restart-render.ts";
 import {
@@ -226,16 +227,6 @@ function modelLines(attempts: unknown): readonly string[] {
 
 export { statusJson } from "./usage-render.ts";
 
-function turnDetailsLines(value: unknown): readonly string[] {
-  const state = part(value, "state");
-  if (state === "deleted")
-    return ["Turn details were deleted by the retention rule"];
-  if (state !== "archived") return [];
-  return [
-    `Turn details are archived in the journal folder of the archive: ${visible(part(value, "folder"))}`,
-  ];
-}
-
 function inputText(value: unknown): string {
   const text = visible(record(value) ?? null);
   const characters = Array.from(text);
@@ -273,6 +264,7 @@ export function runStatus(result: Fields): readonly string[] {
     `Token usage${suffix}: ${usageText(part(run, "usage"))}`,
     ...workerLines(part(run, "workerTurns")),
     ...turnDetailsLines(part(run, "turnDetails")),
+    ...turnWaitLines(part(run, "turnWaits")),
     ...noteLines(part(run, "notes")),
     ...shownCommandWaits(part(run, "commandWaits")).map((wait) =>
       visible(commandWaitText(wait)),

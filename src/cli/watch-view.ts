@@ -50,7 +50,7 @@ export type { ContinueControls } from "./watch-needs-view.ts";
 import { Today } from "./watch-today-view.ts";
 import type { LoopControls } from "./watch-loops-view.ts";
 import type { ThemeControls } from "./watch-theme-view.ts";
-import { Events, PullRequest } from "./watch-turn.ts";
+import { Events, PullRequest, turnNow } from "./watch-turn.ts";
 import { RunDecisions, type DecisionControls } from "./watch-decision-view.ts";
 import { Commands } from "./command-effects.ts";
 import {
@@ -78,7 +78,7 @@ export function BannerDetail(props: Timed): Shown {
     turn.activeAt === null
       ? ""
       : ` · last output ${elapsed(turn.activeAt, now)} ago`;
-  const last = turn.activity.at(-1)?.text ?? "The worker starts.";
+  const last = turnNow(turn, now);
   const worker =
     turn.harness === undefined ? "The worker" : `The ${turn.harness} worker`;
   return [
