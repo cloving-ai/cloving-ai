@@ -101,29 +101,52 @@ export function markdownFence(lines: readonly string[], index: number): Parsed {
   };
 }
 
+interface ListState {
+  readonly next: number;
+  readonly indent: number;
+  readonly ordered: boolean;
+  readonly items: { readonly text: string; readonly lists: MarkdownBlock[] }[];
+}
+
+export function markdownListStep(
+  lines: readonly string[],
+  state: ListState,
+): number | undefined {
+  const item = markdownItem(lines[state.next] ?? "");
+  if (item === undefined || item.indent < state.indent) return undefined;
+  const last = state.items.at(-1);
+  if (item.indent > state.indent && last !== undefined) {
+    const nested = markdownList(lines, state.next);
+    last.lists.push(nested.block);
+    return nested.next;
+  }
+  if ((item.number !== null) !== state.ordered) return undefined;
+  state.items.push({ text: item.text, lists: [] });
+  return state.next + 1;
+}
+
 export function markdownList(lines: readonly string[], index: number): Parsed {
   const first = markdownItem(lines[index] ?? "");
-  const indent = first?.indent ?? 0;
-  const ordered = first?.number !== null;
-  const items: { text: string; lists: MarkdownBlock[] }[] = [];
-  let next = index;
-  while (next < lines.length) {
-    const item = markdownItem(lines[next] ?? "");
-    const last = items.at(-1);
-    if (item === undefined || item.indent < indent) break;
-    if (item.indent > indent && last !== undefined) {
-      const nested = markdownList(lines, next);
-      last.lists.push(nested.block);
-      next = nested.next;
-      continue;
-    }
-    if ((item.number !== null) !== ordered) break;
-    items.push({ text: item.text, lists: [] });
-    next += 1;
+  const items: ListState["items"] = [];
+  const shape = {
+    indent: first?.indent ?? 0,
+    ordered: first?.number !== null,
+    items,
+  };
+  let next: number | undefined = index;
+  let end = index;
+  while (next !== undefined) {
+    end = next;
+    next = markdownListStep(lines, { ...shape, next });
   }
   return {
-    block: { kind: "list", ordered, start: first?.number ?? 1, items },
-    next,
+    block: {
+      kind: "list",
+      ordered: shape.ordered,
+      start: first?.number ?? 1,
+      items,
+    },
+    next: end,
   };
 }
 
@@ -220,6 +243,7 @@ export const markdownFunctions = [
   markdownFenceMark,
   markdownLineKind,
   markdownFence,
+  markdownListStep,
   markdownList,
   markdownText,
   markdownBlock,
