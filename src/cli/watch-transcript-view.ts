@@ -7,7 +7,7 @@ import {
   terminalGroups,
   TerminalGroupView,
 } from "./watch-terminal-view.ts";
-import { Review, Turn, turnHeading } from "./watch-turn.ts";
+import { turnHeading } from "./watch-turn.ts";
 import {
   ExpandButton,
   transcriptExpandFunctions,
@@ -36,10 +36,10 @@ export interface TranscriptBox {
   readonly scrollHeight: number;
 }
 
-export type RunTab = "transcript" | "turn";
+export type RunTab = "transcript" | "pull" | "events" | "details";
 
 export interface TranscriptControls {
-  readonly tab: RunTab;
+  readonly tab: string;
   readonly onTab: (tab: RunTab) => void;
   readonly view: (target: TranscriptTarget) => TranscriptView;
   readonly onToggle: (target: TranscriptTarget) => void;
@@ -290,78 +290,6 @@ export function TerminalPage(props: {
   });
 }
 
-export function RunTabs(props: {
-  readonly tab: RunTab;
-  readonly controls: TranscriptControls | undefined;
-}): Shown {
-  const names: readonly (readonly [RunTab, string])[] = [
-    ["transcript", "Transcript"],
-    ["turn", "Agent turn"],
-  ];
-  return element("div", {
-    class: "run-tabs",
-    role: "tablist",
-    "aria-label": "Turn views",
-    children: names.map(([name, label]) =>
-      element("button", {
-        key: name,
-        type: "button",
-        role: "tab",
-        id: `run-tab-${name}`,
-        "aria-selected": String(name === props.tab),
-        "aria-controls": `run-panel-${name}`,
-        class: "run-tab",
-        onClick: () => {
-          props.controls?.onTab(name);
-        },
-        children: label,
-      }),
-    ),
-  });
-}
-
-export function RunTurns(props: {
-  readonly run: WatchRun;
-  readonly now: string;
-  readonly transcripts: TranscriptControls | undefined;
-  readonly turnId: string | null;
-}): Shown {
-  const { run, now } = props;
-  if (run.turns.length === 0)
-    return element("p", {
-      class: "meta",
-      children: "No agent turn for this run.",
-    });
-  const tab = props.transcripts?.tab ?? "transcript";
-  const panel = (name: RunTab, turnPart: (item: WatchTurn) => Shown) =>
-    element("div", {
-      role: "tabpanel",
-      id: `run-panel-${name}`,
-      "aria-labelledby": `run-tab-${name}`,
-      hidden: name !== tab,
-      children: run.turns.map((item, index) => [
-        turnPart(item),
-        component(Review, { key: `review-${item.key}`, run, round: index + 1 }),
-      ]),
-    });
-  return [
-    component(RunTabs, { tab, controls: props.transcripts }),
-    panel("transcript", (item) =>
-      component(Transcript, {
-        key: `transcript-${item.key}`,
-        run,
-        turn: item,
-        turnId: props.turnId,
-        controls: props.transcripts,
-        now,
-      }),
-    ),
-    panel("turn", (item) =>
-      component(Turn, { key: item.key, turn: item, now }),
-    ),
-  ];
-}
-
 export const transcriptFunctions = [
   ...terminalFunctions,
   ...transcriptExpandFunctions,
@@ -374,6 +302,4 @@ export const transcriptFunctions = [
   TranscriptHead,
   Transcript,
   TerminalPage,
-  RunTabs,
-  RunTurns,
 ];

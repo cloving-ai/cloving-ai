@@ -72,6 +72,12 @@ function labels(node: unknown, place: string): readonly unknown[] {
     .flatMap(inside);
 }
 
+function bar(node: unknown): readonly unknown[] {
+  return labels(node, "run-head-actions").filter(
+    (label) => typeof label === "string",
+  );
+}
+
 function click(node: unknown, label: string): void {
   const button = found(node, "button").find(
     (item) => item["children"] === label,
@@ -104,19 +110,13 @@ await test("CLV-335 a watch run has the revision of its status, and the card of 
 await test("CLV-335 the run detail of an active run has Pause or Resume and Drop with watch actions on, and an ended run or a page with no actions has no control", () => {
   const calls: string[] = [];
   const controlling = controls(calls);
-  assert.deepEqual(labels(page("run=run-a", controlling), "run-command"), [
-    "Pause",
-    "Drop",
-  ]);
-  assert.deepEqual(labels(page("run=paused-run", controlling), "run-command"), [
+  assert.deepEqual(bar(page("run=run-a", controlling)), ["Pause", "Drop"]);
+  assert.deepEqual(bar(page("run=paused-run", controlling)), [
     "Resume",
     "Drop",
   ]);
-  assert.deepEqual(
-    labels(page("run=failed-run", controlling), "run-command"),
-    [],
-  );
-  assert.deepEqual(labels(page("run=run-a", undefined), "run-command"), []);
+  assert.deepEqual(bar(page("run=failed-run", controlling)), []);
+  assert.deepEqual(bar(page("run=run-a", undefined)), []);
   assert.doesNotMatch(rendered(page("run=run-a", undefined)), /run-command/);
   click(page("run=run-a", controlling), "Pause");
   click(page("run=paused-run", controlling), "Resume");

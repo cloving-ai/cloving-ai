@@ -147,14 +147,13 @@ await test("watch design: a queue without skipped tickets shows no disclosure", 
   assert.doesNotMatch(html, /queue-waiting/);
 });
 
-await test("watch design: the run page shows the same queue line and disclosure", () => {
+await test("watch design: the run page shows the same queue line, and the skipped tickets only on the floor and the boards", () => {
   const html = page(
     boardModel([], { queue, workflows: ["develop-issue"] }),
     "workflow=develop-issue&run=run-missing",
   );
   assert.match(html, /0 of 3 lanes busy/);
-  assert.match(html, /<details class="queue-waiting"/);
-  assert.doesNotMatch(html, /ticket-dependency-open/);
+  assert.doesNotMatch(html, /queue-waiting|ticket-dependency-open/);
 });
 
 await test("watch design: one header holds the status and phone controls", () => {
