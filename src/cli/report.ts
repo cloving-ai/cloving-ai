@@ -10,6 +10,7 @@ import { send } from "./client.ts";
 import type { WatchPrSettings } from "./watch-pr-settings.ts";
 import { readReportFlow } from "./report-flow.ts";
 import { readReportGithub } from "./report-github.ts";
+import { readReportEffectResults } from "./report-results.ts";
 
 interface ReportEnvironment {
   readonly now?: number;
@@ -101,6 +102,7 @@ async function daemonReport(runtime: string) {
       return {
         completions: [...snapshot.completions.values()],
         effects: snapshot.effects,
+        effectResults: await readReportEffectResults(runtime, snapshot.effects),
         flowEvents: snapshot.flowEvents,
         observedSince: snapshot.observedSince,
       };

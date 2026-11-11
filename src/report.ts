@@ -10,7 +10,10 @@ import {
 } from "./report-statistics.ts";
 import { reportOperatorMetrics } from "./report-operator.ts";
 import { reportCiMetrics, type ReportCiData } from "./report-ci.ts";
-import { reportEffectData } from "./report-effects.ts";
+import {
+  reportEffectData,
+  type ReportEffectResults,
+} from "./report-effects.ts";
 import { reportFlowMetrics } from "./report-flow.ts";
 import type { ReportFlow } from "./report-flow-types.ts";
 import type { ReportReadyTicket } from "./report-flow-types.ts";
@@ -38,6 +41,7 @@ export interface ReportCost {
 interface ReportInput {
   readonly flow?: ReportFlow;
   readonly effects?: readonly Fields[] | null;
+  readonly effectResults?: ReportEffectResults;
   readonly since: number;
   readonly now: number;
   readonly completions: readonly ReportCompletion[] | null;
@@ -81,7 +85,7 @@ function outcomeMetrics(
 }
 
 function effectMetrics(input: ReportInput, window: ReportWindow) {
-  const data = reportEffectData(input.effects ?? null);
+  const data = reportEffectData(input.effects ?? null, input.effectResults);
   const metrics: Record<string, ReturnType<typeof reportMetric>> = {
     "fixRounds.medianPerMergedPullRequest": reportMetric({
       data: data.fixRounds,
@@ -225,6 +229,7 @@ function operatorMetrics(input: ReportInput, window: ReportWindow) {
   return reportOperatorMetrics(
     {
       effects: input.effects ?? null,
+      ...effectResults(input),
       pulls: input.github?.pulls ?? null,
       labels: input.github?.labels ?? null,
     },
@@ -236,6 +241,12 @@ function operatorMetrics(input: ReportInput, window: ReportWindow) {
       ),
     },
   );
+}
+
+function effectResults(input: ReportInput): Pick<ReportInput, "effectResults"> {
+  return input.effectResults === undefined
+    ? {}
+    : { effectResults: input.effectResults };
 }
 
 export function loopReport(input: ReportInput) {
@@ -275,6 +286,7 @@ export function loopReport(input: ReportInput) {
       {
         ...input.github,
         effects: input.effects ?? null,
+        ...effectResults(input),
         daemonObservedSince: input.observedSince ?? null,
       },
       githubWindow(input, window),
