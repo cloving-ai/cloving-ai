@@ -211,6 +211,7 @@ The restart keeps a drain of the queue and its failure count.
 --resume-queue clears the drain at the new start and keeps the failure count. cloving start --reset-queue clears both.
 --settings files starts without the CLOVING_* variables that the settings files can set. The files and the defaults decide.
 --set <key>=<value> sets the CLOVING_* variable of a settings file key in the new start. Give it one time for each key.
+For harness.command, it sets the command variable of the worker of the service, or of the --set harness.name worker.
 The command checks each value as cloving config set does. An unknown key or an invalid value refuses the restart.
 The value applies after --settings files, and later restarts of this cloving start keep it.
 --update updates the product checkout after the stop. Local changes skip the update.

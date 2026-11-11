@@ -171,7 +171,7 @@ function encoded(value: SettingValue): string {
 }
 
 function harnessCommandMapping(
-  name: SettingValue | undefined,
+  name: unknown,
 ): Readonly<Record<string, string>> {
   if (name === "opencode")
     return { "harness.command": "CLOVING_OPENCODE_COMMAND" };
@@ -243,14 +243,22 @@ export function startSettingLines(settings: {
 
 const harnessNames = ["claude", "codex", "gemini", "grok", "opencode"];
 
+export const harnessCommandVariables: readonly string[] = harnessNames.flatMap(
+  (name) => Object.values(harnessCommandMapping(name)),
+);
+
+export function workerSettingVariables(
+  worker: unknown,
+): Readonly<Record<string, string>> {
+  return { ...settingVariables, ...harnessCommandMapping(worker) };
+}
+
 export function withoutFileVariables(
   environment: Readonly<NodeJS.ProcessEnv>,
 ): NodeJS.ProcessEnv {
   const names = new Set([
     ...Object.values(settingVariables),
-    ...harnessNames.flatMap((name) =>
-      Object.values(harnessCommandMapping(name)),
-    ),
+    ...harnessCommandVariables,
     "CLOVING_PROFILES",
   ]);
   return Object.fromEntries(
@@ -332,10 +340,7 @@ export function settingDigests(
 ): Readonly<Record<string, string>> {
   const fields = {
     ...resolved,
-    variables: {
-      ...settingVariables,
-      ...harnessCommandMapping(resolved.values["harness.name"]),
-    },
+    variables: workerSettingVariables(resolved.values["harness.name"]),
   };
   return Object.fromEntries(
     settingFields().map((field) => [

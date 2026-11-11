@@ -174,7 +174,10 @@ async function pendingRestart(
       detail:
         "The product of the service is not a git checkout. Update it by hand.",
     });
-  const set = setVariables(textRecord(parameters["set"]) ?? {});
+  const set = setVariables({
+    set: textRecord(parameters["set"]) ?? {},
+    worker: context.worker,
+  });
   if (set.kind === "refused")
     return failed("invalid-restart-setting", {
       commandId,

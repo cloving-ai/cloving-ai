@@ -1,6 +1,11 @@
 import { settingScope, validateSetting } from "./configuration-schema.ts";
 import { settingValue } from "./configuration-change.ts";
-import { settingVariables, withoutFileVariables } from "./project-settings.ts";
+import {
+  harnessCommandVariables,
+  settingVariables,
+  withoutFileVariables,
+  workerSettingVariables,
+} from "./project-settings.ts";
 import { record } from "./protocol.ts";
 
 export type RestartTime = "keep" | "gap" | "now";
@@ -75,7 +80,10 @@ function parsed(text: string): unknown {
   }
 }
 
-const variableNames = new Set(Object.values(settingVariables));
+const variableNames = new Set([
+  ...Object.values(settingVariables),
+  ...harnessCommandVariables,
+]);
 
 export function textRecord(
   value: unknown,
@@ -107,17 +115,29 @@ export type SetVariables =
     }
   | { readonly kind: "refused"; readonly key: string; readonly error: unknown };
 
-function variableOf(key: string): string {
-  const variable = Object.hasOwn(settingVariables, key)
-    ? settingVariables[key]
-    : undefined;
+interface SetRequest {
+  readonly set: Readonly<Record<string, string>>;
+  readonly worker: string | undefined;
+}
+
+function selectedWorker(request: SetRequest): unknown {
+  const name = request.set["harness.name"];
+  return name === undefined ? request.worker : settingValue(name);
+}
+
+function variableOf(key: string, request: SetRequest): string {
+  const variables = workerSettingVariables(selectedWorker(request));
+  const variable = Object.hasOwn(variables, key) ? variables[key] : undefined;
   if (variable !== undefined) return variable;
   settingScope(key);
   throw new Error(`invalid-setting: ${key} has no environment variable`);
 }
 
-function setVariable(key: string, text: string): readonly [string, string] {
-  const variable = variableOf(key);
+function setVariable(
+  [key, text]: readonly [string, string],
+  request: SetRequest,
+): readonly [string, string] {
+  const variable = variableOf(key, request);
   const value = settingValue(text);
   validateSetting(key, value);
   const encoded = typeof value === "string" ? value : JSON.stringify(value);
@@ -126,15 +146,25 @@ function setVariable(key: string, text: string): readonly [string, string] {
   return [variable, encoded];
 }
 
-export function setVariables(
+function checkOrder(
   set: Readonly<Record<string, string>>,
-): SetVariables {
+): readonly (readonly [string, string])[] {
+  const entries = Object.entries(set);
+  const command = ([key]: readonly [string, string]): boolean =>
+    key === "harness.command";
+  return [
+    ...entries.filter((entry) => !command(entry)),
+    ...entries.filter(command),
+  ];
+}
+
+export function setVariables(request: SetRequest): SetVariables {
   const variables: (readonly [string, string])[] = [];
-  for (const [key, text] of Object.entries(set)) {
+  for (const entry of checkOrder(request.set)) {
     try {
-      variables.push(setVariable(key, text));
+      variables.push(setVariable(entry, request));
     } catch (error) {
-      return { kind: "refused", key, error };
+      return { kind: "refused", key: entry[0], error };
     }
   }
   return { kind: "variables", variables: Object.fromEntries(variables) };

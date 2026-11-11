@@ -131,9 +131,15 @@ function githubOf(
   });
 }
 
+function selectedWorker(
+  settings: Pick<DaemonSettings, "worker" | "harness">,
+): string {
+  return settings.worker ?? settings.harness?.name ?? "claude";
+}
+
 function workerHarness(settings: DaemonSettings) {
   return {
-    worker: settings.worker ?? settings.harness?.name ?? "claude",
+    worker: selectedWorker(settings),
     workerCommands: settings.workerCommands ?? {},
     harness: settings.harness ?? {},
     shell: settings.shell ?? process.env["SHELL"] ?? "/bin/sh",
@@ -291,11 +297,17 @@ async function recoveryCalls(
   return calls;
 }
 
-export function daemonIdentity(settings: DaemonSettings) {
+export function daemonIdentity(
+  settings: Pick<
+    DaemonSettings,
+    "commit" | "settingSources" | "worker" | "harness"
+  >,
+) {
   return {
     version: clovingVersion,
     commit: settings.commit ?? null,
     startedAt: new Date().toISOString(),
+    worker: selectedWorker(settings),
     ...(settings.settingSources === undefined
       ? {}
       : { settingSources: settings.settingSources }),
