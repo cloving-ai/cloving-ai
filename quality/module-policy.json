@@ -1761,6 +1761,7 @@
     "test/restart-marks.test.ts": "test",
     "test/restart-render.test.ts": "test",
     "test/restart-report-fixture.ts": "test",
+    "test/restart-settings.test.ts": "test",
     "test/restart-update.test.ts": "test",
     "test/resume-index-lock.test.ts": "test",
     "test/resume-index-permissions.test.ts": "test",

@@ -2,10 +2,14 @@ import { terminal } from "../authority/transitions.ts";
 import { record, type Fields, type Reply } from "../protocol.ts";
 import {
   isRestartTime,
+  setVariables,
+  textRecord,
   type RestartMark,
+  type RestartPort,
   type RestartTime,
 } from "../restart-request.ts";
 import {
+  errorMessage,
   failed,
   invalidRequest,
   isIdentifier,
@@ -94,16 +98,23 @@ function validWithin(within: unknown): boolean {
 }
 
 function validOptions(parameters: Fields): boolean {
-  const { cancel, resumeQueue, settings, update, within } = parameters;
+  const { cancel, resumeQueue, settings, set, update, within } = parameters;
   return (
     [cancel, resumeQueue, update].every(optionalTrue) &&
     (settings === undefined || settings === "files") &&
+    (set === undefined || textRecord(set) !== undefined) &&
     validWithin(within)
   );
 }
 
+type RequestedRestart = Fields & {
+  readonly at: RestartTime;
+  readonly commandId: string;
+};
+
 function requestedMark(
-  parameters: Fields & { readonly at: RestartTime; readonly commandId: string },
+  parameters: RequestedRestart,
+  variables: Readonly<Record<string, string>>,
 ): RestartMark {
   const { resumeQueue, settings, update } = parameters;
   const requestedAt = Date.now();
@@ -115,6 +126,7 @@ function requestedMark(
     commandId: parameters.commandId,
     resumeQueue: resumeQueue === true,
     ...(settings === "files" ? { settings: "files" } : {}),
+    ...(Object.keys(variables).length > 0 ? { variables } : {}),
     ...(update === true ? { update: true } : {}),
   };
 }
@@ -136,13 +148,35 @@ export async function restartOperation(
     return result("restart", { restart: { state: await port.cancel() } });
   if (!isRestartTime(at))
     return invalidRequest("A restart needs --at keep, --at gap or --at now.");
+  return pendingRestart(context, {
+    port,
+    parameters: { ...parameters, at, commandId },
+  });
+}
+
+async function pendingRestart(
+  context: ServiceContext,
+  request: {
+    readonly port: RestartPort;
+    readonly parameters: RequestedRestart;
+  },
+): Promise<Reply> {
+  const { port, parameters } = request;
+  const { at, commandId } = parameters;
   if (parameters["update"] === true && typeof context.commit !== "string")
     return failed("update-unavailable", {
       commandId,
       detail:
         "The product of the service is not a git checkout. Update it by hand.",
     });
-  const mark = requestedMark({ ...parameters, at, commandId });
+  const set = setVariables(textRecord(parameters["set"]) ?? {});
+  if (set.kind === "refused")
+    return failed("invalid-restart-setting", {
+      commandId,
+      key: set.key,
+      detail: `The restart cannot set ${set.key}. ${errorMessage(set.error)}`,
+    });
+  const mark = requestedMark(parameters, set.variables);
   const unresumable =
     at === "now" ? { unresumableRuns: await port.unresumable() } : {};
   await port.request(mark);
