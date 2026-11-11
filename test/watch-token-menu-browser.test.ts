@@ -95,6 +95,46 @@ const point = (value: Record<string, unknown>) => ({
   y: Number(value["y"]),
 });
 
+const waited = (expression: string, expected: unknown) => `(async () => {
+  const want = ${JSON.stringify(JSON.stringify(expected))};
+  const frame = () => new Promise((resolve) => requestAnimationFrame(resolve));
+  await document.fonts.ready;
+  await frame();
+  await frame();
+  let value = null;
+  for (let attempt = 0; attempt < 300; attempt++) {
+    value = await (${expression});
+    if (JSON.stringify(value) === want) break;
+    await frame();
+  }
+  return { value };
+})()`;
+
+async function reached(
+  page: {
+    readonly evaluate: (expression: string) => Promise<Record<string, unknown>>;
+  },
+  check: {
+    readonly name: string;
+    readonly expression: string;
+    readonly expected: unknown;
+  },
+): Promise<void> {
+  const shown = (await page.evaluate(waited(check.expression, check.expected)))[
+    "value"
+  ];
+  assert.deepEqual(
+    shown,
+    check.expected,
+    `${check.name}: ${JSON.stringify(shown)}`,
+  );
+}
+
+const placedParts = `(() => {
+  const value = ${placed};
+  return [value.below, value.next, value.font, value.list];
+})()`;
+
 await test("CLV-354 the token menu sits inside each card with no empty row, a card fits its column, and the popover opens on hover next to the menu button without moving the cards", async () => {
   await using fixture = await watchPageServer(model("#727"), {
     token: "a".repeat(64),
@@ -102,32 +142,52 @@ await test("CLV-354 the token menu sits inside each card with no empty row, a ca
   await using browser = await realBrowser();
   const page = await browser.page({ width: 1280, height: 844 });
   await page.navigate(fixture.url);
-  assert.deepEqual(await page.evaluate(ready), { menus: 3 });
-  assert.deepEqual(await page.evaluate(layout), {
-    rows: [0, 0],
-    gap: 6,
-    inside: [true, true],
-    clear: [true, true],
-    fits: true,
+  await reached(page, {
+    name: "menus",
+    expression: ready,
+    expected: { menus: 3 },
+  });
+  await reached(page, {
+    name: "layout",
+    expression: layout,
+    expected: {
+      rows: [0, 0],
+      gap: 6,
+      inside: [true, true],
+      clear: [true, true],
+      fits: true,
+    },
   });
   const before = await page.evaluate(placed);
   await page.move(
     point(await page.evaluate(center('[popovertarget="token-menu-run-a"]'))),
   );
-  assert.deepEqual(await page.evaluate(opened), { open: "token-menu-run-a" });
+  await reached(page, {
+    name: "hover open",
+    expression: opened,
+    expected: { open: "token-menu-run-a" },
+  });
+  await reached(page, {
+    name: "placed",
+    expression: placedParts,
+    expected: [true, before["next"], true, true],
+  });
   const shown = await page.evaluate(placed);
-  assert.deepEqual(
-    [shown["below"], shown["next"], shown["font"], shown["list"]],
-    [true, before["next"], true, true],
-  );
   await page.move(point(fields(shown["gap"])));
   await delay(100);
   await page.move(point(fields(shown["inside"])));
   await delay(400);
-  assert.deepEqual(await page.evaluate(opened), { open: "token-menu-run-a" });
+  assert.deepEqual(
+    await page.evaluate(opened),
+    { open: "token-menu-run-a" },
+    "stays open in the popover",
+  );
   await page.move({ x: 5, y: 830 });
-  await delay(400);
-  assert.deepEqual(await page.evaluate(opened), { open: "" });
+  await reached(page, {
+    name: "closed after leave",
+    expression: opened,
+    expected: { open: "" },
+  });
 });
 
 function fields(value: unknown): Record<string, unknown> {
