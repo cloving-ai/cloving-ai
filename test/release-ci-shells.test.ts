@@ -47,6 +47,7 @@ await test("CLV-266 Linux CI installs two pinned zsh packages from the first Ubu
     ["0", "0", "", "0", "0", 0, ""],
     ["1", "0", "", "0", "0", 0, installed],
     ["1", "22", "", "0", "0", 22, fetched(common, [...mirrors, ...mirrors])],
+    ["1", "6", "", "0", "0", 6, fetched(common, [...mirrors, ...mirrors])],
     [
       "1",
       "0",

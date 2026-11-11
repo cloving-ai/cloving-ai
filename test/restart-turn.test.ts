@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { field, items } from "./self-host-fixture.ts";
 import { call } from "./service-fixture.ts";
-import { testMilliseconds } from "./test-timing.ts";
 import {
   admittedTurn,
   assistantTexts,
@@ -36,7 +35,7 @@ await test("CLV-347 cloving restart in the middle of a 60-second turn starts the
     assert.notEqual(after["serviceStartedAt"], before["serviceStartedAt"]);
     const startedAt = Date.parse(String(after["serviceStartedAt"]));
     assert.ok(
-      startedAt - requested < testMilliseconds(10_000),
+      startedAt - requested < 10_000,
       `The new service started ${String(startedAt - requested)} ms after the request.`,
     );
     assert.equal(alive(writing.processId), true);
