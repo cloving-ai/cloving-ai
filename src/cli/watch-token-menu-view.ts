@@ -131,10 +131,17 @@ export function TokenCommands(props: TokenMenuProps): Shown {
   });
 }
 
-export function TokenMenu(props: TokenMenuProps): Shown {
-  const { token, controlling, renaming } = props;
-  if (controlling === undefined && renaming === undefined) return null;
-  const id = `token-menu-${token.runId}`;
+export function menuPicked(pop: MenuElement): void {
+  if (pop.matches(":popover-open")) pop.hidePopover();
+}
+
+export function MenuShell(props: {
+  readonly id: string;
+  readonly label: string;
+  readonly picked?: ((pop: MenuElement) => void) | undefined;
+  readonly children: Shown;
+}): Shown {
+  const { id, label, picked } = props;
   const opened = (event: MenuEvent) => {
     menuOpened(event.currentTarget);
   };
@@ -158,8 +165,8 @@ export function TokenMenu(props: TokenMenuProps): Shown {
       element("button", {
         type: "button",
         class: "token-menu-open",
-        title: "Run controls",
-        "aria-label": "Run controls",
+        title: label,
+        "aria-label": label,
         popovertarget: id,
         popovertargetaction: "show",
         children: element("span", { "aria-hidden": "true", children: "⋯" }),
@@ -168,9 +175,26 @@ export function TokenMenu(props: TokenMenuProps): Shown {
         id,
         class: "token-pop",
         popover: "auto",
-        children: component(TokenCommands, props),
+        ...(picked === undefined
+          ? {}
+          : {
+              onClick: (event: { readonly currentTarget: MenuElement }) => {
+                picked(event.currentTarget);
+              },
+            }),
+        children: props.children,
       }),
     ],
+  });
+}
+
+export function TokenMenu(props: TokenMenuProps): Shown {
+  const { token, controlling, renaming } = props;
+  if (controlling === undefined && renaming === undefined) return null;
+  return component(MenuShell, {
+    id: `token-menu-${token.runId}`,
+    label: "Run controls",
+    children: component(TokenCommands, props),
   });
 }
 
@@ -182,5 +206,7 @@ export const tokenMenuFunctions = [
   menuLeft,
   TokenDrop,
   TokenCommands,
+  menuPicked,
+  MenuShell,
   TokenMenu,
 ];
