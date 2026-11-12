@@ -5,9 +5,16 @@ import type {
   DeliveryIntent,
 } from "../broker/actor/delivery-intents.ts";
 import { begun } from "./claude-begin.ts";
-import { attachPlan, holdKeptTurn, recordedLaunchOf } from "./claude-attach.ts";
+import {
+  attachPlan,
+  holdKeptTurn,
+  recordedLaunchOf,
+  recoverableTurn,
+} from "./claude-attach.ts";
 import { keptWait, waitPlan } from "./claude-wait.ts";
 import { stoppedLaunch } from "./detached-process.ts";
+import { releasedLaunch } from "./detached-turn.ts";
+import { recordedLaunch } from "../turn-launch.ts";
 import type { TurnLaunch, TurnWait } from "../turn-launch.ts";
 import type { RecoveryWay } from "../turn-recovery.ts";
 import type { ProtectedIntent } from "../broker/actor/delivery-intents.ts";
@@ -52,7 +59,7 @@ export {
 } from "./claude-worker-parts.ts";
 
 export interface ClaudeWorker extends Delivery {
-  readonly hold: (intent: DeliveryIntent) => Promise<void>;
+  readonly hold: (intent: DeliveryIntent) => Promise<boolean>;
   readonly recover: (intent: DeliveryIntent) => Promise<void>;
   readonly harness: (operationId: string) => Promise<string | undefined>;
   readonly stop: NonNullable<Delivery["stop"]>;
@@ -70,8 +77,7 @@ function reconciled(
   parts: Parts,
   call: { readonly intent: DeliveryIntent; readonly signal: AbortSignal },
 ): Promise<AdapterOutcome> {
-  const { intent } = call;
-  const { key } = located(parts.settings.journal, intent.operationId);
+  const { key } = located(parts.settings.journal, call.intent.operationId);
   const pending = parts.reconciling.get(key);
   if (pending !== undefined) return pending;
   const reconciliation = reconcileOperation(parts, call).finally(() => {
@@ -146,11 +152,13 @@ async function rejectedAttach(
     readonly launch: TurnLaunch | undefined;
   },
 ): Promise<AdapterOutcome> {
-  if (rejection.launch !== undefined)
+  if (rejection.launch !== undefined) {
     await stoppedLaunch(
       rejection.launch,
       parts.settings.stopMilliseconds ?? claudeLimits.stopMilliseconds,
     );
+    await releasedLaunch(rejection.launch);
+  }
   return interruptedReply(rejection.request, rejection.plan);
 }
 
@@ -183,14 +191,13 @@ async function resumed(
   if ("attach" in plan) way = "connected";
   else if ("wait" in plan) way = "waiting";
   parts.settings.recovered?.({ runId: intent.runId, way });
-  const noted = await parts.notes.recorded({ ...intent, prompt, started });
   await begun(parts, {
     key,
     folder,
     intent,
     ...plan,
     signal,
-    ...noted,
+    ...(await parts.notes.recorded({ ...intent, prompt, started })),
     turnSettings: current,
   });
   return { kind: "accepted", receipt: key, worker };
@@ -287,7 +294,10 @@ async function stopped(
     return replied({ receipt: key, worker }, result);
   const started = await read(folder, "started.json");
   if (started === undefined) return { kind: "absent" };
-  if (!resumableHarness(recordedField(started, "harness")))
+  if (
+    !resumableHarness(recordedField(started, "harness")) &&
+    recordedLaunch(recordedField(started, "launch")) === undefined
+  )
     return reconcileOperation(parts, { intent, signal: parts.stopping.signal });
   if (processAlive(recordedField(started, "processId")))
     return { kind: "unknown", evidence: `claude-turn:${key}` };
@@ -350,13 +360,14 @@ export function claudeWorker(settings: ClaudeWorkerSettings): ClaudeWorker {
       : run();
   return {
     hold: (intent) => holdKeptTurn(settings.journal, intent),
-    recover: (intent) =>
-      turnIntent(intent)
-        ? recoverTurn(
-            { ...settings, intent, signal: parts.stopping.signal },
-            () => reconciled(parts, { intent, signal: parts.stopping.signal }),
-          )
-        : Promise.resolve(),
+    recover: async (intent) => {
+      if (!turnIntent(intent)) return;
+      if (!(await recoverableTurn(settings.journal, intent))) return;
+      await recoverTurn(
+        { ...settings, intent, signal: parts.stopping.signal },
+        () => reconciled(parts, { intent, signal: parts.stopping.signal }),
+      );
+    },
     harness: (operationId) => recordedHarness(settings.journal, operationId),
     deliver: (intent, signal) =>
       guarded(intent, () =>

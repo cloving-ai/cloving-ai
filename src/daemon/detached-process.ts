@@ -11,7 +11,11 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { record } from "../protocol.ts";
-import type { PlannedLaunch, TurnLaunch } from "../turn-launch.ts";
+import {
+  recordedLaunch,
+  type PlannedLaunch,
+  type TurnLaunch,
+} from "../turn-launch.ts";
 import {
   markedProcesses,
   processExists,
@@ -70,16 +74,18 @@ export interface LauncherLimits {
 export const intervals = { output: 100, process: 250, identity: 16 } as const;
 
 const launcher = [
-  'const{spawn}=require("node:child_process");',
+  'const{spawn,execFileSync}=require("node:child_process");',
   'const{fstatSync,renameSync,writeFileSync}=require("node:fs");',
-  "const[exit,,coverage,limitText,command,...rest]=process.argv.slice(1);",
+  "const[exit,marker,coverage,limitText,command,...rest]=process.argv.slice(1);",
+  "const startedAt=Date.now();let processStart;",
+  'try{processStart=execFileSync("ps",["-o","lstart=",String(process.pid)],{encoding:"utf8",timeout:5000,env:{...process.env,LC_ALL:"C"}}).trim().split(/\\s+/).join(" ");}catch{}',
   "const limits=JSON.parse(limitText);",
   'for(const name of["SIGTERM","SIGINT","SIGHUP"])process.on(name,()=>undefined);',
   "const env={...process.env};",
   'if(coverage!=="")env.NODE_V8_COVERAGE=coverage;',
   "let ended=false;",
   "const ending=(fields)=>{if(ended)return false;ended=true;",
-  'writeFileSync(exit+".tmp",JSON.stringify({...fields,endedAt:new Date().toISOString()})+"\\n",{mode:0o600});',
+  'writeFileSync(exit+".tmp",JSON.stringify({...fields,processId:process.pid,processStart,marker,startedAt,endedAt:new Date().toISOString()})+"\\n",{mode:0o600});',
   'renameSync(exit+".tmp",exit);return true;};',
   'const stopped=(reason)=>{let first=true;try{first=ending({exitCode:null,signal:"SIGKILL",reason});}finally{if(first)process.kill(-process.pid,"SIGKILL");}};',
   'const child=spawn(command,rest,{stdio:"inherit",env});',
@@ -327,6 +333,39 @@ async function stoppedMatch(
 export interface FoundLaunch {
   readonly launch: TurnLaunch;
   readonly startedAt: number;
+}
+
+function completedStart(fields: Record<string, unknown>, since: number) {
+  const { startedAt, endedAt, exitCode } = fields;
+  const ended = typeof endedAt === "string" ? Date.parse(endedAt) : NaN;
+  const validExit = exitCode === null || Number.isSafeInteger(exitCode);
+  return typeof startedAt === "number" &&
+    Number.isFinite(startedAt) &&
+    startedAt >= since &&
+    ended >= startedAt &&
+    validExit
+    ? startedAt
+    : undefined;
+}
+
+export async function completedLaunch(
+  planned: PlannedLaunch,
+  since: number,
+): Promise<FoundLaunch | "unknown" | undefined> {
+  const text = await readFile(planned.exit, "utf8").catch(() => "");
+  const fields = record(parsedJson(text));
+  if (fields === undefined || fields["marker"] !== planned.marker)
+    return undefined;
+  const launch = recordedLaunch({ ...fields, ...planned });
+  const startedAt = completedStart(fields, since);
+  if (
+    launch === undefined ||
+    startedAt === undefined ||
+    !Number.isFinite(Date.parse(launch.processStart))
+  )
+    return undefined;
+  if (processExists(launch.processId)) return "unknown";
+  return { launch, startedAt };
 }
 
 export async function foundLaunch(

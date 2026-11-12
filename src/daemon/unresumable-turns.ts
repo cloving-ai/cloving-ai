@@ -17,10 +17,10 @@ function noEntries(error: unknown): readonly string[] {
 }
 
 async function resumable(folder: string, started: unknown): Promise<boolean> {
-  if (!resumableHarness(recordedField(started, "harness"))) return false;
-  if (turnWait(started) !== undefined) return true;
   const launch = await attachableLaunch(folder, started);
   if (launch !== undefined && launch !== "gone") return true;
+  if (!resumableHarness(recordedField(started, "harness"))) return false;
+  if (turnWait(started) !== undefined) return true;
   return (await readResume(folder, started)) !== undefined;
 }
 

@@ -1,6 +1,7 @@
 import { execFile } from "node:child_process";
 import { rmSync } from "node:fs";
 import { runnerRefusal, type TurnRunner } from "../turn-runner.ts";
+import type { RunnerPlace } from "../turn-launch.ts";
 import {
   runnerSetup,
   type RunnerInput,
@@ -10,10 +11,31 @@ import {
 export interface RunnerLaunch {
   readonly command: readonly string[];
   readonly environment: NodeJS.ProcessEnv;
+  readonly place?: RunnerPlace;
   readonly refusal: (
     error: NodeJS.ReadableStream,
   ) => (exitCode: number | null) => string | undefined;
   readonly release: () => Promise<void>;
+}
+
+const engineVariables = [
+  "DOCKER_HOST",
+  "DOCKER_CONTEXT",
+  "DOCKER_CONFIG",
+  "DOCKER_TLS",
+  "DOCKER_TLS_VERIFY",
+  "DOCKER_CERT_PATH",
+] as const;
+
+function engineEnvironment(
+  environment: NodeJS.ProcessEnv,
+): Readonly<Record<string, string>> {
+  return Object.fromEntries(
+    engineVariables.flatMap((name) => {
+      const value = environment[name];
+      return value === undefined ? [] : [[name, value]];
+    }),
+  );
 }
 
 function refusalWatch(runner: TurnRunner) {
@@ -43,6 +65,44 @@ function removedContainer(
   });
 }
 
+export async function releasedRunner(
+  place: RunnerPlace | undefined,
+  environment: NodeJS.ProcessEnv,
+): Promise<void> {
+  if (place === undefined) return;
+  rmSync(place.folder, { recursive: true, force: true });
+  const { container } = place;
+  if (container === undefined) return;
+  const cleanup = { ...environment };
+  if (container.environment !== undefined)
+    for (const name of engineVariables)
+      cleanup[name] = container.environment[name];
+  await removedContainer(container.engine, {
+    name: container.name,
+    environment: cleanup,
+  });
+}
+
+function runnerPlace(
+  runner: TurnRunner,
+  place: {
+    readonly folder: string;
+    readonly name: string;
+    readonly environment: NodeJS.ProcessEnv;
+  },
+): RunnerPlace {
+  const { folder, name, environment } = place;
+  if (runner.kind !== "container") return { folder };
+  return {
+    folder,
+    container: {
+      engine: runner.engine,
+      name,
+      environment: engineEnvironment(environment),
+    },
+  };
+}
+
 export function runnerLaunch(
   start: RunnerStart,
   launch: RunnerInput,
@@ -56,17 +116,12 @@ export function runnerLaunch(
       release: () => Promise.resolve(),
     };
   const { runner, environment } = setup;
+  const place = runnerPlace(runner, setup);
   return {
     command: setup.command,
     environment,
+    place,
     refusal: refusalWatch(runner),
-    release: async () => {
-      rmSync(setup.folder, { recursive: true, force: true });
-      if (runner.kind === "container")
-        await removedContainer(runner.engine, {
-          name: setup.name,
-          environment,
-        });
-    },
+    release: () => releasedRunner(place, environment),
   };
 }
