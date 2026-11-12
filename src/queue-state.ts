@@ -1,3 +1,4 @@
+import type { QueueValues } from "./queue-settings.ts";
 import { isAfter, isInstant } from "./authority/instants.ts";
 import { record, type Fields } from "./protocol.ts";
 import type { HoldPeriod, QueueHold } from "./queue-room.ts";
@@ -29,6 +30,17 @@ export interface QueueControl {
   readonly lanes?: number;
   readonly holds?: readonly HoldPeriod[];
   readonly holdsCutAt?: number | null;
+  readonly settings?: QueueValues;
+  readonly off?: QueueOff;
+}
+
+export function queueOffDetail(workflowId: string): string {
+  return `The queues setting turns off the queue of ${workflowId}.`;
+}
+
+export interface QueueOff {
+  readonly workflowId: string;
+  readonly source: "queues setting";
 }
 
 export type QueueCommand = "resume" | "drain";
@@ -78,6 +90,7 @@ export function queueStateFields(control: QueueControl, busy: number): Fields {
     hold: control.hold ?? null,
     holds: [...(control.holds ?? [])],
     holdsCutAt: control.holdsCutAt ?? null,
+    ...(control.settings === undefined ? {} : { settings: control.settings }),
   };
 }
 

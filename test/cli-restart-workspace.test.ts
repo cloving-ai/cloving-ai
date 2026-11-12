@@ -95,6 +95,7 @@ function invocation(changes: Partial<RestartInvocation>): RestartInvocation {
     cancel: false,
     resumeQueue: false,
     settings: "environment",
+    set: {},
     update: false,
     within: null,
     commandId: "restart-8",
@@ -163,16 +164,22 @@ await test("CLV-312 cloving restart restarts the whole workspace through the sup
     );
   }));
 
-await test("CLV-312 a workspace restart refuses --update, --cancel and --within", () =>
+await test("CLV-312 CLV-352 a workspace restart refuses --update, --cancel, --within and --set", () =>
   withSupervisor(async (requests) => {
-    for (const changes of [
-      { update: true },
-      { cancel: true },
-      { within: 3600 },
-    ]) {
+    for (const [changes, option] of [
+      [{ update: true }, "--update"],
+      [{ cancel: true }, "--cancel"],
+      [{ within: 3600 }, "--within"],
+      [{ set: { "queue.lanes": "8" } }, "--set"],
+    ] as const) {
       const refused = await restartedInProcess(changes);
       assert.equal(refused.status, 1);
-      assert.match(refused.error, /workspace-restart-option: /);
+      assert.match(
+        refused.error,
+        new RegExp(
+          `workspace-restart-option: A workspace restart has no ${option}\\.`,
+        ),
+      );
     }
     assert.deepEqual(requests, []);
   }));
@@ -180,7 +187,7 @@ await test("CLV-312 a workspace restart refuses --update, --cancel and --within"
 await test("CLV-312 CLV-337 the restart help and the README describe the restart of a whole workspace at once with kept turns, or at a common gap", async () => {
   assert.match(
     String(commandUsage["restart"]).replaceAll("\n", " "),
-    /While a workspace runs, cloving restart with no --repository restarts all repositories at once, and each one keeps its turns running\. With --at gap, it restarts them at a common gap\..*no --update, --cancel or --within/,
+    /While a workspace runs, cloving restart with no --repository restarts all repositories at once, and each one keeps its turns running\. With --at gap, it restarts them at a common gap\..*no --update, --cancel, --within or --set/,
   );
   assert.match(
     await readFile(new URL("../README.md", import.meta.url), "utf8"),

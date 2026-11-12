@@ -1,3 +1,4 @@
+import type { QueueSource } from "../queue-settings.ts";
 import { queueStatus, spendNotice } from "./queue-status.ts";
 import { randomUUID } from "node:crypto";
 import { rm, writeFile } from "node:fs/promises";
@@ -30,6 +31,7 @@ interface QueueSettings {
   readonly directory: string;
   readonly runtimeDirectory: string;
   readonly intervalMilliseconds: number;
+  readonly intervalSource?: QueueSource;
   readonly limits?: () => QueueLimits;
   readonly resetQueue?: boolean;
   readonly readyCommand?: readonly string[];
@@ -341,6 +343,14 @@ export function issueQueue(settings: QueueSettings): {
     error: undefined,
     stopping: new AbortController(),
     limits: () => limitsOf(settings),
+    ...(settings.intervalSource === undefined
+      ? {}
+      : {
+          interval: {
+            value: settings.intervalMilliseconds / 1000,
+            source: settings.intervalSource,
+          },
+        }),
   };
   const loaded = queueJournal(settings.directory).then(async (pending) => {
     const holds = await holdRecord(settings.directory);

@@ -22,6 +22,7 @@ import { decisionCommand, isDecisionCommand } from "./decision-command.ts";
 import {
   effectLeaseText,
   queueHeadline,
+  queueOffLines,
   queueStateLines,
 } from "./queue-render.ts";
 import { threadPoolLines } from "./thread-pool-render.ts";
@@ -132,6 +133,7 @@ function runList(result: Fields): readonly string[] {
     `Workflows: ${visible(listing(result["workflows"]))}`,
     ...serviceLines(result),
     ...queueLines(result["queue"]),
+    ...queueOffLines(result["queueOff"]),
     ...statusScheduleLines(result["schedules"]).map(oneLine),
     ...refusalLines(result["workflowRefusals"]),
     ...threadPoolLines(result["threadPool"]),

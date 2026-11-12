@@ -8,6 +8,10 @@ export type TranscriptKind =
   | "result";
 
 export interface TranscriptDraft {
+  readonly replaceId?: string;
+  readonly removed?: true;
+  readonly append?: true;
+  readonly partial?: true;
   readonly kind: TranscriptKind;
   readonly text: string;
   readonly tool?: string;
@@ -245,5 +249,25 @@ const lineTypes = new Map<string, Mapping>([
 
 export function lineDrafts(line: string): Drafts {
   const fields = record(parsed(line));
-  return lineTypes.get(text(fields["type"]))?.(fields) ?? notice(line);
+  const replaceId = text(fields["replaceId"]);
+  if (fields["type"] === "transcript_remove" && replaceId !== "")
+    return [{ kind: "notice", text: "", replaceId, removed: true }];
+  if (fields["type"] === "transcript_delta" && replaceId !== "")
+    return [
+      {
+        kind: fields["kind"] === "thinking" ? "thinking" : "assistant",
+        text: text(fields["delta"]),
+        replaceId,
+        append: true,
+        partial: true,
+      },
+    ];
+  const drafts = lineTypes.get(text(fields["type"]))?.(fields) ?? notice(line);
+  return replaceId === ""
+    ? drafts
+    : drafts.map((draft) => ({
+        ...draft,
+        replaceId,
+        ...(fields["partial"] === true ? { partial: true } : {}),
+      }));
 }

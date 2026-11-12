@@ -33,7 +33,7 @@ await test("CLV-208 every known file harness must emit its own first-line versio
       ["opencode", "1.2.0"],
       ["grok", "0.0.19"],
       ["cursor-agent", "2025.09.12-4852336"],
-      ["pi", "pi 0.50.0"],
+      ["pi", "1.5.2"],
       ["amp", "amp 0.1.0"],
     ];
     for (const [name = "", version = ""] of samples)
@@ -144,7 +144,7 @@ await test("CLV-208 PATH chooses its first executable file and skips directories
 
 await test("CLV-208 file probes and shell retries each stop at ten seconds", () =>
   withHarnesses(async (scene) => {
-    await scene.file("pi", '/bin/sleep 30; printf "pi 1.2\\n"');
+    await scene.file("pi", '/bin/sleep 30; printf "1.5.2\\n"');
     const began = performance.now();
     const result = await discoverHarnesses(scene.options);
     const elapsed = performance.now() - began;

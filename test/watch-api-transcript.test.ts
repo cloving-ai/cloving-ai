@@ -96,6 +96,21 @@ await test("CLV-333 the transcript route gives the prompt kind and the call ID o
   });
 });
 
+await test("CLV-364 the transcript API retains replacement and removal identities", async () => {
+  const entries = [
+    { ...entryAt(2), replaceId: "pi:message:1:0" },
+    { ...entryAt(3), replaceId: "pi:message:1:1", removed: true, text: "" },
+  ];
+  const service = transcriptService({ entries, open: true });
+  await withWatchService(service.answer, async (watch) => {
+    const response = await fetch(`${watch.address}${turnPath}/transcript`);
+    assert.deepEqual(
+      await contractBody(watchApiDocument, { response, path: pagePath }),
+      { entries, nextAfter: 3, open: true },
+    );
+  });
+});
+
 function positions(messages: readonly string[]): string[] {
   return messages.map((message) => message.split("\n")[0] ?? "");
 }

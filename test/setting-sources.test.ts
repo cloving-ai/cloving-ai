@@ -162,3 +162,40 @@ await test("CLV-320 the private file sets commands, commandSeconds and schedules
     /private-setting-in-project-file: commands/,
   );
 });
+
+await test("CLV-359 the project and the private file set queues, the private file wins, and the checks refuse bad values", () => {
+  const resolved = resolveSettings(
+    {},
+    {
+      project: JSON.stringify({
+        version: 1,
+        queues: { develop: { state: "off" } },
+      }),
+      private: JSON.stringify({
+        version: 1,
+        queues: { develop: { lanes: 3, workingLanes: 2, everySeconds: 60 } },
+      }),
+    },
+  );
+  assert.equal(
+    resolved.environment["CLOVING_QUEUES"],
+    JSON.stringify({
+      develop: { lanes: 3, workingLanes: 2, everySeconds: 60 },
+    }),
+  );
+  assert.equal(resolved.sources["queues"], "private");
+  assert.equal(settingScope("queues"), "project");
+  validateSetting("queues", { develop: { state: "on", lanes: 16 } });
+  for (const value of [
+    { develop: { state: "paused" } },
+    { develop: { everySeconds: 9 } },
+    { develop: { lanes: 17 } },
+    { develop: { lanes: 2, workingLanes: 3 } },
+    { develop: { interval: 10 } },
+    { "bad name": {} },
+    "develop",
+  ])
+    assert.throws(() => {
+      validateSetting("queues", value);
+    }, /invalid-setting: queues|unknown-setting: queues/);
+});

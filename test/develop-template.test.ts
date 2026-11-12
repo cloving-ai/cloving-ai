@@ -152,7 +152,11 @@ await test("CLV-221 defaults to queue selection, Greptile and checked automatic 
   ])
     assert.ok(needs.has(code), `Missing default prerequisite: ${code}`);
   const options = document.points.flatMap((point) => point.options);
-  assert.ok(options.some((option) => option.change.includes('"queue": true')));
+  assert.ok(
+    options.some((option) =>
+      option.change.includes('"queue": { "everySeconds": 120, "lanes": 1 }'),
+    ),
+  );
   assert.ok(
     options.some((option) =>
       option.change.includes(

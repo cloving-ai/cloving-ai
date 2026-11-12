@@ -7,7 +7,9 @@ import {
   readFileSync,
   writeFileSync,
 } from "node:fs";
+import { once } from "node:events";
 import { join } from "node:path";
+import { PassThrough } from "node:stream";
 import { test } from "node:test";
 import {
   field,
@@ -24,10 +26,8 @@ import { fakeEngine, fakeSandbox } from "./claude-runner-fixture.ts";
 import { turnActivity, turnOf } from "../src/cli/watch-model.ts";
 import type { TurnRunner } from "../src/turn-runner.ts";
 import type { TurnProfile } from "../src/turn-profile.ts";
-import {
-  gitCommonFolder,
-  runnerLaunch,
-} from "../src/daemon/turn-runner-spawn.ts";
+import { runnerLaunch } from "../src/daemon/turn-runner-spawn.ts";
+import { gitCommonFolder } from "../src/cli/runner-setup.ts";
 
 const signal = new AbortController().signal;
 
@@ -294,4 +294,33 @@ await test("CLV-311 the container engine gets the service environment, and the c
     const sandboxed = launched({ kind: "seatbelt" });
     assert.equal(sandboxed.environment["DOCKER_HOST"], undefined);
     await sandboxed.release();
+  }));
+
+await test("CLV-311 the refusal watch of a runner reads no more than 64 KiB of standard error", () =>
+  withScene(async (scene) => {
+    const launch = runnerLaunch(
+      {
+        runner: { kind: "seatbelt" },
+        directory: scene.repository,
+        folder: mkdtempSync(join(scene.directory, "launch-")),
+      },
+      { command: ["true"], environment: {}, serviceEnvironment: {} },
+    );
+    const refusal = async (chunks: readonly string[]) => {
+      const error = new PassThrough();
+      const ended = launch.refusal(error);
+      for (const chunk of chunks) error.write(chunk);
+      error.end();
+      await once(error, "end");
+      return ended(78);
+    };
+    assert.equal(
+      await refusal(["x".repeat(1000), "\nrunner-git-readonly\n"]),
+      "runner-git-readonly",
+    );
+    assert.equal(
+      await refusal(["x".repeat(70_000), "\nrunner-git-readonly\n"]),
+      undefined,
+    );
+    await launch.release();
   }));

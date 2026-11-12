@@ -1,5 +1,8 @@
 import type { Fields } from "./protocol.ts";
-import { reportReviewScores } from "./report-effects.ts";
+import {
+  reportReviewScores,
+  type ReportEffectResults,
+} from "./report-effects.ts";
 import {
   reportMetric,
   type ReportDatum,
@@ -62,6 +65,7 @@ export function reportFailureData(input: {
 
 export interface ReportQualityData {
   readonly effects?: readonly Fields[] | null;
+  readonly effectResults?: ReportEffectResults;
   readonly daemonObservedSince?: number | null;
   readonly reopened?: readonly ReportDatum[] | null;
   readonly reverts?: readonly ReportDatum[] | null;
@@ -115,7 +119,7 @@ export function reportQualityMetrics(
 }
 
 function reviewMetrics(input: ReportQualityData, window: ReportWindow) {
-  const rounds = reportReviewScores(input.effects ?? null);
+  const rounds = reportReviewScores(input.effects ?? null, input.effectResults);
   const reviewScore = Object.fromEntries(
     Object.entries(rounds ?? { round1: null }).map(([key, data]) => [
       key,
