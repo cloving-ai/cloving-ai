@@ -214,6 +214,55 @@ await test("CLV-351 a review result with no stored document gives a null score w
   );
 });
 
+await test("CLV-351 malformed stored review results preserve the other scores", () => {
+  const stored = reviews();
+  for (const body of ["{", "null", "[]", '"score: 4"']) {
+    const rounds = reportReviewScores(
+      stored.flatMap((effect) => effect.events),
+      {
+        ...resultsOf(stored),
+        [String(stored[1]?.digest)]: { body },
+      },
+    );
+    assert.deepEqual(
+      rounds?.["round1"]?.map((datum) => [
+        datum.value,
+        datum.evidence["score"],
+        datum.evidence["reason"],
+      ]),
+      [
+        [5, 5, undefined],
+        [null, null, "invalid-effect-result"],
+      ],
+      body,
+    );
+  }
+});
+
+await test("CLV-351 malformed stored merge results preserve the other merge data", () => {
+  const stored = [...mergedRun("merged", 8), ...mergedRun("invalid", 9)];
+  const report = mergeReport(stored, {
+    ...resultsOf(stored),
+    [String(stored.at(-1)?.digest)]: { body: "{" },
+  });
+  const rounds = items(
+    fields(fields(report.metrics)["fixRounds.medianPerMergedPullRequest"])[
+      "evidence"
+    ],
+  ).map(fields);
+  assert.deepEqual(
+    rounds.map((item) => [item["runId"], item["fixRounds"], item["reason"]]),
+    [
+      ["merged", 1, undefined],
+      ["invalid", null, "invalid-effect-result"],
+    ],
+  );
+  assert.equal(report.operator.merges.value, null);
+  assert.deepEqual(report.operator.merges.evidence, [
+    { pullRequest: 9, reason: "invalid-effect-result" },
+  ]);
+});
+
 await test("CLV-351 a merge result with no stored document gives null data with a reason and keeps the other data", () => {
   const stored = [...mergedRun("merged", 8), ...mergedRun("missing", 9)];
   const missing = stored.at(-1)?.digest;
