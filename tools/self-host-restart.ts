@@ -36,6 +36,7 @@ import {
   type UpdatePlan,
 } from "./restart-update.ts";
 import { hostWorkReads } from "./self-update-host.ts";
+import { restartWakeup } from "./restart-wakeup.ts";
 
 export type CheckoutLock = (
   work: () => Promise<number | undefined>,
@@ -337,11 +338,19 @@ async function notesWritten(
 export async function restartWatch(
   watch: RestartWatch,
 ): Promise<number | undefined> {
-  for (;;) {
-    const waited = await delay(watch.milliseconds, true, {
-      signal: watch.stopping,
-    }).catch(() => false);
-    if (!waited) return undefined;
+  const waking = restartWakeup(watch);
+  try {
+    return await restartRequests(watch, waking.wait);
+  } finally {
+    waking.close();
+  }
+}
+
+async function restartRequests(
+  watch: RestartWatch,
+  wait: () => Promise<boolean>,
+): Promise<number | undefined> {
+  while (await wait()) {
     const request = await pendingRestart(watch.directory).catch(
       () => undefined,
     );
@@ -358,6 +367,7 @@ export async function restartWatch(
     const status = await watch.exclusive(() => restarted(watch, claimed));
     if (status !== undefined) return status;
   }
+  return undefined;
 }
 
 export async function productCommit(checkout: string): Promise<string | null> {

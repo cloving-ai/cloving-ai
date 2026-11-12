@@ -5,6 +5,7 @@ import filesystem, {
   mkdtemp,
   readdir,
   readFile,
+  rename,
   rm,
   stat,
   utimes,
@@ -26,9 +27,11 @@ import {
 } from "../src/restart-request.ts";
 import { hostedPrograms } from "../tools/self-host-processes.ts";
 import {
+  checkoutLock,
   claimedRestart,
   clearedRestart,
   productCommit,
+  restartWatch,
 } from "../tools/self-host-restart.ts";
 import { programs } from "./self-host-processes-fixture.ts";
 import { eventually } from "./service-fixture.ts";
@@ -291,4 +294,52 @@ await test("CLV-320 a claim names its start program only with a whole positive p
   for (const hostProcessId of [0, -1, 1.5, "4321", null])
     assert.equal(claimHost(JSON.stringify({ hostProcessId })), undefined);
   assert.equal(claimHost("not json"), undefined);
+});
+
+await test("CLV-347 a new restart request wakes the host before its fallback poll", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "cloving-restart-wake-"));
+  const stopping = new AbortController();
+  const stopped = Promise.withResolvers<undefined>();
+  const watching = restartWatch({
+    directory,
+    runtime: join(directory, "run"),
+    checkout: directory,
+    environment: process.env,
+    milliseconds: 60_000,
+    stopping: stopping.signal,
+    exclusive: checkoutLock(stopping),
+    stop: () => {
+      stopped.resolve(undefined);
+      return Promise.resolve();
+    },
+    stopChildren: () => Promise.resolve([]),
+    resumeChildren: () => undefined,
+  });
+  try {
+    const temporary = join(directory, "restart.tmp");
+    await writeFile(temporary, mark("now"));
+    await rename(temporary, join(directory, "pending-restart-one"));
+    const deadline = AbortSignal.timeout(1000);
+    const completed = await Promise.race([
+      stopped.promise.then(() => true),
+      new Promise<false>((resolve) => {
+        deadline.addEventListener(
+          "abort",
+          () => {
+            resolve(false);
+          },
+          {
+            once: true,
+          },
+        );
+      }),
+    ]);
+    assert.equal(completed, true, "The request waited for the fallback poll.");
+    assert.equal(await watching, 75);
+    assert.equal(existsSync(join(directory, "pending-restart-one")), false);
+  } finally {
+    stopping.abort();
+    await watching;
+    await rm(directory, { recursive: true, force: true });
+  }
 });
