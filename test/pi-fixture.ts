@@ -61,9 +61,25 @@ export function fakePi(
     `#!${process.execPath}
 import { existsSync, readdirSync, writeFileSync } from "node:fs";
 import { setTimeout as delay } from "node:timers/promises";
+import { pathToFileURL } from "node:url";
 let stdin = "";
 for await (const chunk of process.stdin) stdin += String(chunk);
-writeFileSync(${JSON.stringify(join(scene.directory, "observed.json"))}, JSON.stringify({ arguments: process.argv.slice(2), stdin, directory: process.cwd(), environment: process.env, configuration: readdirSync(process.env.GH_CONFIG_DIR) }));
+const parts = process.argv.slice(2);
+let prompt = stdin.trim();
+const separator = parts.indexOf("--");
+if (separator >= 0) prompt += parts[separator + 1] ?? "";
+const handlers = [];
+for (let index = 0; index < parts.length; index++) {
+  if (parts[index] !== "--extension") continue;
+  const extension = await import(pathToFileURL(parts[++index]).href);
+  extension.default({ on: (event, handler) => { if (event === "input") handlers.push(handler); } });
+}
+for (const handler of handlers) {
+  const result = handler({ text: prompt, source: "interactive" });
+  if (result?.action === "transform") prompt = result.text;
+  if (result?.action === "handled") throw new Error("Pi input was handled without a model response");
+}
+writeFileSync(${JSON.stringify(join(scene.directory, "observed.json"))}, JSON.stringify({ arguments: parts, stdin, prompt, directory: process.cwd(), environment: process.env, configuration: process.env.GH_CONFIG_DIR === undefined ? [] : readdirSync(process.env.GH_CONFIG_DIR) }));
 const bytes = Buffer.from(${JSON.stringify(output)});
 const size = ${String(options.chunkBytes ?? 4096)};
 for (let offset = 0; offset < bytes.length; offset += size) {
