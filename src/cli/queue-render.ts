@@ -1,4 +1,5 @@
 import { record, type Fields } from "../protocol.ts";
+import { queueSpendLines } from "./usage-render.ts";
 import { visible } from "./terminal-text.ts";
 
 function instant(value: unknown): string | undefined {
@@ -61,4 +62,39 @@ export function effectLeaseText(value: unknown): string | undefined {
   const limits = record(value);
   if (limits === undefined) return undefined;
   return `Effect leases: capacity ${visible(limits["capacity"])}, ${visible(limits["queueLimit"])} for queue runs, ${visible(limits["reserved"])} reserved for other runs`;
+}
+
+export function queuesLines(result: Fields): readonly string[] {
+  const queues = result["queues"];
+  if (!Array.isArray(queues) || queues.length < 2)
+    return queueLines(result["queue"]);
+  return queues.flatMap((value: unknown) => {
+    const queue = record(value);
+    return queueLines(queue).map((line, index) =>
+      index === 0
+        ? line.replace("Queue:", `Queue ${visible(queue?.["workflowId"])}:`)
+        : line,
+    );
+  });
+}
+
+export function queueLines(value: unknown): readonly string[] {
+  const queue = record(value);
+  if (queue === undefined) return [];
+  if (queue["off"] !== undefined) return queueOffLines(queue["off"]);
+  const skipped = queue["skipped"];
+  return [
+    queueHeadline(queue),
+    ...queueStateLines(queue),
+    ...queueSpendLines(queue["spend"]),
+    ...(Array.isArray(skipped)
+      ? skipped.map((item: unknown) => {
+          const dependencies = record(item)?.["dependencies"];
+          const needs = Array.isArray(dependencies)
+            ? `; needs ${dependencies.map(visible).join(", ")}`
+            : "";
+          return `Skipped ticket ${visible(record(item)?.["ticketId"])}: ${visible(record(item)?.["reason"])}${needs}`;
+        })
+      : []),
+  ];
 }

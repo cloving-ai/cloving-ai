@@ -29,6 +29,13 @@ export interface QueueLimits {
   readonly sources?: QueueLimitSources;
 }
 
+export interface QueueConfiguration {
+  readonly state?: "off";
+  readonly intervalMilliseconds?: number;
+  readonly intervalSource?: QueueSource;
+  readonly limits: QueueLimits;
+}
+
 export const defaultReserved = 2;
 
 export function isReserve(value: unknown): value is number {
@@ -163,6 +170,12 @@ export type QueueHold =
   | {
       readonly reason: "working-lanes";
       readonly working: number;
+      readonly limit: number;
+      readonly text: string;
+    }
+  | {
+      readonly reason: "repository-lanes";
+      readonly busy: number;
       readonly limit: number;
       readonly text: string;
     }

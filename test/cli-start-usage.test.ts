@@ -23,7 +23,9 @@ await test("CLV-228 queue guidance requires a declared queue workflow", () => {
   const readme = readFileSync(new URL("../README.md", import.meta.url), "utf8");
   const queue = readme
     .split("\n")
-    .find((line) => line.startsWith("A workflow declares the queue with"));
+    .find((line) =>
+      line.startsWith("Each workflow declares its own queue with"),
+    );
   assert.ok(queue);
   assert.match(queue, /No interval setting is necessary/);
   assert.match(queue, /no workflow declares a queue, no queue starts/);

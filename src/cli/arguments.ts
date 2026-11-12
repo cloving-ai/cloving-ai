@@ -78,6 +78,7 @@ const options = {
   update: { type: "boolean" },
   within: { type: "string" },
   workspace: { type: "boolean" },
+  workflow: { type: "string" },
   title: { type: "string" },
   label: { type: "string" },
   clear: { type: "boolean" },

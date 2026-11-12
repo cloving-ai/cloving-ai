@@ -16,6 +16,7 @@ export interface ReloadedSettings {
   readonly turnSettings: TurnSettings;
   readonly settingDigests: SettingDigests;
   readonly queueLimits: QueueLimits;
+  readonly queueWorkflowLimits?: Readonly<Record<string, QueueLimits>>;
 }
 
 export interface TurnSettingsSource {
@@ -62,17 +63,46 @@ function digestsOf(value: unknown): SettingDigests | undefined {
     : undefined;
 }
 
+function workflowLimitsOf(
+  value: unknown,
+): Readonly<Record<string, QueueLimits>> | undefined {
+  const fields = record(value);
+  if (fields === undefined) return undefined;
+  const entries = Object.entries(fields).map(
+    ([id, limits]) => [id, queueLimitsOf(limits)] as const,
+  );
+  if (entries.some(([, limits]) => limits === undefined)) return undefined;
+  return Object.fromEntries(
+    entries.filter(
+      (entry): entry is readonly [string, QueueLimits] =>
+        entry[1] !== undefined,
+    ),
+  );
+}
+
 export function reloadedSettings(
   output: Readonly<Record<string, unknown>> | undefined,
 ): ReloadedSettings | undefined {
-  const turnSettings = turnSettingsOf(output?.["turnSettings"]);
-  const settingDigests = digestsOf(output?.["settingDigests"]);
-  const queueLimits = queueLimitsOf(output?.["queueLimits"]);
+  const fields = output ?? {};
+  const turnSettings = turnSettingsOf(fields["turnSettings"]);
+  const settingDigests = digestsOf(fields["settingDigests"]);
+  const queueLimits = queueLimitsOf(fields["queueLimits"]);
+  const queueWorkflowLimits = workflowLimitsOf(fields["queueWorkflowLimits"]);
+  if (
+    fields["queueWorkflowLimits"] !== undefined &&
+    queueWorkflowLimits === undefined
+  )
+    return undefined;
   return turnSettings === undefined ||
     settingDigests === undefined ||
     queueLimits === undefined
     ? undefined
-    : { turnSettings, settingDigests, queueLimits };
+    : {
+        turnSettings,
+        settingDigests,
+        queueLimits,
+        ...(queueWorkflowLimits === undefined ? {} : { queueWorkflowLimits }),
+      };
 }
 
 function restartPart(digest: string | undefined): string | undefined {

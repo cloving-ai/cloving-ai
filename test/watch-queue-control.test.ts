@@ -68,6 +68,7 @@ await test("CLV-286 the header shows a queue control that drains a running queue
   );
   assert.equal(control(queued("running")), undefined);
   assert.equal(control(queued(), controls), undefined);
+  assert.equal(control(queued("off"), controls), undefined);
 });
 
 await test("CLV-286 the run detail of a token keeps the queue control and its message in the header", () => {
@@ -92,7 +93,11 @@ await test("CLV-286 the run detail of a token keeps the queue control and its me
 });
 
 await test("CLV-286 the queue control posts its command with the page token and loads the page data again", () => {
-  const model = { ...queued("running"), cardForms: [] };
+  const model = {
+    ...queued("running"),
+    queue: { ...queued("running").queue, workflowId: "develop" },
+    cardForms: [],
+  };
   const result = played(
     model,
     `
@@ -122,7 +127,7 @@ console.log(JSON.stringify({ posts, requests, html: app.inner }));
         "content-type": "application/json",
         "x-cloving-token": "a".repeat(64),
       },
-      body: '{"command":"drain"}',
+      body: '{"command":"drain","workflowId":"develop"}',
     },
   ]);
   assert.deepEqual(result["requests"], [
