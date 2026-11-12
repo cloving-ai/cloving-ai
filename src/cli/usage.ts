@@ -49,12 +49,15 @@ the changed tests on the merge base with origin/HEAD and then on the head.
 Prints one JSON verdict. Verdicts exit with 0; invalid input and git errors exit with 1.
 Uses temporary detached worktrees. CLOVING_COMMAND_SECONDS bounds each prepare or test command.
 `,
-  init: `Usage: cloving init [--harness <name or path>] [--repository <directory>]
+  init: `Usage: cloving init [--harness <name or path>] [--local | --factory] [--repository <directory>]
 
-Starts the setup agent in the repository with the message "run \`cloving init-prompt\`".
+On a terminal, asks you to try one task locally or to build your factory.
+--local copies develop with the first-run choices and does not start an agent.
+--factory starts the setup agent with the message "run \`cloving init-prompt\`".
+With no terminal, the command builds the factory.
 Choose an installed harness at the terminal, or pass --harness to skip the question.
 A name must have exactly one usable entry; shell:<name> selects a shell function or alias.
-The selection is saved in private settings. The command returns the agent's exit status.
+The selection is saved in private settings. A factory returns the agent's exit status.
 `,
   "init-prompt": `Usage: cloving init-prompt [--repository <directory>]
 
@@ -317,11 +320,12 @@ export const usage = `Usage: cloving [--help] [--version]
        cloving workflows list [--json] [--repository <directory>]
        cloving workflows test [<id>] [--repository <directory>]
        cloving workflows validate <manifest-path> [--input <json-file>] [--json]
-       cloving init [--harness <name or path>] [--repository <directory>]
+       cloving init [--harness <name or path>] [--local | --factory] [--repository <directory>]
        cloving init-prompt [--repository <directory>]
        cloving templates list [--json]
        cloving templates show <name> [--json]
        cloving templates copy <name> [--id <workflow-id>] [--json] [--repository <directory>]
+       cloving templates apply-local [--repository <directory>]
        cloving themes list [--json] [--repository <directory>]
        cloving integrations <command> mcp [options]
        cloving red-green
@@ -334,10 +338,11 @@ Commands:
   templates list      List the workflow templates of the package.
   templates show      Show the decision points and the files of one template.
   templates copy      Copy one template into .cloving/workflows of the repository.
+  templates apply-local  Copy develop with the first-run choices.
   themes list         List the themes of the watch page and their refusal codes.
   integrations        Connect and manage encrypted MCP access.
   red-green  Check assertion failure on the base and success on the head.
-  init             Start the setup agent
+  init             Try one local task or start the setup agent
   init-prompt Print setup instructions for an agent.
   doctor     Check repository requirements before starting or submitting work.
   run        Submit one run of an admitted workflow.

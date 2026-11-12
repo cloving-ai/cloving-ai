@@ -2298,6 +2298,7 @@
     "tools/check-shells.ts": "build",
     "tools/compile-workflows.ts": "build",
     "tools/doctor-adoption.ts": "candidate-adapter",
+    "tools/local-preset.ts": "candidate-adapter",
     "tools/project-configuration.ts": "candidate-adapter",
     "tools/quality-pending.ts": "build",
     "tools/record-test-durations.ts": "build",

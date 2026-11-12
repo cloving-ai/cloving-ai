@@ -18,7 +18,11 @@ export type Invocation = { readonly repository?: string } & (
     }
   | { readonly kind: "mcp-help" }
   | { readonly kind: "init-prompt" }
-  | { readonly kind: "init"; readonly harness: string | undefined }
+  | {
+      readonly kind: "init";
+      readonly harness: string | undefined;
+      readonly path: "local" | "factory" | undefined;
+    }
   | { readonly kind: "init-prompt-help" }
   | { readonly kind: "init-help" }
   | { readonly kind: "doctor-help" }
@@ -70,6 +74,8 @@ const options = {
   now: { type: "boolean" },
   repository: { type: "string" },
   harness: { type: "string" },
+  local: { type: "boolean" },
+  factory: { type: "boolean" },
   at: { type: "string" },
   cancel: { type: "boolean" },
   "resume-queue": { type: "boolean" },
@@ -171,19 +177,31 @@ function inspectionInvocation(
   },
 ): Invocation | undefined {
   const { values, remaining } = input;
-  if (command === "init") {
-    if (unexpected(values, ["harness", "help"]))
-      return { kind: "usage-error", code: "unexpected-option", json: false };
-    if (remaining.length > 0)
-      return { kind: "usage-error", code: "unexpected-argument", json: false };
-    return values.help
-      ? { kind: "init-help" }
-      : { kind: "init", harness: values.harness };
-  }
+  if (command === "init") return initInvocation(values, remaining);
   if (command === "doctor") return doctorInvocation(values, remaining);
   if (command === "themes") return themesInvocation(values, remaining);
   if (command === "mcp") return mcpInvocation(values, remaining);
   if (command === "init-prompt") return promptInvocation(values, remaining);
+  return undefined;
+}
+
+function initInvocation(
+  values: Parsed["values"],
+  remaining: readonly string[],
+): Invocation {
+  if (unexpected(values, ["harness", "help", "local", "factory"]))
+    return { kind: "usage-error", code: "unexpected-option", json: false };
+  if (remaining.length > 0)
+    return { kind: "usage-error", code: "unexpected-argument", json: false };
+  if (values.help) return { kind: "init-help" };
+  if (values.local === true && values.factory === true)
+    return { kind: "usage-error", code: "conflicting-option", json: false };
+  return { kind: "init", harness: values.harness, path: initPath(values) };
+}
+
+function initPath(values: Parsed["values"]): "local" | "factory" | undefined {
+  if (values.local === true) return "local";
+  if (values.factory === true) return "factory";
   return undefined;
 }
 

@@ -377,6 +377,11 @@ else if (integration?.kind === "refused") {
     workspace,
     environment,
     startHarness,
+    applyLocal: (repository: string) =>
+      toolProcess({
+        tool: "template-command",
+        argumentsList: ["apply-local", "--repository", repository],
+      }),
     doctorProbe: createProbeRunner({
       spawn: (input) => spawn(input.executable, input.arguments, input.options),
       kill: (identifier, signal) => process.kill(identifier, signal),

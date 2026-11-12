@@ -99,9 +99,11 @@ Run the command in a git repository. You need these items:
 
 The command does these steps:
 
-1. It asks which coding agent to use for setup.
-2. It saves that agent in your private settings for this repository, outside the repository.
-3. It starts the agent in your terminal with the first message ``run `cloving init-prompt` ``. The agent can use the `cloving` command in that session.
+1. On a terminal, it asks you to try one task locally or to build your factory. `--local` and `--factory` select the path and skip that question. With no terminal, the command builds the factory.
+2. It asks which coding agent to use for setup. `--harness <name or path>` skips that question.
+3. It saves that agent in your private settings for this repository, outside the repository.
+4. For one local task, it copies `develop` with the choices in [A first useful run](#a-first-useful-run). It prints the next commands. It does not start the agent.
+5. For a factory, it starts the agent in your terminal with the first message ``run `cloving init-prompt` ``. The agent can use the `cloving` command in that session.
 
 `cloving init-prompt` gives the agent the facts of the repository and the setup steps. The agent then works with you, one question at a time:
 
@@ -118,12 +120,15 @@ The command does these steps:
 
 For a first run, select these options of `develop`:
 
-- input: **A task text**
-- select: **A person**
-- verify: **No additional verification**
-- accept: **A person**
-- merge: **A person merges the local branch**
-- partial: **A person decides**
+- input: **A task text** (`task-text`)
+- select: **A person** (`person`)
+- verify: **No additional verification** (`none`)
+- accept: **A person** (`person`)
+- merge: **A person merges the local branch** (`local`)
+- partial: **A person decides** (`person`)
+- recovery: **Stop as today** (`stop`)
+- lessons: **No lessons** (`none`)
+- demo: **No demo** (`none`)
 
 With these options, Cloving does not push, open a pull request or merge. You see the work of the agent before it goes to GitHub. The agent still sends your code to the provider of its model, as it does without Cloving.
 
@@ -145,7 +150,7 @@ Open `http://127.0.0.1:3663/` to watch the run. The run stops at your review of 
 - `cloving approve ...` completes the run. Merge the branch yourself.
 - `cloving deny ... --text "FEEDBACK"` sends your feedback to the agent for another round.
 
-When you trust a step, change it to a hands-off option. Ask the setup agent again with `cloving init`, or edit the copy yourself. Then run `cloving workflows test develop` and `cloving reload`.
+When you trust a step, change it to a hands-off option. Ask the setup agent again with `cloving init --factory`, or edit the copy yourself. Then run `cloving workflows test develop` and `cloving reload`. After the first local run completes, the same command adds review, a plan, and regular maintenance.
 
 ### Keep the `cloving` command
 
