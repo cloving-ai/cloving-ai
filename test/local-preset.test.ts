@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { test } from "node:test";
 import { clientCommand } from "../src/cli/runtime-directory.ts";
@@ -29,6 +29,40 @@ await test("the local preset applies the nine first-run choices in code", () =>
     await assertDeclaration(folder);
     await assertChoices(folder);
     await assertCopiedTests(directory, folder);
+  }));
+
+await test("the local preset rejects a workflow that lost an expected line", () =>
+  withFiles({}, async (directory) => {
+    const folder = await copiedDevelop(directory);
+    await writeFile(join(folder, "develop.ts"), "not the develop workflow\n");
+    await assert.rejects(
+      applyLocalPreset({ folder, id: "develop" }),
+      /local-preset-mismatch/,
+    );
+  }));
+
+await test("the local preset rejects a workflow that still names a removed step", () =>
+  withFiles({}, async (directory) => {
+    const folder = await copiedDevelop(directory);
+    const path = join(folder, "develop.ts");
+    await writeFile(path, `${await readFile(path, "utf8")}\npreparePull\n`);
+    await assert.rejects(
+      applyLocalPreset({ folder, id: "develop" }),
+      /local-preset-mismatch/,
+    );
+  }));
+
+await test("the local preset rejects a declaration that has no workflow input", () =>
+  withFiles({}, async (directory) => {
+    const texts = ["[]\n", "{}\n", '{"workflow":{}}\n'];
+    for (const [index, text] of texts.entries()) {
+      const folder = await copiedDevelop(join(directory, String(index)));
+      await writeFile(join(folder, "develop.declaration.json"), text);
+      await assert.rejects(
+        applyLocalPreset({ folder, id: "develop" }),
+        /local-preset-mismatch/,
+      );
+    }
   }));
 
 await test("a local command prefix names this program", () => {
@@ -96,6 +130,19 @@ await test("a printed start command puts the command before the repository", () 
     "cloving questions --repository '/work/my repo'",
   );
 });
+
+async function copiedDevelop(directory: string): Promise<string> {
+  const folder = join(directory, "workflows");
+  await copyTemplate({
+    root: templateRoot(),
+    name: "develop",
+    id: "develop",
+    folder,
+    takenNames: new Set(),
+    timeZone: "UTC",
+  });
+  return folder;
+}
 
 async function assertWorkflow(folder: string) {
   const workflow = await readFile(join(folder, "develop.ts"), "utf8");
