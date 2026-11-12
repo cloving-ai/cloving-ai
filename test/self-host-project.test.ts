@@ -11,6 +11,7 @@ import {
 import nodeModule, { syncBuiltinESMExports } from "node:module";
 import { join, resolve } from "node:path";
 import { test } from "node:test";
+import { workflowBuildKey } from "../tools/self-host-build-cache.ts";
 import { preparedProject } from "../tools/self-host-project.ts";
 import { withFiles } from "./quality/files-fixture.ts";
 import { candidatePackageRoot } from "./candidate-package-fixture.ts";
@@ -163,3 +164,82 @@ await test("CLV-124 startup rejects an unavailable compiler executable", () =>
       Object.defineProperty(process, "execPath", { value: executable });
     }
   }));
+
+await test("CLV-347 restart reuses intact compiled workflows until a compiler input changes", () =>
+  withFiles({ "repo/marker": "" }, async (root) => {
+    const count = join(root, "compilations");
+    const compiler = `${manifestCompiler({})}
+import { appendFile } from "node:fs/promises";
+await appendFile(${JSON.stringify(count)}, "compiled\\n");`;
+    const settings = await project(root, compiler);
+    const first = await preparedProject(settings);
+    const again = await preparedProject(settings);
+    assert.equal(again.bundleDigest, first.bundleDigest);
+    assert.equal(await readFile(count, "utf8"), "compiled\n");
+    for (const [file, source] of [
+      ["tools/compile-workflows.ts", `${compiler}\nexport {};`],
+      ["src/helper.ts", "export const helper = 1;"],
+      [
+        "package.json",
+        (await readFile(join(settings.product, "package.json"), "utf8")) + "\n",
+      ],
+    ]) {
+      assert.ok(file !== undefined && source !== undefined);
+      await mkdir(join(settings.product, file, ".."), { recursive: true });
+      await writeFile(join(settings.product, file), source);
+      await preparedProject(settings);
+    }
+    assert.equal((await readFile(count, "utf8")).split("\n").length - 1, 4);
+    const latest = await preparedProject(settings);
+    const retained = join(
+      root,
+      "workflow-bundles",
+      latest.bundleDigest,
+      "artifacts/client.mjs",
+    );
+    await writeFile(retained, "damaged artifact");
+    await assert.rejects(preparedProject(settings), {
+      message: "pinned-workflow-unavailable",
+    });
+    assert.equal((await readFile(count, "utf8")).split("\n").length - 1, 5);
+  }));
+
+await test("CLV-347 compiled workflow keys include staged sources, helper bytes, and dependency closure", () =>
+  withFiles(
+    { "product/src/helper.ts": "first", "project/workflows/turn.ts": "first" },
+    async (root) => {
+      const input = {
+        product: join(root, "product"),
+        project: join(root, "project"),
+        dependencies: "first",
+      };
+      const first = await workflowBuildKey(input);
+      await writeFile(join(input.project, "workflows/turn.ts"), "second");
+      const source = await workflowBuildKey(input);
+      assert.notEqual(source, first);
+      await writeFile(join(input.product, "src/helper.ts"), "second");
+      const helper = await workflowBuildKey(input);
+      assert.notEqual(helper, source);
+      assert.notEqual(
+        await workflowBuildKey({ ...input, dependencies: "second" }),
+        helper,
+      );
+      assert.notEqual(
+        await workflowBuildKey({ ...input, recordedProject: "different" }),
+        helper,
+      );
+      const staged = join(root, "staged");
+      await mkdir(join(staged, "workflows"), { recursive: true });
+      await writeFile(join(staged, "workflows/turn.ts"), "second");
+      assert.equal(
+        await workflowBuildKey({
+          ...input,
+          project: staged,
+          recordedProject: input.project,
+        }),
+        helper,
+      );
+      await writeFile(join(input.product, "tools"), "invalid directory");
+      await assert.rejects(workflowBuildKey(input), { code: "ENOTDIR" });
+    },
+  ));
