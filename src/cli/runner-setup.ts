@@ -24,6 +24,7 @@ export type BoxedRunner = Exclude<TurnRunner, { readonly kind: "host" }>;
 
 export interface RunnerStart {
   readonly runner?: TurnRunner;
+  readonly piInputExtension?: string;
   readonly directory: string;
   readonly folder: string;
   readonly turnId?: string;
@@ -68,14 +69,14 @@ function containerName(turnId: string | undefined): string {
   return `cloving-${name}-${Date.now().toString(36)}`;
 }
 
-function volumeName(directory: string): string {
+export function volumeName(directory: string): string {
   const name = basename(directory).replace(/[^A-Za-z0-9_.-]/g, "-");
   const digest = createHash("sha256").update(directory).digest("hex");
   return `cloving-modules-${name}-${digest.slice(0, 16)}`;
 }
 
 function places(
-  start: { readonly directory: string; readonly turnId?: string },
+  start: RunnerStart,
   launch: {
     readonly folder: string;
     readonly environment: NodeJS.ProcessEnv;
@@ -92,6 +93,9 @@ function places(
     name: containerName(start.turnId),
     volume: volumeName(start.directory),
     variables: Object.keys(launch.environment),
+    ...(start.piInputExtension === undefined
+      ? {}
+      : { piInputExtension: start.piInputExtension }),
     ...(attachments === undefined ? {} : { attachments }),
   };
 }

@@ -8,10 +8,20 @@ import {
   intent,
   journalKey,
   record,
+  resultOf,
   until,
   withScene,
   type Scene,
 } from "./claude-worker-fixture.ts";
+import { fakeEngine } from "./claude-runner-fixture.ts";
+import {
+  gatedHarness,
+  harnessOutputs,
+  harnessProcesses,
+  openGate,
+  processGroup,
+  stopHarnessGroups,
+} from "./harness-detached-fixture.ts";
 import type { TurnRecovery } from "../src/turn-recovery.ts";
 import { activeOwners } from "../src/daemon/turn-owners.ts";
 import { stopLeftProcesses } from "../src/daemon/worktree-processes.ts";
@@ -32,7 +42,7 @@ const worker = claudeWorker({
   document: (digest) => Promise.resolve("prompt of " + digest),
   report: () => Promise.resolve(),
   stopMilliseconds: 100,
-  turnSettings: () => ({ profiles: {}, fallbackModels: [], tokenPrices: {} }),
+  turnSettings: () => ({ profiles: settings.profiles ?? {}, fallbackModels: [], tokenPrices: {} }),
 });
 await worker.deliver(intent, new AbortController().signal);
 setInterval(() => undefined, 1000);
@@ -186,4 +196,86 @@ await test("CLV-350 a new worker holds a turn that it finds by its marker before
     await until(() => scene.reports.length === 1);
     assert.equal(scene.reports[0]?.outcome, "completed");
     assert.equal(scene.turns().length, 1);
+  }));
+
+async function crashedContainer(scene: Scene) {
+  const engine = fakeEngine(scene.directory, { access: "write" });
+  const harness = gatedHarness(scene, {
+    worker: "gemini",
+    name: "gemini",
+    output: harnessOutputs["gemini"] ?? { head: [], tail: [] },
+  });
+  const operation = intent({ method: "run-turn:boxed" });
+  const environment = { DOCKER_CONTEXT: "original-context" };
+  const settings = {
+    ...harness.settings,
+    profiles: {
+      boxed: {
+        runner: {
+          kind: "container" as const,
+          engine: engine.path,
+          image: "fixture",
+        },
+        env: environment,
+      },
+    },
+  };
+  await crashedService({
+    directory: scene.directory,
+    source: crashing,
+    arguments: [
+      new URL("../src/daemon/claude-worker.ts", import.meta.url).href,
+      JSON.stringify({
+        ...settings,
+        repository: scene.repository,
+        worktrees: scene.worktrees,
+        journal: scene.journal,
+        intent: operation,
+      }),
+    ],
+    started: () => harnessProcesses(harness).length === 1,
+  });
+  assert.equal(
+    field(record(scene, "operation-1/started.json"), "phase"),
+    "starting",
+  );
+  return { engine, harness, operation, environment, settings };
+}
+
+await test("CLV-349 startup holds and recovers a container Gemini turn by its marker with its original cleanup settings", () =>
+  withScene(async (scene) => {
+    const { engine, harness, operation, environment, settings } =
+      await crashedContainer(scene);
+    try {
+      const noted: TurnRecovery[] = [];
+      const next = scene.worker("unused", {
+        ...settings,
+        recovered: (recovery) => noted.push(recovery),
+      });
+      assert.equal(await next.hold(operation), true);
+      await next.recover(operation);
+      assert.deepEqual(noted, [{ runId: "run-1", way: "connected" }]);
+      const launch = field(record(scene, "operation-1/started.json"), "launch");
+      assert.equal(
+        field(launch, "processId"),
+        processGroup(harnessProcesses(harness)[0]?.processId ?? 0),
+      );
+      assert.deepEqual(
+        field(field(field(launch, "runner"), "container"), "environment"),
+        environment,
+      );
+      assert.equal(typeof field(field(launch, "transcript"), "path"), "string");
+      openGate(harness);
+      await until(() => scene.reports.length === 1);
+      assert.equal(scene.reports[0]?.outcome, "completed");
+      assert.equal(
+        resultOf(scene.reports[0].result)["summary"],
+        "Added HELLO.md.\nTicket status: complete",
+      );
+      await until(() => engine.environments().length === 2);
+      assert.deepEqual(engine.environments()[1], environment);
+      assert.equal(harnessProcesses(harness).length, 1);
+    } finally {
+      stopHarnessGroups(harness);
+    }
   }));
