@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { readFile, readdir, writeFile } from "node:fs/promises";
+import { readFile, readdir, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { test } from "node:test";
 import { workflowPin } from "../src/broker/workflow-pin.ts";
@@ -8,6 +8,7 @@ import { admitCompiled } from "../src/cli/validate.ts";
 import { staleBuild } from "../tools/restart-build.ts";
 import { field } from "./self-host-fixture.ts";
 import { call } from "./service-fixture.ts";
+import { withFiles } from "./quality/files-fixture.ts";
 import {
   admittedTurn,
   assistantTexts,
@@ -24,10 +25,47 @@ import {
 
 const unavailable = "cloving-host-unavailable";
 
+await test("CLV-347 the update origin owns its Git objects independently of the disposable product checkout", () =>
+  withFiles(
+    {
+      "product/src/steps/protected-effect.ts": `export async function protectedEffect(request: unknown) {
+  const reason = "cloving-host-unavailable";
+  return await bridge.effect(request);
+}\n`,
+    },
+    async (root) => {
+      const product = join(root, "product");
+      const git = productGit(product);
+      git(["init", "-q", "-b", "main"]);
+      git(["config", "user.name", "Owner"]);
+      git(["config", "user.email", "owner@example.invalid"]);
+      git(["config", "commit.gpgsign", "false"]);
+      git(["add", "."]);
+      git(["commit", "-qm", "Start the product"]);
+      const original = git(["rev-parse", "HEAD"]);
+      const target = await updatedOrigin(product);
+      assert.equal(git(["rev-parse", "HEAD"]), original);
+      const origin = productGit(join(root, "product-origin.git"));
+      assert.equal(origin(["rev-parse", "HEAD"]), target);
+      origin(["fsck", "--full", "--no-dangling"]);
+      const object = join(
+        product,
+        ".git/objects",
+        original.slice(0, 2),
+        original.slice(2),
+      );
+      assert.equal(
+        (await stat(object)).nlink,
+        1,
+        "The origin shares the product checkout's object file.",
+      );
+    },
+  ));
+
 async function updatedOrigin(product: string): Promise<string> {
   const git = productGit(product);
   const origin = join(product, "..", "product-origin.git");
-  execFileSync("git", ["clone", "-q", "--bare", product, origin]);
+  execFileSync("git", ["clone", "-q", "--bare", "--no-local", product, origin]);
   git(["remote", "add", "origin", origin]);
   const old = git(["rev-parse", "HEAD"]);
   const step = join(product, "src/steps/protected-effect.ts");
