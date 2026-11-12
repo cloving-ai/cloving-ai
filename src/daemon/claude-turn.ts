@@ -11,6 +11,7 @@ import {
 import { delimiter, join, resolve } from "node:path";
 import { codexStream } from "./codex-stream.ts";
 import { cursorStream } from "./cursor-stream.ts";
+import { piStream } from "./pi-stream.ts";
 import { opencodeStream } from "./opencode-stream.ts";
 import { textOutput } from "./text-output.ts";
 import {
@@ -128,8 +129,8 @@ function spawnTurn(start: TurnStart): {
   readonly standardInput: string | undefined;
   readonly launch: RunnerLaunch;
 } {
-  const configuration = mkdtempSync(join(start.folder, "gh-config-"));
   const { parts, standardInput } = turnCommand(start);
+  const configuration = mkdtempSync(join(start.folder, "gh-config-"));
   const command =
     start.shell === undefined
       ? parts
@@ -158,13 +159,20 @@ function spawnTurn(start: TurnStart): {
 function streamAdapter(
   worker: Worker | undefined,
   stderr: ChildProcessWithoutNullStreams["stderr"],
-) {
+):
+  | {
+      readonly line: (line: string) => readonly string[];
+      readonly result: (exitCode: number | null) => string;
+      readonly finish?: (pending: string) => readonly string[];
+    }
+  | undefined {
   if (worker === "opencode") {
     const translated = opencodeStream();
     stderr.setEncoding("utf8");
     stderr.on("data", translated.stderr);
     return translated;
   }
+  if (worker === "pi") return piStream();
   if (worker === "codex") return codexStream();
   if (worker === "cursor-agent") return cursorStream();
   if (worker === "gemini") return geminiStream();
@@ -208,7 +216,7 @@ function turnOutput(
   });
   return async (exitCode, close) => {
     if (adapter !== undefined) {
-      written(adapter.line(stream.pending));
+      written(adapter.finish?.(stream.pending) ?? adapter.line(stream.pending));
       written(close.refused ? [] : [adapter.result(exitCode)]);
     }
     await ended(output);

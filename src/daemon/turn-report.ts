@@ -8,7 +8,13 @@ import { succeeded, type StreamResult, type TurnEnd } from "./claude-turn.ts";
 type ReportFields = Changes &
   Pick<
     StreamResult,
-    "costUsd" | "usage" | "model" | "attempts" | "sessionId" | "turns"
+    | "costUsd"
+    | "usage"
+    | "model"
+    | "attempts"
+    | "sessionId"
+    | "turns"
+    | "piAccounting"
   > & {
     readonly harness: string;
     readonly ticketStatus: TicketStatus;
@@ -113,6 +119,9 @@ export async function turnReport(
           : feedback.slice(0, limits.summaryCharacters),
       ...(await changes(tree)),
       worktree: tree.path,
+      ...(result.piAccounting === undefined
+        ? {}
+        : { piAccounting: result.piAccounting }),
       costUsd: result.costUsd,
       usage: result.usage,
       model: result.model,

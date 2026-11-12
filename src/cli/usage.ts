@@ -1,3 +1,5 @@
+import { harnessEnvironmentUsage } from "./usage-harnesses.ts";
+
 const binding =
   "--expected-revision <n> --generation <n> --subject-digest <digest>";
 
@@ -288,17 +290,12 @@ Settings files: .cloving/config.json in the repository and <config>/cloving/proj
   CLOVING_DEMO_TOOL                The absolute path of the instruction file or folder of a demo tool. The private setting demo.tool sets it. The service does not read the tool; each turn gets it as CLOVING_DEMO_TOOL, and the demo option of the develop template reads it there.
   CLOVING_TURN_ENVIRONMENT         inherit, or a JSON list of variable names. The default is an empty list. A turn gets only the base variables (PATH, HOME, USER, LOGNAME, SHELL, TERM, TMPDIR, TZ, LANG, LC_ALL, LC_CTYPE and XDG_CONFIG_HOME, XDG_DATA_HOME, XDG_CACHE_HOME, XDG_STATE_HOME), the login variables of its harness, the profile env and the listed variables. The value inherit gives a turn the whole environment except the GitHub tokens, as before; it stays for one release. The private setting turns.environment sets it.
   CLOVING_TURN_COMMIT_SIGNATURES   keep or off. The default is keep. With off, Cloving adds commit.gpgsign=false and tag.gpgsign=false to the git configuration of each turn, so a turn commits and tags with no signature. The private setting turns.commitSignatures sets it.
-  CLOVING_GROK_COMMAND             A JSON list of a command and its arguments for Grok. The default uses streaming-messages-json, --always-approve and -p; the turn text follows -p or --single as one argument, or is appended if neither flag is present.
-  CLOVING_CLAUDE_COMMAND           A JSON list of a command and its arguments for the Claude worker. The default is the claude command with a limit of 5 USD for each turn.
   CLOVING_PROFILES                 The path of a JSON file of operator-defined Claude turn profiles, read at start and at each cloving reload. A relative path starts at the folder of cloving start. The setting has no default.
   CLOVING_COMMANDS                A JSON object mapping names to argument arrays with an absolute executable path. Invalid values refuse startup with invalid-commands. Unset means no commands. Command execution is not available yet.
   CLOVING_COMMAND_SECONDS         A whole number from 1 to 3600 seconds; the default is 60. Invalid values refuse startup with invalid-command-seconds. Reserved for command execution.
   CLOVING_TOKEN_PRICES             A JSON object from model names to input, cachedInput and output USD prices per million tokens for estimates; entries override matching built-in prices.
   CLOVING_FALLBACK_MODELS          A JSON array of at most three nonempty model names; the default is no fallback. After capacity refusals the first retry keeps the main model and the third attempt uses the first fallback, with the same waits and attempt limit. Requires an explicit -m, --model or --model= argument. A fallback can have a higher price.
-  CLOVING_WORKER                   The worker for each turn: claude, codex, gemini, grok, cursor-agent or opencode. The default is claude. Other values stop the start with harness-no-worker.
-  CLOVING_CODEX_COMMAND            A JSON list of a command and its arguments, used only when CLOVING_WORKER is codex; CLOVING_CLAUDE_COMMAND is then ignored. The default is codex exec --json --dangerously-bypass-approvals-and-sandbox --skip-git-repo-check -, with no sandbox and no approval prompts.
-  CLOVING_GEMINI_COMMAND           A JSON list of a command and its arguments for the gemini worker. The default is gemini --output-format stream-json --approval-mode yolo; Cloving appends -p and the turn text; turn text of 64 KiB or more in UTF-8 goes through standard input instead. No approval prompts or capacity retries.
-  CLOVING_OPENCODE_COMMAND         A JSON list of a command and its arguments for opencode. The default is opencode run --format json; the turn text is appended as one argument. OPENCODE_PERMISSION permits unattended tools.
+${harnessEnvironmentUsage}
   CLOVING_WATCH_REPOSITORY         The service repository context for the watch board, set by start from --repository. Its local origin supplies the GitHub identity. There is no current-directory default.
   CLOVING_WATCH_ACTIONS            The value off removes the board run form, the queue control, the loop controls, the run controls and their write endpoints. The default is on.
   CLOVING_WATCH_PORT               The port number of the watch page. The value off starts no watch page. The default is 3663.

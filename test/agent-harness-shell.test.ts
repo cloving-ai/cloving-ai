@@ -109,7 +109,7 @@ for (const shell of ["/bin/zsh", "/bin/bash"]) {
 
 await test("CLV-208 shell failures yield no shell entries and retain the file results", () =>
   withHarnesses(async (scene) => {
-    await scene.file("pi", 'printf "pi 1.2\\n"');
+    await scene.file("pi", 'printf "1.5.2\\n"');
     await scene.startup("exit 7\n");
     const result = await discoverHarnesses(scene.options);
     assert.equal(result.shellReason, "probe-exit");
