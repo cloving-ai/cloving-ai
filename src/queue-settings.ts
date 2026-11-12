@@ -1,5 +1,12 @@
 import { record } from "./protocol.ts";
+import type {
+  QueuesSetting,
+  SettingValue,
+  WorkflowQueueSetting,
+} from "./setting-value.ts";
 import type { QueueDeclaration } from "./workflow-declaration.ts";
+
+export type { QueuesSetting, WorkflowQueueSetting } from "./setting-value.ts";
 
 export type QueueSource =
   | "queues setting (project file)"
@@ -20,15 +27,6 @@ export interface QueueValues {
   readonly lanes: SourcedValue;
   readonly workingLanes: SourcedValue;
 }
-
-export interface WorkflowQueueSetting {
-  readonly state?: "on" | "off";
-  readonly everySeconds?: number;
-  readonly lanes?: number;
-  readonly workingLanes?: number;
-}
-
-export type QueuesSetting = Readonly<Record<string, WorkflowQueueSetting>>;
 
 export interface GeneralQueueValues {
   readonly everySeconds?: SourcedValue;
@@ -208,7 +206,7 @@ function parsedQueues(value: unknown): QueuesSetting | undefined {
 }
 
 export function queuesDigest(
-  value: unknown,
+  value: SettingValue | undefined,
   digest: (text: string) => string,
 ): string {
   const settings = parsedQueues(value);

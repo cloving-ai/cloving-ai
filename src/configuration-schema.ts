@@ -8,14 +8,9 @@ import type { TokenPrices } from "./token-prices.ts";
 import { isTurnCommand } from "./harness-defaults.ts";
 import type { CommitSignatures, TurnVariables } from "./turn-environment.ts";
 import { isQueuesSetting, type QueuesSetting } from "./queue-settings.ts";
+import type { RedGreenSettings } from "./setting-value.ts";
 
-export interface RedGreenSettings {
-  readonly test: readonly string[];
-  readonly testFiles: readonly string[];
-  readonly prepare?: readonly string[];
-  readonly assertionPattern?: string;
-  readonly skipPattern?: string;
-}
+export type { RedGreenSettings } from "./setting-value.ts";
 
 export interface Configuration {
   readonly version: 1;

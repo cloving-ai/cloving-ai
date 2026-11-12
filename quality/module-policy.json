@@ -666,6 +666,7 @@
     "src/service/worker-port.ts": "service",
     "src/service/worker-totals.ts": "service",
     "src/service/workflow-reload.ts": "service",
+    "src/setting-value.ts": "pure",
     "src/step-bridge.ts": "pure",
     "src/steps/command-wait.ts": "step",
     "src/steps/continue-run.ts": "step",

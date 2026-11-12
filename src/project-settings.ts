@@ -2,17 +2,13 @@ import {
   configuration,
   settingFields,
   type Configuration,
-  type RedGreenSettings,
 } from "./configuration-schema.ts";
 import type { TurnProfiles } from "./turn-profile.ts";
 import type { TokenPrices } from "./token-prices.ts";
-import type { LocalCommands } from "./command-settings.ts";
-import type { Fields } from "./protocol.ts";
-import {
-  queueFileLayers,
-  queuesDigest,
-  type QueuesSetting,
-} from "./queue-settings.ts";
+import { queueFileLayers, queuesDigest } from "./queue-settings.ts";
+import { encodedSettingValue, type SettingValue } from "./setting-value.ts";
+
+export type { SettingValue } from "./setting-value.ts";
 
 export type SettingSource = "environment" | "private" | "project";
 
@@ -35,18 +31,6 @@ export interface TurnSettings {
   readonly fallbackModels: readonly string[];
   readonly tokenPrices: TokenPrices;
 }
-
-export type SettingValue =
-  | null
-  | string
-  | number
-  | readonly string[]
-  | TurnProfiles
-  | TokenPrices
-  | RedGreenSettings
-  | LocalCommands
-  | QueuesSetting
-  | Readonly<Record<string, Fields>>;
 
 export const settingVariables: Readonly<Record<string, string>> = {
   "checks.beforeMerge": "CLOVING_CHECK_COMMAND",
@@ -173,10 +157,6 @@ export function configurationValues(
   for (const [name, value] of Object.entries(direct))
     if (value !== undefined) entries.push([name, value]);
   return Object.fromEntries(entries);
-}
-
-function encoded(value: SettingValue): string {
-  return typeof value === "string" ? value : JSON.stringify(value);
 }
 
 function harnessCommandMapping(
@@ -317,7 +297,7 @@ export function resolveSettings(
     const value = values[field];
     if (environment[variable] !== undefined) sources[field] = "environment";
     else if (field !== "profiles" && value !== undefined)
-      resolved[variable] = encoded(value);
+      resolved[variable] = encodedSettingValue(value);
   }
   const profiles = privateConfiguration.profiles ?? {};
   return {
