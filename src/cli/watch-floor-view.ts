@@ -1,3 +1,9 @@
+import type { Fields } from "../protocol.ts";
+import {
+  QueueCard,
+  type LineQueue,
+  type QueueControls,
+} from "./watch-queue-card-view.ts";
 import { component, element, type Shown } from "./watch-element.ts";
 import type { WatchLoop } from "./watch-loops.ts";
 import type { LoopControls } from "./watch-loops-view.ts";
@@ -151,11 +157,12 @@ export function ReadyCount(props: {
 }
 
 export function LineEnd(
-  props: LineLoop & {
-    readonly workflow: WatchWorkflow;
-    readonly now: string;
-    readonly words?: WatchWords | undefined;
-  },
+  props: LineLoop &
+    LineQueue & {
+      readonly workflow: WatchWorkflow;
+      readonly now: string;
+      readonly words?: WatchWords | undefined;
+    },
 ): Shown {
   const { workflow, now } = props;
   const { ready } = workflow;
@@ -165,6 +172,9 @@ export function LineEnd(
       ready === undefined
         ? null
         : component(ReadyCount, { ready, now, words: props.words }),
+      props.queue === undefined
+        ? null
+        : component(QueueCard, { queue: props.queue, controls: props.queuing }),
       component(LineNext, {
         workflow,
         now,
@@ -198,13 +208,14 @@ export function Legend(): Shown {
 }
 
 export function Line(
-  props: LineLoop & {
-    readonly workflow: WatchWorkflow;
-    readonly now: string;
-    readonly words?: WatchWords | undefined;
-    readonly controlling?: RunCommandControls | undefined;
-    readonly renaming?: RenameControls | undefined;
-  },
+  props: LineLoop &
+    LineQueue & {
+      readonly workflow: WatchWorkflow;
+      readonly now: string;
+      readonly words?: WatchWords | undefined;
+      readonly controlling?: RunCommandControls | undefined;
+      readonly renaming?: RenameControls | undefined;
+    },
 ): Shown {
   const { workflow, now, words, controlling } = props;
   return element("li", {
@@ -245,13 +256,25 @@ export function Line(
           ),
         }),
       }),
-      component(LineEnd, {
-        workflow,
-        now,
-        words,
-        loop: props.loop,
-        looping: props.looping,
+      component(LineEnd, props),
+    ],
+  });
+}
+
+export function FloorHead(props: {
+  readonly words?: WatchWords | undefined;
+}): Shown {
+  return element("div", {
+    class: "floor-head",
+    children: [
+      element("h2", {
+        id: "floor-title",
+        children: wordText(props.words, {
+          key: "workflows.title",
+          text: "Floor",
+        }),
       }),
+      component(Legend, {}),
     ],
   });
 }
@@ -263,25 +286,16 @@ export function Floor(props: {
   readonly controlling?: RunCommandControls | undefined;
   readonly renaming?: RenameControls | undefined;
   readonly looping?: LoopControls | undefined;
+  readonly queuing?: QueueControls | undefined;
 }): Shown {
   const { model, now, words, controlling } = props;
+  const queues =
+    model.queues ?? (model.queue === undefined ? [] : [model.queue]);
   return element("section", {
     class: "floor",
     "aria-labelledby": "floor-title",
     children: [
-      element("div", {
-        class: "floor-head",
-        children: [
-          element("h2", {
-            id: "floor-title",
-            children: wordText(words, {
-              key: "workflows.title",
-              text: "Floor",
-            }),
-          }),
-          component(Legend, {}),
-        ],
-      }),
+      component(FloorHead, { words }),
       component(RunCommandReplies, {
         runs: model.runs.filter((run) => !steerable(run.state)),
         controlling,
@@ -294,7 +308,9 @@ export function Floor(props: {
             controlling,
             renaming: props.renaming,
             loops: model.loops,
+            queues,
             looping: props.looping,
+            queuing: props.queuing,
           })
         : element("ol", {
             class: "repositories",
@@ -302,6 +318,9 @@ export function Floor(props: {
               component(RepositoryLines, {
                 key: repository.name,
                 repository,
+                queues: queues.filter(
+                  (queue) => queue["repository"] === repository.name,
+                ),
                 workflows: model.workflows.filter(
                   (workflow) => workflow.repository === repository.name,
                 ),
@@ -321,7 +340,9 @@ export function Lines(props: {
   readonly controlling?: RunCommandControls | undefined;
   readonly renaming?: RenameControls | undefined;
   readonly loops?: readonly WatchLoop[] | undefined;
+  readonly queues?: readonly Fields[] | undefined;
   readonly looping?: LoopControls | undefined;
+  readonly queuing?: QueueControls | undefined;
 }): Shown {
   const { workflows, now, words, controlling } = props;
   if (workflows.length === 0)
@@ -334,6 +355,9 @@ export function Lines(props: {
     children: workflows.map((workflow) =>
       component(Line, {
         key: workflow.workflowId,
+        queue: props.queues?.find(
+          (queue) => queue["workflowId"] === workflow.workflowId,
+        ),
         workflow,
         now,
         words,
@@ -343,6 +367,7 @@ export function Lines(props: {
           (loop) => loop.workflowId === workflow.workflowId,
         ),
         looping: props.looping,
+        queuing: props.queuing,
       }),
     ),
   });
@@ -350,6 +375,7 @@ export function Lines(props: {
 
 export function RepositoryLines(props: {
   readonly repository: WatchRepository;
+  readonly queues?: readonly Fields[] | undefined;
   readonly workflows: readonly WatchWorkflow[];
   readonly now: string;
   readonly words?: WatchWords | undefined;
@@ -365,7 +391,7 @@ export function RepositoryLines(props: {
             class: "repository-down",
             children: "The service does not answer.",
           }),
-      component(Lines, { workflows, now, words }),
+      component(Lines, { workflows, now, words, queues: props.queues }),
     ],
   });
 }

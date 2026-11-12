@@ -9,9 +9,9 @@ import type { TokenPrices } from "./token-prices.ts";
 import type { LocalCommands } from "./command-settings.ts";
 import type { Fields } from "./protocol.ts";
 import {
-  parseQueuesSetting,
+  queueFileLayers,
+  queuesDigest,
   type QueuesSetting,
-  type WorkflowQueueSetting,
 } from "./queue-settings.ts";
 
 export type SettingSource = "environment" | "private" | "project";
@@ -290,14 +290,21 @@ export function resolveSettings(
   readonly hidden: readonly HiddenFileValue[];
   readonly values: Readonly<Record<string, SettingValue>>;
 } {
-  const project = configurationValues(
-    parseConfiguration(files.project, "project"),
-  );
+  const projectConfiguration = parseConfiguration(files.project, "project");
+  const project = configurationValues(projectConfiguration);
   const privateConfiguration = parseConfiguration(files.private, "private");
   const privateFile = configurationValues(privateConfiguration);
-  const values = { ...project, ...privateFile };
+  const queues = queueFileLayers(
+    projectConfiguration.queues,
+    privateConfiguration.queues,
+  );
+  const values: Readonly<Record<string, SettingValue>> = {
+    ...project,
+    ...privateFile,
+    ...(queues.values === undefined ? {} : { queues: queues.values }),
+  };
   const resolved = { ...environment };
-  const sources: Record<string, SettingSource> = {};
+  const sources: Record<string, SettingSource> = { ...queues.sources };
   const mapped = {
     ...settingVariables,
     ...harnessCommandMapping(values["harness.name"]),
@@ -342,39 +349,6 @@ function resolvedValue(
   return variable === undefined
     ? resolved.values[field]
     : resolved.environment[variable];
-}
-
-function parsedQueues(
-  value: SettingValue | undefined,
-): QueuesSetting | undefined {
-  try {
-    return parseQueuesSetting(typeof value === "string" ? value : undefined);
-  } catch {
-    return undefined;
-  }
-}
-
-function queuesDigest(
-  value: SettingValue | undefined,
-  digest: (text: string) => string,
-): string {
-  const settings = parsedQueues(value);
-  if (settings === undefined) return `${digest(JSON.stringify(value))}:`;
-  const rows = Object.entries(settings).sort(([first], [second]) =>
-    first < second ? -1 : Number(first > second),
-  );
-  const part = (names: readonly (keyof WorkflowQueueSetting)[]) =>
-    digest(
-      JSON.stringify(
-        rows.flatMap(([workflowId, setting]) => {
-          const values = names.map((name) => setting[name] ?? null);
-          return values.every((value) => value === null)
-            ? []
-            : [[workflowId, ...values]];
-        }),
-      ),
-    );
-  return `${part(["state", "everySeconds"])}:${part(["lanes", "workingLanes"])}`;
 }
 
 export function settingDigests(

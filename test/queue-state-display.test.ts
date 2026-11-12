@@ -5,7 +5,8 @@ import { component } from "../src/cli/watch-element.ts";
 import { Page } from "../src/cli/watch-view.ts";
 import { rendered } from "./watch-dom.ts";
 import { played } from "./watch-browser.ts";
-import { at, noCopy, sampleModel } from "./watch-sample.ts";
+import { floorModel } from "./watch-floor-fixture.ts";
+import { at, noCopy } from "./watch-sample.ts";
 
 const queue = {
   workflowId: "develop",
@@ -32,7 +33,7 @@ await test("CLV-273 cloving status shows the queue state and the drain start", (
 });
 
 await test("CLV-273 the watch page shows the queue state in both renders", () => {
-  const model = { ...sampleModel([]), queue };
+  const model = { ...floorModel([], { workflows: ["develop"] }), queue };
   const html = rendered(
     component(Page, {
       model,
@@ -42,7 +43,8 @@ await test("CLV-273 the watch page shows the queue state in both renders", () =>
       copying: noCopy,
     }),
   );
-  assert.match(html, headline);
+  assert.match(html, /queue-draining/);
+  assert.match(html, /2 of 2 lanes busy/);
   const result = played(
     model,
     `
@@ -52,7 +54,8 @@ await load();
 console.log(JSON.stringify({ html: app.inner }));
 `,
   );
-  assert.match(String(result["html"]), headline);
+  assert.match(String(result["html"]), /queue-draining/);
+  assert.match(String(result["html"]), /2 of 2 lanes busy/);
 });
 
 const held = {
@@ -86,9 +89,8 @@ await test("CLV-309 cloving status shows the reason of a queue hold", () => {
 });
 
 await test("CLV-309 the queue line of the watch page shows the reason of a hold in both renders", () => {
-  const line =
-    /Queue: running, 0 of 2 lanes busy\. Held: load 0\.92 for each core, limit 0\.70/;
-  const model = { ...sampleModel([]), queue: held };
+  const line = /held: load 0\.92 for each core, limit 0\.70/;
+  const model = { ...floorModel([], { workflows: ["develop"] }), queue: held };
   const html = rendered(
     component(Page, {
       model,

@@ -46,8 +46,8 @@ await test("CLV-359 removing private queue limits reloads the start environment 
     inspect: () => {
       assert.deepEqual(record(statusOf(fixture)["queue"])?.["settings"], {
         everySeconds: { value: 120, source: "default" },
-        lanes: { value: 3, source: "queues setting" },
-        workingLanes: { value: 2, source: "queues setting" },
+        lanes: { value: 3, source: "queues setting (private file)" },
+        workingLanes: { value: 2, source: "queues setting (private file)" },
       });
       const unset = cli(fixture, ["config", "unset", "queues", "--private"]);
       assert.equal(unset.status, 0, unset.stdout + unset.stderr);

@@ -11,7 +11,7 @@ import {
 } from "./command-requests.ts";
 import { reportCommand } from "./report.ts";
 import { scheduleServiceRequest } from "./schedule-arguments.ts";
-import { queueServiceRequest } from "./queue-arguments.ts";
+import { queueCommand as queue } from "./queue-command.ts";
 import { restartCommand } from "./restart-command.ts";
 import {
   failed,
@@ -356,22 +356,6 @@ function schedule(
   return mutated(environment, {
     format,
     request: scheduleServiceRequest(invocation, format.commandId),
-  });
-}
-
-function queue(
-  environment: Located,
-  invocation: Invoked<"queue">,
-): Promise<number> {
-  if (invocation.action === "show")
-    return requested(environment, {
-      format: { json: invocation.json },
-      request: queueServiceRequest(invocation, ""),
-    });
-  const format = identified(environment, invocation);
-  return mutated(environment, {
-    format,
-    request: queueServiceRequest(invocation, format.commandId),
   });
 }
 

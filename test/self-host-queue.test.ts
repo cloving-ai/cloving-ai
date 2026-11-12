@@ -128,3 +128,43 @@ await test("CLV-322 the effect reserve takes a whole number from 0 to 8 with or 
       message: "The daemon did not start: invalid-effect-settings",
     });
 });
+
+await test("CLV-361 private queue lanes override the start environment after restart and name their file source", () => {
+  const plan = queuePlan(
+    {
+      CLOVING_QUEUES: '{"develop":{"lanes":9}}',
+      CLOVING_QUEUE_LANES: "8",
+      CLOVING_NEXT_COMMAND: '["next"]',
+      CLOVING_TICKET_COMMAND: '["ticket"]',
+    },
+    {
+      declarations: [{ workflowId: "develop", queue: true }],
+      sources: { queues: "private" },
+    },
+  );
+  assert.equal(plan.kind, "on");
+  assert.deepEqual(plan.values.lanes, {
+    value: 9,
+    source: "queues setting (private file)",
+  });
+  assert.deepEqual(plan.values.everySeconds, { value: 120, source: "default" });
+});
+
+await test("CLV-361 an explicit queues environment value takes precedence over file source metadata", () => {
+  const plan = queuePlan(
+    {
+      CLOVING_QUEUES: '{"develop":{"lanes":6}}',
+      CLOVING_NEXT_COMMAND: '["next"]',
+      CLOVING_TICKET_COMMAND: '["ticket"]',
+    },
+    {
+      declarations: [{ workflowId: "develop", queue: true }],
+      sources: {
+        queues: "environment",
+        "queues.develop.lanes": "private",
+      },
+    },
+  );
+  assert.equal(plan.kind, "on");
+  assert.deepEqual(plan.values.lanes, { value: 6, source: "environment" });
+});

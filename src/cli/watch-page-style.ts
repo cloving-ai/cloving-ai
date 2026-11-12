@@ -103,13 +103,16 @@ h2, h3 { font-family: var(--font-heading); font-weight: 700; }
 .today-table thead th { color: var(--color-muted); }
 .today-table th:first-child { padding-left: 0; text-align: left; overflow-wrap: anywhere; }
 .today-table tbody tr:last-child > * { border-bottom: 0; }
-.today-queue { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; margin: 0; padding: 12px 20px; }
-.line-loop { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+.queue-capacity { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px; }
+.line-queue .lanes { flex-wrap: wrap; justify-content: flex-end; }
+.line-queue .queue-source { font-size: 11px; }
+.line-queue .queue-waiting ul { columns: auto; }
+.line-loop, .line-queue { width: 100%; min-height: 200px; display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
 .loop-state { font-size: 13px; font-weight: 700; }
 .loop-active .loop-state { color: var(--color-state-running); }
 .loop-paused .loop-state { color: var(--color-state-waiting); }
 .loop-stopped .loop-state { color: var(--color-state-failed); }
-.line-loop p { margin: 0; color: var(--color-muted); font-size: 13px; overflow-wrap: anywhere; }
+.line-loop p, .line-queue p { margin: 0; color: var(--color-muted); font-size: 13px; overflow-wrap: anywhere; }
 .line-loop p.loop-failures { color: var(--color-state-failed); }
 .loop-actions { display: flex; align-items: center; justify-content: flex-end; gap: 12px; margin-top: 6px; }
 .loop-switch { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; }
@@ -385,7 +388,7 @@ button:focus-visible, .token:focus-visible { clip-path: none; }
   .line-name { padding-bottom: 8px; }
   .line-end { align-items: flex-start; border-left: 0; text-align: left; padding-top: 8px; }
   .line-end:empty { padding: 0; }
-  .line-loop { align-items: flex-start; }
+  .line-loop, .line-queue { align-items: flex-start; }
   .banner { display: grid; grid-template-columns: auto minmax(0, 1fr); row-gap: 4px; }
   .banner-back { grid-column: 1 / -1; justify-self: start; max-width: 100%; padding-right: 0; border-right: 0; line-height: 1.5; }
 }
