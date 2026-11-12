@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { rendered as cliRendered, statusJson } from "../src/cli/render.ts";
 import { component } from "../src/cli/watch-element.ts";
-import { Turn } from "../src/cli/watch-turn.ts";
+import { TurnFacts } from "../src/cli/watch-run-tabs-view.ts";
 import { turnOf } from "../src/cli/watch-model.ts";
 import { boardModel, boardTime } from "./watch-board-fixture.ts";
 import { rendered } from "./watch-dom.ts";
@@ -61,7 +61,7 @@ await test("CLV-229 status text and watch list each attempt kind including null,
   assert.ok(run?.turns[0]);
   assert.deepEqual(run.turns[0].attempts, attempts);
   const html = rendered(
-    component(Turn, { turn: run.turns[0], now: boardTime }),
+    component(TurnFacts, { turn: run.turns[0], position: 1, now: boardTime }),
   );
   for (const shown of [text, html]) {
     assert.match(shown, /Attempt 1.*retryKind: capacity/);
@@ -87,7 +87,9 @@ await test("CLV-229 watch journal reads completed attempts but shows no kinds du
   assert.deepEqual(turnOf(records).attempts, attempts);
   const waiting = turnOf({ ...records, result: null });
   assert.equal(waiting.attempts, undefined);
-  const html = rendered(component(Turn, { turn: waiting, now: boardTime }));
+  const html = rendered(
+    component(TurnFacts, { turn: waiting, position: 1, now: boardTime }),
+  );
   assert.doesNotMatch(html, /retryKind|Attempt 1/);
 });
 

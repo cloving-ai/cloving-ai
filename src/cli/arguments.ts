@@ -74,6 +74,7 @@ const options = {
   cancel: { type: "boolean" },
   "resume-queue": { type: "boolean" },
   settings: { type: "string" },
+  set: { type: "string" },
   update: { type: "boolean" },
   within: { type: "string" },
   workspace: { type: "boolean" },

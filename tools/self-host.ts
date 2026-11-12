@@ -15,7 +15,10 @@ import {
   type RetentionSettings,
 } from "../src/record-retention.ts";
 import { mergeMode, type MergeMode } from "../src/merge-mode.ts";
-import { turnVariablesSetting } from "../src/turn-environment.ts";
+import {
+  commitSignaturesSetting,
+  turnVariablesSetting,
+} from "../src/turn-environment.ts";
 import {
   listedSetting,
   queueLimits,
@@ -198,8 +201,10 @@ await import("./main.mjs");
     `import * as workflows from "./artifacts/client.mjs";
 import { POST } from "./artifacts/flow.mjs";
 import { startDaemon } from ${source("src/daemon/daemon.ts")};
+import { restartSettings } from ${source("tools/restart-settings.ts")};
 ${workflowBundleLoader()}
-const opening = await startDaemon({ ...JSON.parse(${JSON.stringify(JSON.stringify(settings))}), workflows, handler: POST, loadBundle: loadWorkflowBundle });
+const validateRestart = restartSettings({ ...${JSON.stringify({ repository, fileVariables: Object.keys(environment).filter((name) => process.env[name] === undefined) })}, environment: process.env });
+const opening = await startDaemon({ ...JSON.parse(${JSON.stringify(JSON.stringify(settings))}), workflows, handler: POST, loadBundle: loadWorkflowBundle, validateRestart });
 if (opening.kind !== "started") {
   process.stderr.write("The daemon did not start: " + opening.reason + ": " + opening.detail + "\\n");
   process.exit(1);
@@ -291,6 +296,9 @@ const retention = retentionSettings(environment);
 const turnVariables = turnVariablesSetting(
   environment["CLOVING_TURN_ENVIRONMENT"],
 );
+const turnCommitSignatures = commitSignaturesSetting(
+  environment["CLOVING_TURN_COMMIT_SIGNATURES"],
+);
 const merging = mergeMode(environment["CLOVING_MERGE_MODE"]);
 const places = {
   repository,
@@ -347,6 +355,7 @@ await launchers(
     resetQueue: flags.includes("--reset-queue"),
     retention,
     turnVariables,
+    turnCommitSignatures,
     notifyCommand: listed("CLOVING_NOTIFY_COMMAND"),
     githubCommand: listed("CLOVING_GH_COMMAND"),
     requiredChecks: listed("CLOVING_REQUIRED_CHECKS") ?? null,

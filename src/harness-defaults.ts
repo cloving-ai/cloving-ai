@@ -1,4 +1,4 @@
-import type { TurnVariables } from "./turn-environment.ts";
+import type { CommitSignatures, TurnVariables } from "./turn-environment.ts";
 import type { TurnRunner } from "./turn-runner.ts";
 
 export const defaultCommand = [
@@ -77,6 +77,7 @@ export interface HarnessSettings {
   };
   readonly shell?: string;
   readonly turnVariables?: TurnVariables;
+  readonly turnCommitSignatures?: CommitSignatures;
 }
 
 function matchingHarness(
@@ -157,6 +158,27 @@ function selectedCommand(
   };
 }
 
+function turnSettings(settings: HarnessSettings): {
+  readonly variables: TurnVariables;
+  readonly commitSignatures: CommitSignatures;
+} {
+  return {
+    variables: settings.turnVariables ?? [],
+    commitSignatures: settings.turnCommitSignatures ?? "keep",
+  };
+}
+
+export function turnShell(
+  settings: HarnessSettings,
+  profile: { readonly harness?: string } = {},
+): string | undefined {
+  const name =
+    profile.harness ?? settings.worker ?? settings.harness?.name ?? "claude";
+  return matchingHarness(settings, name).kind === "shell"
+    ? (settings.shell ?? "/bin/sh")
+    : undefined;
+}
+
 export function turnHarness(
   settings: HarnessSettings,
   profile: { readonly harness?: string; readonly runner?: TurnRunner } = {},
@@ -166,16 +188,17 @@ export function turnHarness(
   readonly shell?: string;
   readonly output?: "text";
   readonly variables: TurnVariables;
+  readonly commitSignatures: CommitSignatures;
   readonly runner?: TurnRunner;
 } {
   const name =
     profile.harness ?? settings.worker ?? settings.harness?.name ?? "claude";
-  const saved = matchingHarness(settings, name);
+  const shell = turnShell(settings, profile);
   return {
     worker: name,
-    variables: settings.turnVariables ?? [],
+    ...turnSettings(settings),
     ...selectedCommand(settings, name),
-    ...(saved.kind === "shell" ? { shell: settings.shell ?? "/bin/sh" } : {}),
+    ...(shell === undefined ? {} : { shell }),
     ...(profile.runner === undefined ? {} : { runner: profile.runner }),
   };
 }

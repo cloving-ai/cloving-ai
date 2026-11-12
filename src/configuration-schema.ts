@@ -6,7 +6,7 @@ import { checkScheduleTiming } from "./workflow-schedule.ts";
 import type { TurnProfiles } from "./turn-profile.ts";
 import type { TokenPrices } from "./token-prices.ts";
 import { isTurnCommand } from "./harness-defaults.ts";
-import type { TurnVariables } from "./turn-environment.ts";
+import type { CommitSignatures, TurnVariables } from "./turn-environment.ts";
 import { isQueuesSetting, type QueuesSetting } from "./queue-settings.ts";
 
 export interface RedGreenSettings {
@@ -74,7 +74,10 @@ export interface Configuration {
     readonly action?: "archive" | "delete";
     readonly archiveFolder?: string | null;
   };
-  readonly turns?: { readonly environment?: TurnVariables };
+  readonly turns?: {
+    readonly commitSignatures?: CommitSignatures;
+    readonly environment?: TurnVariables;
+  };
   readonly demo?: { readonly tool?: string };
 }
 

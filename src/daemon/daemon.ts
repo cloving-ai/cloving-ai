@@ -166,7 +166,12 @@ function controlConnections(settings: DaemonSettings): {
   readonly queueLimitSource: QueueLimitsSource;
 } {
   return {
-    restart: restartMarks(settings.directory),
+    restart: {
+      ...restartMarks(settings.directory),
+      ...(settings.validateRestart === undefined
+        ? {}
+        : { validate: settings.validateRestart }),
+    },
     queueLimitSource: queueLimitsSource(settings),
     schedules: scheduleConnection(),
     queues: queueConnection(),

@@ -10,6 +10,7 @@ await test("CLV-210 private harness is the default with its saved program", () =
   assert.deepEqual(turnHarness({}), {
     worker: "claude",
     variables: [],
+    commitSignatures: "keep",
     command: defaultCommand,
   });
   assert.deepEqual(
@@ -19,6 +20,7 @@ await test("CLV-210 private harness is the default with its saved program", () =
     {
       worker: "codex",
       variables: [],
+      commitSignatures: "keep",
       command: ["/opt/bin/codex", ...defaultCodexCommand.slice(1)],
     },
   );
@@ -39,6 +41,7 @@ await test("CLV-210 profile then environment override the private harness withou
   assert.deepEqual(turnHarness(settings, { harness: "claude" }), {
     worker: "claude",
     variables: [],
+    commitSignatures: "keep",
     command: ["environment-claude"],
   });
   assert.deepEqual(
@@ -46,12 +49,14 @@ await test("CLV-210 profile then environment override the private harness withou
     {
       worker: "claude",
       variables: [],
+      commitSignatures: "keep",
       command: defaultCommand,
     },
   );
   assert.deepEqual(turnHarness({ ...settings, worker: "claude" }), {
     worker: "claude",
     variables: [],
+    commitSignatures: "keep",
     command: ["environment-claude"],
   });
 });
@@ -72,6 +77,7 @@ await test("CLV-210 matching harness commands precede saved commands and saved p
     {
       worker: "codex",
       variables: [],
+      commitSignatures: "keep",
       command: defaultCodexCommand,
       shell: "/bin/test-shell",
     },

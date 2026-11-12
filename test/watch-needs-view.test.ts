@@ -193,7 +193,7 @@ console.log(JSON.stringify({ linked, floor, runs: state.model.runs.length }));
     /<span class="header-count needs-you"><strong>0<\/strong> need you<\/span>/;
   assert.match(
     String(served["linked"]),
-    /Failed <span class="name">old-stopped/,
+    /<span class="name-title">[^<]*<\/span>(?:<button[^>]*>✎<\/button>)?<\/h2><p class="run-status">Failed/,
   );
   assert.match(String(served["linked"]), none);
   assert.match(String(served["floor"]), none);

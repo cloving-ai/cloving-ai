@@ -128,6 +128,32 @@ await test("CLV-327 the running card and the run detail show Steer with watch ac
   );
 });
 
+await test("CLV-327 CLV-357 a running card on a board has Steer, opens the Steer form in the card, and shows no reply line before a note", () => {
+  const calls: string[] = [];
+  const model = floorModel([runningRun([])]);
+  const quiet = { ...controls(calls, null), messages: {} };
+  const board = page(model, {
+    selected: "workflow=develop-issue",
+    steering: quiet,
+  });
+  assert.doesNotMatch(rendered(board), /steer-message|steer-form/);
+  const steer = found(board, "button").find(
+    (button) => button["children"] === "Steer",
+  );
+  const click = steer?.["onClick"];
+  assert.ok(typeof click === "function");
+  Reflect.apply(click, undefined, []);
+  assert.deepEqual(calls, ["open run-a"]);
+  const open = rendered(
+    page(model, {
+      selected: "workflow=develop-issue",
+      steering: { ...quiet, open: "run-a" },
+    }),
+  );
+  assert.match(open, /<div class="steer"><form class="steer-form"/);
+  assert.doesNotMatch(open, /class="steer-open"/);
+});
+
 await test("CLV-327 the Steer form has a note field and the check box Send to the turn in work now, sends with Send, and closes with Esc", () => {
   const calls: string[] = [];
   const model = floorModel([runningRun([])]);
@@ -170,13 +196,14 @@ await test("CLV-327 the Steer form has a note field and the check box Send to th
     "send run-a",
     "close",
   ]);
-  assert.deepEqual(buttons(shown).slice(-2), ["Send", "Cancel"]);
+  assert.deepEqual(buttons(props(form)["children"]), ["Send", "Cancel"]);
   const busy = page(model, {
     selected: "run=run-a",
     steering: { ...controls([], "run-a"), busy: ["run-a"] },
   });
+  const [busyForm] = found(busy, "form");
   assert.deepEqual(
-    found(busy, "button").map((button) => [
+    found(props(busyForm)["children"], "button").map((button) => [
       button["children"],
       button["disabled"],
     ]),
@@ -274,4 +301,35 @@ console.log(JSON.stringify({ posts, message, closed: app.all("form").length }));
     "The note waits for the next turn (queued: no-session).",
   );
   assert.equal(result["closed"], 0);
+});
+
+await test("CLV-357 new run data that ends the run closes an open Steer form, and the form stays closed when the run shows again", () => {
+  const running = { ...floorModel([runningRun([])]), cardForms: [] };
+  const ended = {
+    ...running,
+    runs: running.runs.map((run) => ({ ...run, state: "completed" })),
+  };
+  const served = { ...running, ended };
+  const result = played(
+    served,
+    `
+const { ended, ...running } = JSON.parse(process.env.WATCH_MODEL);
+location.hash = "#run=run-a";
+replies.push(running);
+await load();
+const button = (text) => app.all("button").find((node) => node.inner === text);
+button("Steer").dispatch("click");
+await settled();
+const opened = app.all("textarea").length;
+replies.push(ended);
+await load();
+await settled();
+const afterEnd = app.all("textarea").length;
+replies.push(running);
+await load();
+await settled();
+console.log(JSON.stringify({ opened, afterEnd, afterReturn: app.all("textarea").length }));
+`,
+  );
+  assert.deepEqual(result, { opened: 1, afterEnd: 0, afterReturn: 0 });
 });

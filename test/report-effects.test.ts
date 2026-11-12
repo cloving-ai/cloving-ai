@@ -7,6 +7,7 @@ import {
 } from "../src/report-effects.ts";
 import { effectEvents } from "./report-fixture.ts";
 import { loopReport } from "../src/report.ts";
+import { reportMetric } from "../src/report-statistics.ts";
 import { fields } from "./service-fixture.ts";
 
 const at = Date.parse("2026-10-24T12:00:00Z");
@@ -143,7 +144,7 @@ await test("CLV-243 fix rounds accept the daemon merge commit result and count e
   assert.equal(data[0].evidence["pullRequest"], 8);
 });
 
-await test("CLV-243 unreadable effect results cannot hide a merged pull request behind readable samples", () => {
+await test("CLV-351 an unreadable inline merge result gives a null datum with a reason that hides no merged pull request", () => {
   const opened = effectEvents("run", { method: "open-pr", sequence: 1, at });
   const good = effectEvents("run", {
     method: "merge",
@@ -152,23 +153,36 @@ await test("CLV-243 unreadable effect results cannot hide a merged pull request 
     result: { merged: true, number: 8 },
   });
   const bad = effectEvents("other", { method: "merge", sequence: 5, at });
-  for (const result of ["not-json", "null"])
-    assert.equal(
-      reportFixRounds([
-        ...opened,
-        ...good,
-        ...bad.slice(0, 1),
-        {
-          ...bad[1],
-          payload: {
-            operationId: "other-5",
-            outcome: "completed",
-            result,
-          },
+  for (const result of ["not-json", "null"]) {
+    const data = reportFixRounds([
+      ...opened,
+      ...good,
+      ...bad.slice(0, 1),
+      {
+        ...bad[1],
+        payload: {
+          operationId: "other-5",
+          outcome: "completed",
+          result,
         },
-      ]),
+      },
+    ]);
+    assert.deepEqual(
+      data?.map((datum) => [datum.value, datum.evidence["reason"]]),
+      [
+        [0, undefined],
+        [null, "invalid-effect-result"],
+      ],
+    );
+    assert.equal(
+      reportMetric({
+        data,
+        window: { start: at, end: at + 3_600_000, observedSince: null },
+        aggregation: "median",
+      }).value,
       null,
     );
+  }
 });
 
 await test("CLV-243 missing effect requests make phase history unavailable instead of dropping an ended operation", () => {

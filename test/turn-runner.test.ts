@@ -71,6 +71,41 @@ await test("CLV-311 a container runner mounts the work tree and the git common f
   );
 });
 
+await test("CLV-344 a container runner puts the commit signature settings of a turn after safe.directory", () => {
+  const command = runnerCommand(
+    { kind: "container", engine: "/fake/engine", image: "cloving-turn" },
+    {
+      command: harness,
+      places: {
+        ...places,
+        gitSettings: [
+          ["commit.gpgsign", "false"],
+          ["tag.gpgsign", "false"],
+        ],
+      },
+    },
+  );
+  const at = command.indexOf("-w") + 2;
+  assert.deepEqual(command.slice(at, at + 16), [
+    "-e",
+    "GIT_CONFIG_COUNT=3",
+    "-e",
+    "GIT_CONFIG_KEY_0=safe.directory",
+    "-e",
+    "GIT_CONFIG_VALUE_0=*",
+    "-e",
+    "GIT_CONFIG_KEY_1=commit.gpgsign",
+    "-e",
+    "GIT_CONFIG_VALUE_1=false",
+    "-e",
+    "GIT_CONFIG_KEY_2=tag.gpgsign",
+    "-e",
+    "GIT_CONFIG_VALUE_2=false",
+    "-e",
+    "CLOVING_TURN_ID",
+  ]);
+});
+
 await test("CLV-311 a seatbelt runner starts the turn under the sandbox runtime with its settings file", () => {
   assert.deepEqual(
     runnerCommand(
