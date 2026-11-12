@@ -121,6 +121,7 @@ function toolOutput(event: Fields, result: Fields): readonly string[] {
     JSON.stringify({
       type: "user",
       replaceId: `pi:tool-result:${text(event["toolCallId"])}`,
+      ...(event["type"] === "tool_execution_update" ? { partial: true } : {}),
       message: {
         content: [
           {

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { piStream } from "../src/daemon/pi-stream.ts";
 import { emptyTranscript, transcriptAppended } from "../src/turn-transcript.ts";
 import { assistant, lines, toolResult } from "./turn-transcript-fixture.ts";
 
@@ -15,6 +16,62 @@ const delta = (text: string) => ({
   replaceId: "pi:message:1:0",
   kind: "assistant",
   delta: text,
+});
+
+await test("CLV-364 Pi growing tool results withhold private prefixes on every live read", () => {
+  for (const value of [
+    "customer-password",
+    "CUSTOMER-password",
+    "ghp_secret",
+  ]) {
+    const stream = piStream();
+    stream.line(JSON.stringify({ type: "session", version: 3, id: "session" }));
+    let parsed = emptyTranscript;
+    let journal = "";
+    for (let length = 1; length <= value.length; length += 1) {
+      const output = stream.line(
+        JSON.stringify({
+          type: "tool_execution_update",
+          toolCallId: "call-1",
+          toolName: "bash",
+          args: {},
+          partialResult: {
+            content: [{ type: "text", text: `Safe ${value.slice(0, length)}` }],
+          },
+        }),
+      );
+      const text = output.join("\n") + "\n";
+      journal += text;
+      parsed = transcriptAppended(parsed, { ...source, text });
+      assert.equal(parsed.entries.length, 1);
+      assert.equal(parsed.entries[0]?.kind, "tool-result");
+      assert.ok(
+        ["Safe ", "Safe [hidden]"].includes(parsed.entries[0].text),
+        parsed.entries[0].text,
+      );
+      assert.deepEqual(
+        transcriptAppended(emptyTranscript, { ...source, text: journal }),
+        parsed,
+      );
+    }
+    const completed = stream.line(
+      JSON.stringify({
+        type: "tool_execution_end",
+        toolCallId: "call-1",
+        toolName: "bash",
+        args: {},
+        result: { content: [{ type: "text", text: "Safe customer-passwor" }] },
+        isError: false,
+      }),
+    );
+    parsed = transcriptAppended(parsed, {
+      ...source,
+      text: lines(...completed),
+    });
+    assert.equal(parsed.entries.length, 1);
+    assert.equal(parsed.entries[0]?.text, "Safe customer-passwor");
+    assert.equal(parsed.partials, undefined);
+  }
 });
 
 await test("CLV-364 every live read withholds unfinished private values and token prefixes", () => {
