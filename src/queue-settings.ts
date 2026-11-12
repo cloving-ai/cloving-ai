@@ -73,11 +73,25 @@ export function declaredQueueValues(declaration: {
   return typeof declaration.queue === "object" ? declaration.queue : {};
 }
 
-export function queueValues(given: {
+interface QueueValuesInput {
   readonly declared: QueueDeclaration;
   readonly setting?: WorkflowQueueSetting | undefined;
   readonly general: GeneralQueueValues;
-}): QueueValues {
+}
+
+export function queueIntervalValue(given: QueueValuesInput): SourcedValue {
+  const { declared, setting, general } = given;
+  return sourced(
+    [
+      from(setting?.everySeconds, "queues setting"),
+      general.everySeconds,
+      from(declared.everySeconds, "declaration"),
+    ],
+    defaultQueueSeconds,
+  );
+}
+
+export function queueValues(given: QueueValuesInput): QueueValues {
   const { declared, setting, general } = given;
   const lanes = sourced(
     [
@@ -94,14 +108,7 @@ export function queueValues(given: {
   if (workingLanes.value > lanes.value)
     throw new Error("invalid-queue-working-lanes");
   return {
-    everySeconds: sourced(
-      [
-        from(setting?.everySeconds, "queues setting"),
-        general.everySeconds,
-        from(declared.everySeconds, "declaration"),
-      ],
-      defaultQueueSeconds,
-    ),
+    everySeconds: queueIntervalValue(given),
     lanes,
     workingLanes,
   };

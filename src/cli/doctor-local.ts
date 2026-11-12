@@ -5,7 +5,7 @@ import type { DoctorObservation, DoctorWorkflow } from "../doctor-report.ts";
 import {
   declaredQueueValues,
   parseQueuesSetting,
-  queueValues,
+  queueIntervalValue,
   type WorkflowQueueSetting,
 } from "../queue-settings.ts";
 import { queueOffDetail } from "../queue-state.ts";
@@ -149,7 +149,7 @@ function declaredInterval(
     sources["queue.everySeconds"] === "project"
       ? "queue setting"
       : "environment";
-  const { everySeconds } = queueValues({
+  const everySeconds = queueIntervalValue({
     declared: declaredQueueValues(declared),
     setting,
     general:

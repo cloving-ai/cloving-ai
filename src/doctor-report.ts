@@ -1,4 +1,5 @@
 import { hasTicketField, type SubmissionContract } from "./submission.ts";
+import { parseQueuesSetting } from "./queue-settings.ts";
 import {
   declaresQueue,
   type WorkflowDeclaration,
@@ -98,8 +99,21 @@ export interface DoctorWorkflow {
   readonly input?: SubmissionContract;
 }
 
+function needsNextCommand(
+  workflow: DoctorWorkflow,
+  queues: string | undefined,
+): boolean {
+  if (!declaresQueue(workflow.queue)) return false;
+  try {
+    return parseQueuesSetting(queues)[workflow.workflowId]?.state !== "off";
+  } catch {
+    return true;
+  }
+}
+
 export function requiredDoctorCodes(
   workflows: readonly DoctorWorkflow[],
+  queues?: string,
 ): readonly DoctorCode[] {
   const codes = new Set<DoctorCode>([
     "git-repository",
@@ -113,10 +127,10 @@ export function requiredDoctorCodes(
     codes.add("gh-login");
     codes.add("github-origin");
   }
-  if (workflows.some((workflow) => declaresQueue(workflow.queue))) {
+  if (workflows.some((workflow) => needsNextCommand(workflow, queues)))
     codes.add("next-command");
+  if (workflows.some((workflow) => declaresQueue(workflow.queue)))
     codes.add("queue-interval");
-  }
   if (workflows.some((workflow) => hasTicketField(workflow.input)))
     codes.add("ticket-command");
   return [...codes];

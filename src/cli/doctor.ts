@@ -155,9 +155,9 @@ async function repositoryObservations(
     environment,
   });
   observations["no-workflow"] = workflowObservation(workflowContext);
-  const required = requiredDoctorCodes(workflowContext.workflows);
-  observations["demo-tool"] = await demoToolObservation(
-    environment["CLOVING_DEMO_TOOL"],
+  const required = requiredDoctorCodes(
+    workflowContext.workflows,
+    environment["CLOVING_QUEUES"],
   );
   const { prerequisite, workflows } = workflowContext;
   const sources = "sources" in configured ? configured.sources : {};
@@ -176,6 +176,7 @@ async function settingObservations(context: {
 }): Promise<Observations> {
   const { environment } = context;
   return {
+    "demo-tool": await demoToolObservation(environment["CLOVING_DEMO_TOOL"]),
     "merge-mode": mergeModeObservation(environment["CLOVING_MERGE_MODE"]),
     "turn-environment": turnEnvironmentObservation(environment),
     "command-gh-no-login": commandLoginObservation(

@@ -87,6 +87,23 @@ await test("CLV-228 setup queue guidance requires an explicit queue declaration"
   assert.doesNotMatch(queue, /bundled|develop-issue/);
 });
 
+await test("CLV-359 setup saves queue overrides as a complete queues object", () => {
+  const step = initPrompt(facts)
+    .split("\n")
+    .find((line) => line.startsWith("3. Ask for the ticket source"));
+  assert.ok(step);
+  assert.match(
+    step,
+    /read the existing `queues` object from `cloving config list --json`/,
+  );
+  assert.match(step, /Preserve its other workflow entries and fields/);
+  assert.match(
+    step,
+    /Save the updated object with `cloving config set queues '<JSON object>'`/,
+  );
+  assert.doesNotMatch(step, /Ask for `queues\.<workflow>\./);
+});
+
 await test("CLV-225 fixed facts snapshot includes the rules, reachable targets and final summary contract", async () => {
   const output = initPrompt(facts);
   assert.match(
