@@ -17,9 +17,12 @@ import {
   result,
   type ServiceContext,
 } from "./replies.ts";
-import { activeWorkflow, currentLanes, laneCount } from "./active-tickets.ts";
+import {
+  continuationLanesRefusal,
+  repositoryQueueRefusal,
+} from "./active-tickets.ts";
 import { finishedRefusal } from "./finished-work.ts";
-import { spendCounted, spendLimitRefusal } from "./queue-spend.ts";
+import { queueRun, spendCounted, spendLimitRefusal } from "./queue-spend.ts";
 import {
   admissionKeys,
   runIdentity,
@@ -127,33 +130,14 @@ async function retentionRefusal(
   });
 }
 
-async function lanesRefusal(
-  context: ServiceContext,
-  request: ContinueRequest,
-): Promise<Reply | undefined> {
-  const workflowId = (
-    await context.authority.queries.workflowIds([request.runId])
-  )[request.runId];
-  const admission =
-    workflowId === undefined
-      ? undefined
-      : currentLanes(context, context.registry.byId(workflowId))?.admission;
-  if (workflowId === undefined || admission === undefined) return undefined;
-  const lanes = laneCount(admission);
-  const busy = (await activeWorkflow(context, workflowId)).length;
-  if (busy < lanes) return undefined;
-  return failed("continuation-lanes-full", {
-    ...identity(request),
-    busy,
-    lanes,
-    detail: `${String(busy)} of ${String(lanes)} lanes are busy. Continue the run when a lane is free.`,
-  });
-}
-
 async function spendRefusal(
   context: ServiceContext,
   request: ContinueRequest,
 ): Promise<Reply | undefined> {
+  const repository = (await queueRun(context, request.runId))
+    ? await repositoryQueueRefusal(context, identity(request))
+    : undefined;
+  if (repository !== undefined) return repository;
   if (!(await spendCounted(context, request.runId))) return undefined;
   return spendLimitRefusal(context, identity(request));
 }
@@ -204,7 +188,7 @@ async function refusal(
       identity: identity(request),
     })) ??
     (await spendRefusal(context, request)) ??
-    (await lanesRefusal(context, request))
+    (await continuationLanesRefusal(context, request))
   );
 }
 
@@ -385,7 +369,11 @@ export function continueHandler(
     return lock(
       workflowId === undefined
         ? [`command:${commandId}`]
-        : admissionKeys({ commandId, workflowId }),
+        : admissionKeys({
+            commandId,
+            workflowId,
+            queue: await queueRun(context, runId),
+          }),
       () => continueRun(context, parameters),
     );
   };

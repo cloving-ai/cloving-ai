@@ -102,15 +102,24 @@ async function queueReply(member: FakeMember): Promise<Reply> {
   };
 }
 
-function handled(member: FakeMember, request: ServiceRequest): Promise<Reply> {
+async function handled(
+  member: FakeMember,
+  request: ServiceRequest,
+): Promise<Reply> {
   if (request.operation === member.mute) return new Promise(() => undefined);
   if (request.operation === "queue") return queueReply(member);
+  if (
+    request.operation === "status" &&
+    request.parameters["after"] === undefined
+  )
+    await queueReply(member);
   if (request.operation === "restart")
     return restartReply(member, request.parameters);
   if (request.parameters["after"] !== undefined) member.gapReads += 1;
   if (member.down) return refusal("authority-unavailable");
   return result({
     kind: "run-list",
+    queue: { busy: Number(member.active) },
     runs: member.active ? [{ runId: "run-1", state: "running" }] : [],
     next: null,
     serviceStartedAt: member.startedAt,

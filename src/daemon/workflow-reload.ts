@@ -37,7 +37,7 @@ import {
   type SettingDigests,
   type TurnSettingsSource,
 } from "./settings-reload.ts";
-import type { QueueLimitsSource } from "./queue-limits.ts";
+import { queueConfiguration, type QueueLimitsSource } from "./queue-limits.ts";
 
 interface PreparedBundle extends ReloadedSettings {
   readonly kind: "prepared";
@@ -53,27 +53,16 @@ function refused(code: string, detail: string): Refused {
   return { kind: "refused", code, detail };
 }
 
-export function queueWorkflowId(settings: {
+export function queueWorkflowIds(settings: {
   readonly declarations?: readonly DeclaredWorkflow[];
-}): string | undefined {
-  return settings.declarations?.find((declaration) =>
-    declaresQueue(declaration.queue),
-  )?.workflowId;
+}): readonly string[] {
+  return (settings.declarations ?? [])
+    .filter((declaration) => declaresQueue(declaration.queue))
+    .map((declaration) => declaration.workflowId)
+    .sort();
 }
 
 export async function daemonRegistrations(settings: DaemonSettings) {
-  const conflict = settings.workflowRefusals?.find((refusal) =>
-    refusal.codes.includes("queue-workflow-conflict"),
-  );
-  if (conflict !== undefined)
-    return {
-      table: [],
-      admitted: {
-        kind: "rejected" as const,
-        detail: `queue-workflow-conflict: ${conflict.scope} ${conflict.label}`,
-      },
-    };
-
   const table = ticketRegistrationTable(
     {
       repository: settings.repository,
@@ -97,13 +86,22 @@ export async function daemonRegistrations(settings: DaemonSettings) {
         ? admitted
         : {
             ...admitted,
-            registrations: admitted.registrations.map((registration) => ({
-              ...registration,
-              ...(settings.queueMilliseconds !== undefined &&
-              registration.workflowId === queueWorkflowId(settings)
-                ? { admission: settings.queueLanes ?? 1, queue: true }
-                : {}),
-            })),
+            registrations: admitted.registrations.map((registration) => {
+              const configuration = queueConfiguration(
+                settings,
+                registration.workflowId,
+              );
+              if (
+                configuration?.intervalMilliseconds === undefined ||
+                configuration.state === "off"
+              )
+                return registration;
+              return {
+                ...registration,
+                admission: configuration.limits.lanes,
+                queue: true,
+              };
+            }),
           },
   };
 }
@@ -197,15 +195,17 @@ async function prepared(
   return preparedBundle(output.stdout, output.failure);
 }
 
-function queueFact(
-  declarations: readonly DeclaredWorkflow[],
-): readonly [string, number] | null {
-  const queued = declarations.find((declaration) =>
-    declaresQueue(declaration.queue),
-  );
-  if (queued === undefined) return null;
-  const { everySeconds } = declaredQueueValues(queued);
-  return [queued.workflowId, everySeconds ?? defaultQueueSeconds];
+function queueFacts(declarations: readonly DeclaredWorkflow[]) {
+  return declarations
+    .filter((declaration) => declaresQueue(declaration.queue))
+    .map(
+      (declaration) =>
+        [
+          declaration.workflowId,
+          declaredQueueValues(declaration).everySeconds ?? defaultQueueSeconds,
+        ] as const,
+    )
+    .sort(([left], [right]) => (left < right ? -1 : Number(left > right)));
 }
 
 function restartFacts(declarations: readonly DeclaredWorkflow[]): string {
@@ -218,7 +218,7 @@ function restartFacts(declarations: readonly DeclaredWorkflow[]): string {
       ),
   );
   return JSON.stringify({
-    queue: queueFact(declarations),
+    queues: queueFacts(declarations),
     schedules: [...schedules.keys()]
       .sort()
       .map((workflowId) => [workflowId, schedules.get(workflowId)]),
@@ -358,7 +358,10 @@ async function reloadOutcome(
   if (workflows.kind === "refused") return kept(workflows);
   const changes = settingChanges(state.settingDigests, bundle.settingDigests);
   settings.turnSettings.replace(bundle.turnSettings);
-  settings.queueLimitSource.replace(bundle.queueLimits);
+  settings.queueLimitSource.replace(
+    bundle.queueLimits,
+    bundle.queueWorkflowLimits,
+  );
   return {
     outcome: { ...workflows, ...changes },
     state: {

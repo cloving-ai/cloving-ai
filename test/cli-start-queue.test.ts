@@ -136,12 +136,18 @@ await test("CLV-131 start resets the queue journal only with the explicit reset 
     const fixture = await scene(undefined, entry);
     await writeQueueWorkflow(join(fixture.repository, ".cloving/workflows"));
     await mkdir(fixture.directory, { recursive: true });
-    const file = join(fixture.directory, "queue-commands.json");
+    const legacyFile = join(fixture.directory, "queue-commands.json");
+    const file = join(
+      fixture.directory,
+      "queues",
+      "queued",
+      "queue-commands.json",
+    );
     const prior = JSON.stringify({
       commands: [],
       failures: ["run-first", "run-second", "run-third"],
     });
-    await writeFile(file, prior);
+    await writeFile(legacyFile, prior);
     const environment = {
       CLOVING_QUEUE_SECONDS: "10",
       CLOVING_NEXT_COMMAND: '["false"]',
