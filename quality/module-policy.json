@@ -1135,6 +1135,7 @@
     "test/cli-start-fixture.ts": "test",
     "test/cli-start-harness.test.ts": "test",
     "test/cli-start-profiles.test.ts": "test",
+    "test/cli-start-queue-defaults.test.ts": "test",
     "test/cli-start-queue.test.ts": "test",
     "test/cli-start-restart.test.ts": "test",
     "test/cli-start-retention.test.ts": "test",
