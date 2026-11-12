@@ -8,6 +8,7 @@ import {
   type DoctorCheck,
   type DoctorCode,
   type DoctorObservation,
+  type DoctorWorkflow,
 } from "../doctor-report.ts";
 import { privateSettingsPath, projectSettings } from "./project-settings.ts";
 import { githubObservations } from "./doctor-github.ts";
@@ -52,6 +53,7 @@ function settings(
     const resolved = projectSettings(environment, repository);
     return {
       environment: resolved.environment,
+      sources: resolved.sources,
       harness: resolved.harness,
       profiles: resolved.profiles,
       observation: {
@@ -157,13 +159,15 @@ async function repositoryObservations(
     environment,
   });
   observations["no-workflow"] = workflowObservation(workflowContext);
-  const required = requiredDoctorCodes(workflowContext.workflows);
-  observations["demo-tool"] = await demoToolObservation(
-    environment["CLOVING_DEMO_TOOL"],
+  const required = requiredDoctorCodes(
+    workflowContext.workflows,
+    environment["CLOVING_QUEUES"],
   );
+  const { prerequisite, workflows } = workflowContext;
+  const sources = "sources" in configured ? configured.sources : {};
   const dependent = await configuredObservations(
     { ...options, environment },
-    { prerequisite: workflowContext.prerequisite, project, serviceEnvironment },
+    { prerequisite, project, serviceEnvironment, workflows, sources },
   );
   return { observations: { ...observations, ...dependent }, required };
 }
@@ -181,6 +185,7 @@ async function settingObservations(context: {
     profiles: context.profiles ?? {},
   });
   return {
+    "demo-tool": await demoToolObservation(environment["CLOVING_DEMO_TOOL"]),
     "merge-mode": mergeModeObservation(environment["CLOVING_MERGE_MODE"]),
     "turn-environment": turnEnvironmentObservation(environment),
     "commit-signatures": await commitSignatureObservation({
@@ -225,6 +230,8 @@ async function configuredObservations(
     readonly prerequisite: string | undefined;
     readonly project: string | undefined;
     readonly serviceEnvironment: Readonly<NodeJS.ProcessEnv>;
+    readonly workflows: readonly DoctorWorkflow[];
+    readonly sources: Readonly<Record<string, string>>;
   },
 ): Promise<Observations> {
   const { environment, repository, probe } = options;
@@ -263,9 +270,11 @@ async function configuredObservations(
   const login = observations["gh-login"];
   if (login !== undefined)
     observations["gh-login"] = { ...login, fix: github.loginFix };
-  observations["queue-interval"] = queueObservation(
-    environment["CLOVING_QUEUE_SECONDS"],
-  );
+  observations["queue-interval"] = queueObservation({
+    environment,
+    sources: location.sources,
+    workflows: location.workflows,
+  });
   observations["private-texts"] = privateTextsObservation(
     environment["CLOVING_PRIVATE_TEXTS"],
   );

@@ -189,3 +189,24 @@ process.exit(0);
       assert.doesNotMatch(second.stderr, /Queue stopped:/);
     }));
 }
+
+await test("CLV-359 a declared queue object takes the queue and the status shows each value with its source", () =>
+  withConsumer(queueWorkflow, async (consumer) => {
+    const result = await consumer.run(`${declared}
+settings.declarations = [declaration("develop", { everySeconds: 10, lanes: 2 }), declaration("other", false)];
+writeFileSync("ready", "900");
+const daemon = await launched({ queueLanes: 2, queueIntervalSource: "declaration", queueLimits: { lanes: 2, workingLanes: 2, sources: { lanes: "declaration", workingLanes: "default" } } });
+try {
+  await until(() => existsSync("input-900"));
+  const queue = (await asked("status")).queue;
+  assert.equal(queue.workflowId, "develop");
+  assert.deepEqual(queue.settings, {
+    everySeconds: { value: 0.03, source: "declaration" },
+    lanes: { value: 2, source: "declaration" },
+    workingLanes: { value: 2, source: "default" },
+  });
+} finally { await daemon.close(); }
+process.exit(0);
+`);
+    assert.equal(result.status, 0, result.stderr);
+  }));

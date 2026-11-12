@@ -3,25 +3,39 @@ import {
   isPressureLimit,
   type QueueLimits,
 } from "../src/queue-room.ts";
+import {
+  declaredQueueValues,
+  parseQueuesSetting,
+  queueValues,
+  type GeneralQueueValues,
+  type QueueSource,
+  type QueueValues,
+  type SourcedValue,
+  type WorkflowQueueSetting,
+} from "../src/queue-settings.ts";
+import {
+  declaresQueue,
+  type QueueDeclaration,
+} from "../src/workflow-declaration.ts";
+import type { SettingSource } from "../src/project-settings.ts";
 
 type Environment = Readonly<Record<string, string | undefined>>;
 
-export function queueCommands(settings: {
-  readonly queueMilliseconds: number | undefined;
-  readonly declarations: readonly { readonly queue?: boolean }[];
-  readonly nextCommand: readonly string[] | undefined;
-  readonly ticketCommand: readonly string[] | undefined;
-}): void {
-  if (
-    settings.queueMilliseconds === undefined ||
-    !settings.declarations.some((declaration) => declaration.queue === true)
-  )
-    return;
-  if (!settings.nextCommand?.length)
-    throw new Error("The daemon did not start: queue-needs-next-command");
-  if (!settings.ticketCommand?.length)
-    throw new Error("The daemon did not start: queue-needs-ticket-command");
+export type QueuePlan =
+  | { readonly kind: "none" }
+  | { readonly kind: "off"; readonly workflowId: string }
+  | {
+      readonly kind: "on";
+      readonly workflowId: string;
+      readonly values: QueueValues;
+    };
+
+interface QueueContext {
+  readonly environment: Environment;
+  readonly plan: QueuePlan;
 }
+
+const noQueue: QueuePlan = { kind: "none" };
 
 const laneCount = /^(?:[1-9]|1[0-6])$/;
 
@@ -29,43 +43,64 @@ function refusedStart(code: string): never {
   throw new Error(`The daemon did not start: ${code}`);
 }
 
-function queued(environment: Environment, code: string): void {
-  if (environment["CLOVING_QUEUE_SECONDS"] === undefined) refusedStart(code);
+function queued(context: QueueContext, code: string): void {
+  if (
+    context.environment["CLOVING_QUEUE_SECONDS"] === undefined &&
+    context.plan.kind === "none"
+  )
+    refusedStart(code);
 }
 
-export function queueLanes(environment: Environment): number {
-  const value = environment["CLOVING_QUEUE_LANES"];
-  if (value === undefined) return 1;
-  if (!laneCount.test(value)) refusedStart("invalid-queue-lanes");
-  queued(environment, "queue-lanes-needs-queue");
+function laneSetting(
+  value: string | undefined,
+  code: string,
+): number | undefined {
+  if (value === undefined) return undefined;
+  if (!laneCount.test(value)) refusedStart(code);
   return Number(value);
 }
 
-function workingLanes(environment: Environment, lanes: number): number {
+export function queueLanes(
+  environment: Environment,
+  plan: QueuePlan = noQueue,
+): number {
+  const lanes = laneSetting(
+    environment["CLOVING_QUEUE_LANES"],
+    "invalid-queue-lanes",
+  );
+  if (plan.kind === "on") return plan.values.lanes.value;
+  if (lanes === undefined) return 1;
+  queued({ environment, plan }, "queue-lanes-needs-queue");
+  return lanes;
+}
+
+function workingLanes(context: QueueContext, lanes: number): number {
+  const { environment, plan } = context;
+  if (plan.kind === "on") return plan.values.workingLanes.value;
   const value = environment["CLOVING_QUEUE_WORKING_LANES"];
   if (value === undefined) return lanes;
   if (!laneCount.test(value) || Number(value) > lanes)
     refusedStart("invalid-queue-working-lanes");
-  queued(environment, "queue-working-lanes-needs-queue");
+  queued(context, "queue-working-lanes-needs-queue");
   return Number(value);
 }
 
-function maxLoadPerCore(environment: Environment): number {
-  const value = environment["CLOVING_QUEUE_MAX_LOAD_PER_CORE"];
+function maxLoadPerCore(context: QueueContext): number {
+  const value = context.environment["CLOVING_QUEUE_MAX_LOAD_PER_CORE"];
   if (value === undefined) return defaultRoom.maxLoadPerCore;
   const limit = Number(value);
   if (!/^\d+(?:\.\d+)?$/.test(value) || limit < 0.1 || limit > 4)
     refusedStart("invalid-queue-max-load-per-core");
-  queued(environment, "queue-max-load-needs-queue");
+  queued(context, "queue-max-load-needs-queue");
   return limit;
 }
 
-function maxMemoryPressure(environment: Environment) {
-  const value = environment["CLOVING_QUEUE_MAX_MEMORY_PRESSURE"];
+function maxMemoryPressure(context: QueueContext) {
+  const value = context.environment["CLOVING_QUEUE_MAX_MEMORY_PRESSURE"];
   if (value === undefined) return defaultRoom.maxMemoryPressure;
   if (!isPressureLimit(value))
     refusedStart("invalid-queue-max-memory-pressure");
-  queued(environment, "queue-max-memory-needs-queue");
+  queued(context, "queue-max-memory-needs-queue");
   return value;
 }
 
@@ -76,17 +111,29 @@ function effectReserved(environment: Environment): number | undefined {
   return Number(value);
 }
 
-export function queueLimits(environment: Environment): QueueLimits {
-  const lanes = queueLanes(environment);
+export function queueLimits(
+  environment: Environment,
+  plan: QueuePlan = noQueue,
+): QueueLimits {
+  const context = { environment, plan };
+  const lanes = queueLanes(environment, plan);
   const reserved = effectReserved(environment);
   return {
     lanes,
-    workingLanes: workingLanes(environment, lanes),
+    workingLanes: workingLanes(context, lanes),
     room: {
-      maxLoadPerCore: maxLoadPerCore(environment),
-      maxMemoryPressure: maxMemoryPressure(environment),
+      maxLoadPerCore: maxLoadPerCore(context),
+      maxMemoryPressure: maxMemoryPressure(context),
     },
     ...(reserved === undefined ? {} : { reserved }),
+    ...(plan.kind === "on"
+      ? {
+          sources: {
+            lanes: plan.values.lanes.source,
+            workingLanes: plan.values.workingLanes.source,
+          },
+        }
+      : {}),
   };
 }
 
@@ -96,44 +143,182 @@ export function spendScope(environment: Environment): "queue" | "all" {
   refusedStart("invalid-spend-scope");
 }
 
-export function queueSpendLimit(environment: Environment): number | undefined {
+export function queueSpendLimit(
+  environment: Environment,
+  plan: QueuePlan = noQueue,
+): number | undefined {
   const value = environment["CLOVING_QUEUE_DAILY_SPEND_USD"];
   if (value === undefined) return undefined;
   const limit = Number(value);
   if (!Number.isFinite(limit) || limit <= 0)
-    throw new Error("The daemon did not start: invalid-queue-spend-limit");
-  if (
-    environment["CLOVING_QUEUE_SECONDS"] === undefined &&
-    spendScope(environment) === "queue"
-  )
-    throw new Error("The daemon did not start: queue-spend-limit-needs-queue");
+    refusedStart("invalid-queue-spend-limit");
+  if (spendScope(environment) === "queue")
+    queued({ environment, plan }, "queue-spend-limit-needs-queue");
   return limit;
 }
 
 export function readyTicketCommand(
   environment: Environment,
+  plan: QueuePlan = noQueue,
 ): readonly string[] | undefined {
   const command = listedSetting(environment, "CLOVING_READY_COMMAND");
-  if (
-    command !== undefined &&
-    environment["CLOVING_QUEUE_SECONDS"] === undefined
-  )
-    throw new Error("The daemon did not start: ready-command-needs-queue");
+  if (command !== undefined)
+    queued({ environment, plan }, "ready-command-needs-queue");
   return command;
 }
 
-export function queueInterval(environment: Environment): number | undefined {
+function intervalSeconds(environment: Environment): number | undefined {
   const value = environment["CLOVING_QUEUE_SECONDS"];
   if (value === undefined) return undefined;
   const seconds = Number(value);
+  if (!/^\d+$/.test(value) || seconds < 10 || seconds > 3600)
+    refusedStart("invalid-queue-seconds");
+  return seconds;
+}
+
+function sourced(
+  value: number | undefined,
+  source: QueueSource,
+): SourcedValue | undefined {
+  return value === undefined ? undefined : { value, source };
+}
+
+function generalValues(
+  environment: Environment,
+  sources: Readonly<Record<string, SettingSource>>,
+): GeneralQueueValues {
+  const source = (field: string): QueueSource =>
+    sources[field] === "private" || sources[field] === "project"
+      ? "queue setting"
+      : "environment";
+  const everySeconds = sourced(
+    intervalSeconds(environment),
+    source("queue.everySeconds"),
+  );
+  const lanes = sourced(
+    laneSetting(environment["CLOVING_QUEUE_LANES"], "invalid-queue-lanes"),
+    source("queue.lanes"),
+  );
+  const workingLanes = sourced(
+    laneSetting(
+      environment["CLOVING_QUEUE_WORKING_LANES"],
+      "invalid-queue-working-lanes",
+    ),
+    source("queue.workingLanes"),
+  );
+  return {
+    ...(everySeconds === undefined ? {} : { everySeconds }),
+    ...(lanes === undefined ? {} : { lanes }),
+    ...(workingLanes === undefined ? {} : { workingLanes }),
+  };
+}
+
+function queuesSetting(environment: Environment) {
+  try {
+    return parseQueuesSetting(environment["CLOVING_QUEUES"]);
+  } catch {
+    return refusedStart("invalid-queues");
+  }
+}
+
+function ticketCommands(
+  environment: Environment,
+  setting: WorkflowQueueSetting | undefined,
+): boolean {
+  const next = listedSetting(environment, "CLOVING_NEXT_COMMAND") ?? [];
+  const ticket = listedSetting(environment, "CLOVING_TICKET_COMMAND") ?? [];
+  if (next.length > 0 && ticket.length > 0) return true;
   if (
-    !/^\d+$/.test(value) ||
-    !Number.isInteger(seconds) ||
-    seconds < 10 ||
-    seconds > 3600
+    environment["CLOVING_QUEUE_SECONDS"] === undefined &&
+    setting === undefined
   )
-    throw new Error("The daemon did not start: invalid-queue-seconds");
-  return seconds * 1000;
+    return false;
+  return refusedStart(
+    next.length === 0
+      ? "queue-needs-next-command"
+      : "queue-needs-ticket-command",
+  );
+}
+
+function plannedValues(given: {
+  readonly declared: QueueDeclaration;
+  readonly setting: WorkflowQueueSetting | undefined;
+  readonly general: GeneralQueueValues;
+}): QueueValues {
+  try {
+    return queueValues(given);
+  } catch {
+    return refusedStart("invalid-queue-working-lanes");
+  }
+}
+
+interface QueueConfigurationInput {
+  readonly declarations: readonly {
+    readonly workflowId: string;
+    readonly queue?: boolean | QueueDeclaration;
+  }[];
+  readonly sources: Readonly<Record<string, SettingSource>>;
+}
+
+function queueConfiguration(
+  environment: Environment,
+  given: QueueConfigurationInput,
+) {
+  const general = generalValues(environment, given.sources);
+  const settings = queuesSetting(environment);
+  const declared = given.declarations.find((declaration) =>
+    declaresQueue(declaration.queue),
+  );
+  if (declared === undefined) return undefined;
+  return {
+    declared,
+    setting: Object.hasOwn(settings, declared.workflowId)
+      ? settings[declared.workflowId]
+      : undefined,
+    general,
+  };
+}
+
+function configuredPlan(
+  configuration: NonNullable<ReturnType<typeof queueConfiguration>>,
+): QueuePlan {
+  const { declared, setting, general } = configuration;
+  return {
+    kind: "on",
+    workflowId: declared.workflowId,
+    values: plannedValues({
+      declared: declaredQueueValues(declared),
+      setting,
+      general,
+    }),
+  };
+}
+
+export function queuePlan(
+  environment: Environment,
+  given: QueueConfigurationInput,
+): QueuePlan {
+  const configuration = queueConfiguration(environment, given);
+  if (configuration === undefined) return noQueue;
+  const { declared, setting } = configuration;
+  if (setting?.state === "off")
+    return { kind: "off", workflowId: declared.workflowId };
+  if (!ticketCommands(environment, setting)) return noQueue;
+  return configuredPlan(configuration);
+}
+
+export function reloadedQueueLimits(
+  environment: Environment,
+  given: QueueConfigurationInput,
+): QueueLimits {
+  const configuration = queueConfiguration(environment, given);
+  const plan =
+    configuration === undefined ? noQueue : configuredPlan(configuration);
+  return queueLimits(environment, plan);
+}
+
+export function queueMilliseconds(plan: QueuePlan): number | undefined {
+  return plan.kind === "on" ? plan.values.everySeconds.value * 1000 : undefined;
 }
 
 export function listedSetting(

@@ -1,4 +1,5 @@
 import { writeDeclaredWorkflow } from "./workflow-folder-fixture.ts";
+import { declaresQueue } from "../src/workflow-declaration.ts";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { rendered as statusText } from "../src/cli/render.ts";
@@ -38,7 +39,7 @@ await test("CLV-184 service status and CLI show busy lanes and skipped tickets",
           workflowId: workflow.workflowId,
           manifest: {
             ...harness.registration.manifest,
-            queue: workflow.queue ?? false,
+            queue: declaresQueue(workflow.queue),
           },
           admission: 4,
           submission: workflow.input,

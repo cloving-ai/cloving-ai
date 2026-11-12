@@ -362,7 +362,9 @@ function declaration(selected: DevelopSelection): string {
         verification.capabilities,
       ),
       ...verification.workflow,
-      ...(selected.select === "queue" ? { queue: true } : {}),
+      ...(selected.select === "queue"
+        ? { queue: { everySeconds: 120, lanes: 1 } }
+        : {}),
       input: {
         maximumBytes: 65536,
         fields:

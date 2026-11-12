@@ -1,11 +1,13 @@
 import type { HoldPeriod, QueueHold, QueueLimits } from "../queue-room.ts";
-import type {
-  QueueChange,
-  QueueCommand,
-  QueuePort,
-  ReadyList,
+import {
+  queueOffDetail,
+  type QueueChange,
+  type QueueCommand,
+  type QueuePort,
+  type ReadyList,
 } from "../queue-state.ts";
 import { queueControlLimit, type QueueJournal } from "./queue-journal.ts";
+import type { QueueValues, SourcedValue } from "../queue-settings.ts";
 
 export interface QueueRuntime {
   pending: QueueJournal | undefined;
@@ -13,6 +15,7 @@ export interface QueueRuntime {
   ready?: ReadyList | undefined;
   hold?: QueueHold | undefined;
   readonly limits?: () => QueueLimits;
+  readonly interval?: SourcedValue;
   holds?: {
     readonly periods: () => readonly HoldPeriod[];
     readonly cutAt: () => number | null;
@@ -43,6 +46,40 @@ export function queueConnection(): {
     },
     connect: (port) => {
       connected = port;
+    },
+  };
+}
+
+export function queueOffPort(workflowId: string): QueuePort {
+  return {
+    control: () => ({
+      failedRunIds: [],
+      drain: undefined,
+      error: undefined,
+      off: { workflowId, source: "queues setting" },
+    }),
+    change: () =>
+      Promise.resolve({
+        kind: "unavailable",
+        detail: queueOffDetail(workflowId),
+      }),
+  };
+}
+
+function settingsOf(runtime: QueueRuntime): {
+  readonly settings?: QueueValues;
+} {
+  const limits = runtime.limits?.();
+  const { interval } = runtime;
+  if (limits?.sources === undefined || interval === undefined) return {};
+  return {
+    settings: {
+      everySeconds: interval,
+      lanes: { value: limits.lanes, source: limits.sources.lanes },
+      workingLanes: {
+        value: limits.workingLanes,
+        source: limits.sources.workingLanes,
+      },
     },
   };
 }
@@ -118,6 +155,7 @@ export function queueControlPort(runtime: QueueRuntime): QueuePort {
         ...(ready === undefined ? {} : { ready }),
         ...(hold === undefined ? {} : { hold }),
         ...(limits === undefined ? {} : { lanes: limits().lanes }),
+        ...settingsOf(runtime),
         ...(holds === undefined
           ? {}
           : { holds: holds.periods(), holdsCutAt: holds.cutAt() }),

@@ -88,7 +88,7 @@ os.loadavg = () => [0, 0, 0];
 syncBuiltinESMExports();
 `;
 
-function roomyQueue(preload: string): NodeJS.ProcessEnv {
+export function roomyQueue(preload: string): NodeJS.ProcessEnv {
   return {
     CLOVING_QUEUE_MAX_LOAD_PER_CORE: "4",
     CLOVING_QUEUE_MAX_MEMORY_PRESSURE: "warn",

@@ -1,5 +1,6 @@
 import type { Fields, Reply } from "../protocol.ts";
 import { queueOverview } from "./active-tickets.ts";
+import { queueOffDetail } from "../queue-state.ts";
 import {
   failed,
   invalidRequest,
@@ -14,6 +15,11 @@ const noQueue = failed("queue-unavailable", {
 
 export async function queueRead(context: ServiceContext): Promise<Reply> {
   const overview = await queueOverview(context);
+  const off = context.queue?.control()?.off;
+  if (off !== undefined)
+    return failed("queue-unavailable", {
+      detail: queueOffDetail(off.workflowId),
+    });
   if (overview["queue"] === undefined) return noQueue;
   return result("queue", overview);
 }
