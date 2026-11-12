@@ -26,6 +26,7 @@ else if (process.stdin.isTTY) {
     const result = await terminalInit(scene);
     assert.deepEqual(result.ended, [7, null], result.stdout + result.stderr);
     assert.equal(result.stderr, "");
+    assert.equal(result.factory, true);
     assert.equal(result.selected, true);
     assert.equal(result.answered, true);
     assert.match(result.stdout, /1\. agent-my-agent-sh/);

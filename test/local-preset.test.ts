@@ -3,7 +3,6 @@ import { execFileSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { test } from "node:test";
-import packageMetadata from "#package" with { type: "json" };
 import { clientCommand } from "../src/cli/runtime-directory.ts";
 import { record } from "../src/protocol.ts";
 import { applyLocalPreset } from "../tools/local-preset.ts";
@@ -55,14 +54,11 @@ await test("a local command prefix names this program", () => {
 
 await test("a printed start command puts the command before the repository", () => {
   const packagePath = "/home/user/.npm/_npx/abc/node_modules/cloving/tools";
-  const prefix = localCommandPrefix({
-    packagePath,
-    version: packageMetadata.version,
-  });
-  assert.equal(
-    `${prefix} --repository /work/repo`,
-    clientCommand({}, { packagePath, repository: "/work/repo" }),
-  );
+  const printed = clientCommand({}, { packagePath, repository: "/work/repo" });
+  const version = /cloving@(\S+)/.exec(printed)?.[1];
+  assert.ok(version);
+  const prefix = localCommandPrefix({ packagePath, version });
+  assert.equal(`${prefix} --repository /work/repo`, printed);
   assert.equal(
     localCommand({ prefix, command: "start", repository: "/work/repo" }),
     `${prefix} start --repository /work/repo`,

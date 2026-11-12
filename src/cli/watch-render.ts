@@ -335,13 +335,10 @@ export function waitingDetail(run: WatchRun, now: string): string {
   return `A decision waits for you${waited}. Examine the work, then approve or deny.`;
 }
 
-export const localRunOffer =
-  "This local run is complete. Run `cloving init --factory` to add review, a plan, and regular maintenance.";
-
 export function localOfferSuffix(promotionId: unknown): string {
   if (typeof promotionId !== "string") return "";
   if (!promotionId.startsWith("local-")) return "";
-  return ` ${localRunOffer}`;
+  return " This local run is complete. Run `cloving init --factory` to add review, a plan, and regular maintenance.";
 }
 
 export function completedDetail(run: WatchRun): string {

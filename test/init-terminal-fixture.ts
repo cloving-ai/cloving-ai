@@ -36,9 +36,19 @@ export async function terminalInit(scene: DoctorScene) {
       detached: true,
     },
   );
-  const output = { stdout: "", stderr: "", selected: false, answered: false };
+  const output = {
+    stdout: "",
+    stderr: "",
+    factory: false,
+    selected: false,
+    answered: false,
+  };
   child.stdout.on("data", (data: Buffer) => {
     output.stdout += data.toString();
+    if (!output.factory && output.stdout.includes("Select 1 or 2:")) {
+      output.factory = true;
+      child.stdin.write("2\n");
+    }
     if (!output.selected && output.stdout.includes("for the setup?")) {
       output.selected = true;
       child.stdin.write("\n");
