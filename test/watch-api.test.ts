@@ -70,7 +70,7 @@ await test("CLV-254 the document has openapi, info and paths, each $ref resolves
     "Problem",
   ]);
   const schemas = documentSchemas(document);
-  assert.equal(schemas.length, 64);
+  assert.equal(schemas.length, 65);
   assert.deepEqual(
     schemas.flatMap((found) => schemaFailures(document, found)),
     [],

@@ -46,6 +46,7 @@ export function fakePi(
     readonly output?: string;
     readonly exitCode?: number;
     readonly gate?: string;
+    readonly afterGateEvents?: readonly unknown[];
     readonly chunkBytes?: number;
   } = {},
 ): string {
@@ -70,6 +71,7 @@ for (let offset = 0; offset < bytes.length; offset += size) {
 }
 const gate = ${JSON.stringify(options.gate ?? "")};
 if (gate) while (!existsSync(gate)) await delay(10);
+process.stdout.write(${JSON.stringify((options.afterGateEvents ?? []).map((event) => JSON.stringify(event) + "\n").join(""))});
 process.exitCode = ${String(options.exitCode ?? 0)};
 `,
     { mode: 0o700 },
