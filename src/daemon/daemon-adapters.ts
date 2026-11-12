@@ -147,6 +147,7 @@ function workerHarness(settings: DaemonSettings) {
     shell: settings.shell ?? process.env["SHELL"] ?? "/bin/sh",
     command: settings.command,
     turnVariables: settings.turnVariables ?? [],
+    turnCommitSignatures: settings.turnCommitSignatures ?? "keep",
   };
 }
 

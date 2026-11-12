@@ -74,6 +74,7 @@ export const settingVariables: Readonly<Record<string, string>> = {
   "retention.days": "CLOVING_RETENTION_DAYS",
   "retention.action": "CLOVING_RETENTION_ACTION",
   "retention.archiveFolder": "CLOVING_RETENTION_ARCHIVE_FOLDER",
+  "turns.commitSignatures": "CLOVING_TURN_COMMIT_SIGNATURES",
   "turns.environment": "CLOVING_TURN_ENVIRONMENT",
   commands: "CLOVING_COMMANDS",
   commandSeconds: "CLOVING_COMMAND_SECONDS",

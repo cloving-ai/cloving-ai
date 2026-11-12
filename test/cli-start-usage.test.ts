@@ -128,6 +128,10 @@ const facts: readonly (readonly [string, RegExp])[] = [
     /inherit, or a JSON list of variable names\. The default is an empty list\..*login variables of its harness.*one release/,
   ],
   [
+    "CLOVING_TURN_COMMIT_SIGNATURES",
+    /keep or off\. The default is keep\..*commit\.gpgsign=false and tag\.gpgsign=false.*private setting turns\.commitSignatures/,
+  ],
+  [
     "CLOVING_DEMO_TOOL",
     /absolute path of the instruction file or folder of a demo tool.*private setting demo\.tool.*each turn gets it/,
   ],
@@ -152,7 +156,7 @@ await test("CLV-061 the help text of the start command has one line for each set
   const settingLines = (name: string): readonly string[] =>
     lines.filter((line) => line.startsWith(`  ${name} `));
   const names = [...new Set(program.match(/CLOVING_[A-Z_]+/g))];
-  assert.equal(names.length, 39);
+  assert.equal(names.length, 40);
   for (const name of names) assert.equal(settingLines(name).length, 1, name);
   for (const [name, fact] of facts)
     assert.match(String(settingLines(name)[0]), fact);

@@ -76,6 +76,30 @@ await test("CLV-228 first-workflow setup defers no-workflow to the template step
   );
 });
 
+await test("CLV-344 setup asks how turns commit when commit-signatures fails, before the summary", () => {
+  const output = initPrompt(facts);
+  const question = output.indexOf("If `commit-signatures` gives `fail`");
+  assert.ok(question > output.indexOf("1. Run `cloving doctor --json`"));
+  assert.ok(question < output.indexOf("2. Read `cloving config list --json`"));
+  const text = output.slice(question, output.indexOf("2. Read"));
+  assert.match(
+    text,
+    /tell the user in one or two sentences why a turn cannot sign\. .*Then ask one question with two options:/,
+  );
+  assert.match(
+    text,
+    /- Recommended: turns commit with no signature\. A turn does not get the SSH agent\. Before a merge, the user can sign the commits again, or merge with a squash and sign that commit\. Apply it with `cloving config set turns\.commitSignatures off --private`\./,
+  );
+  assert.match(
+    text,
+    /- Turns get `SSH_AUTH_SOCK`\. Then each turn can use each key in the SSH agent, also for `git push` and `ssh`\. .*`SSH_AUTH_SOCK` to `turns\.environment`/,
+  );
+  assert.match(
+    text,
+    /Apply the answer with `cloving config set`, then run `cloving doctor --json` again\./,
+  );
+});
+
 await test("CLV-228 setup queue guidance requires an explicit queue declaration", () => {
   const queue = initPrompt(facts)
     .split("\n")

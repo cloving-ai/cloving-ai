@@ -47,6 +47,12 @@ Chat stores: `chatStores` lists metadata only. Counts and sizes include all regu
 Make the first workflow. A settings file alone is not a workflow.
 
 1. Run `cloving doctor --json`. Read every check and its fix. Defer `no-workflow` to the template step; a settings file alone cannot fix it. Do not run `cloving init` from this setup session. Fix every other failed check that is required, or that a selected option needs, with the user. A skipped required check is not a pass. Do not run a service or submit a run to fix a check. Save unresolved results and fixes for the summary.
+
+   If `commit-signatures` gives `fail`, tell the user in one or two sentences why a turn cannot sign. Use the detail of the check: git signs each commit, and the signer of a turn gets no SSH agent and no terminal for a passphrase. Then ask one question with two options:
+   - Recommended: turns commit with no signature. A turn does not get the SSH agent. Before a merge, the user can sign the commits again, or merge with a squash and sign that commit. Apply it with `cloving config set turns.commitSignatures off --private`.
+   - Turns get `SSH_AUTH_SOCK`. Then each turn can use each key in the SSH agent, also for `git push` and `ssh`. Read `cloving config get turns.environment --json`, then add `SSH_AUTH_SOCK` to `turns.environment` with `cloving config set turns.environment '<JSON list>' --private`.
+
+   Apply the answer with `cloving config set`, then run `cloving doctor --json` again.
 2. Read `cloving config list --json`. Explain the default harness and its worker. If the default harness has no native worker, ask for its one-shot command form. Set `harness.turn` with `cloving config set harness.turn '<JSON command list>'`. The command must finish after one prompt. Use `{prompt}` as an argument, or leave it out to read the prompt from stdin. Do not call a model to discover or test the command.
 3. Ask for the ticket source, then the check command, then the private texts, one question at a time. Explain the recommended option and the alternatives. Write the answers with `cloving config set tickets.command '<JSON command list>'`, `cloving config set checks.beforeMerge '<JSON command list>'` and `cloving config set privateTexts '<JSON text list>' --private`. If the queue is selected, also ask for `tickets.nextCommand` and `queue.everySeconds`. Use `--private` for any command that contains private data. Use `cloving config unset <field>` to remove a setting.
 4. **Find the loops that the user already does.**

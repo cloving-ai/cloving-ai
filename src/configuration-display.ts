@@ -44,6 +44,7 @@ const defaults: Readonly<Record<string, SettingValue>> = {
   "github.command": ["gh"],
   "retention.days": 30,
   "retention.action": "archive",
+  "turns.commitSignatures": "keep",
   "turns.environment": [],
 };
 
