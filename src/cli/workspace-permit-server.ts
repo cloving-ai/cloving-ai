@@ -37,16 +37,33 @@ function unknownMember(member: WorkspaceMember, detail: string): MemberReading {
   return { kind: "unknown", name: member.name, detail };
 }
 
+function busyCount(result: Readonly<Record<string, unknown>>): number | string {
+  const queues = result["queues"];
+  const counts = Array.isArray(queues)
+    ? queues.map((queue: unknown) => record(queue)?.["busy"])
+    : [record(result["queue"])?.["busy"] ?? 0];
+  if (
+    !counts.every(
+      (count: unknown) =>
+        typeof count === "number" && Number.isSafeInteger(count) && count >= 0,
+    )
+  )
+    return "invalid-queue-status";
+  return counts.reduce(
+    (total: number, count: unknown) => total + Number(count),
+    0,
+  );
+}
+
 async function busyOf(member: WorkspaceMember): Promise<number | string> {
   const reply = await send(member.runtime, {
-    operation: "queue",
+    operation: "status",
     parameters: {},
     signal: AbortSignal.timeout(readMilliseconds),
   });
   if (reply.kind === "error")
     return reply.error.code === "queue-unavailable" ? 0 : reply.error.code;
-  const busy = record(reply.result["queue"])?.["busy"];
-  return typeof busy === "number" ? busy : "invalid-queue-status";
+  return busyCount(reply.result);
 }
 
 async function spentOf(

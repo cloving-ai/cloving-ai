@@ -1,4 +1,5 @@
 import {
+  maximumQueueLanes,
   roomHold,
   workingHold,
   type HostSignals,
@@ -11,6 +12,7 @@ export interface QueueRoom {
   readonly limits: () => QueueLimits;
   readonly signals: () => Promise<HostSignals>;
   readonly waiting: () => Promise<number>;
+  readonly repositoryBusy?: () => Promise<number>;
   readonly permit?: () => Promise<Permit>;
 }
 
@@ -49,7 +51,18 @@ export function roomGate(
         limits.workingLanes < limits.lanes
           ? workingHold(busy - (await room.waiting()), limits.workingLanes)
           : undefined;
+      const repositoryBusy = (await room.repositoryBusy?.()) ?? 0;
+      const repository =
+        repositoryBusy < maximumQueueLanes
+          ? undefined
+          : {
+              reason: "repository-lanes" as const,
+              busy: repositoryBusy,
+              limit: maximumQueueLanes,
+              text: "Held: 16 of 16 repository queue lanes busy",
+            };
       const hold =
+        repository ??
         working ??
         (limits.room === undefined
           ? undefined

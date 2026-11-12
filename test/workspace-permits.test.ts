@@ -23,6 +23,7 @@ interface MemberState {
   busy: number | "no-queue" | "invalid";
   spentUsd: number | null | "no-spend";
   reads: number;
+  queues?: readonly number[];
   answerMilliseconds?: number;
 }
 
@@ -34,10 +35,16 @@ async function memberReply(
   operation: string,
 ): Promise<Reply> {
   await delay(state.answerMilliseconds ?? 0);
-  if (operation === "queue" && state.busy === "no-queue")
+  if (
+    (operation === "queue" || operation === "status") &&
+    state.busy === "no-queue"
+  )
     return missing("queue-unavailable");
-  if (operation === "queue")
+  if (operation === "queue" || operation === "status")
     return result({
+      ...(state.queues === undefined
+        ? {}
+        : { queues: state.queues.map((busy) => ({ busy })) }),
       kind: "queue",
       queue: { busy: state.busy === "invalid" ? "many" : state.busy },
     });
@@ -106,34 +113,39 @@ const state = (busy: number, spentUsd: number | null = 0): MemberState => ({
   reads: 0,
 });
 
-await test("CLV-312 with workspace lanes 2 and two active runs in repository A, repository B gets no permit until one run ends", async () => {
-  const alpha = state(2);
-  await withPermits(
-    { limits: { lanes: 2 }, alpha, beta: state(0) },
-    async (permit) => {
-      assert.deepEqual(await permit(), {
-        kind: "held",
-        hold: {
-          reason: "workspace-lanes",
-          busy: 2,
-          limit: 2,
-          text: "Held: 2 of 2 workspace lanes busy",
-        },
-      });
-      alpha.busy = 1;
-      const granted = await permit();
-      assert.ok(granted.kind === "admitted");
-      const during = await permit();
-      assert.ok(during.kind === "held");
-      assert.equal(during.hold.reason, "workspace-lanes");
-      granted.release();
-      await eventually(async () => {
-        const next = await permit();
-        return next.kind === "admitted" ? next : undefined;
-      });
-    },
-  );
-});
+for (const queues of [undefined, [1, 1]])
+  await test(`CLV-360 workspace lanes count all queues ${JSON.stringify(queues)} and release a permit after a run ends`, async () => {
+    const alpha: MemberState = {
+      ...state(queues === undefined ? 2 : 1),
+      ...(queues === undefined ? {} : { queues }),
+    };
+    await withPermits(
+      { limits: { lanes: 2 }, alpha, beta: state(0) },
+      async (permit) => {
+        assert.deepEqual(await permit(), {
+          kind: "held",
+          hold: {
+            reason: "workspace-lanes",
+            busy: 2,
+            limit: 2,
+            text: "Held: 2 of 2 workspace lanes busy",
+          },
+        });
+        alpha.busy = 1;
+        if (alpha.queues !== undefined) alpha.queues = [1, 0];
+        const granted = await permit();
+        assert.ok(granted.kind === "admitted");
+        const during = await permit();
+        assert.ok(during.kind === "held");
+        assert.equal(during.hold.reason, "workspace-lanes");
+        granted.release();
+        await eventually(async () => {
+          const next = await permit();
+          return next.kind === "admitted" ? next : undefined;
+        });
+      },
+    );
+  });
 
 await test("CLV-312 the spend of both repositories counts toward the workspace daily spend limit", async () => {
   await withPermits(

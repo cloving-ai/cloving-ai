@@ -150,10 +150,6 @@ async function copied(
     process.stdout.write(
       `Copied the template ${input.name} to .cloving/workflows as the workflow ${input.id}.\nDecision points:\n${pointText(result.template.points)}${settingText(result.settings)}Next: cloving workflows test ${input.id}\n`,
     );
-  if (queued.length > 1)
-    process.stderr.write(
-      `queue-workflow-conflict: ${queued.join(", ")} declare a queue. Select "a person" for the select point of one copy: remove workflow.queue from its declaration.\n`,
-    );
   return 0;
 }
 

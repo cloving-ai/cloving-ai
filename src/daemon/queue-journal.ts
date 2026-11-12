@@ -1,4 +1,11 @@
-import { readFile, rename, writeFile } from "node:fs/promises";
+import {
+  link,
+  mkdir,
+  readFile,
+  rename,
+  unlink,
+  writeFile,
+} from "node:fs/promises";
 import { join } from "node:path";
 import { record } from "../protocol.ts";
 import {
@@ -6,6 +13,33 @@ import {
   type QueueCommand,
   type QueueDrain,
 } from "../queue-state.ts";
+
+export async function queueDirectory(
+  directory: string,
+  options: { readonly workflowId: string; readonly migrate?: boolean },
+): Promise<string> {
+  const folder = join(directory, "queues", options.workflowId);
+  await mkdir(folder, { recursive: true, mode: 0o700 });
+  if (options.migrate === true) {
+    for (const name of ["queue-commands.json", "queue-holds.json"]) {
+      const source = join(directory, name);
+      const moved = await link(source, join(folder, name)).then(
+        () => true,
+        (error: unknown) => {
+          if (
+            error instanceof Error &&
+            "code" in error &&
+            ["ENOENT", "EEXIST"].includes(String(error.code))
+          )
+            return false;
+          throw error;
+        },
+      );
+      if (moved) await unlink(source);
+    }
+  }
+  return folder;
+}
 
 export const queueControlLimit = 32;
 

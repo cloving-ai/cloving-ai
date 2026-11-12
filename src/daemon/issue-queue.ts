@@ -1,5 +1,10 @@
 import type { QueueSource } from "../queue-settings.ts";
-import { queueStatus, spendNotice } from "./queue-status.ts";
+import {
+  queueStatus,
+  runStatus,
+  trackedRuns,
+  spendNotice,
+} from "./queue-status.ts";
 import { randomUUID } from "node:crypto";
 import { rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -30,10 +35,12 @@ import {
 interface QueueSettings {
   readonly directory: string;
   readonly runtimeDirectory: string;
+  readonly queueDirectory?: string;
   readonly intervalMilliseconds: number;
   readonly intervalSource?: QueueSource;
   readonly limits?: () => QueueLimits;
   readonly resetQueue?: boolean;
+  readonly resumeQueue?: boolean;
   readonly readyCommand?: readonly string[];
   readonly workflowId: string;
   readonly signals?: () => Promise<HostSignals>;
@@ -48,22 +55,6 @@ function terminal(run: Fields): boolean {
   return ["completed", "failed", "cancelled"].includes(String(run["state"]));
 }
 
-async function runStatus(
-  runtimeDirectory: string,
-  commandId: string,
-): Promise<Fields | undefined> {
-  const reply = await send(runtimeDirectory, {
-    operation: "status",
-    parameters: { runId: runIdentity(commandId) },
-  });
-  if (reply.kind === "error" && reply.error.code === "unknown-run")
-    return undefined;
-  if (reply.kind === "error") throw new Error(reply.error.code);
-  const run = record(reply.result["run"]);
-  if (run === undefined) throw new Error("invalid-run-status");
-  return run;
-}
-
 async function recover(
   settings: QueueSettings,
   pending: QueueJournal,
@@ -73,33 +64,6 @@ async function recover(
     pending.commands.delete(commandId);
     await pending.save();
   }
-}
-
-async function trackedRuns(
-  runtimeDirectory: string,
-  commands: readonly string[],
-): Promise<readonly { readonly commandId: string; readonly run: Fields }[]> {
-  if (commands.length === 0) return [];
-  if (commands.length === 1) {
-    const commandId = String(commands[0]);
-    const run = await runStatus(runtimeDirectory, commandId);
-    if (run === undefined) throw new Error("queue-run-missing");
-    return [{ commandId, run }];
-  }
-  const reply = await send(runtimeDirectory, {
-    operation: "status",
-    parameters: { runIds: commands.map(runIdentity) },
-  });
-  if (reply.kind === "error") throw new Error(reply.error.code);
-  const runs = reply.result["runs"];
-  if (!Array.isArray(runs)) throw new Error("invalid-run-list");
-  return commands.map((commandId) => {
-    const run = runs
-      .map(record)
-      .find((item) => item?.["runId"] === runIdentity(commandId));
-    if (run === undefined) throw new Error("queue-run-missing");
-    return { commandId, run };
-  });
 }
 
 function limited(pending: QueueJournal): boolean {
@@ -203,6 +167,7 @@ async function submit(
       "ticket-active",
       "ticket-dependency-open",
       "queue-spend-limit",
+      "queue-repository-full",
     ].includes(reply.error.code)
   )
     throw new Error(reply.error.code);
@@ -218,7 +183,10 @@ async function admission(
     readonly signal: AbortSignal;
   },
 ): Promise<void> {
-  const file = join(settings.directory, "queue-submission");
+  const file = join(
+    settings.queueDirectory ?? settings.directory,
+    "queue-submission",
+  );
   await writeFile(file, "", { mode: 0o600 });
   try {
     if (
@@ -238,7 +206,16 @@ async function drained(
 ): Promise<void> {
   const { drain } = pending;
   if (drain === undefined || drain.drainedAt !== null) return;
-  if (!atGap(await workInProgress(daemonWorkReads(settings)))) return;
+  if (
+    settings.queueDirectory === undefined &&
+    !atGap(await workInProgress(daemonWorkReads(settings)))
+  )
+    return;
+  if (
+    settings.queueDirectory !== undefined &&
+    (await queueStatus(settings)).busy > 0
+  )
+    return;
   pending.drain = { ...drain, drainedAt: Date.now() };
   await pending.save();
   process.stderr.write("Queue drained\n");
@@ -282,7 +259,6 @@ async function cycle(
   },
 ): Promise<void> {
   const { signal, pending, room } = run;
-  await startedQueue(settings, pending);
   const selfUpdate = updateHold(settings.directory, pending);
   const restart = restartHold(settings.directory);
   const update = async (activeRuns = 0) => {
@@ -296,7 +272,6 @@ async function cycle(
     const spend = notice(await queueStatus(settings));
     return updating || spend;
   };
-  await rm(join(settings.directory, "queue-submission"), { force: true });
   await recover(settings, pending);
   const stopped = (): boolean => signal.aborted;
   const checks = { pending, stop, notice, update, room };
@@ -324,6 +299,7 @@ function queueRoom(
       limits: () => limitsOf(settings),
       signals: settings.signals ?? hostSignals(),
       waiting: () => waitingRuns(settings),
+      repositoryBusy: async () => (await queueStatus(settings)).repositoryBusy,
       ...(settings.permit === undefined ? {} : { permit: settings.permit }),
     },
     async (hold) => {
@@ -331,6 +307,17 @@ function queueRoom(
       await parts.holds.note(hold);
     },
   );
+}
+
+async function loadedQueue(settings: QueueSettings, runtime: QueueRuntime) {
+  const directory = settings.queueDirectory ?? settings.directory;
+  const pending = await queueJournal(directory);
+  const holds = await holdRecord(directory);
+  await startedQueue(settings, pending);
+  await rm(join(directory, "queue-submission"), { force: true });
+  runtime.pending = pending;
+  runtime.holds = holds;
+  return { pending, holds };
 }
 
 export function issueQueue(settings: QueueSettings): {
@@ -352,12 +339,7 @@ export function issueQueue(settings: QueueSettings): {
           },
         }),
   };
-  const loaded = queueJournal(settings.directory).then(async (pending) => {
-    const holds = await holdRecord(settings.directory);
-    runtime.pending = pending;
-    runtime.holds = holds;
-    return { pending, holds };
-  });
+  const loaded = loadedQueue(settings, runtime);
   const running = loaded
     .then(({ pending, holds }) =>
       Promise.all([
@@ -375,9 +357,7 @@ export function issueQueue(settings: QueueSettings): {
         }),
       ]),
     )
-    .catch((error: unknown) => {
-      queueStopped(runtime, error);
-    });
+    .catch((error: unknown) => queueStopped(runtime, error));
   return {
     stop: async () => {
       runtime.stopping.abort();

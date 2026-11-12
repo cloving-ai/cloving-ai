@@ -4,7 +4,7 @@ import { queuePrelude, queueWorkflow } from "./daemon-queue-fixture.ts";
 import { withConsumer } from "./world-host-fixture.ts";
 
 const control = `${queuePrelude}
-const saved = () => JSON.parse(readFileSync("queue-commands.json", "utf8"));
+const saved = () => JSON.parse(readFileSync("queues/develop/queue-commands.json", "utf8"));
 const queue = async () => (await asked("queue")).queue;
 const command = (name, commandId) => asked("queue-command", { command: name, commandId });
 `;
@@ -144,5 +144,38 @@ try {
 } finally { await daemon.close(); }
 process.exit(0);
 `);
+    assert.equal(result.status, 0, result.stderr);
+  }));
+
+await test("CLV-360 a drain finishes while another queue stays busy and resume changes only its queue", () =>
+  withConsumer(queueWorkflow, async (consumer) => {
+    const result = await consumer.run(
+      `${queuePrelude}
+settings.declarations.push({ ...settings.declarations[0], workflowId: "triage-issue" });
+const daemon = await launched({ queueMilliseconds: 100, concurrency: 4 });
+const queues = async () => (await asked("status")).queues;
+try {
+  assert.equal((await submitted("manual-develop", { submission: { ticket: "CLV-900" } })).kind, "run-admitted");
+  const duplicate = await submitted("duplicate-triage", { workflowId: "triage-issue", submission: { ticket: "CLV-900" } });
+  assert.equal(duplicate.code, "ticket-active", JSON.stringify(duplicate));
+  const manual = await submitted("manual-triage", { workflowId: "triage-issue", submission: { ticket: "CLV-901" } });
+  assert.equal(manual.kind, "run-admitted", JSON.stringify(manual));
+  await until(() => existsSync("input-CLV-900") && existsSync("input-CLV-901"));
+  const drained = await asked("queue-command", { command: "drain", commandId: "drain-triage", workflowId: "triage-issue" });
+  assert.equal(drained.queue.workflowId, "triage-issue");
+  assert.equal(drained.queue.state, "draining");
+  writeFileSync("outcome-CLV-901", "handoff_requested");
+  await until(async () => (await queues()).find(queue => queue.workflowId === "triage-issue").state === "drained");
+  assert.equal((await queues()).find(queue => queue.workflowId === "develop").busy, 1);
+  writeFileSync("ready", "CLV-902");
+  const resumed = await asked("queue-command", { command: "resume", commandId: "resume-triage", workflowId: "triage-issue" });
+  assert.equal(resumed.queue.state, "running");
+  await until(async () => (await runs()).length === 3);
+  assert.equal((await queues()).find(queue => queue.workflowId === "develop").drain, null);
+} finally { await daemon.close(); }
+process.exit(0);
+`,
+      { WORKFLOW_LOCAL_QUEUE_CONCURRENCY: "4" },
+    );
     assert.equal(result.status, 0, result.stderr);
   }));

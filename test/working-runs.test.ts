@@ -254,3 +254,38 @@ await test("CLV-309 a run that runs a local merge check is working, not waiting 
       await listener.close();
     }
   }));
+
+await test("CLV-360 working lanes count waits only in their own queue", () =>
+  withHarness(async (harness) => {
+    const listener = await listen({
+      path: join(harness.runtimeDirectory, "control.sock"),
+      handle: () =>
+        Promise.resolve({
+          kind: "result",
+          result: {
+            queue: { busyRunIds: ["first"] },
+            queues: [
+              { workflowId: "develop", busyRunIds: ["first"] },
+              { workflowId: "triage-issue", busyRunIds: ["second"] },
+            ],
+            runs: [
+              run("first", { state: "waiting_gate" }),
+              run("second", { workflowId: "triage-issue" }),
+            ],
+            next: null,
+          },
+        }),
+    });
+    try {
+      assert.equal(
+        await waitingRuns({
+          directory: harness.stateDirectory,
+          runtimeDirectory: harness.runtimeDirectory,
+          workflowId: "triage-issue",
+        }),
+        0,
+      );
+    } finally {
+      await listener.close();
+    }
+  }));

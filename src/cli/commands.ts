@@ -366,7 +366,7 @@ function queue(
   if (invocation.action === "show")
     return requested(environment, {
       format: { json: invocation.json },
-      request: { operation: "queue", parameters: {} },
+      request: queueServiceRequest(invocation, ""),
     });
   const format = identified(environment, invocation);
   return mutated(environment, {

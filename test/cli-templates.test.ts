@@ -132,7 +132,10 @@ await test("CLV-223 templates copy with an id renames the files, the workflow an
     assert.equal(templates(root, ["copy", "develop"]).status, 0);
     const copied = templates(root, ["copy", "develop", "--id", "site-develop"]);
     assert.equal(copied.status, 0, copied.stderr);
-    assert.match(copied.stdout + copied.stderr, /queue-workflow-conflict/);
+    assert.doesNotMatch(
+      copied.stdout + copied.stderr,
+      /queue-workflow-conflict/,
+    );
     const folder = join(root, "repo/.cloving/workflows");
     const source = await readFile(join(folder, "site-develop.ts"), "utf8");
     assert.match(source, /export async function siteDevelop\(/);

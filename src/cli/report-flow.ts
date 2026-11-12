@@ -44,6 +44,25 @@ function holdHistoryOf(value: unknown): {
   return { holds: holdsOf(value), holdsCutAt: cutAt };
 }
 
+function queueHoldHistory(result: Fields) {
+  const queues = result["queues"];
+  const histories = (
+    Array.isArray(queues) && queues.length > 0 ? queues : [result["queue"]]
+  ).map(holdHistoryOf);
+  return {
+    holds: histories.some((history) => history.holds === null)
+      ? null
+      : histories.flatMap((history) => history.holds ?? []),
+    holdsCutAt: histories.reduce<number | null>(
+      (latest, history) =>
+        history.holdsCutAt === null
+          ? latest
+          : Math.max(latest ?? 0, history.holdsCutAt),
+      null,
+    ),
+  };
+}
+
 async function overview(runtime: string) {
   const reply = await send(runtime, {
     operation: "status",
@@ -53,7 +72,7 @@ async function overview(runtime: string) {
   const workflows = reply.result["workflows"];
   return {
     queue: queueOf(reply.result["queue"]),
-    ...holdHistoryOf(reply.result["queue"]),
+    ...queueHoldHistory(reply.result),
     workflows: Array.isArray(workflows)
       ? workflows.filter((id: unknown): id is string => typeof id === "string")
       : [],

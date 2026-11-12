@@ -35,7 +35,7 @@ export function dispatcher(
   >([
     ["run", (request) => run(request.parameters)],
     ["schedule", (request) => schedule(request.parameters)],
-    ["queue", () => queueRead(context)],
+    ["queue", (request) => queueRead(context, request.parameters)],
     ["spend", () => spendRead(context)],
     ["queue-command", (request) => queueCommand(context, request.parameters)],
     ["status", (request) => status(context, request.parameters)],
