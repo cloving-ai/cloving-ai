@@ -1,6 +1,6 @@
 import { record, type Fields } from "../protocol.ts";
 import { component, element, type Shown } from "./watch-element.ts";
-import { counted } from "./watch-render.ts";
+import { countText, type WatchWords } from "./watch-theme-view.ts";
 
 export function skippedText(value: unknown): string {
   const ticket = record(value) ?? {};
@@ -92,14 +92,17 @@ export function queueIntervalText(seconds: number): string {
   return `every ${String(seconds)} s`;
 }
 
-export function QueueSkipped(props: { readonly queue: Fields }): Shown {
+export function QueueSkipped(props: {
+  readonly queue: Fields;
+  readonly words?: WatchWords | undefined;
+}): Shown {
   const skipped = props.queue["skipped"];
   if (!Array.isArray(skipped) || skipped.length === 0) return null;
   return element("details", {
     class: "queue-waiting",
     children: [
       element("summary", {
-        children: `${counted(skipped.length, "ticket")} skipped`,
+        children: `${countText(props.words, { key: "ticket.unit", count: skipped.length, noun: "ticket" })} skipped`,
       }),
       element("ul", {
         children: skipped.map((value) =>
@@ -181,6 +184,7 @@ export function queueCardReason(queue: Fields): string | null {
 export function QueueCard(props: {
   readonly queue: Fields;
   readonly controls?: QueueControls | undefined;
+  readonly words?: WatchWords | undefined;
 }): Shown {
   const { queue } = props;
   const interval = record(record(queue["settings"])?.["everySeconds"]);
@@ -209,7 +213,7 @@ export function QueueCard(props: {
             children: `next check ${new Date(next).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`,
           }),
       component(QueueSources, { queue }),
-      component(QueueSkipped, { queue }),
+      component(QueueSkipped, { queue, words: props.words }),
       props.controls === undefined
         ? null
         : component(QueueSwitch, { queue, controls: props.controls }),

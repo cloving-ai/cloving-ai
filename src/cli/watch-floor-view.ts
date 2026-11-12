@@ -174,13 +174,12 @@ export function LineEnd(
         : component(ReadyCount, { ready, now, words: props.words }),
       props.queue === undefined
         ? null
-        : component(QueueCard, { queue: props.queue, controls: props.queuing }),
-      component(LineNext, {
-        workflow,
-        now,
-        loop: props.loop,
-        looping: props.looping,
-      }),
+        : component(QueueCard, {
+            queue: props.queue,
+            controls: props.queuing,
+            words: props.words,
+          }),
+      component(LineNext, props),
     ],
   });
 }

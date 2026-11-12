@@ -221,6 +221,7 @@ await test("CLV-291 the queue counts skipped tickets with the ticket word of the
   const model: WatchModel = {
     ...twoLineModel(),
     queue: {
+      workflowId: "develop-issue",
       skipped: [
         { ticketId: "1", reason: "ticket-active" },
         { ticketId: "2", reason: "ticket-active" },
