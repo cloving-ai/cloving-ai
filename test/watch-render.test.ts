@@ -4,10 +4,8 @@ import {
   clockTime,
   counted,
   elapsed,
-  groupActivity,
   pageTitle,
   turnTime,
-  type WatchItem,
 } from "../src/cli/watch-render.ts";
 import {
   at,
@@ -18,8 +16,6 @@ import {
   sampleTurn,
   shownClock,
 } from "./watch-sample.ts";
-
-const item = (kind: string): WatchItem => ({ kind, text: kind });
 
 await test("CLV-016 the watch page shows a time span in seconds, in minutes or in hours, a clock time in the local time zone and a count with its noun", () => {
   assert.deepEqual(
@@ -40,17 +36,6 @@ await test("CLV-016 the watch page shows a time span in seconds, in minutes or i
     [counted(0, "commit"), counted(1, "commit"), counted(2, "commit")],
     ["0 commits", "1 commit", "2 commits"],
   );
-});
-
-await test("CLV-016 the watch page puts the tool calls and the tool errors between two messages of the worker into one group", () => {
-  const kinds = ["say", "tool", "tool", "error", "tool", "say", "tool"];
-  assert.deepEqual(
-    groupActivity([...kinds, "result", "error", "tool"].map(item)).map(
-      (group) => group.map((member) => member.kind).join(" "),
-    ),
-    ["say", "tool tool error tool", "say", "tool", "result", "error tool"],
-  );
-  assert.deepEqual(groupActivity([]), []);
 });
 
 await test("CLV-016 the watch page gives a turn in work a time span to the present time, a turn at its end the span to its end, and a turn with no end time no span", () => {

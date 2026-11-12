@@ -78,7 +78,7 @@ const placed = `(() => {
   const next = document.querySelector('[popovertarget="token-menu-run-b"]').closest("li").getBoundingClientRect();
   return {
     below: pop.top >= open.bottom - 1 && pop.top <= open.bottom + 12,
-    gap: { x: pop.left + 8, y: (open.bottom + pop.top) / 2 },
+    under: { x: open.left + open.width / 2, y: open.bottom + 2 },
     inside: { x: pop.left + pop.width / 2, y: pop.top + pop.height / 2 },
     next: Math.round(next.top),
     font: getComputedStyle(document.querySelector("#token-menu-run-a button")).fontFamily === getComputedStyle(document.querySelector(".token")).fontFamily,
@@ -95,6 +95,81 @@ const point = (value: Record<string, unknown>) => ({
   y: Number(value["y"]),
 });
 
+const waited = (expression: string, expected: object) => `(async () => {
+  const want = ${JSON.stringify(JSON.stringify(expected))};
+  const frame = () => new Promise((resolve) => requestAnimationFrame(resolve));
+  await document.fonts.ready;
+  await frame();
+  await frame();
+  let value = null;
+  for (let attempt = 0; attempt < 300; attempt++) {
+    value = await (${expression});
+    if (JSON.stringify(value) === want) break;
+    await frame();
+  }
+  return { value };
+})()`;
+
+type MenuPage = Awaited<
+  ReturnType<Awaited<ReturnType<typeof realBrowser>>["page"]>
+>;
+
+async function reached(
+  page: MenuPage,
+  check: {
+    readonly name: string;
+    readonly expression: string;
+    readonly expected: object;
+  },
+): Promise<void> {
+  const reply = await page.evaluate(waited(check.expression, check.expected));
+  const shown = reply["value"];
+  assert.ok(
+    typeof shown === "object" && shown !== null,
+    `${check.name}: ${JSON.stringify(shown)}`,
+  );
+  assert.deepEqual(
+    shown,
+    check.expected,
+    `${check.name}: ${JSON.stringify(shown)}`,
+  );
+}
+
+const bridged = `(() => {
+  const open = document.querySelector('[popovertarget="token-menu-run-a"]').getBoundingClientRect();
+  const x = open.left + open.width / 2;
+  return { under: [1, 2, 3].map((step) => document.elementFromPoint(x, open.bottom + step)?.closest(".token-menu")?.querySelector(".token-pop")?.id ?? null) };
+})()`;
+
+const placedParts = `(() => {
+  const value = ${placed};
+  return [value.below, value.next, value.font, value.list];
+})()`;
+
+async function pointerRests(page: MenuPage): Promise<void> {
+  const shown = await page.evaluate(placed);
+  await page.move(point(fields(shown["under"])));
+  await delay(400);
+  assert.deepEqual(
+    await page.evaluate(opened),
+    { open: "token-menu-run-a" },
+    "stays open under the menu button",
+  );
+  await page.move(point(fields(shown["inside"])));
+  await delay(400);
+  assert.deepEqual(
+    await page.evaluate(opened),
+    { open: "token-menu-run-a" },
+    "stays open in the popover",
+  );
+  await page.move({ x: 5, y: 830 });
+  await reached(page, {
+    name: "closed after leave",
+    expression: opened,
+    expected: { open: "" },
+  });
+}
+
 await test("CLV-354 the token menu sits inside each card with no empty row, a card fits its column, and the popover opens on hover next to the menu button without moving the cards", async () => {
   await using fixture = await watchPageServer(model("#727"), {
     token: "a".repeat(64),
@@ -102,32 +177,42 @@ await test("CLV-354 the token menu sits inside each card with no empty row, a ca
   await using browser = await realBrowser();
   const page = await browser.page({ width: 1280, height: 844 });
   await page.navigate(fixture.url);
-  assert.deepEqual(await page.evaluate(ready), { menus: 3 });
-  assert.deepEqual(await page.evaluate(layout), {
-    rows: [0, 0],
-    gap: 6,
-    inside: [true, true],
-    clear: [true, true],
-    fits: true,
+  await reached(page, {
+    name: "menus",
+    expression: `({ menus: document.querySelectorAll(".tokens .token-menu").length })`,
+    expected: { menus: 3 },
+  });
+  await reached(page, {
+    name: "layout",
+    expression: layout,
+    expected: {
+      rows: [0, 0],
+      gap: 6,
+      inside: [true, true],
+      clear: [true, true],
+      fits: true,
+    },
   });
   const before = await page.evaluate(placed);
   await page.move(
     point(await page.evaluate(center('[popovertarget="token-menu-run-a"]'))),
   );
-  assert.deepEqual(await page.evaluate(opened), { open: "token-menu-run-a" });
-  const shown = await page.evaluate(placed);
-  assert.deepEqual(
-    [shown["below"], shown["next"], shown["font"], shown["list"]],
-    [true, before["next"], true, true],
-  );
-  await page.move(point(fields(shown["gap"])));
-  await delay(100);
-  await page.move(point(fields(shown["inside"])));
-  await delay(400);
-  assert.deepEqual(await page.evaluate(opened), { open: "token-menu-run-a" });
-  await page.move({ x: 5, y: 830 });
-  await delay(400);
-  assert.deepEqual(await page.evaluate(opened), { open: "" });
+  await reached(page, {
+    name: "hover open",
+    expression: opened,
+    expected: { open: "token-menu-run-a" },
+  });
+  await reached(page, {
+    name: "placed",
+    expression: placedParts,
+    expected: [true, before["next"], true, true],
+  });
+  await reached(page, {
+    name: "no gap under the menu button",
+    expression: bridged,
+    expected: { under: Array(3).fill("token-menu-run-a") },
+  });
+  await pointerRests(page);
 });
 
 function fields(value: unknown): Record<string, unknown> {

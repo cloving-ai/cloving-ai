@@ -71,14 +71,16 @@ async function withHost(
 
 function mark(
   at: RestartTime,
-  options: { readonly resumeQueue?: true; readonly settings?: "files" } = {},
+  options: Pick<RestartMark, "settings" | "variables"> & {
+    readonly resumeQueue?: true;
+  } = {},
 ): string {
   return restartText({
     at,
     requestedAt: Date.now(),
     commandId: `restart-${at}`,
+    ...options,
     resumeQueue: options.resumeQueue ?? false,
-    ...(options.settings === undefined ? {} : { settings: options.settings }),
   });
 }
 
@@ -103,6 +105,7 @@ await test("CLV-306 CLV-337 a restart at the next gap waits for the open turn an
     assert.equal(await hosting, 75);
     assert.equal(existsSync(join(directory, "resume-queue")), false);
     assert.equal(existsSync(join(directory, "restart-settings")), false);
+    assert.equal(existsSync(join(directory, "restart-variables")), false);
     assert.equal(
       await readFile(join(root, "daemon-signals"), "utf8"),
       "SIGUSR2\n",
@@ -110,7 +113,7 @@ await test("CLV-306 CLV-337 a restart at the next gap waits for the open turn an
     assert.equal(existsSync(join(directory, "pending-restart-one")), false);
   }));
 
-await test("CLV-306 CLV-337 a restart now stops the programs at once while a turn is open, and the daemon gets the signal that keeps turns", () =>
+await test("CLV-306 CLV-337 CLV-352 a restart now stops the programs at once while a turn is open, the daemon gets the signal that keeps turns, and the host leaves the notes of the request", () =>
   withHost({}, async ({ root, directory, hosted }) => {
     await openTurn(directory);
     const hosting = hosted();
@@ -119,13 +122,21 @@ await test("CLV-306 CLV-337 a restart now stops the programs at once while a tur
     );
     await writeFile(
       join(directory, "pending-restart-one"),
-      mark("now", { resumeQueue: true, settings: "files" }),
+      mark("now", {
+        resumeQueue: true,
+        settings: "files",
+        variables: { CLOVING_QUEUE_LANES: "8" },
+      }),
     );
     assert.equal(await hosting, 75);
     assert.equal(existsSync(join(directory, "resume-queue")), true);
     assert.equal(
       await readFile(join(directory, "restart-settings"), "utf8"),
       "files",
+    );
+    assert.deepEqual(
+      JSON.parse(await readFile(join(directory, "restart-variables"), "utf8")),
+      { CLOVING_QUEUE_LANES: "8" },
     );
     assert.equal(
       await readFile(join(root, "daemon-signals"), "utf8"),

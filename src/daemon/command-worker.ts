@@ -28,9 +28,13 @@ import {
   recordCommandResult,
 } from "./command-journal.ts";
 import type { CloseOptions } from "./claude-worker.ts";
-import { launchState } from "./detached-process.ts";
+import { foundLaunch, launchState, markerRecord } from "./detached-process.ts";
 import { record } from "../protocol.ts";
-import { recordedLaunch, type TurnLaunch } from "../turn-launch.ts";
+import {
+  plannedLaunch,
+  recordedLaunch,
+  type TurnLaunch,
+} from "../turn-launch.ts";
 import type { TurnRecovery } from "../turn-recovery.ts";
 
 export interface CommandWorkerSettings {
@@ -92,8 +96,10 @@ async function reconciled(
   if (inFlight()) return { kind: "accepted", receipt: key, worker: "command" };
   if (!(await commandStarted(folder))) return { kind: "absent" };
   const started = await readRecord(folder, "started.json");
-  const launch = await keptLaunch(folder);
+  const launch = await keptLaunch(folder, started);
   if (inFlight()) return { kind: "accepted", receipt: key, worker: "command" };
+  if (launch === "unknown")
+    return { kind: "unknown", evidence: `command:${key}` };
   if (launch !== undefined && commandIntent(intent))
     return attached(parts, { intent, key, folder, started, launch });
   const duration =
@@ -125,9 +131,30 @@ function ending(end: CommandEnd, stopping: Active["stopping"]): Recorded {
   return { outcome: "completed", result: end.stdout, endedAt };
 }
 
-async function keptLaunch(folder: string): Promise<TurnLaunch | undefined> {
-  const launch = recordedLaunch(await readRecord(folder, "launch.json"));
-  if (launch === undefined) return undefined;
+async function markedCommand(
+  folder: string,
+  started: unknown,
+): Promise<TurnLaunch | "unknown" | undefined> {
+  const planned = plannedLaunch(await readRecord(folder, markerRecord));
+  if (planned === undefined) return undefined;
+  const since = Date.parse(String(record(started)?.["startedAt"]));
+  const found = await foundLaunch(planned, { since, stopMilliseconds: 0 });
+  if (found === "stopped") return undefined;
+  if (found === undefined || found === "unknown") return found;
+  await writeRecord(folder, { name: "launch.json", value: found.launch });
+  return found.launch;
+}
+
+async function keptLaunch(
+  folder: string,
+  started: unknown,
+): Promise<TurnLaunch | "unknown" | undefined> {
+  const recorded = await readRecord(folder, "launch.json");
+  const launch =
+    recorded === undefined
+      ? await markedCommand(folder, started)
+      : recordedLaunch(recorded);
+  if (launch === undefined || launch === "unknown") return launch;
   return (await launchState(launch)) === "gone" ? undefined : launch;
 }
 
@@ -218,7 +245,10 @@ function watched(
       );
     })
     .catch(() => undefined)
-    .finally(() => parts.active.delete(key));
+    .finally(async () => {
+      await recorded;
+      parts.active.delete(key);
+    });
   parts.active.set(key, { command: running, concluded, stopping, recorded });
 }
 

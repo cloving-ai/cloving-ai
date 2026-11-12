@@ -18,6 +18,7 @@ export interface WorkspaceRestartEnvironment extends OutputEnvironment {
 function unsupported(invocation: RestartInvocation): string | undefined {
   if (invocation.update) return "--update";
   if (invocation.cancel) return "--cancel";
+  if (Object.keys(invocation.set).length > 0) return "--set";
   return invocation.within === null ? undefined : "--within";
 }
 

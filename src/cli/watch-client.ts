@@ -145,6 +145,10 @@ function steerClose() {
   draw();
   document.querySelector(".steer-open")?.focus();
 }
+function steerEnded() {
+  const run = state.model?.runs.find((item) => item.runId === state.steerOpen);
+  if (run !== undefined && !steerable(run.state)) state.steerOpen = null;
+}
 function steerNote(text) {
   state.steerNote = text;
 }
@@ -188,6 +192,8 @@ function renameDropped(runId) {
   return kept;
 }
 function renameFocus(runId) {
+  const pencil = document.querySelector(".name-edit");
+  if (pencil !== null) return pencil.focus();
   const opener = document.querySelector('[popovertarget="token-menu-' + runId + '"]');
   if (opener === null) return document.querySelector(".rename-open")?.focus();
   const item = document.querySelector("#token-menu-" + runId + ":popover-open .rename-open");
@@ -308,6 +314,7 @@ async function load() {
     const model = await reply.json();
     const receivedAt = performance.now();
     state.model = await withSelectedRun(model);
+    steerEnded();
     state.receivedAt = receivedAt;
     state.stale = false;
   } catch {

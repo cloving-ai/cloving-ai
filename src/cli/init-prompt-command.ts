@@ -9,7 +9,7 @@ import { discoverHarnesses } from "./harness-probes.ts";
 import { initPrompt, type InitPromptFacts } from "./init-prompt.ts";
 import type { ProbeRunner } from "./probe-command.ts";
 import { projectSettings } from "./project-settings.ts";
-import { runtimeDirectory } from "./runtime-directory.ts";
+import { clientProgram, runtimeDirectory } from "./runtime-directory.ts";
 import { prRepository } from "./watch-pr-identity.ts";
 
 interface PromptContext {
@@ -154,6 +154,7 @@ export async function initPromptFacts(
   const name = environment["CLOVING_WORKER"] ?? harness?.name ?? "claude";
   return {
     version: packageMetadata.version,
+    client: clientProgram(),
     repository,
     ...github,
     node: process.version,

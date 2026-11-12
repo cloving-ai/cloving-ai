@@ -5,6 +5,7 @@ import { initPrompt, type InitPromptFacts } from "../src/cli/init-prompt.ts";
 
 const facts: InitPromptFacts = {
   version: "1.3.0",
+  client: "npx cloving@1.3.0",
   repository: "<repository>",
   origin: "git@github.com:example/project.git",
   login: "setup-user",
@@ -26,6 +27,33 @@ await test("CLV-303 setup walks through the lessons decision with the other deve
   );
 });
 
+await test("CLV-345 the summary prints the start and first-run commands with the client of the facts and names the install command", () => {
+  const output = initPrompt(facts);
+  const summary = output.slice(
+    output.indexOf("The final summary must include:"),
+  );
+  assert.match(output, /"client": "npx cloving@1\.3\.0"/);
+  assert.match(
+    summary,
+    /Start each command with the `client` value of the facts, for example `<client> run develop --ticket <id>`/,
+  );
+  assert.match(
+    summary,
+    /Otherwise print `<client> start` and the first-run commands for the user, with the `client` value of the facts/,
+  );
+  assert.match(
+    summary,
+    /`npm install --global cloving --ignore-scripts`.*as an option/,
+  );
+  assert.doesNotMatch(summary, /`cloving (start|run)/);
+  const steps = output.slice(
+    output.indexOf("# Steps"),
+    output.indexOf("The final summary"),
+  );
+  assert.match(steps, /Run `cloving doctor --json`/);
+  assert.doesNotMatch(steps, /<client>|npx cloving/);
+});
+
 await test("CLV-228 first-workflow setup defers no-workflow to the template step and checks it after copying", () => {
   const output = initPrompt(facts);
   const first = output.split("\n").find((line) => line.startsWith("1. Run"));
@@ -45,6 +73,30 @@ await test("CLV-228 first-workflow setup defers no-workflow to the template step
   assert.doesNotMatch(
     output,
     /develop-(?:issue|ticket|prompt|prd)|bundled workflows/,
+  );
+});
+
+await test("CLV-344 setup asks how turns commit when commit-signatures fails, before the summary", () => {
+  const output = initPrompt(facts);
+  const question = output.indexOf("If `commit-signatures` gives `fail`");
+  assert.ok(question > output.indexOf("1. Run `cloving doctor --json`"));
+  assert.ok(question < output.indexOf("2. Read `cloving config list --json`"));
+  const text = output.slice(question, output.indexOf("2. Read"));
+  assert.match(
+    text,
+    /tell the user in one or two sentences why a turn cannot sign\. .*Then ask one question with two options:/,
+  );
+  assert.match(
+    text,
+    /- Recommended: turns commit with no signature\. A turn does not get the SSH agent\. Before a merge, the user can sign the commits again, or merge with a squash and sign that commit\. Apply it with `cloving config set turns\.commitSignatures off --private`\./,
+  );
+  assert.match(
+    text,
+    /- Turns get `SSH_AUTH_SOCK`\. Then each turn can use each key in the SSH agent, also for `git push` and `ssh`\. .*`SSH_AUTH_SOCK` to `turns\.environment`/,
+  );
+  assert.match(
+    text,
+    /Apply the answer with `cloving config set`, then run `cloving doctor --json` again\./,
   );
 });
 

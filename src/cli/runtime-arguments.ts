@@ -139,7 +139,9 @@ export function isRuntimeCommand(command: string): boolean {
 export function runtimeInvocation(request: RuntimeRequest): Outcome {
   const shape = shapes.get(request.command);
   if (!isRuntimeCommand(request.command)) return "unknown-command";
-  const names = request.options.map((option) => option.name);
+  const names = request.options
+    .map((option) => option.name)
+    .filter((name) => name !== "set");
   if (new Set(names).size !== names.length) return "repeated-option";
   if (names.includes("help"))
     return { kind: "command-help", command: request.command };

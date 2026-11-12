@@ -77,7 +77,8 @@ await test("CLV-308 the watch run detail shows the effects, the cost and the cha
   );
   assert.match(html, /3 of 40 effect units/);
   assert.match(html, /1\.25 USD \(spend limit 2\.00 USD\)/);
-  assert.match(html, /run 2 of 8 in its chain/);
+  assert.match(html, /<p class="run-facts">[^]*run 2 of 8<\/p>/);
+  assert.match(html, /<dt>Chain<\/dt><dd>run 2 of 8/);
 });
 
 await test("CLV-308 the status text shows the cost of a run with its spend limit", () => {

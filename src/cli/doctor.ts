@@ -1,4 +1,4 @@
-import { shellArgument } from "./runtime-directory.ts";
+import { clientProgram, shellArgument } from "./runtime-directory.ts";
 import { dirname, delimiter, join } from "node:path";
 import {
   doctorCodes,
@@ -15,11 +15,15 @@ import { doctorWorkflows, workflowObservation } from "./doctor-workflows.ts";
 import { runtimeObservation, serviceObservation } from "./doctor-runtime.ts";
 import type { ProbeRunner } from "./probe-command.ts";
 import type { TurnProfiles } from "../turn-profile.ts";
+import type { HarnessSettings } from "../harness-defaults.ts";
 import { harnessObservations } from "./doctor-harness.ts";
 import { retentionObservation } from "./doctor-retention.ts";
 import { themeObservation } from "./doctor-theme.ts";
-import { turnEnvironmentObservation } from "./doctor-turns.ts";
-import { turnRunnerObservation } from "./doctor-runners.ts";
+import {
+  commitSignatureObservation,
+  turnEnvironmentObservation,
+} from "./doctor-turns.ts";
+import { profileRunners, turnRunnerObservation } from "./doctor-runners.ts";
 import { threadPoolObservation } from "./doctor-thread-pool.ts";
 import {
   commandLoginObservation,
@@ -93,10 +97,11 @@ export async function doctorReport(
     "node-version": nodeObservation(process.version),
     "git-repository": git,
   };
+  const fixes = doctorFixes(clientProgram());
   const checks = doctorCodes.map((code): DoctorCheck => ({
     code,
     required: found.required.includes(code),
-    fix: doctorFixes[code],
+    fix: fixes[code],
     ...(observations[code] ?? {
       result: "skip",
       detail: "Repository prerequisite unavailable",
@@ -165,21 +170,27 @@ async function repositoryObservations(
 
 async function settingObservations(context: {
   readonly environment: Readonly<NodeJS.ProcessEnv>;
+  readonly harness?: HarnessSettings["harness"];
   readonly profiles?: TurnProfiles;
   readonly repository: string;
   readonly probe: ProbeRunner;
 }): Promise<Observations> {
   const { environment } = context;
+  const runners = await profileRunners({
+    ...context,
+    profiles: context.profiles ?? {},
+  });
   return {
     "merge-mode": mergeModeObservation(environment["CLOVING_MERGE_MODE"]),
     "turn-environment": turnEnvironmentObservation(environment),
+    "commit-signatures": await commitSignatureObservation({
+      ...context,
+      runners,
+    }),
     "command-gh-no-login": commandLoginObservation(
       environment["CLOVING_COMMANDS"],
     ),
-    "turn-runners": await turnRunnerObservation({
-      ...context,
-      profiles: context.profiles ?? {},
-    }),
+    "turn-runners": turnRunnerObservation(runners),
   };
 }
 
