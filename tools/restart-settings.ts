@@ -3,6 +3,7 @@ import { extname, resolve } from "node:path";
 import {
   absoluteWorkflowFolder,
   settingVariables,
+  type SettingSource,
 } from "../src/project-settings.ts";
 import { turnHarness } from "../src/harness-defaults.ts";
 import { isCandidateDeclaration } from "../src/workflow-candidate.ts";
@@ -14,10 +15,8 @@ import {
 } from "../src/restart-request.ts";
 import { projectConfiguration, topLevel } from "./project-configuration.ts";
 import {
-  listedSetting,
-  queueCommands,
-  queueInterval,
   queueLimits,
+  queuePlan,
   queueSpendLimit,
   readyTicketCommand,
 } from "./self-host-queue.ts";
@@ -25,12 +24,12 @@ import { workflowPackageRoot } from "./workflow-bundle-dependencies.ts";
 import { loadWorkflowFolders } from "./workflow-folders.ts";
 import { selfUpdateMilliseconds } from "./self-update-host.ts";
 
-async function checkedQueueCommands(
-  repository: string,
-  environment: Readonly<NodeJS.ProcessEnv>,
-): Promise<void> {
-  const queueMilliseconds = queueInterval(environment);
-  if (queueMilliseconds === undefined) return;
+async function checkedQueueSettings(given: {
+  readonly repository: string;
+  readonly environment: Readonly<NodeJS.ProcessEnv>;
+  readonly sources: Readonly<Record<string, SettingSource>>;
+}): Promise<void> {
+  const { repository, environment, sources } = given;
   const folders = await loadWorkflowFolders(
     {
       repository,
@@ -47,16 +46,17 @@ async function checkedQueueCommands(
       ),
     },
   );
-  queueCommands({
-    queueMilliseconds,
+  const plan = queuePlan(environment, {
     declarations: folders.workflows.flatMap(({ admitted, declaration }) =>
       admitted && isCandidateDeclaration(declaration)
         ? [declaration.workflow]
         : [],
     ),
-    nextCommand: listedSetting(environment, "CLOVING_NEXT_COMMAND"),
-    ticketCommand: listedSetting(environment, "CLOVING_TICKET_COMMAND"),
+    sources,
   });
+  queueLimits(environment, plan);
+  queueSpendLimit(environment, plan);
+  readyTicketCommand(environment, plan);
 }
 
 function changedSettingKey(mark: RestartMark, detail: string): string {
@@ -78,6 +78,7 @@ function changedSettingKey(mark: RestartMark, detail: string): string {
     Object.entries(settingVariables).find(
       ([key, variable]) =>
         (key.startsWith("queue.") ||
+          key === "queues" ||
           key === "spend.scope" ||
           key === "tickets.readyCommand" ||
           key === "workflows.folder") &&
@@ -108,10 +109,6 @@ export function restartSettings(start: {
           ? {}
           : { harness: configuration.harness }),
       });
-      queueLimits(configuration.environment);
-      queueInterval(configuration.environment);
-      queueSpendLimit(configuration.environment);
-      readyTicketCommand(configuration.environment);
       const product = resolve(import.meta.dirname, "..");
       await selfUpdateMilliseconds({
         seconds: configuration.environment["CLOVING_SELF_UPDATE_SECONDS"],
@@ -119,7 +116,11 @@ export function restartSettings(start: {
         product:
           extname(import.meta.filename) === ".ts" ? topLevel(product) : product,
       });
-      await checkedQueueCommands(start.repository, configuration.environment);
+      await checkedQueueSettings({
+        repository: start.repository,
+        environment: configuration.environment,
+        sources: configuration.sources,
+      });
       return undefined;
     } catch (error) {
       const detail = String(Reflect.get(Object(error), "message"));

@@ -44,6 +44,80 @@ await test("CLV-218 queue is an optional boolean and accepts optional extra inpu
   );
 });
 
+const noAnalysis = {
+  imports: [],
+  effects: [],
+  directEffects: [],
+  unsupportedForms: [],
+  knownCallCount: 0,
+  knownUnitTotal: 0,
+};
+
+await test("CLV-359 queue accepts an object with an optional interval and lane count", () => {
+  for (const queue of [
+    { everySeconds: 300, lanes: 2 },
+    {},
+    { everySeconds: 10 },
+    { everySeconds: 3600 },
+    { lanes: 1 },
+    { lanes: 16 },
+    true,
+  ])
+    assert.ok(
+      isWorkflowDeclaration({ ...workflow, queue }),
+      JSON.stringify(queue),
+    );
+});
+
+for (const queue of [
+  { everySeconds: 9 },
+  { everySeconds: 3601 },
+  { everySeconds: 120.5 },
+  { everySeconds: "120" },
+  { lanes: 0 },
+  { lanes: 17 },
+  { lanes: 1.5 },
+  { lanes: 2, interval: 120 },
+  [],
+  "true",
+  null,
+]) {
+  await test(`CLV-359 queue ${JSON.stringify(queue)} gives invalid-queue-shape`, () => {
+    const declaration = { ...workflow, queue };
+    assert.equal(isWorkflowDeclaration(declaration), false);
+    assert.deepEqual(
+      checkWorkflowCandidate({
+        declaration: { ...candidateDeclaration, workflow: declaration },
+        analysis: noAnalysis,
+        installedExports: {},
+      }),
+      ["invalid-queue-shape"],
+    );
+    const refusal = {
+      scope: "project",
+      label: "queue.ts",
+      codes: ["invalid-queue-shape"],
+    };
+    assert.deepEqual(workflowRefusals([refusal]), [refusal]);
+  });
+}
+
+await test("CLV-359 an object queue keeps the ticket input refusals", () => {
+  const declaration = {
+    ...workflow,
+    queue: { lanes: 2 },
+    input: { ...workflow.input, fields: {} },
+  };
+  assert.deepEqual(
+    checkWorkflowCandidate({
+      declaration: { ...candidateDeclaration, workflow: declaration },
+      analysis: noAnalysis,
+      installedExports: {},
+    }),
+    ["queue-needs-ticket-field"],
+  );
+});
+
 for (const [fields, code] of [
   [{}, "queue-needs-ticket-field"],
   [{ ticket: { type: "string" } }, "queue-needs-ticket-field"],

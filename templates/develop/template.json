@@ -40,7 +40,7 @@
           "id": "queue",
           "label": "The queue",
           "summary": "Select a ready ticket through the configured next-ticket command.",
-          "change": "In develop.declaration.json, set workflow.queue to true (\"queue\": true).",
+          "change": "In develop.declaration.json, set workflow.queue to an object (\"queue\": { \"everySeconds\": 120, \"lanes\": 1 }).",
           "requires": {
             "input": ["ticket"]
           },

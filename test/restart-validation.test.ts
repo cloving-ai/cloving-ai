@@ -317,3 +317,29 @@ await test("CLV-352 restart validation reads current files without treating file
     rmSync(fixture.root, { recursive: true, force: true });
   }
 });
+
+await test("CLV-359 restart validation names queues when its working lanes exceed the declared lanes", async () => {
+  const fixture = settingsScene();
+  try {
+    await writeQueueWorkflow(join(fixture.repository, ".cloving/workflows"));
+    const validate = restartSettings({
+      repository: fixture.repository,
+      environment: {
+        ...fixture.environment,
+        CLOVING_NEXT_COMMAND: '["false"]',
+        CLOVING_TICKET_COMMAND: '["tickets"]',
+      },
+      fileVariables: [],
+    });
+    const refusal = await validate({
+      ...mark,
+      variables: {
+        CLOVING_QUEUES: '{"queued":{"workingLanes":2}}',
+      },
+    });
+    assert.match(String(refusal?.detail), /invalid-queue-working-lanes/);
+    assert.equal(refusal?.key, "queues");
+  } finally {
+    rmSync(fixture.root, { recursive: true, force: true });
+  }
+});

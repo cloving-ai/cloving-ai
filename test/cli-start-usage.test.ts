@@ -23,9 +23,10 @@ await test("CLV-228 queue guidance requires a declared queue workflow", () => {
   const readme = readFileSync(new URL("../README.md", import.meta.url), "utf8");
   const queue = readme
     .split("\n")
-    .find((line) => line.startsWith("Set `CLOVING_QUEUE_SECONDS`"));
+    .find((line) => line.startsWith("A workflow declares the queue with"));
   assert.ok(queue);
-  assert.match(queue, /no workflow declares it, no queue starts/);
+  assert.match(queue, /No interval setting is necessary/);
+  assert.match(queue, /no workflow declares a queue, no queue starts/);
   assert.doesNotMatch(queue, /bundled|develop-issue/);
 });
 
@@ -70,6 +71,10 @@ const facts: readonly (readonly [string, RegExp])[] = [
     /JSON object.*everySeconds.*input.*at.*timeZone.*weekdays.*60.*2592000.*HH:MM.*IANA.*Unset keeps declaration schedules.*skip.*restart/,
   ],
   ["CLOVING_NOTIFY_COMMAND", /JSON list.*standard input.*no default/],
+  [
+    "CLOVING_QUEUES",
+    /JSON object.*state.*on or off.*everySeconds.*lanes.*workingLanes.*cloving reload/,
+  ],
   [
     "CLOVING_QUEUE_SECONDS",
     /10.*3600.*CLOVING_NEXT_COMMAND.*CLOVING_TICKET_COMMAND.*no queue.*manual.*workflow-active/,

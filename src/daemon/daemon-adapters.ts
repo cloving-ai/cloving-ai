@@ -1,3 +1,4 @@
+import type { QueueSource } from "../queue-settings.ts";
 import { turnRecoveries, type TurnRecoveries } from "../turn-recovery.ts";
 import type { ThreadPoolSettings } from "../cli/thread-pool.ts";
 import type { HostSignals, QueueLimits } from "../queue-room.ts";
@@ -72,6 +73,8 @@ export interface DaemonSettings extends HarnessSettings {
   readonly notifyCommand?: readonly string[];
   readonly notifyMilliseconds?: number;
   readonly queueMilliseconds?: number;
+  readonly queueIntervalSource?: QueueSource;
+  readonly queueState?: "off";
   readonly runWaitChecks?: RunWaitChecks;
   readonly scheduleClock?: () => number;
   readonly retention?: RetentionSettings;
