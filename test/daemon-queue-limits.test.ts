@@ -136,3 +136,26 @@ process.exit(0);
 `);
     assert.equal(result.status, 0, result.stderr);
   }));
+
+await test("CLV-359 a mixed queues reload applies limits once and keeps the interval pending a restart", () =>
+  withConsumer(queueWorkflow, async (consumer) => {
+    const result = await consumer.run(`${queuesPrelude}
+const daemon = await launched({ ...started, queueMilliseconds: 60000 });
+try {
+  const limits = { lanes: 3, workingLanes: 1, sources: { lanes: "queues setting", workingLanes: "queues setting" } };
+  const reply = await reloadedQueues(limits, "restart-b:lanes-b");
+  assert.deepEqual([reply.reloadedFields, reply.restartFields], [["queues"], ["queues"]]);
+  assert.deepEqual((await queueOf()).settings, {
+    everySeconds: { value: 60, source: "declaration" },
+    lanes: { value: 3, source: "queues setting" },
+    workingLanes: { value: 1, source: "queues setting" },
+  });
+  const repeated = await reloadedQueues(limits, "restart-b:lanes-b");
+  assert.deepEqual([repeated.reloadedFields, repeated.restartFields], [[], ["queues"]]);
+  const reverted = await reloadedQueues(limits, "restart-a:lanes-b");
+  assert.deepEqual([reverted.reloadedFields, reverted.restartFields], [[], []]);
+} finally { await daemon.close(); }
+process.exit(0);
+`);
+    assert.equal(result.status, 0, result.stderr);
+  }));

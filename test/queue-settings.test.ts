@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { keptDigests, settingChanges } from "../src/daemon/settings-reload.ts";
 import { test } from "node:test";
 import {
   parseQueuesSetting,
@@ -10,6 +11,37 @@ const general: GeneralQueueValues = {
   everySeconds: { value: 30, source: "queue setting" },
   lanes: { value: 3, source: "environment" },
 };
+
+await test("CLV-359 a mixed queues edit reports both the applied limits and the restart fields", () => {
+  assert.deepEqual(
+    settingChanges(
+      { queues: "restart-a:lanes-a" },
+      { queues: "restart-b:lanes-b" },
+    ),
+    { reloadedFields: ["queues"], restartFields: ["queues"] },
+  );
+});
+
+await test("CLV-359 a mixed queues reload retains the active restart digest and the new limits digest", () => {
+  const next = { queues: "restart-b:lanes-b" };
+  const kept = keptDigests(
+    { queues: "restart-a:lanes-a" },
+    { digests: next, reloadedFields: ["queues"] },
+  );
+  assert.deepEqual(kept, { queues: "restart-a:lanes-b" });
+  assert.deepEqual(settingChanges(kept, next), {
+    reloadedFields: [],
+    restartFields: ["queues"],
+  });
+  assert.deepEqual(settingChanges(kept, { queues: "restart-a:lanes-b" }), {
+    reloadedFields: [],
+    restartFields: [],
+  });
+  assert.deepEqual(settingChanges(kept, { queues: "restart-a:lanes-a" }), {
+    reloadedFields: ["queues"],
+    restartFields: [],
+  });
+});
 
 await test("CLV-359 the queues setting comes first for the lanes and the interval", () => {
   assert.deepEqual(

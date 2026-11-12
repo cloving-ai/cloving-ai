@@ -270,7 +270,13 @@ function queueConfiguration(
     declaresQueue(declaration.queue),
   );
   if (declared === undefined) return undefined;
-  return { declared, setting: settings[declared.workflowId], general };
+  return {
+    declared,
+    setting: Object.hasOwn(settings, declared.workflowId)
+      ? settings[declared.workflowId]
+      : undefined,
+    general,
+  };
 }
 
 function configuredPlan(

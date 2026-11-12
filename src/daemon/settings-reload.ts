@@ -79,6 +79,10 @@ function restartPart(digest: string | undefined): string | undefined {
   return digest?.split(":")[0];
 }
 
+function livePart(digest: string | undefined): string | undefined {
+  return digest?.split(":")[1];
+}
+
 export function settingChanges(
   current: SettingDigests,
   next: SettingDigests,
@@ -88,11 +92,15 @@ export function settingChanges(
     .sort();
   const reloaded = (field: string): boolean =>
     field === "queues"
-      ? restartPart(current[field]) === restartPart(next[field])
+      ? livePart(current[field]) !== livePart(next[field])
       : reloadedSettingFields.includes(field);
+  const restarted = (field: string): boolean =>
+    field === "queues"
+      ? restartPart(current[field]) !== restartPart(next[field])
+      : !reloaded(field);
   return {
     reloadedFields: changed.filter((field) => reloaded(field)),
-    restartFields: changed.filter((field) => !reloaded(field)),
+    restartFields: changed.filter((field) => restarted(field)),
   };
 }
 
@@ -106,9 +114,14 @@ export function keptDigests(
   return {
     ...current,
     ...Object.fromEntries(
-      Object.entries(change.digests).filter(([field]) =>
-        change.reloadedFields.includes(field),
-      ),
+      Object.entries(change.digests)
+        .filter(([field]) => change.reloadedFields.includes(field))
+        .map(([field, digest]) => [
+          field,
+          field === "queues"
+            ? `${restartPart(current[field]) ?? ""}:${livePart(digest) ?? ""}`
+            : digest,
+        ]),
     ),
   };
 }
