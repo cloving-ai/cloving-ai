@@ -122,7 +122,7 @@ await test("CLV-350 a new worker stops the turn and each other process with its 
 
 await test("CLV-350 a turn with a marker and no matching process is not connected", () =>
   withScene(async (scene) => {
-    await crashedTurn(scene, "gated-lines");
+    await crashedTurn(scene, "sessionless");
     const turn = keptTurn(scene);
     process.kill(-turn.parentId, "SIGKILL");
     await until(() => !alive(turn.processId) && !alive(turn.parentId));
