@@ -47,12 +47,16 @@ function columnControls(model, selected) {
     draw();
   } };
 }
+function queueSnapshot(workflowId) {
+  const queue = state.model?.queues?.find((queue) => queue.workflowId === workflowId);
+  return JSON.stringify([queue?.state, queue?.lanes]);
+}
 async function queuePost(workflowId, requested) {
   if (state.queueBusy.includes(workflowId)) return;
-  const direction = requested.command === "lanes" ? Math.sign(requested.lanes - requested.expectedLanes) : "";
-  const control = workflowId + " " + requested.command + " " + direction;
-  const command = state.queueCommands[control] ?? { ...requested, workflowId, commandId: crypto.randomUUID() };
-  state.queueCommands = { ...state.queueCommands, [control]: command };
+  const request = JSON.stringify(requested);
+  const saved = state.queueCommands[workflowId];
+  const command = saved?.request === request ? saved.command : { ...requested, workflowId, commandId: crypto.randomUUID() };
+  state.queueCommands = { ...state.queueCommands, [workflowId]: { request, command, shown: queueSnapshot(workflowId) } };
   state.queueBusy = [...state.queueBusy, workflowId];
   draw();
   let message;
@@ -66,7 +70,7 @@ async function queuePost(workflowId, requested) {
     const reply = response.ok ? await response.json() : null;
     message = reply === null ? refusedRequest : reply.error?.detail ?? "";
     if (reply?.error?.code !== "outcome-unknown") {
-      const { [control]: answered, ...others } = state.queueCommands;
+      const { [workflowId]: answered, ...others } = state.queueCommands;
       state.queueCommands = others;
     }
   } catch {
@@ -78,6 +82,7 @@ async function queuePost(workflowId, requested) {
 }
 function queueControls() {
   if (actionToken === null) return undefined;
+  state.queueCommands = Object.fromEntries(Object.entries(state.queueCommands).filter(([id, saved]) => saved.shown === queueSnapshot(id)));
   return { busy: state.queueBusy, messages: state.queueMessages,
     onCommand(workflowId, command) { queuePost(workflowId, { command }); },
     onLanes(workflowId, change) { queuePost(workflowId, { command: "lanes", ...change }); },

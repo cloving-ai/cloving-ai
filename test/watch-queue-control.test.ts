@@ -45,13 +45,16 @@ function invoke(handler: unknown) {
 }
 
 await test("CLV-361 queue cards switch and adjust only their own queue, with lane limits and per-queue feedback", () => {
-  const commands: unknown[] = [];
-  const queue = {
+  const commands: (
+    | Parameters<QueueControls["onCommand"]>
+    | Parameters<QueueControls["onLanes"]>
+  )[] = [];
+  const queue: QueueControls = {
     ...controls,
-    onCommand: (...args: unknown[]) => {
+    onCommand: (...args) => {
       commands.push(args);
     },
-    onLanes: (...args: unknown[]) => {
+    onLanes: (...args) => {
       commands.push(args);
     },
   };
@@ -95,6 +98,137 @@ await test("CLV-361 queue cards switch and adjust only their own queue, with lan
   assert.doesNotMatch(
     rendered(shown("running", { queue })).split("</header>")[0] ?? "",
     /Queue|lanes busy|queue-waiting/,
+  );
+});
+
+await test("CLV-361 an off queue explains the missing setting or command without unusable controls", () => {
+  for (const reason of [
+    "state off in the queues setting",
+    "no ticket command",
+  ]) {
+    const model = queued("off");
+    const html = rendered(
+      component(Page, {
+        model: {
+          ...model,
+          queues: model.queues
+            .slice(0, 1)
+            .map((queue) => ({ ...queue, off: { reason } })),
+        },
+        selected: "",
+        now: model.updatedAt,
+        stale: false,
+        copying: noCopy,
+        queue: controls,
+      }),
+    );
+    assert.match(html, /Queue off/);
+    assert.ok(html.includes(reason));
+    assert.doesNotMatch(html, /<button|role="switch"/);
+  }
+});
+
+for (const scenario of [
+  {
+    name: "switch",
+    first: { command: "drain" },
+    second: { command: "resume" },
+    next: { command: "drain" },
+    after: "drained",
+    lanes: 2,
+  },
+  {
+    name: "lanes",
+    first: { command: "lanes", lanes: 3, expectedLanes: 2 },
+    second: { command: "lanes", lanes: 4, expectedLanes: 3 },
+    next: { command: "lanes", lanes: 5, expectedLanes: 4 },
+    after: "running",
+    lanes: 3,
+  },
+]) {
+  await test(`CLV-361 a lost ${scenario.name} reply cannot override a new click`, () => {
+    const result = played(
+      { ...queued(), cardForms: [] },
+      `
+const model = JSON.parse(process.env.WATCH_MODEL);
+const scenario = ${JSON.stringify(scenario)};
+const posts = [];
+const plain = globalThis.fetch;
+globalThis.fetch = (address, options) => {
+  if (options?.method === "POST") {
+    posts.push(JSON.parse(options.body));
+    if (posts.length === 1) return Promise.reject(new Error("lost"));
+  }
+  return plain(address, options);
+};
+location.hash = "";
+replies.push(model);
+await load();
+const after = { ...model, queues: model.queues.map((queue) => queue.workflowId === "develop-issue" ? { ...queue, state: scenario.after, lanes: scenario.lanes } : queue) };
+replies.push(after);
+await queuePost("develop-issue", scenario.first);
+replies.push({}, model);
+await queuePost("develop-issue", scenario.second);
+replies.push({}, model);
+await queuePost("develop-issue", scenario.next);
+console.log(JSON.stringify({ posts }));
+`,
+    );
+    const posts = result["posts"];
+    assert.ok(Array.isArray(posts));
+    assert.equal(posts.length, 3);
+    for (const [index, requested] of [
+      scenario.first,
+      scenario.second,
+      scenario.next,
+    ].entries()) {
+      const commandId: unknown = Reflect.get(Object(posts[index]), "commandId");
+      assert.ok(typeof commandId === "string");
+      assert.deepEqual(posts[index], {
+        ...requested,
+        workflowId: "develop-issue",
+        commandId,
+      });
+    }
+    assert.notEqual(
+      Reflect.get(Object(posts[0]), "commandId"),
+      Reflect.get(Object(posts[2]), "commandId"),
+    );
+  });
+}
+
+await test("CLV-361 a displayed state change expires an unanswered command even when the queue returns to its former state", () => {
+  const result = played(
+    { ...queued(), cardForms: [] },
+    `
+const model = JSON.parse(process.env.WATCH_MODEL);
+const posts = [];
+const plain = globalThis.fetch;
+globalThis.fetch = (address, options) => {
+  if (options?.method === "POST") {
+    posts.push(JSON.parse(options.body));
+    return Promise.reject(new Error("lost"));
+  }
+  return plain(address, options);
+};
+location.hash = "";
+replies.push(model);
+await load();
+replies.push({ ...model, queues: model.queues.map((queue) => ({ ...queue, state: "drained" })) });
+await queuePost("develop-issue", { command: "drain" });
+replies.push(model);
+await load();
+replies.push(model);
+await queuePost("develop-issue", { command: "drain" });
+console.log(JSON.stringify({ posts }));
+`,
+  );
+  const posts = result["posts"];
+  assert.ok(Array.isArray(posts));
+  assert.equal(posts.length, 2);
+  assert.notEqual(
+    Reflect.get(Object(posts[0]), "commandId"),
+    Reflect.get(Object(posts[1]), "commandId"),
   );
 });
 

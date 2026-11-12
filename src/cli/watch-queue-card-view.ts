@@ -195,6 +195,7 @@ export function QueueCard(props: {
   const next = queue["nextCheckAt"];
   const state = queueCardState(queue);
   const reason = queueCardReason(queue);
+  const controls = state === "off" ? undefined : props.controls;
   return element("div", {
     class: `line-queue queue-${state}`,
     children: [
@@ -205,7 +206,7 @@ export function QueueCard(props: {
       reason === null
         ? null
         : element("p", { class: "queue-reason", children: reason }),
-      component(QueueLanes, { queue, controls: props.controls }),
+      component(QueueLanes, { queue, controls }),
       typeof next !== "string"
         ? null
         : element("p", {
@@ -214,9 +215,9 @@ export function QueueCard(props: {
           }),
       component(QueueSources, { queue }),
       component(QueueSkipped, { queue, words: props.words }),
-      props.controls === undefined
+      controls === undefined
         ? null
-        : component(QueueSwitch, { queue, controls: props.controls }),
+        : component(QueueSwitch, { queue, controls }),
     ],
   });
 }
