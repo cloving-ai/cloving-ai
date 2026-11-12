@@ -24,6 +24,7 @@ export type BoxedRunner = Exclude<TurnRunner, { readonly kind: "host" }>;
 
 export interface RunnerStart {
   readonly runner?: TurnRunner;
+  readonly piInputExtension?: string;
   readonly directory: string;
   readonly folder: string;
   readonly turnId?: string;
@@ -75,7 +76,7 @@ export function volumeName(directory: string): string {
 }
 
 function places(
-  start: { readonly directory: string; readonly turnId?: string },
+  start: RunnerStart,
   launch: {
     readonly folder: string;
     readonly environment: NodeJS.ProcessEnv;
@@ -92,6 +93,9 @@ function places(
     name: containerName(start.turnId),
     volume: volumeName(start.directory),
     variables: Object.keys(launch.environment),
+    ...(start.piInputExtension === undefined
+      ? {}
+      : { piInputExtension: start.piInputExtension }),
     ...(attachments === undefined ? {} : { attachments }),
   };
 }

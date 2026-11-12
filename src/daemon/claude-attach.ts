@@ -15,6 +15,7 @@ import {
   resumableHarness,
 } from "./claude-recovery.ts";
 import {
+  completedLaunch,
   foundLaunch,
   launchState,
   markerRecord,
@@ -103,10 +104,11 @@ export async function markedTurn(
   const { started } = request;
   const search = await markerSearch(folder, started);
   if (search === undefined) return undefined;
-  const found = await foundLaunch(search.planned, {
-    since: search.since,
-    stopMilliseconds: request.stopMilliseconds,
-  });
+  const found =
+    (await foundLaunch(search.planned, {
+      since: search.since,
+      stopMilliseconds: request.stopMilliseconds,
+    })) ?? (await completedLaunch(search.planned, search.since));
   if (found === undefined || found === "stopped" || found === "unknown")
     return found;
   await connectedRecords(folder, { started, attempt: search.attempt, found });

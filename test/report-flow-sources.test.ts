@@ -234,3 +234,34 @@ await test("CLV-244 daemon flow reads workflow skips and rejects invalid run int
     },
   );
 });
+
+await test("CLV-360 reports read every queue hold history and retain the latest history cutoff", async () => {
+  const first = { workflowId: "develop", lanes: 2, holds: [], holdsCutAt: 5 };
+  const second = {
+    workflowId: "triage-issue",
+    lanes: 1,
+    holdsCutAt: 10,
+    holds: [{ reason: "load", startedAt: 20, endedAt: null }],
+  };
+  for (const holds of [second.holds, undefined])
+    await withReportSource(
+      () => ({
+        kind: "result",
+        result: { queue: first, queues: [first, { ...second, holds }] },
+      }),
+      async (harness) => {
+        const flow = await readReportFlow(harness.runtimeDirectory, {
+          start: 0,
+          completions: [],
+          events: [],
+        });
+        assert.deepEqual(
+          flow.holds,
+          holds === undefined
+            ? null
+            : [{ reason: "load", start: 20, end: null }],
+        );
+        assert.equal(flow.holdsCutAt, 10);
+      },
+    );
+});

@@ -123,15 +123,19 @@ function spawnTurn(start: TurnStart): {
   readonly standardInput: string | undefined;
   readonly launch: RunnerLaunch;
 } {
-  const { parts, standardInput } = turnCommand(start);
+  const { parts, standardInput, inputExtension } = turnCommand(start);
   const configuration = mkdtempSync(join(start.folder, "gh-config-"));
   const command = shellCommand(start, { configuration, parts });
   const environment = turnEnvironment(configuration, start);
-  const launch = runnerLaunch(start, {
-    command,
-    environment,
-    serviceEnvironment: process.env,
-  });
+  const launch = runnerLaunch(
+    {
+      ...start,
+      ...(inputExtension === undefined
+        ? {}
+        : { piInputExtension: inputExtension }),
+    },
+    { command, environment, serviceEnvironment: process.env },
+  );
   const [executable = "", ...fixed] = launch.command;
   try {
     const child = spawn(executable, fixed, {
@@ -211,7 +215,11 @@ function commandFound(
 }
 
 function launchedTurn(start: TurnStart): StartedTurn | undefined {
-  const { parts: turnParts, standardInput } = turnCommand(start);
+  const {
+    parts: turnParts,
+    standardInput,
+    inputExtension,
+  } = turnCommand(start);
   const configuration = mkdtempSync(join(start.folder, "gh-config-"));
   const environment = turnEnvironment(configuration, start);
   const parts = shellCommand(start, { configuration, parts: turnParts });
@@ -221,11 +229,15 @@ function launchedTurn(start: TurnStart): StartedTurn | undefined {
       rmSync(configuration, { recursive: true, force: true });
       return undefined;
     }
-    const launch = runnerLaunch(start, {
-      command: parts,
-      environment,
-      serviceEnvironment: process.env,
-    });
+    const launch = runnerLaunch(
+      {
+        ...start,
+        ...(inputExtension === undefined
+          ? {}
+          : { piInputExtension: inputExtension }),
+      },
+      { command: parts, environment, serviceEnvironment: process.env },
+    );
     const [executable = "", ...rest] = launch.command;
     return detachedTurn({
       ...start,

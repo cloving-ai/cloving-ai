@@ -149,17 +149,14 @@ for (const [fields, code] of [
   });
 }
 
-await test("CLV-218 queue declarations conflict across workflow identities", async () => {
+await test("CLV-360 queue declarations have independent workflow identities", async () => {
   const identities = ["one", "two"].map((name) => ({
     baseName: name,
     workflowId: name,
     functionNames: [name],
     queue: true,
   }));
-  assert.deepEqual(workflowConflicts(identities), [
-    ["queue-workflow-conflict"],
-    ["queue-workflow-conflict"],
-  ]);
+  assert.deepEqual(workflowConflicts(identities), [[], []]);
   const table = ticketRegistrationTable(
     { repository: "repository", command: undefined },
     ["one", "two"].map((workflowId) => ({
@@ -170,14 +167,8 @@ await test("CLV-218 queue declarations conflict across workflow identities", asy
   );
   assert.deepEqual(await ticketRegistrations({}, { table }), {
     kind: "rejected",
-    detail: "queue-workflow-conflict: one, two",
+    detail: "Missing manifest for workflow function one.",
   });
-  const refusal = {
-    scope: "user",
-    label: "two.ts",
-    codes: ["queue-workflow-conflict"],
-  };
-  assert.deepEqual(workflowRefusals([refusal]), [refusal]);
 });
 
 await test("CLV-218 declared queue workflows require next command and interval without settings", () => {

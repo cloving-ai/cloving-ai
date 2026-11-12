@@ -67,3 +67,22 @@ await test("CLV-286 the queue control of the page drains and resumes the queue o
     assert.equal(new Set(identifiers).size, 3);
   });
 });
+
+await test("CLV-360 watch commands target the displayed queue workflow", () => {
+  const requests: ServiceRequest[] = [];
+  return withWatchService(answered(requests), async (watch) => {
+    const headers = actionHeaders(watch, await pageToken(watch));
+    for (const command of ["drain", "resume"]) {
+      const reply = await postCard(watch, {
+        path: "actions/queue",
+        headers,
+        body: JSON.stringify({ command, workflowId: "triage-issue" }),
+      });
+      assert.equal(reply.status, 200);
+    }
+    assert.deepEqual(
+      requests.map((request) => request.parameters["workflowId"]),
+      ["triage-issue", "triage-issue"],
+    );
+  });
+});

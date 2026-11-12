@@ -57,8 +57,8 @@ const asked = (operation, parameters = {}) => call({ runtimeDirectory }, { opera
 const runs = async () => (await asked("status")).runs;
 const shown = async (runId) => (await asked("status", { runId })).run;
 const commands = () => {
-  if (!existsSync("queue-commands.json")) return [];
-  const value = JSON.parse(readFileSync("queue-commands.json", "utf8"));
+  if (!existsSync("queues/develop/queue-commands.json")) return [];
+  const value = JSON.parse(readFileSync("queues/develop/queue-commands.json", "utf8"));
   return Array.isArray(value) ? value : value.commands;
 };
 const until = async (read) => {

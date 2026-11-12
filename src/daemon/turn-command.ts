@@ -1,3 +1,5 @@
+import { piInputExtensionPath } from "./pi-input-extension.ts";
+
 export interface CommandStart {
   readonly output?: string | undefined;
   readonly worker?: string | undefined;
@@ -12,6 +14,7 @@ function argumentPrompt(prompt: string): boolean {
 export function turnCommand(start: CommandStart): {
   readonly parts: readonly string[];
   readonly standardInput: string | undefined;
+  readonly inputExtension?: string;
 } {
   if (start.output === "text")
     return {
@@ -58,8 +61,10 @@ function piCommand(start: CommandStart) {
       standardInput: undefined,
     };
   if (start.prompt.trim() !== start.prompt)
-    throw new Error(
-      "Pi v1.5.2 cannot preserve boundary whitespace through stdin",
-    );
+    return {
+      parts: [...start.command, "--extension", piInputExtensionPath],
+      standardInput: JSON.stringify(start.prompt),
+      inputExtension: piInputExtensionPath,
+    };
   return { parts: start.command, standardInput: start.prompt };
 }

@@ -319,8 +319,6 @@ function queueRegistrationRefusal(
   table: readonly TicketRegistration[],
 ): string | undefined {
   const queued = table.filter((row) => row.queue === true);
-  if (queued.length > 1)
-    return `queue-workflow-conflict: ${queued.map((row) => row.workflowId).join(", ")}`;
   for (const row of queued) {
     const codes = workflowQueueRefusals({ queue: true, input: row.submission });
     if (codes.length > 0) return `${codes.join(", ")}: ${row.workflowId}`;

@@ -1,3 +1,13 @@
+import {
+  admissionKeys,
+  admissionLock,
+  type AdmissionLock,
+} from "./admission-lock.ts";
+export {
+  admissionKeys,
+  admissionLock,
+  type AdmissionLock,
+} from "./admission-lock.ts";
 import { createHash } from "node:crypto";
 import { handoffChain, type HandoffChain } from "../authority/handoff-chain.ts";
 import { executionCapabilities } from "../execution-pin.ts";
@@ -17,7 +27,11 @@ import {
   type CheckedResolution,
 } from "../submission.ts";
 import type { Registered } from "./registry.ts";
-import { activeWorkflow, currentLanes } from "./active-tickets.ts";
+import {
+  submissionTickets,
+  currentLanes,
+  repositoryQueueRefusal,
+} from "./active-tickets.ts";
 import { spendLimitRefusal } from "./queue-spend.ts";
 import {
   committed,
@@ -132,6 +146,7 @@ interface Admission {
   readonly submission: Fields;
   readonly normalized: string;
   readonly activeTickets: readonly Fields[];
+  readonly resolverTickets: readonly Fields[];
 }
 
 type Resolved = CheckedResolution | "timeout" | "failure";
@@ -148,7 +163,7 @@ async function resolved(
     submission,
     commandId,
     signal: limit.signal,
-    activeTickets: admission.activeTickets,
+    activeTickets: admission.resolverTickets,
   };
   const call = Promise.resolve(request)
     .then((given) => workflow.resolver.resolve(given))
@@ -231,6 +246,13 @@ async function spendRefusal(
   context: ServiceContext,
   admission: Admission,
 ): Promise<Reply | undefined> {
+  const repository =
+    admission.workflow.manifest.queue === true
+      ? await repositoryQueueRefusal(context, {
+          commandId: admission.commandId,
+        })
+      : undefined;
+  if (repository !== undefined) return repository;
   if (
     admission.workflow.manifest.queue !== true &&
     context.spendScope !== "all"
@@ -246,14 +268,15 @@ function admissionRefusal(
     readonly commandId: string;
     readonly submission: Fields;
     readonly activeTickets: readonly Fields[];
+    readonly resolverTickets: readonly Fields[];
   },
 ): Reply | undefined {
-  const { commandId, submission, activeTickets } = request;
+  const { commandId, submission, resolverTickets } = request;
   const tickets = hasTicketField(workflow.submission);
   if (
     tickets &&
     typeof submission["ticket"] === "string" &&
-    activeTickets.some((input) => input["ticketId"] === submission["ticket"])
+    resolverTickets.some((input) => input["ticketId"] === submission["ticket"])
   )
     return failed("ticket-active", {
       commandId,
@@ -324,12 +347,12 @@ export async function submitted(
   );
   if (check.kind === "rejected")
     return failed(check.code, { commandId, detail: check.detail });
-  const activeTickets = await activeWorkflow(context, workflowId);
+  const tickets = await submissionTickets(context, found.workflow);
   const refusal = admissionRefusal(found.workflow, {
     workflowId,
     commandId,
     submission: check.submission,
-    activeTickets,
+    ...tickets,
   });
   if (refusal !== undefined) return refusal;
   return admit(context, {
@@ -339,37 +362,8 @@ export async function submitted(
     commandId,
     submission: check.submission,
     normalized: check.normalized,
-    activeTickets,
+    ...tickets,
   });
-}
-
-export type AdmissionLock = (
-  keys: readonly string[],
-  next: () => Promise<Reply>,
-) => Promise<Reply>;
-
-export function admissionLock(): AdmissionLock {
-  const pending = new Map<string, Promise<Reply>>();
-  return (keys, next) => {
-    const previous = keys
-      .map((key) => pending.get(key))
-      .filter((reply) => reply !== undefined);
-    const reply = Promise.allSettled(previous).then(next);
-    for (const key of keys) pending.set(key, reply);
-    const settled = (): void => {
-      for (const key of keys)
-        if (pending.get(key) === reply) pending.delete(key);
-    };
-    reply.then(settled, settled);
-    return reply;
-  };
-}
-
-export function admissionKeys(admission: {
-  readonly commandId: string;
-  readonly workflowId: string;
-}): string[] {
-  return [`command:${admission.commandId}`, `workflow:${admission.workflowId}`];
 }
 
 export function submissionHandler(
@@ -381,6 +375,9 @@ export function submissionHandler(
       admissionKeys({
         commandId: String(parameters["commandId"]),
         workflowId: String(parameters["workflowId"]),
+        queue:
+          context.registry.byId(String(parameters["workflowId"]))?.manifest
+            .queue === true,
       }),
       () => submitted(context, parameters),
     );
