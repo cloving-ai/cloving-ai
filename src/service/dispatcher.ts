@@ -4,7 +4,7 @@ import { decision, questions } from "./decision-handler.ts";
 import { dismissRun } from "./dismiss-handler.ts";
 import { effectResult } from "./effect-result-handler.ts";
 import { events, type Connection } from "./event-handler.ts";
-import { queueCommand, queueRead } from "./queue-handlers.ts";
+import { queueCommand, queueRead, queueLanes } from "./queue-handlers.ts";
 import { failed, type ServiceContext } from "./replies.ts";
 import { renameRun } from "./rename-handler.ts";
 import { restartOperation } from "./restart-handler.ts";
@@ -38,6 +38,7 @@ export function dispatcher(
     ["queue", (request) => queueRead(context, request.parameters)],
     ["spend", () => spendRead(context)],
     ["queue-command", (request) => queueCommand(context, request.parameters)],
+    ["queue-lanes", (request) => queueLanes(context, request.parameters)],
     ["status", (request) => status(context, request.parameters)],
     ["questions", (request) => questions(context, request.parameters)],
     ["decision", (request) => decision(context, request.parameters)],

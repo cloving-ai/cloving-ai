@@ -1,5 +1,5 @@
 export const watchClient = `
-const state = { model: null, receivedAt: 0, stale: false, copied: "", label: "", run: "", loading: false, again: false, columns: {}, cards: {}, hovered: null, focused: null, phonePairing: null, phoneBusy: false, phoneMessage: "", phone: null, phoneLoadedAt: 0, phoneAccepted: null, phoneSequence: 0, phoneApplied: 0, queueBusy: false, queueMessage: "", continueBusy: [], continueMessages: {}, continueOpen: null, continueNote: "", steerOpen: null, steerNote: "", steerNow: false, steerBusy: [], steerMessages: {}, renameOpen: null, renameDrafts: {}, renameBusy: [], renameMessages: {}, renameCommands: {}, themeChoice: null, loopBusy: [], loopMessages: {}, loopCommands: {}, runCommandBusy: [], runCommandMessages: {}, runCommandSent: {}, runCommandAsking: null };
+const state = { model: null, receivedAt: 0, stale: false, copied: "", label: "", run: "", loading: false, again: false, columns: {}, cards: {}, hovered: null, focused: null, phonePairing: null, phoneBusy: false, phoneMessage: "", phone: null, phoneLoadedAt: 0, phoneAccepted: null, phoneSequence: 0, phoneApplied: 0, queueBusy: [], queueMessages: {}, queueCommands: {}, continueBusy: [], continueMessages: {}, continueOpen: null, continueNote: "", steerOpen: null, steerNote: "", steerNow: false, steerBusy: [], steerMessages: {}, renameOpen: null, renameDrafts: {}, renameBusy: [], renameMessages: {}, renameCommands: {}, themeChoice: null, loopBusy: [], loopMessages: {}, loopCommands: {}, runCommandBusy: [], runCommandMessages: {}, runCommandSent: {}, runCommandAsking: null };
 function readPreference(key) {
   try { return JSON.parse(localStorage.getItem(key)); }
   catch { return null; }
@@ -47,27 +47,46 @@ function columnControls(model, selected) {
     draw();
   } };
 }
-async function queuePost(command) {
-  state.queueBusy = true;
-  state.queueMessage = "";
+function queueSnapshot(workflowId) {
+  const queue = state.model?.queues?.find((queue) => queue.workflowId === workflowId);
+  return JSON.stringify([queue?.state, queue?.lanes]);
+}
+async function queuePost(workflowId, requested) {
+  if (state.queueBusy.includes(workflowId)) return;
+  const request = JSON.stringify(requested);
+  const saved = state.queueCommands[workflowId];
+  const command = saved?.request === request ? saved.command : { ...requested, workflowId, commandId: crypto.randomUUID() };
+  state.queueCommands = { ...state.queueCommands, [workflowId]: { request, command, shown: queueSnapshot(workflowId) } };
+  state.queueBusy = [...state.queueBusy, workflowId];
   draw();
+  let message;
   try {
     const response = await fetch("actions/queue", {
       method: "POST",
       headers: { "content-type": "application/json", "x-cloving-token": actionToken },
-      body: JSON.stringify({ command, workflowId: state.model?.queue?.workflowId }),
+      body: JSON.stringify(command),
     });
-    const reply = response.ok ? await response.json() : { error: { detail: "The watch page refused the request. Refresh the page." } };
-    state.queueMessage = reply.error?.detail ?? "";
+    if (response.status === 503) throw new Error("late");
+    const reply = response.ok ? await response.json() : null;
+    message = reply === null ? refusedRequest : reply.error?.detail ?? "";
+    if (reply?.error?.code !== "outcome-unknown") {
+      const { [workflowId]: answered, ...others } = state.queueCommands;
+      state.queueCommands = others;
+    }
   } catch {
-    state.queueMessage = "The watch tool does not answer.";
+    message = "The watch tool does not answer. Click again to send the same command.";
   }
-  state.queueBusy = false;
+  state.queueBusy = state.queueBusy.filter((busy) => busy !== workflowId);
+  state.queueMessages = { ...state.queueMessages, [workflowId]: message };
   await load();
 }
 function queueControls() {
   if (actionToken === null) return undefined;
-  return { busy: state.queueBusy, message: state.queueMessage, onCommand: queuePost };
+  state.queueCommands = Object.fromEntries(Object.entries(state.queueCommands).filter(([id, saved]) => saved.shown === queueSnapshot(id)));
+  return { busy: state.queueBusy, messages: state.queueMessages,
+    onCommand(workflowId, command) { queuePost(workflowId, { command }); },
+    onLanes(workflowId, change) { queuePost(workflowId, { command: "lanes", ...change }); },
+  };
 }
 function continueMessage(reply) {
   if (reply.error) return reply.error.code + ": " + reply.error.detail;

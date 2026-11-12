@@ -38,7 +38,7 @@ await test("CLV-357 the run page has four tabs, Details holds the totals, the re
   );
   assert.match(pull, /Round 1 · Review 4\/5 · commit 0ff2f41/);
   assert.doesNotMatch(html, /queue-waiting|meta foot/);
-  assert.match(html, /1 of 3 lanes busy/);
+  assert.doesNotMatch(html, /lanes busy|line-queue/);
   const none = rendered(page(bare));
   assert.match(
     none.slice(none.indexOf('id="run-panel-transcript"')),

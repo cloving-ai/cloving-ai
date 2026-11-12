@@ -355,6 +355,7 @@ const renderers = new Map<string, (result: Fields) => readonly string[]>([
   ["run-renamed", runRenamedLines],
   ["queue", (result) => queueLines(result["queue"])],
   ["queue-command", (result) => queueLines(result["queue"])],
+  ["queue-lanes", (result) => queueLines(result["queue"])],
   ["event-page", eventPage],
   ["reload", reloadLines],
   ["restart", restartLines],

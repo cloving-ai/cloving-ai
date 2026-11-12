@@ -1,3 +1,5 @@
+import { changeConfigFile } from "../cli/config-file.ts";
+import { privateSettingsPath } from "../cli/project-settings.ts";
 export type { QueueConfiguration } from "../queue-room.ts";
 import {
   maximumQueueLanes,
@@ -110,5 +112,36 @@ export function queueLimitsSource(settings: QueueSettings): QueueLimitsSource {
           ? Object.fromEntries(Object.keys(queues).map((id) => [id, next]))
           : { ...queues, ...replacements };
     },
+  };
+}
+
+export function queueLaneWriter(
+  settings: { readonly repository: string },
+  source: QueueLimitsSource,
+): (workflowId: string, lanes: number) => Promise<void> {
+  return async (workflowId, lanes) => {
+    const previous = source.current(workflowId);
+    const workingSource = previous.sources?.workingLanes ?? "default";
+    const workingLanes =
+      workingSource === "default" ? lanes : previous.workingLanes;
+    if (workingLanes > lanes) throw new Error("invalid-queue-working-lanes");
+    await changeConfigFile(
+      privateSettingsPath(process.env, settings.repository),
+      {
+        scope: "private",
+        queueLanes: { workflowId, lanes },
+      },
+    );
+    source.replace(source.current(), {
+      [workflowId]: {
+        ...source.current(workflowId),
+        lanes,
+        workingLanes,
+        sources: {
+          lanes: "queues setting (private file)",
+          workingLanes: workingSource,
+        },
+      },
+    });
   };
 }

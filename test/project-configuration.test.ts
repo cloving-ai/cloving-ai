@@ -1,3 +1,6 @@
+import { configurationEntries } from "../src/configuration-display.ts";
+import { resolveSettings } from "../src/project-settings.ts";
+import { queuePlan } from "../tools/self-host-queue.ts";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { mkdir, realpath, writeFile } from "node:fs/promises";
@@ -70,3 +73,52 @@ await test("CLV-227 the project root is the git top level, or the folder itself 
       await realpath(join(root, "repo")),
     );
   }));
+
+await test("CLV-361 a private lane override preserves project queue fields and other queues after restart", () => {
+  const project = {
+    version: 1,
+    queues: {
+      develop: { everySeconds: 300, lanes: 4, workingLanes: 2 },
+      other: { state: "off", lanes: 3 },
+    },
+  };
+  const privateFile = { version: 1, queues: { develop: { lanes: 9 } } };
+  const resolved = resolveSettings(
+    { CLOVING_QUEUE_LANES: "8" },
+    { project: JSON.stringify(project), private: JSON.stringify(privateFile) },
+  );
+  assert.deepEqual(
+    JSON.parse(resolved.environment["CLOVING_QUEUES"] ?? "null"),
+    {
+      develop: { everySeconds: 300, lanes: 9, workingLanes: 2 },
+      other: { state: "off", lanes: 3 },
+    },
+  );
+  const [entry] = configurationEntries({
+    project: JSON.stringify(project),
+    private: JSON.stringify(privateFile),
+    environment: {},
+    field: "queues",
+  });
+  assert.deepEqual(
+    entry?.value,
+    JSON.parse(resolved.environment["CLOVING_QUEUES"] ?? "null"),
+  );
+  const plan = queuePlan(
+    {
+      ...resolved.environment,
+      CLOVING_NEXT_COMMAND: '["next"]',
+      CLOVING_TICKET_COMMAND: '["ticket"]',
+    },
+    {
+      declarations: [{ workflowId: "develop", queue: true }],
+      sources: resolved.sources,
+    },
+  );
+  assert.equal(plan.kind, "on");
+  assert.deepEqual(plan.values, {
+    everySeconds: { value: 300, source: "queues setting (project file)" },
+    lanes: { value: 9, source: "queues setting (private file)" },
+    workingLanes: { value: 2, source: "queues setting (project file)" },
+  });
+});

@@ -78,8 +78,10 @@ Required failures or skipped prerequisites exit with status 1.
   queue: `Usage: cloving queue [--workflow <id>] [--json]
        cloving queue resume [--workflow <id>] [--command-id <id>] [--json]
        cloving queue drain [--workflow <id>] [--command-id <id>] [--json]
+       cloving queue lanes <n> --workflow <id> [--command-id <id>] [--json]
 
 Shows the state of the queue: running, stopped, draining or drained, with the busy lanes. With several queues, --workflow <id> is required. With one queue, it is optional.
+lanes writes 1 to 16 lanes to the private queues setting and applies it now. Fewer lanes keep runs in work.
 A stopped queue shows the reason and the failed runs in a row.
 resume sets the failure count to 0 and ends a stop or a drain. The next queue check can start a run.
 drain starts no new queue run. The runs in work continue to their end.

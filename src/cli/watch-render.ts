@@ -259,6 +259,7 @@ export interface WatchModel {
   readonly schedules?: ShownSchedules;
   readonly loops?: readonly WatchLoop[];
   readonly queue?: Fields;
+  readonly queues?: readonly Fields[];
   readonly workflowRefusals?: readonly WorkflowRefusal[];
   readonly cardForms?: readonly CardForm[];
   readonly completed?: readonly WatchTile[];

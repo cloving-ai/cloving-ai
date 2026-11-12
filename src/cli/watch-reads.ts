@@ -1,3 +1,4 @@
+import { watchQueues } from "./watch-queue.ts";
 import { establishedIssue, type PrRepository } from "./watch-pr-identity.ts";
 import { serviceOf } from "./restart-render.ts";
 import { shownSchedules, type ShownSchedules } from "./schedule-render.ts";
@@ -34,6 +35,7 @@ interface ReadRun {
 export interface WatchRead {
   readonly schedules?: ShownSchedules;
   readonly queue?: Fields;
+  readonly queues?: readonly Fields[];
   readonly service: string;
   readonly serviceVersion?: string;
   readonly workflows: readonly string[];
@@ -340,9 +342,7 @@ async function service(reader: Reader, now: string): Promise<WatchRead> {
     ...("schedules" in status
       ? { schedules: shownSchedules(status["schedules"]) }
       : {}),
-    ...(record(status["queue"]) === undefined
-      ? {}
-      : { queue: record(status["queue"]) ?? {} }),
+    ...watchQueues(status),
     workflows: list(status["workflows"]).filter(
       (value) => typeof value === "string",
     ),
