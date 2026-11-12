@@ -20,6 +20,7 @@ export type TurnRunner =
   { readonly kind: "host" } | SeatbeltRunner | ContainerRunner;
 
 export interface RunnerPlaces {
+  readonly piInputExtension?: string;
   readonly directory: string;
   readonly commonFolder: string;
   readonly attachments?: string;
@@ -144,6 +145,9 @@ function containerCommand(
     ...mounted(places.commonFolder),
     ...protectedGit(places.commonFolder),
     ...(places.attachments === undefined ? [] : mounted(places.attachments)),
+    ...(places.piInputExtension === undefined
+      ? []
+      : ["-v", `${places.piInputExtension}:${places.piInputExtension}:ro`]),
     "-v",
     `${places.volume}:${places.directory}/node_modules`,
     "-w",

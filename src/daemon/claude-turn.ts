@@ -129,18 +129,22 @@ function spawnTurn(start: TurnStart): {
   readonly standardInput: string | undefined;
   readonly launch: RunnerLaunch;
 } {
-  const { parts, standardInput } = turnCommand(start);
+  const { parts, standardInput, inputExtension } = turnCommand(start);
   const configuration = mkdtempSync(join(start.folder, "gh-config-"));
   const command =
     start.shell === undefined
       ? parts
       : shellTurnCommand(start.shell, { configuration, parts });
   const environment = turnEnvironment(configuration, start);
-  const launch = runnerLaunch(start, {
-    command,
-    environment,
-    serviceEnvironment: process.env,
-  });
+  const launch = runnerLaunch(
+    {
+      ...start,
+      ...(inputExtension === undefined
+        ? {}
+        : { piInputExtension: inputExtension }),
+    },
+    { command, environment, serviceEnvironment: process.env },
+  );
   const [executable = "", ...fixed] = launch.command;
   try {
     const child = spawn(executable, fixed, {
