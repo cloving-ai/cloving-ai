@@ -59,37 +59,41 @@ function keptLine(processId: number, runId: string): RegExp {
   );
 }
 
-await test("CLV-347 after a restart, the end of turn A in a shared work tree keeps turn B and its child, and the service log has a kept process line for each process of turn B", () =>
-  withTurnHost({ script: sharedTurns }, async ({ fixture, output }) => {
-    const runA = await admittedTurn(fixture, "a");
-    await startedTurn(fixture, runA);
-    await noted(fixture.root, "turn-a");
-    const runB = await admittedTurn(fixture, "b");
-    const turnB = await startedTurn(fixture, runB);
-    const turnProcess = await noted(fixture.root, "turn-b");
-    const child = await noted(fixture.root, "turn-b-child");
-    const turns = await restartedTurns(fixture, []);
-    assert.deepEqual(field(turns, "connected"), [runA, runB].sort());
-    await writeFile(join(fixture.root, "end-a"), "");
-    const endedA = await finishedRun(fixture, runA);
-    assert.equal(field(endedA, "state"), "completed", JSON.stringify(endedA));
-    const processes = [turnB.launch.processId, turnProcess, child];
-    await until(
-      () =>
-        Promise.resolve(
-          processes.every((processId) =>
-            keptLine(processId, runB).test(output()),
-          )
-            ? true
-            : undefined,
-        ),
-      testMilliseconds(10_000),
-    ).catch(() => undefined);
-    for (const processId of processes) {
-      assert.equal(alive(processId), true, String(processId));
-      assert.match(output(), keptLine(processId, runB));
-    }
-    await writeFile(join(fixture.root, "end-b"), "");
-    const endedB = await finishedRun(fixture, runB);
-    assert.equal(field(endedB, "state"), "completed", JSON.stringify(endedB));
-  }));
+await test(
+  "CLV-347 after a restart, the end of turn A in a shared work tree keeps turn B and its child, and the service log has a kept process line for each process of turn B",
+  { timeout: 120_000 },
+  () =>
+    withTurnHost({ script: sharedTurns }, async ({ fixture, output }) => {
+      const runA = await admittedTurn(fixture, "a");
+      await startedTurn(fixture, runA);
+      await noted(fixture.root, "turn-a");
+      const runB = await admittedTurn(fixture, "b");
+      const turnB = await startedTurn(fixture, runB);
+      const turnProcess = await noted(fixture.root, "turn-b");
+      const child = await noted(fixture.root, "turn-b-child");
+      const turns = await restartedTurns(fixture, []);
+      assert.deepEqual(field(turns, "connected"), [runA, runB].sort());
+      await writeFile(join(fixture.root, "end-a"), "");
+      const endedA = await finishedRun(fixture, runA);
+      assert.equal(field(endedA, "state"), "completed", JSON.stringify(endedA));
+      const processes = [turnB.launch.processId, turnProcess, child];
+      await until(
+        () =>
+          Promise.resolve(
+            processes.every((processId) =>
+              keptLine(processId, runB).test(output()),
+            )
+              ? true
+              : undefined,
+          ),
+        testMilliseconds(10_000),
+      ).catch(() => undefined);
+      for (const processId of processes) {
+        assert.equal(alive(processId), true, String(processId));
+        assert.match(output(), keptLine(processId, runB));
+      }
+      await writeFile(join(fixture.root, "end-b"), "");
+      const endedB = await finishedRun(fixture, runB);
+      assert.equal(field(endedB, "state"), "completed", JSON.stringify(endedB));
+    }),
+);

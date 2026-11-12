@@ -120,9 +120,13 @@ await test("CLV-350 a new worker stops the turn and each other process with its 
     }
   }));
 
-await test("CLV-350 a turn with a marker and no matching process is not connected", () =>
+await test("CLV-350 a turn with a marker but no session or matching process is interrupted", () =>
   withScene(async (scene) => {
-    await crashedTurn(scene, "gated-lines");
+    await crashedTurn(scene, "sessionless");
+    assert.notEqual(
+      typeof field(record(scene, "operation-1/attempt-1.json"), "sessionId"),
+      "string",
+    );
     const turn = keptTurn(scene);
     process.kill(-turn.parentId, "SIGKILL");
     await until(() => !alive(turn.processId) && !alive(turn.parentId));

@@ -2310,6 +2310,7 @@
     "tools/restart-build.ts": "build",
     "tools/restart-settings.ts": "candidate-adapter",
     "tools/restart-update.ts": "build",
+    "tools/self-host-build-cache.ts": "candidate-adapter",
     "tools/self-host-children.ts": "build",
     "tools/self-host-processes.ts": "build",
     "tools/self-host-project.ts": "candidate-adapter",

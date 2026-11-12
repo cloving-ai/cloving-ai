@@ -28,14 +28,6 @@ import { testMilliseconds } from "./test-timing.ts";
 
 const worktree = join(import.meta.dirname, "..");
 
-function noReply(): Readonly<Record<string, unknown>> {
-  return {};
-}
-
-function failedCall(error: unknown): Readonly<Record<string, unknown>> {
-  return { kind: "error", detail: String(error) };
-}
-
 export const lineTurn = `
 import { writeFileSync } from "node:fs";
 let prompt = "";
@@ -217,15 +209,12 @@ export async function startedTurn(
   });
 }
 
-export async function runStatus(
-  fixture: Scene,
-  runId: string,
-): Promise<unknown> {
+export async function runStatus(fixture: Scene, runId: string) {
   const status = await call(fixture, {
     operation: "status",
     parameters: { runId },
-  }).catch(noReply);
-  return status["run"];
+  }).catch(() => ({}));
+  return record(record(status)?.["run"]);
 }
 
 export async function until<Value>(
@@ -241,14 +230,11 @@ export async function until<Value>(
   throw new Error("The turn scene did not reach its state.");
 }
 
-export async function finishedRun(
-  fixture: Scene,
-  runId: string,
-): Promise<unknown> {
+export async function finishedRun(fixture: Scene, runId: string) {
   return await until(async () => {
     const run = await runStatus(fixture, runId);
     return ["completed", "blocked", "failed", "cancelled"].includes(
-      String(field(run, "state")),
+      String(run?.["state"]),
     )
       ? run
       : undefined;
@@ -299,10 +285,10 @@ export function watchedTranscript(
   const read = { after: 0, last: "no reply" };
   const closed = until(async () => {
     if (scene.ending.aborted) return entries;
-    const page = await call(scene.fixture, {
+    const page: Readonly<Record<string, unknown>> = await call(scene.fixture, {
       operation: "transcript",
       parameters: { ...turn, after: read.after },
-    }).catch(failedCall);
+    }).catch((error: unknown) => ({ kind: "error", detail: String(error) }));
     read.last = JSON.stringify(page);
     const shown = pageEntries(page);
     entries.push(...shown);
@@ -379,4 +365,18 @@ export async function restartedTurns(
     );
   const lines = restart.stdout.trim().split("\n");
   return record(JSON.parse(lines.at(-1) ?? "null"))?.["turns"];
+}
+
+export async function pinnedWorkflow(fixture: Scene, runId: string) {
+  const page = await call(fixture, {
+    operation: "events",
+    parameters: { runId, after: 0, limit: 1000 },
+  });
+  const created = items(page["events"])
+    .map(record)
+    .find((event) => event?.["type"] === "run.created");
+  const workflow = record(created?.["payload"])?.["workflow"];
+  if (typeof workflow !== "string" || !/^sha256:[0-9a-f]{64}$/.test(workflow))
+    throw new Error("The run has no stored workflow reference.");
+  return workflow;
 }

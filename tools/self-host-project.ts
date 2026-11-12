@@ -17,6 +17,11 @@ import {
   type WorkflowListing,
 } from "./workflow-folders.ts";
 import { isWorkflowManifest } from "./workflow-manifest.ts";
+import {
+  workflowBuildKey,
+  restoreWorkflowArtifacts,
+  rememberWorkflowBuild,
+} from "./self-host-build-cache.ts";
 import { retainWorkflowBundle } from "./workflow-bundles.ts";
 import {
   workflowBundleDependencies,
@@ -117,12 +122,6 @@ async function compile(settings: ProjectSettings) {
       else reject(new Error("The workflows did not compile."));
     });
   });
-  const compiled: unknown = JSON.parse(
-    await readFile(join(project, "artifacts/manifest.json"), "utf8"),
-  );
-  if (!isWorkflowManifest(compiled))
-    throw new Error("The compiled workflow manifest is invalid.");
-  return compiled;
 }
 
 interface StagedCandidate {
@@ -178,7 +177,7 @@ function operatorDeclaration(
     readonly project: string;
     readonly limits: WorkflowLimits | undefined;
   },
-  compiled: Awaited<ReturnType<typeof compile>>,
+  compiled: Parameters<typeof workflowManifests>[0],
 ): DeclaredWorkflow {
   const { candidate, project } = staged;
   const declaration = record(JSON.parse(candidate.declaration))?.["workflow"];
@@ -243,6 +242,10 @@ export async function preparedProject(
   settings: ProjectSettings,
 ): Promise<RegisteredWorkflows> {
   const prepared = await preparedBundle(settings);
+  await rememberWorkflowBuild({
+    project: settings.project,
+    bundleDigest: prepared.bundleDigest,
+  });
   const modules = join(
     dirname(settings.project),
     "workflow-bundles/node_modules",
@@ -250,6 +253,36 @@ export async function preparedProject(
   await rm(modules, { force: true });
   await symlink(join(settings.project, "node_modules"), modules);
   return prepared;
+}
+
+async function preparedCompilation(
+  settings: ProjectSettings,
+  dependencies: string,
+) {
+  const { product, project } = settings;
+  const key = await workflowBuildKey({
+    product,
+    project,
+    dependencies,
+    ...(settings.recordedProject === undefined
+      ? {}
+      : { recordedProject: settings.recordedProject }),
+  });
+  if (
+    !(await restoreWorkflowArtifacts({
+      project,
+      repository: settings.repository,
+      key,
+    }))
+  )
+    await compile(settings);
+  const compiled: unknown = JSON.parse(
+    await readFile(join(project, "artifacts/manifest.json"), "utf8"),
+  );
+  if (!isWorkflowManifest(compiled))
+    throw new Error("The compiled workflow manifest is invalid.");
+  await writeFile(join(project, "build-inputs.json"), JSON.stringify(key));
+  return compiled;
 }
 
 export async function preparedBundle(
@@ -261,7 +294,11 @@ export async function preparedBundle(
     packageRoot: await workflowPackageRoot(product),
   });
   const staged = await stageCandidates(project, folders.candidates);
-  const compiled = await compile(settings);
+  const dependencies = await workflowBundleDependencies({
+    product,
+    packages: Object.keys(packageMetadata.dependencies),
+  });
+  const compiled = await preparedCompilation(settings, dependencies);
   await recordProject(settings);
   const combined = staged.map((candidate) =>
     operatorDeclaration(
@@ -274,13 +311,7 @@ export async function preparedBundle(
     workflowManifests(compiled, combined),
   );
   await writeFile(join(project, "declarations.json"), JSON.stringify(combined));
-  await writeFile(
-    join(project, "dependencies.json"),
-    await workflowBundleDependencies({
-      product,
-      packages: Object.keys(packageMetadata.dependencies),
-    }),
-  );
+  await writeFile(join(project, "dependencies.json"), dependencies);
   const bundleDigest = await retainWorkflowBundle({
     project,
     repository: folders.repository,
