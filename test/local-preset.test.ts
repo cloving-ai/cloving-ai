@@ -7,7 +7,7 @@ import packageMetadata from "#package" with { type: "json" };
 import { clientCommand } from "../src/cli/runtime-directory.ts";
 import { record } from "../src/protocol.ts";
 import { applyLocalPreset } from "../tools/local-preset.ts";
-import { localCommandPrefix } from "../tools/template-command.ts";
+import { localCommand, localCommandPrefix } from "../tools/template-command.ts";
 import { copyTemplate } from "../tools/template-copy.ts";
 import { templateRoot } from "../tools/template-files.ts";
 import { workflowTestLoader } from "../tools/workflow-test-loader.ts";
@@ -32,68 +32,72 @@ await test("the local preset applies the nine first-run choices in code", () =>
     await assertCopiedTests(directory, folder);
   }));
 
-await test("a local command prefix names this program and this repository", () => {
-  const repository = "/work/repo";
+await test("a local command prefix names this program", () => {
   const packagePath = "/usr/local/lib/node_modules/cloving/tools";
   const oldPath = "/home/user/_npx-old/cloving/tools";
   assert.equal(
-    localCommandPrefix({ packagePath, repository, version: "9.9.9" }),
-    clientCommand({}, { packagePath, repository }),
+    localCommandPrefix({ packagePath, version: "9.9.9" }),
+    "cloving",
   );
   assert.equal(
-    localCommandPrefix({
-      packagePath: oldPath,
-      repository,
-      version: "9.9.9",
-    }),
-    clientCommand({}, { packagePath: oldPath, repository }),
+    localCommandPrefix({ packagePath: oldPath, version: "9.9.9" }),
+    "cloving",
   );
   assert.equal(
-    localCommandPrefix({
-      packagePath,
+    localCommand({
+      prefix: "cloving",
+      command: "start",
       repository: "/work/my repo",
-      version: "9.9.9",
     }),
-    clientCommand({}, { packagePath, repository: "/work/my repo" }),
+    "cloving start --repository '/work/my repo'",
   );
 });
 
-await test("a local command prefix keeps npx and a runtime directory with the repository", () => {
-  const repository = "/work/my repo";
+await test("a printed start command puts the command before the repository", () => {
   const packagePath = "/home/user/.npm/_npx/abc/node_modules/cloving/tools";
+  const prefix = localCommandPrefix({
+    packagePath,
+    version: packageMetadata.version,
+  });
   assert.equal(
-    localCommandPrefix({
-      packagePath,
-      repository: "/work/repo",
-      version: packageMetadata.version,
-    }),
+    `${prefix} --repository /work/repo`,
     clientCommand({}, { packagePath, repository: "/work/repo" }),
   );
   assert.equal(
-    localCommandPrefix({
-      packagePath,
-      repository,
-      version: "9.9.9",
-      runtimeDirectory: "/run dir",
-    }),
-    "CLOVING_RUNTIME_DIR='/run dir' npx cloving@9.9.9 --repository '/work/my repo'",
+    localCommand({ prefix, command: "start", repository: "/work/repo" }),
+    `${prefix} start --repository /work/repo`,
   );
   assert.equal(
-    localCommandPrefix({
-      packagePath,
+    localCommand({
+      prefix: localCommandPrefix({
+        packagePath,
+        version: "9.9.9",
+        runtimeDirectory: "/run dir",
+      }),
+      command: "start",
+      repository: "/work/my repo",
+    }),
+    "CLOVING_RUNTIME_DIR='/run dir' npx cloving@9.9.9 start --repository '/work/my repo'",
+  );
+  assert.equal(
+    localCommand({
+      prefix: localCommandPrefix({ packagePath, version: "9.9.9" }),
+      command: "start",
       repository: "/work/o'brien",
-      version: "9.9.9",
     }),
-    "npx cloving@9.9.9 --repository '/work/o'\\''brien'",
+    "npx cloving@9.9.9 start --repository '/work/o'\\''brien'",
   );
   assert.equal(
-    localCommandPrefix({
-      packagePath: "/usr/local/lib/node_modules/cloving/tools",
-      repository,
-      version: "9.9.9",
-      runtimeDirectory: "",
+    localCommand({
+      prefix: localCommandPrefix({
+        packagePath: "/usr/local/lib/node_modules/cloving/tools",
+        version: "9.9.9",
+        runtimeDirectory: "",
+      }),
+      command: "questions",
+      repository: "/work/my repo",
     }),
-    "cloving --repository '/work/my repo'",
+    "cloving questions --repository '/work/my repo'",
   );
 });
 

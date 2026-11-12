@@ -184,14 +184,14 @@ async function applied(
   });
   await applyLocalPreset({ folder, id: "develop" });
   process.stdout.write(
-    localPresetText(
-      localCommandPrefix({
+    localPresetText({
+      prefix: localCommandPrefix({
         packagePath: realpathSync(import.meta.dirname),
-        repository,
         version: packageMetadata.version,
         runtimeDirectory: process.env["CLOVING_RUNTIME_DIR"],
       }),
-    ),
+      repository,
+    }),
   );
   return 0;
 }
@@ -204,7 +204,6 @@ function shellArgument(value: string): string {
 
 export function localCommandPrefix(input: {
   readonly packagePath: string;
-  readonly repository: string;
   readonly version: string;
   readonly runtimeDirectory?: string | undefined;
 }): string {
@@ -212,25 +211,40 @@ export function localCommandPrefix(input: {
     ? `npx cloving@${input.version}`
     : "cloving";
   const runtime = input.runtimeDirectory;
-  const repository = `--repository ${shellArgument(input.repository)}`;
-  if (runtime === undefined || runtime.length === 0)
-    return `${program} ${repository}`;
-  return `CLOVING_RUNTIME_DIR=${shellArgument(runtime)} ${program} ${repository}`;
+  if (runtime === undefined || runtime.length === 0) return program;
+  return `CLOVING_RUNTIME_DIR=${shellArgument(runtime)} ${program}`;
 }
 
-function localPresetText(prefix: string): string {
+export function localCommand(input: {
+  readonly prefix: string;
+  readonly command: string;
+  readonly repository: string;
+}): string {
+  return `${input.prefix} ${input.command} --repository ${shellArgument(input.repository)}`;
+}
+
+function localPresetText(input: {
+  readonly prefix: string;
+  readonly repository: string;
+}): string {
+  const command = (text: string) =>
+    localCommand({
+      prefix: input.prefix,
+      command: text,
+      repository: input.repository,
+    });
   return [
     "Copied develop for one local task.",
     "Choices: input task-text, select person, verify none, accept person, merge local, partial person, recovery stop, lessons none, demo none.",
     "The run does not push, open a pull request, or merge.",
     "",
     "Next:",
-    `  ${prefix} start`,
-    `  ${prefix} run develop --prompt "Add a test for the date parser"`,
-    `  ${prefix} questions`,
+    `  ${command("start")}`,
+    `  ${command('run develop --prompt "Add a test for the date parser"')}`,
+    `  ${command("questions")}`,
     "",
     "Open http://127.0.0.1:3663/ to watch the run.",
-    `After the run completes, run \`${prefix} init --factory\` to add review, a plan, and regular maintenance.`,
+    `After the run completes, run \`${command("init --factory")}\` to add review, a plan, and regular maintenance.`,
     "",
   ].join("\n");
 }

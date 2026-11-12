@@ -13,6 +13,16 @@ import { record } from "../src/protocol.ts";
 import { withProject } from "./cli-fixture.ts";
 import { withDoctor } from "./doctor-fixture.ts";
 
+function assertNextCommands(stdout: string, repository: string) {
+  for (const command of [
+    `cloving start --repository ${repository}`,
+    `cloving run develop --prompt "Add a test for the date parser" --repository ${repository}`,
+    `cloving questions --repository ${repository}`,
+    `cloving init --factory --repository ${repository}`,
+  ])
+    assert.ok(stdout.includes(command), command);
+}
+
 await test("the init path question selects a local task or a factory", async () => {
   assert.equal(
     await chooseInitPath({ question: () => Promise.resolve("1") }),
@@ -48,14 +58,7 @@ else {
     assert.match(result.stdout, /recovery stop/);
     assert.match(result.stdout, /lessons none/);
     assert.match(result.stdout, /demo none/);
-    assert.ok(
-      result.stdout.includes(`cloving --repository ${scene.repository} start`),
-    );
-    assert.ok(
-      result.stdout.includes(
-        `cloving --repository ${scene.repository} init --factory`,
-      ),
-    );
+    assertNextCommands(result.stdout, scene.repository);
     await assert.rejects(readFile(join(scene.repository, "started.json")));
     const workflow = await readFile(
       join(scene.repository, ".cloving/workflows/develop.ts"),
@@ -170,6 +173,23 @@ else {
       ["run `cloving init-prompt`"],
     );
   }));
+
+await test("start accepts the repository option after the command", () => {
+  const refused = spawnSync(
+    process.execPath,
+    [resolve("src/cli.ts"), "start", "--repository", "/work/repo", "extra"],
+    { encoding: "utf8" },
+  );
+  assert.equal(refused.status, 1);
+  assert.match(refused.stderr, /unexpected-argument/);
+  assert.doesNotMatch(refused.stderr, /unknown-command/);
+  const missed = spawnSync(
+    process.execPath,
+    [resolve("src/cli.ts"), "--repository", "/work/repo", "start"],
+    { encoding: "utf8" },
+  );
+  assert.match(missed.stderr, /unknown-command/);
+});
 
 await test("init rejects both path flags", () =>
   withProject({}, (cli) => {
