@@ -145,6 +145,8 @@ cloving run develop --prompt "Add a test for the date parser"
 cloving questions
 ```
 
+The init command prints the next commands for this program and this repository.
+
 Open `http://127.0.0.1:3663/` to watch the run. The run stops at your review of the commit of the agent. Read the diff of that commit. Then copy one of the commands that `cloving questions` prints:
 
 - `cloving approve ...` completes the run. Merge the branch yourself.

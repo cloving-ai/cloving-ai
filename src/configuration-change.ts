@@ -16,7 +16,8 @@ export interface SettingChange {
 
 export type HarnessSelection = Required<
   Pick<NonNullable<Configuration["harness"]>, "name" | "kind" | "path">
->;
+> &
+  Pick<NonNullable<Configuration["harness"]>, "turn">;
 
 export interface HarnessChange {
   readonly harness: HarnessSelection;

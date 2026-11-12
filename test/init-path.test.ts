@@ -3,7 +3,13 @@ import { spawnSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { test } from "node:test";
-import { chooseInitPath } from "../src/cli/init-command.ts";
+import {
+  chooseInitPath,
+  initCommand,
+  localWorkerTurn,
+} from "../src/cli/init-command.ts";
+import { privateSettingsPath } from "../src/cli/project-settings.ts";
+import { record } from "../src/protocol.ts";
 import { withProject } from "./cli-fixture.ts";
 import { withDoctor } from "./doctor-fixture.ts";
 
@@ -25,8 +31,8 @@ await test("the init path question selects a local task or a factory", async () 
 await test("init --local applies the preset and does not start the agent", () =>
   withDoctor(async (scene) => {
     const harness = await scene.program(
-      "fake",
-      `if (process.argv[2] === "--version") console.log("1.0.0");
+      "claude",
+      `if (process.argv[2] === "--version") console.log("1.0.0 (Claude Code)");
 else {
   const { writeFileSync } = await import("node:fs");
   writeFileSync("started.json", "started");
@@ -42,9 +48,13 @@ else {
     assert.match(result.stdout, /recovery stop/);
     assert.match(result.stdout, /lessons none/);
     assert.match(result.stdout, /demo none/);
-    assert.match(
-      result.stdout,
-      /cloving init --factory` to add review, a plan, and regular maintenance/,
+    assert.ok(
+      result.stdout.includes(`cloving --repository ${scene.repository} start`),
+    );
+    assert.ok(
+      result.stdout.includes(
+        `cloving --repository ${scene.repository} init --factory`,
+      ),
     );
     await assert.rejects(readFile(join(scene.repository, "started.json")));
     const workflow = await readFile(
@@ -53,7 +63,88 @@ else {
     );
     assert.match(workflow, /localRound as developRound/);
     assert.doesNotMatch(workflow, /preparePull/);
+    const settings = record(
+      JSON.parse(
+        await readFile(
+          privateSettingsPath(scene.environment, scene.repository),
+          "utf8",
+        ),
+      ),
+    );
+    const saved = record(settings?.["harness"]);
+    assert.ok(saved);
+    assert.equal(saved["name"], "claude");
+    assert.equal(saved["turn"], undefined);
   }));
+
+await test("init --local refuses a custom agent that has no one-shot command", () =>
+  withDoctor(async (scene) => {
+    const harness = await scene.program("pi", 'console.log("1.0.0")');
+    const result = spawnSync(
+      process.execPath,
+      [resolve("src/cli.ts"), "init", "--local", "--harness", harness],
+      { cwd: scene.repository, env: scene.environment, encoding: "utf8" },
+    );
+    assert.equal(result.status, 2);
+    assert.match(result.stderr, /harness-no-worker: pi/);
+    await assert.rejects(
+      readFile(join(scene.repository, ".cloving/workflows/develop.ts")),
+    );
+    await assert.rejects(
+      readFile(privateSettingsPath(scene.environment, scene.repository)),
+    );
+  }));
+
+await test("init --local stores a one-shot command for a custom agent", () =>
+  withDoctor(async (scene) => {
+    const harness = await scene.program("pi", 'console.log("1.0.0")');
+    const status = await initCommand({
+      repository: scene.repository,
+      environment: scene.environment,
+      probe: () =>
+        Promise.resolve({
+          stdout: "1.0.0\n",
+          stderr: "",
+          reason: null,
+          exitCode: 0,
+        }),
+      harness,
+      path: "local",
+      askTurn: () => Promise.resolve('["pi","{prompt}"]'),
+      applyLocal: () => Promise.resolve(0),
+      start: () => Promise.resolve(0),
+    });
+    assert.equal(status, 0);
+    const settings = record(
+      JSON.parse(
+        await readFile(
+          privateSettingsPath(scene.environment, scene.repository),
+          "utf8",
+        ),
+      ),
+    );
+    const saved = record(settings?.["harness"]);
+    assert.ok(saved);
+    assert.deepEqual(saved["turn"], ["pi", "{prompt}"]);
+  }));
+
+await test("a custom agent one-shot command must be a JSON list", async () => {
+  assert.deepEqual(
+    await localWorkerTurn({
+      name: "pi",
+      question: () => Promise.resolve(' ["pi","{prompt}"] '),
+    }),
+    ["pi", "{prompt}"],
+  );
+  await assert.rejects(
+    localWorkerTurn({ name: "pi", question: () => Promise.resolve("nope") }),
+    /harness-no-worker: pi/,
+  );
+  await assert.rejects(
+    localWorkerTurn({ name: "pi", question: () => Promise.resolve("{") }),
+    /harness-no-worker: pi/,
+  );
+});
 
 await test("init --factory still starts the setup agent", () =>
   withDoctor(async (scene) => {

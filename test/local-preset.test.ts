@@ -1,12 +1,18 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { test } from "node:test";
+import packageMetadata from "#package" with { type: "json" };
+import { clientCommand } from "../src/cli/runtime-directory.ts";
 import { record } from "../src/protocol.ts";
 import { applyLocalPreset } from "../tools/local-preset.ts";
+import { localCommandPrefix } from "../tools/template-command.ts";
 import { copyTemplate } from "../tools/template-copy.ts";
 import { templateRoot } from "../tools/template-files.ts";
+import { workflowTestLoader } from "../tools/workflow-test-loader.ts";
 import { withFiles } from "./quality/files-fixture.ts";
+import { testMilliseconds } from "./test-timing.ts";
 
 await test("the local preset applies the nine first-run choices in code", () =>
   withFiles({}, async (directory) => {
@@ -23,7 +29,73 @@ await test("the local preset applies the nine first-run choices in code", () =>
     await assertWorkflow(folder);
     await assertDeclaration(folder);
     await assertChoices(folder);
+    await assertCopiedTests(directory, folder);
   }));
+
+await test("a local command prefix names this program and this repository", () => {
+  const repository = "/work/repo";
+  const packagePath = "/usr/local/lib/node_modules/cloving/tools";
+  const oldPath = "/home/user/_npx-old/cloving/tools";
+  assert.equal(
+    localCommandPrefix({ packagePath, repository, version: "9.9.9" }),
+    clientCommand({}, { packagePath, repository }),
+  );
+  assert.equal(
+    localCommandPrefix({
+      packagePath: oldPath,
+      repository,
+      version: "9.9.9",
+    }),
+    clientCommand({}, { packagePath: oldPath, repository }),
+  );
+  assert.equal(
+    localCommandPrefix({
+      packagePath,
+      repository: "/work/my repo",
+      version: "9.9.9",
+    }),
+    clientCommand({}, { packagePath, repository: "/work/my repo" }),
+  );
+});
+
+await test("a local command prefix keeps npx and a runtime directory with the repository", () => {
+  const repository = "/work/my repo";
+  const packagePath = "/home/user/.npm/_npx/abc/node_modules/cloving/tools";
+  assert.equal(
+    localCommandPrefix({
+      packagePath,
+      repository: "/work/repo",
+      version: packageMetadata.version,
+    }),
+    clientCommand({}, { packagePath, repository: "/work/repo" }),
+  );
+  assert.equal(
+    localCommandPrefix({
+      packagePath,
+      repository,
+      version: "9.9.9",
+      runtimeDirectory: "/run dir",
+    }),
+    "CLOVING_RUNTIME_DIR='/run dir' npx cloving@9.9.9 --repository '/work/my repo'",
+  );
+  assert.equal(
+    localCommandPrefix({
+      packagePath,
+      repository: "/work/o'brien",
+      version: "9.9.9",
+    }),
+    "npx cloving@9.9.9 --repository '/work/o'\\''brien'",
+  );
+  assert.equal(
+    localCommandPrefix({
+      packagePath: "/usr/local/lib/node_modules/cloving/tools",
+      repository,
+      version: "9.9.9",
+      runtimeDirectory: "",
+    }),
+    "cloving --repository '/work/my repo'",
+  );
+});
 
 async function assertWorkflow(folder: string) {
   const workflow = await readFile(join(folder, "develop.ts"), "utf8");
@@ -80,4 +152,45 @@ async function assertChoices(folder: string) {
   const accept = await readFile(join(folder, "develop/accept.ts"), "utf8");
   assert.match(accept, /reviewByPerson\(\{ subject \}\)/);
   assert.doesNotMatch(accept, /greptile/);
+}
+
+async function assertCopiedTests(directory: string, folder: string) {
+  const copied = await readFile(join(folder, "develop.test.ts"), "utf8");
+  assert.match(copied, /prompt-input-required/);
+  assert.doesNotMatch(copied, /flow-tests/);
+  const output = runCopiedTests(directory, folder);
+  assert.match(output, /hands off without GitHub/);
+  assert.doesNotMatch(output, /not ok|✖/);
+}
+
+function runCopiedTests(directory: string, folder: string): string {
+  try {
+    return execFileSync(
+      process.execPath,
+      [
+        "--experimental-strip-types",
+        "--import",
+        workflowTestLoader(),
+        "--test",
+        join(folder, "develop.test.ts"),
+      ],
+      {
+        cwd: directory,
+        encoding: "utf8",
+        timeout: testMilliseconds(60000),
+        env: { ...process.env, NODE_TEST_CONTEXT: undefined },
+      },
+    );
+  } catch (error) {
+    throw new Error(
+      `${childOutput(error, "stdout")}\n${childOutput(error, "stderr")}`,
+      { cause: error },
+    );
+  }
+}
+
+function childOutput(error: unknown, key: "stdout" | "stderr"): string {
+  if (typeof error !== "object" || error === null || !(key in error)) return "";
+  const value: unknown = Reflect.get(error, key);
+  return typeof value === "string" ? value : "";
 }

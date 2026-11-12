@@ -1,11 +1,13 @@
-import { declaresQueue } from "../src/workflow-declaration.ts";
+import { realpathSync } from "node:fs";
 import { readdir, readFile, stat } from "node:fs/promises";
 import { homedir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, sep } from "node:path";
 import { parseArgs } from "node:util";
+import packageMetadata from "#package" with { type: "json" };
 import { absoluteWorkflowFolder } from "../src/project-settings.ts";
 import { record } from "../src/protocol.ts";
 import { isCandidateDeclaration } from "../src/workflow-candidate.ts";
+import { declaresQueue } from "../src/workflow-declaration.ts";
 import { projectConfiguration, projectRoot } from "./project-configuration.ts";
 import { applyLocalPreset } from "./local-preset.ts";
 import { copyTemplate, type ScriptSetting } from "./template-copy.ts";
@@ -181,23 +183,54 @@ async function applied(
     timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
   });
   await applyLocalPreset({ folder, id: "develop" });
-  process.stdout.write(localPresetText());
+  process.stdout.write(
+    localPresetText(
+      localCommandPrefix({
+        packagePath: realpathSync(import.meta.dirname),
+        repository,
+        version: packageMetadata.version,
+        runtimeDirectory: process.env["CLOVING_RUNTIME_DIR"],
+      }),
+    ),
+  );
   return 0;
 }
 
-function localPresetText(): string {
+function shellArgument(value: string): string {
+  return /^[A-Za-z0-9_./-]+$/.test(value)
+    ? value
+    : `'${value.replaceAll("'", "'\\''")}'`;
+}
+
+export function localCommandPrefix(input: {
+  readonly packagePath: string;
+  readonly repository: string;
+  readonly version: string;
+  readonly runtimeDirectory?: string | undefined;
+}): string {
+  const program = input.packagePath.split(sep).includes("_npx")
+    ? `npx cloving@${input.version}`
+    : "cloving";
+  const runtime = input.runtimeDirectory;
+  const repository = `--repository ${shellArgument(input.repository)}`;
+  if (runtime === undefined || runtime.length === 0)
+    return `${program} ${repository}`;
+  return `CLOVING_RUNTIME_DIR=${shellArgument(runtime)} ${program} ${repository}`;
+}
+
+function localPresetText(prefix: string): string {
   return [
     "Copied develop for one local task.",
     "Choices: input task-text, select person, verify none, accept person, merge local, partial person, recovery stop, lessons none, demo none.",
     "The run does not push, open a pull request, or merge.",
     "",
     "Next:",
-    "  cloving start",
-    '  cloving run develop --prompt "Add a test for the date parser"',
-    "  cloving questions",
+    `  ${prefix} start`,
+    `  ${prefix} run develop --prompt "Add a test for the date parser"`,
+    `  ${prefix} questions`,
     "",
     "Open http://127.0.0.1:3663/ to watch the run.",
-    "After the run completes, run `cloving init --factory` to add review, a plan, and regular maintenance.",
+    `After the run completes, run \`${prefix} init --factory\` to add review, a plan, and regular maintenance.`,
     "",
   ].join("\n");
 }

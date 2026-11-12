@@ -13,6 +13,7 @@ export async function applyLocalPreset(input: {
   await writeChanged(join(root, "recovery.ts"), localRecovery);
   await writeChanged(join(root, "lessons.ts"), localLessons);
   await writeChanged(join(root, "scenarios.ts"), localSelection);
+  await writeFile(join(input.folder, `${input.id}.test.ts`), localWorkflowTest);
 }
 
 async function writeChanged(
@@ -159,3 +160,63 @@ function localSelection(text: string): string {
 };`,
   });
 }
+
+const localWorkflowTest = `import assert from "node:assert/strict";
+import { test } from "node:test";
+import { fakeStepBridge } from "cloving/workflows/testing";
+import { develop } from "./develop.ts";
+
+const commit = "a".repeat(40);
+const task = {
+  cycleId: "run-1",
+  repository: "main-checkout",
+  input: { prompt: "Add a test for the date parser" },
+};
+
+await test("a ticket input stops before an effect", async () => {
+  using bridge = fakeStepBridge({});
+  await assert.rejects(
+    develop({
+      cycleId: "run-1",
+      repository: "main-checkout",
+      input: { ticket: { id: "42", text: "Fix the counter" } },
+    }),
+    { message: "prompt-input-required" },
+  );
+  assert.deepEqual(bridge.requests, []);
+});
+
+await test("an approved local change hands off without GitHub", async () => {
+  using bridge = fakeStepBridge({
+    effects: {
+      "claude run-turn": [
+        {
+          kind: "completed",
+          operationId: "operation",
+          receipt: null,
+          result: JSON.stringify({
+            summary: "Implemented.\\nTicket status: complete",
+            commit,
+            uncommitted: [],
+          }),
+        },
+      ],
+    },
+    decisions: [{ decision: "approved", answer: null }],
+  });
+  assert.deepEqual(await develop(task), {
+    kind: "handoff_requested",
+    cycleId: "run-1",
+    promotionId: \`local-\${commit}\`,
+    ticketStatus: "complete",
+  });
+  assert.deepEqual(
+    bridge.requests.flatMap((request) =>
+      request[0] === "effect"
+        ? [request[1].capability + " " + request[1].method]
+        : [],
+    ),
+    ["claude run-turn"],
+  );
+});
+`;

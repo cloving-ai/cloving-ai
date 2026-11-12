@@ -3,6 +3,7 @@ import {
   harnessStartRequest,
   type HarnessStartRequest,
 } from "../harness-start.ts";
+import { isTurnCommand, nativeHarness } from "../harness-defaults.ts";
 import type { HarnessEntry } from "./harness-probes.ts";
 import type { ProbeRunner } from "./probe-command.ts";
 import { changeConfigFile } from "./config-file.ts";
@@ -28,6 +29,7 @@ export async function initCommand(context: {
   readonly probe: ProbeRunner;
   readonly harness: string | undefined;
   readonly path: "local" | "factory" | undefined;
+  readonly askTurn?: (text: string) => Promise<string>;
   readonly applyLocal: (repository: string) => Promise<number>;
   readonly start: (request: HarnessStartRequest) => Promise<number | null>;
 }): Promise<number> {
@@ -41,10 +43,17 @@ export async function initCommand(context: {
       context.harness === undefined
         ? await promptHarness({ ...context, repository: context.repository })
         : await selectedHarness(context.harness, context);
+    const turn =
+      path === "local" ? await localTurn(entry, context.askTurn) : undefined;
     await changeConfigFile(
       privateSettingsPath(context.environment, context.repository),
       {
-        harness: { name: entry.name, kind: entry.kind, path: entry.path },
+        harness: {
+          name: entry.name,
+          kind: entry.kind,
+          path: entry.path,
+          ...(turn === undefined ? {} : { turn }),
+        },
         scope: "private",
       },
     );
@@ -66,6 +75,50 @@ export async function initCommand(context: {
     );
     return 2;
   }
+}
+
+const turnPrompt =
+  "Enter a JSON list for the one-shot command. Use {prompt} one time, or omit it: ";
+
+export async function localWorkerTurn(input: {
+  readonly name: string;
+  readonly question: (text: string) => Promise<string>;
+}): Promise<readonly string[]> {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse((await input.question(turnPrompt)).trim());
+  } catch {
+    throw new Error(`harness-no-worker: ${input.name}`);
+  }
+  if (!isTurnCommand(parsed))
+    throw new Error(`harness-no-worker: ${input.name}`);
+  return parsed;
+}
+
+async function localTurn(
+  entry: HarnessEntry,
+  askTurn: ((text: string) => Promise<string>) | undefined,
+): Promise<readonly string[] | undefined> {
+  if (nativeHarness(entry.name)) return undefined;
+  const question = askTurn ?? terminalQuestion();
+  if (question === undefined)
+    throw new Error(`harness-no-worker: ${entry.name}`);
+  return localWorkerTurn({ name: entry.name, question });
+}
+
+function terminalQuestion(): ((text: string) => Promise<string>) | undefined {
+  if (!process.stdin.isTTY || !process.stdout.isTTY) return undefined;
+  return async (text) => {
+    const terminal = createInterface({
+      input: process.stdin,
+      output: process.stdout,
+    });
+    try {
+      return await terminal.question(text);
+    } finally {
+      terminal.close();
+    }
+  };
 }
 
 async function promptedPath(): Promise<"local" | "factory"> {
