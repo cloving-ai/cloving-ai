@@ -8,6 +8,7 @@ import {
 } from "./watch-api-problem.ts";
 
 export interface TranscriptQuery {
+  readonly before?: number;
   readonly runId: string;
   readonly operationId: string;
   readonly after: number;
@@ -20,6 +21,7 @@ export interface TranscriptRequest {
 }
 
 export interface ApiTranscriptPage {
+  readonly hasEarlier?: boolean;
   readonly entries: readonly TranscriptEntry[];
   readonly nextAfter: number;
   readonly open: boolean;
@@ -96,7 +98,14 @@ function pageOf(result: Fields): ApiTranscriptPage | null {
   if (!Array.isArray(entries) || typeof open !== "boolean") return null;
   if (typeof nextAfter !== "number" || !Number.isSafeInteger(nextAfter))
     return null;
-  return { entries: entries.map(entryOf), nextAfter, open };
+  return {
+    entries: entries.map(entryOf),
+    nextAfter,
+    open,
+    ...(typeof result["hasEarlier"] === "boolean"
+      ? { hasEarlier: result["hasEarlier"] }
+      : {}),
+  };
 }
 
 async function pageRead(
@@ -131,7 +140,11 @@ export async function transcriptReply(
   request: TranscriptRequest,
   path: PathValues,
 ): Promise<ApiReply> {
-  const page = await pageRead(request, queryOf(path, afterOf(request)));
+  const before = request.url.searchParams.get("before");
+  const page = await pageRead(request, {
+    ...queryOf(path, afterOf(request)),
+    ...(before === null ? {} : { before: Number(before) }),
+  });
   if (!isPage(page)) return page;
   return { status: 200, type: "application/json", body: JSON.stringify(page) };
 }

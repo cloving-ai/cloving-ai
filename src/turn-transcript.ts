@@ -9,6 +9,8 @@ import {
   summaryLine,
   withoutControls,
 } from "./transcript-text.ts";
+import { appendPartial, type PartialText } from "./transcript-partial.ts";
+import type { ShownText } from "./transcript-text.ts";
 
 export type { TranscriptKind } from "./transcript-lines.ts";
 
@@ -44,20 +46,21 @@ export interface TranscriptFiles {
 }
 
 export interface ParsedTranscript {
+  readonly replacementKeys?: readonly string[];
   readonly partials?: readonly TranscriptPartial[];
   readonly bytes: number;
   readonly attempt: number;
   readonly entries: readonly TranscriptEntry[];
 }
 
-interface TranscriptPartial {
+interface TranscriptPartial extends PartialText {
   readonly key: string;
-  readonly text: string;
 }
 
 interface Appending {
   readonly entries: TranscriptEntry[];
-  readonly partials: Map<string, string>;
+  readonly partials: Map<string, PartialText>;
+  readonly replacements: Map<string, string>;
   readonly privateTexts: readonly string[];
   position: number;
   attempt: number;
@@ -72,6 +75,7 @@ export interface TranscriptSource extends Pick<
 }
 
 export interface TranscriptPage {
+  readonly hasEarlier?: boolean;
   readonly entries: readonly TranscriptEntry[];
   readonly nextAfter: number;
 }
@@ -150,14 +154,14 @@ function entryOf(
     readonly position: number;
     readonly attempt: number;
     readonly privateTexts: readonly string[];
+    readonly display?: ShownText | undefined;
   },
 ): TranscriptEntry {
-  const { text, omittedBytes } = shownText(draft.text, place.privateTexts);
+  const { text, omittedBytes } =
+    place.display ?? shownText(draft.text, place.privateTexts);
   const { tool, summary } = shownTool(draft, place.privateTexts);
   return {
-    ...(draft.replaceId === undefined
-      ? {}
-      : { replaceId: maskedText(draft.replaceId, place.privateTexts) }),
+    ...(draft.replaceId === undefined ? {} : { replaceId: draft.replaceId }),
     ...(draft.removed === true ? { removed: true } : {}),
     position: place.position,
     attempt: place.attempt,
@@ -178,7 +182,13 @@ export function transcriptAppended(
   const state: Appending = {
     entries: [...parsed.entries],
     partials: new Map(
-      parsed.partials?.map((partial) => [partial.key, partial.text]),
+      parsed.partials?.map((partial) => [partial.key, partial]),
+    ),
+    replacements: new Map(
+      parsed.replacementKeys?.map((key, index) => [
+        key,
+        `block:${String(index)}`,
+      ]),
     ),
     privateTexts: source.privateTexts,
     position: parsed.entries.at(-1)?.position ?? 0,
@@ -205,23 +215,42 @@ export function transcriptAppended(
     );
   }
   const bytes = parsed.bytes + encoder.encode(consumedText(source)).length;
-  const partials = [...state.partials].map(([key, text]) => ({ key, text }));
+  return parsedState(state, bytes);
+}
+
+function parsedState(state: Appending, bytes: number): ParsedTranscript {
+  const partials = [...state.partials].map(([key, partial]) => ({
+    ...partial,
+    key,
+  }));
   return {
     bytes,
     attempt: state.attempt,
     entries: state.entries,
+    ...(state.replacements.size === 0
+      ? {}
+      : { replacementKeys: [...state.replacements.keys()] }),
     ...(partials.length === 0 ? {} : { partials }),
   };
 }
 
 function appendDraft(state: Appending, draft: TranscriptDraft): void {
   const key = JSON.stringify([state.attempt, draft.replaceId]);
-  const text =
-    (draft.append === true ? (state.partials.get(key) ?? "") : "") + draft.text;
-  if (draft.partial === true) state.partials.set(key, text);
+  const display =
+    draft.partial === true
+      ? appendPartial(
+          draft.append === true ? state.partials.get(key) : undefined,
+          { text: draft.text, privateTexts: state.privateTexts },
+        )
+      : undefined;
+  if (display !== undefined) state.partials.set(key, display);
   else state.partials.delete(key);
+  let replacement: Pick<TranscriptDraft, "replaceId"> = {};
   if (draft.replaceId !== undefined) {
-    const replaceId = maskedText(draft.replaceId, state.privateTexts);
+    const replaceId =
+      state.replacements.get(key) ?? `block:${String(state.replacements.size)}`;
+    state.replacements.set(key, replaceId);
+    replacement = { replaceId };
     const previous = state.entries.findIndex(
       (entry) =>
         entry.attempt === state.attempt && entry.replaceId === replaceId,
@@ -229,7 +258,10 @@ function appendDraft(state: Appending, draft: TranscriptDraft): void {
     if (previous >= 0) state.entries.splice(previous, 1);
   }
   state.entries.push(
-    entryOf({ ...draft, text }, { ...state, position: ++state.position }),
+    entryOf(
+      { ...draft, ...replacement },
+      { ...state, position: ++state.position, display },
+    ),
   );
 }
 
@@ -241,8 +273,10 @@ export function transcriptEntries(source: TranscriptSource): TranscriptEntry[] {
 
 export function transcriptPage(
   entries: readonly TranscriptEntry[],
-  query: { readonly after: number },
+  query: { readonly after: number; readonly before?: number },
 ): TranscriptPage {
+  if (query.before !== undefined)
+    return earlierPage(entries, { after: query.after, before: query.before });
   const page: TranscriptEntry[] = [];
   let bytes = 0;
   for (const entry of entries) {
@@ -254,4 +288,45 @@ export function transcriptPage(
     bytes += size;
   }
   return { entries: page, nextAfter: page.at(-1)?.position ?? query.after };
+}
+
+function earlierEntry(
+  entry: TranscriptEntry | undefined,
+  query: { readonly after: number; readonly before: number },
+): entry is TranscriptEntry {
+  return (
+    entry !== undefined &&
+    entry.removed !== true &&
+    entry.position < query.before &&
+    entry.position > query.after
+  );
+}
+
+function earlierPage(
+  entries: readonly TranscriptEntry[],
+  query: { readonly after: number; readonly before: number },
+): TranscriptPage {
+  const page: TranscriptEntry[] = [];
+  let bytes = 0;
+  let hasEarlier = false;
+  for (let index = entries.length - 1; index >= 0; index -= 1) {
+    const entry = entries[index];
+    if (!earlierEntry(entry, query)) continue;
+    const size = encoder.encode(JSON.stringify(entry)).length;
+    if (
+      page.length === transcriptLimits.entries ||
+      (page.length > 0 && bytes + size > transcriptLimits.bytes)
+    ) {
+      hasEarlier = true;
+      break;
+    }
+    page.push(entry);
+    bytes += size;
+  }
+  page.reverse();
+  return {
+    entries: page,
+    nextAfter: page.at(-1)?.position ?? query.after,
+    hasEarlier,
+  };
 }

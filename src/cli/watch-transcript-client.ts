@@ -76,21 +76,18 @@ function transcriptClosed(item) {
 }
 async function transcriptEarlier(target) {
   const item = transcriptItem(target);
+  if (item.earlierLoading) return;
+  item.earlierLoading = true;
   const first = item.entries[0]?.position ?? item.latest + 1;
   let found = [];
   let earlier = false;
-  let after = 0;
   try {
-    while (after < first - 1) {
-      const reply = await fetch(transcriptPath(item, target.operationId, "transcript") + "?after=" + after, { cache: "no-store" });
-      if (!reply.ok) break;
-      const page = await reply.json();
-      for (const entry of page.entries.filter((entry) => entry.position < first)) found = transcriptReplaced(found, entry);
-      if (found.length > 200) { found = found.slice(-200); earlier = true; }
-      if (page.entries.length === 0) break;
-      after = page.nextAfter;
-    }
-  } catch {}
+    const reply = await fetch(transcriptPath(item, target.operationId, "transcript") + "?before=" + first, { cache: "no-store" });
+    if (!reply.ok) return;
+    const page = await reply.json();
+    for (const entry of page.entries.filter((entry) => entry.position < first)) found = transcriptReplaced(found, entry);
+    earlier = page.hasEarlier === true;
+  } catch {} finally { item.earlierLoading = false; }
   item.entries = item.entries.reduce(transcriptReplaced, found);
   if (item.entries.length > transcriptWindow) {
     item.entries = item.entries.slice(0, transcriptWindow);

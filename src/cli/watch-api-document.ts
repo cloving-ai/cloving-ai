@@ -13,6 +13,7 @@ import {
   reference,
   text,
   transcriptEntrySchema,
+  transcriptPageSchema,
 } from "./watch-api-schema.ts";
 import { scheduleSchemas, schedulesPath } from "./watch-api-schedules.ts";
 
@@ -261,8 +262,18 @@ export const watchApiDocument = {
         operationId: "getTurnTranscript",
         tags: ["runs"],
         summary:
-          "Give at most 200 entries and 256 KiB of the transcript of one agent turn after a position, the lowest position first.",
-        parameters: [runId, operationId, transcriptAfter],
+          "Give at most 200 entries and 256 KiB after a position, or the latest page before a position, the lowest position first.",
+        parameters: [
+          runId,
+          operationId,
+          transcriptAfter,
+          {
+            name: "before",
+            in: "query",
+            description: "Give the latest page with lower positions.",
+            schema: { type: "integer", minimum: 1 },
+          },
+        ],
         responses: {
           "200": json(
             "One page of the transcript.",
@@ -370,11 +381,7 @@ export const watchApiDocument = {
         summary: text,
       }),
       Event: closed({ sequence: integer, type: text, recordedAt: text }),
-      TranscriptPage: closed({
-        entries: listOf(reference("TranscriptEntry")),
-        nextAfter: integer,
-        open: flag,
-      }),
+      TranscriptPage: transcriptPageSchema(),
       TranscriptEntry: transcriptEntrySchema(transcriptKinds),
       Problem: closed({
         type: text,

@@ -50,6 +50,15 @@ export function transcriptEntrySchema(kinds: readonly string[]) {
   };
 }
 
+export function transcriptPageSchema() {
+  const page = closed({
+    entries: listOf(reference("TranscriptEntry")),
+    nextAfter: integer,
+    open: flag,
+  });
+  return { ...page, properties: { ...page.properties, hasEarlier: flag } };
+}
+
 export const invalidQuery = problem(
   "A query parameter is unknown, repeated or has an invalid value.",
 );
