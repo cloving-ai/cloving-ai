@@ -21,7 +21,9 @@ const gatedProgram = `
 import { appendFileSync, existsSync, readFileSync } from "node:fs";
 const [specification, gate, log] = process.argv.slice(2);
 const { head, tail, stderr } = JSON.parse(readFileSync(specification, "utf8"));
-appendFileSync(log, JSON.stringify({ processId: process.pid, parentId: process.ppid }) + "\\n");
+const separator = process.argv.indexOf("--");
+const prompt = separator < 0 ? null : process.argv[separator + 1];
+appendFileSync(log, JSON.stringify({ processId: process.pid, parentId: process.ppid, prompt }) + "\\n");
 for (const line of head) process.stdout.write(line + "\\n");
 const timer = setInterval(() => {
   if (!existsSync(gate)) return;

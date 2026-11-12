@@ -14,6 +14,41 @@ function update(event: Fields): boolean {
   return ["text_start", "thinking_start", "toolcall_start"].includes(type);
 }
 
+function validPart(value: unknown): boolean {
+  const part = record(value) ?? {};
+  switch (part["type"]) {
+    case "text":
+      return typeof part["text"] === "string";
+    case "thinking":
+      return typeof part["thinking"] === "string" || part["redacted"] === true;
+    case "toolCall":
+      return (
+        typeof part["id"] === "string" &&
+        typeof part["name"] === "string" &&
+        record(part["arguments"]) !== undefined
+      );
+    default:
+      return false;
+  }
+}
+
+export function piMessageFailure(event: Fields): string | undefined {
+  if (event["type"] !== "message_end") return undefined;
+  const message = record(event["message"]);
+  if (message === undefined || typeof message["role"] !== "string")
+    return "Pi malformed message_end record";
+  if (message["role"] === "toolResult" && !validPiToolResult(message))
+    return "Pi malformed toolResult message_end record";
+  if (message["role"] !== "assistant") return undefined;
+  const content = message["content"];
+  const reasons = ["stop", "length", "toolUse", "error", "aborted", "deferred"];
+  return Array.isArray(content) &&
+    content.every(validPart) &&
+    reasons.includes(String(message["stopReason"]))
+    ? undefined
+    : "Pi malformed assistant record";
+}
+
 export function validPiActivity(event: Fields): boolean {
   switch (event["type"]) {
     case "message_start":

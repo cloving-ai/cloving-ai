@@ -1613,6 +1613,7 @@
     "test/pi-input.test.ts": "test",
     "test/pi-live.test.ts": "test",
     "test/pi-protocol.test.ts": "test",
+    "test/pi-recovery.test.ts": "test",
     "test/pi-settings.test.ts": "test",
     "test/pi-stream.test.ts": "test",
     "test/pi-worker.test.ts": "test",

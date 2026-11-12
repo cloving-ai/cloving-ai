@@ -1,6 +1,7 @@
 import {
   validPiActivity,
   validPiToolResult,
+  piMessageFailure,
   piWorkEvents,
 } from "./pi-records.ts";
 import { record, type Fields } from "../protocol.ts";
@@ -19,9 +20,12 @@ import { piActivity } from "./pi-activity.ts";
 interface State {
   readonly activity: ReturnType<typeof piActivity>;
   sessionId: string | null;
+  sessionHeader: string | null;
+  invocationStarted: boolean;
   settled: boolean;
   aborted: boolean;
   openAssistant: boolean;
+  openIdentity: string | undefined;
   failure: string | undefined;
   outcomeError: string | undefined;
   message: Fields | undefined;
@@ -47,56 +51,79 @@ function messageText(message: State["message"]): string {
     .join("\n");
 }
 
-function contentParts(content: unknown): readonly Fields[] | undefined {
-  if (!Array.isArray(content)) return undefined;
-  const parts = content.map((part: unknown) => record(part));
-  if (parts.some((part) => part === undefined)) return undefined;
-  return parts.filter((part) => part !== undefined);
+function responseIdentity(message: Fields): string | undefined {
+  const response = piResponse(message);
+  if (response.responseId !== null)
+    return JSON.stringify([
+      response.provider,
+      response.model,
+      response.responseId,
+    ]);
+  const timestamp = message["timestamp"];
+  if (
+    typeof timestamp !== "number" ||
+    !Number.isSafeInteger(timestamp) ||
+    timestamp < 0
+  )
+    return undefined;
+  return JSON.stringify([
+    response,
+    timestamp,
+    message["content"],
+    message["stopReason"],
+    message["errorMessage"],
+    message["api"],
+    message["thinkingLevel"],
+  ]);
 }
 
-function validPart(part: Fields): boolean {
-  switch (part["type"]) {
-    case "text":
-      return typeof part["text"] === "string";
-    case "thinking":
-      return typeof part["thinking"] === "string" || part["redacted"] === true;
-    case "toolCall":
-      return (
-        typeof part["id"] === "string" &&
-        typeof part["name"] === "string" &&
-        record(part["arguments"]) !== undefined
-      );
-    default:
-      return false;
-  }
+function replayed(event: Fields, state: State): boolean {
+  const message = record(event["message"]);
+  if (
+    !["message_start", "message_end"].includes(String(event["type"])) ||
+    message?.["role"] !== "assistant"
+  )
+    return false;
+  const identity = responseIdentity(message);
+  return identity !== undefined && state.responseIds.has(identity);
+}
+
+function responseAnchor(message: Fields): string | undefined {
+  const response = piResponse(message);
+  if (response.responseId !== null)
+    return JSON.stringify([
+      response.provider,
+      response.model,
+      response.responseId,
+    ]);
+  if (typeof message["timestamp"] !== "number") return undefined;
+  return JSON.stringify([
+    response.provider,
+    response.model,
+    message["timestamp"],
+  ]);
+}
+
+function replayedAssistant(message: Fields, state: State): readonly string[] {
+  if (
+    state.openIdentity === undefined ||
+    state.openIdentity !== responseAnchor(message)
+  )
+    return [];
+  state.openAssistant = false;
+  state.openIdentity = undefined;
+  return state.activity.completed({ content: [] });
 }
 
 function assistant(message: Fields, state: State): readonly string[] {
-  const parts = contentParts(message["content"]);
-  const reason = message["stopReason"];
-  if (
-    parts === undefined ||
-    !parts.every(validPart) ||
-    !["stop", "length", "toolUse", "error", "aborted", "deferred"].includes(
-      text(reason),
-    )
-  ) {
-    state.failure ??= "Pi malformed assistant record";
-    return [];
-  }
+  const response = piResponse(message);
+  const identity = responseIdentity(message);
+  if (identity !== undefined && state.responseIds.has(identity))
+    return replayedAssistant(message, state);
   state.message = message;
   state.outcomeError = undefined;
   state.openAssistant = false;
-  const response = piResponse(message);
-  const identity =
-    response.responseId === null
-      ? undefined
-      : JSON.stringify([
-          response.provider,
-          response.model,
-          response.responseId,
-        ]);
-  if (identity !== undefined && state.responseIds.has(identity)) return [];
+  state.openIdentity = undefined;
   if (identity !== undefined) state.responseIds.add(identity);
   state.responses.push(response);
   return state.activity.completed(message);
@@ -159,15 +186,41 @@ function settled(event: Fields, state: State): void {
 }
 
 function received(event: Fields, state: State): readonly string[] {
+  if (state.failure !== undefined) return [];
   if (event["type"] === "session") return session(event, state);
-  if (state.sessionId === null) state.failure ??= "Pi missing session record";
-  if (!validPiActivity(event)) {
-    state.failure ??= `Pi malformed ${String(event["type"])} record`;
+  state.failure = activityFailure(event, state);
+  if (state.failure !== undefined) return [];
+  if (event["type"] === "agent_start") state.invocationStarted = true;
+  if (
+    !state.invocationStarted &&
+    ["message_start", "message_end"].includes(String(event["type"]))
+  )
     return [];
-  }
-  if (piWorkEvents.has(String(event["type"]))) state.settled = false;
+  if (!replayed(event, state) && piWorkEvents.has(String(event["type"])))
+    state.settled = false;
   invalidateOutcome(event, state);
   return activity(event, state);
+}
+
+function activityFailure(event: Fields, state: State): string | undefined {
+  if (state.sessionId === null) return "Pi missing session record";
+  const failure = piMessageFailure(event);
+  if (failure !== undefined) return failure;
+  return validPiActivity(event)
+    ? undefined
+    : `Pi malformed ${String(event["type"])} record`;
+}
+
+function messageStarted(event: Fields, state: State): readonly string[] {
+  const message = record(event["message"]);
+  if (message?.["role"] !== "assistant") return [];
+  if (replayed(event, state)) {
+    if (!state.openAssistant) state.openIdentity = responseAnchor(message);
+    return [];
+  }
+  state.openAssistant = true;
+  state.openIdentity = responseAnchor(message);
+  return state.activity.start(message);
 }
 
 function activity(event: Fields, state: State): readonly string[] {
@@ -176,11 +229,7 @@ function activity(event: Fields, state: State): readonly string[] {
       settled(event, state);
       break;
     case "message_start":
-      if (record(event["message"])?.["role"] === "assistant") {
-        state.openAssistant = true;
-        return state.activity.start(record(event["message"]) ?? {});
-      }
-      break;
+      return messageStarted(event, state);
     case "message_update":
       state.openAssistant = true;
       return state.activity.update(event);
@@ -260,9 +309,12 @@ export function piStream() {
   const state: State = {
     activity: piActivity(),
     sessionId: null,
+    sessionHeader: null,
+    invocationStarted: false,
     settled: false,
     aborted: false,
     openAssistant: false,
+    openIdentity: undefined,
     failure: undefined,
     outcomeError: undefined,
     message: undefined,
@@ -306,13 +358,21 @@ export function piStream() {
 }
 
 function session(event: Fields, state: State): readonly string[] {
-  if (
-    state.sessionId !== null ||
-    event["version"] !== 3 ||
-    text(event["id"]) === ""
-  )
+  if (event["version"] !== 3 || text(event["id"]) === "") {
     state.failure ??= "Pi unsupported or malformed session record";
-  state.sessionId = text(event["id"]) || null;
+    return [];
+  }
+  const header = JSON.stringify([
+    event["id"],
+    event["cwd"],
+    event["timestamp"],
+  ]);
+  if (state.sessionHeader !== null && state.sessionHeader !== header) {
+    state.failure ??= "Pi conflicting session record";
+    return [];
+  }
+  state.sessionId = text(event["id"]);
+  state.sessionHeader = header;
   return [];
 }
 
