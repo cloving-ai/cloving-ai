@@ -1,5 +1,3 @@
-import { rm } from "node:fs/promises";
-import { join } from "node:path";
 import type { ProtectedIntent } from "../broker/actor/delivery-intents.ts";
 import { turnWait, type TurnWait } from "../turn-launch.ts";
 import { waitEnd } from "../cli/turn-waits.ts";
@@ -21,10 +19,6 @@ export function keptWait(journal: {
   if (recordedField(journal.result, "stoppedBy") !== "daemon-shutdown")
     return undefined;
   return turnWait(journal.started);
-}
-
-export function retiredResult(folder: string): Promise<void> {
-  return rm(join(folder, "result.json"), { force: true });
 }
 
 async function readWait(

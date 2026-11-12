@@ -74,19 +74,19 @@ export interface TurnWait {
 
 const instant = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/;
 
-function waitLength(value: unknown): number | undefined {
-  if (typeof value !== "number" || !Number.isSafeInteger(value))
-    return undefined;
-  return value >= 0 ? value : undefined;
-}
-
 export function turnWait(started: unknown): TurnWait | undefined {
   const fields = record(started);
   if (fields?.["phase"] !== "waiting") return undefined;
   const attempt = attemptNumber(started);
-  const waitMilliseconds = waitLength(fields["waitMilliseconds"]);
+  const waitMilliseconds = fields["waitMilliseconds"];
+  if (
+    typeof waitMilliseconds !== "number" ||
+    !Number.isSafeInteger(waitMilliseconds) ||
+    waitMilliseconds < 0
+  )
+    return undefined;
   const waitingAt = fields["waitingAt"];
-  if (attempt === undefined || waitMilliseconds === undefined) return undefined;
+  if (attempt === undefined) return undefined;
   if (typeof waitingAt !== "string" || !instant.test(waitingAt))
     return undefined;
   return { attempt, waitingAt, waitMilliseconds };

@@ -164,21 +164,14 @@ async function resumed(
     readonly wait?: TurnWait;
   },
 ): Promise<AdapterOutcome> {
-  const { intent, started, key, folder, signal, launch, wait } = request;
+  const { intent, started, key, folder, signal, launch } = request;
   const aborted = () => signal.aborted;
   if (!turnIntent(intent))
     return interruptedReply(request, "claude-turn-interrupted");
   if (aborted()) return failure("claude-start-aborted");
   const current = parts.settings.turnSettings();
   const settings = { ...parts.settings, ...current };
-  const plan = await recoveryPlan(settings, {
-    folder,
-    started,
-    intent,
-    signal,
-    ...(launch === undefined ? {} : { launch }),
-    ...(wait === undefined ? {} : { wait }),
-  });
+  const plan = await recoveryPlan(settings, { ...request, intent });
   if (aborted()) return failure("claude-start-aborted");
   if (typeof plan === "string")
     return rejectedAttach(parts, { request, plan, launch });
@@ -186,7 +179,10 @@ async function resumed(
   if (aborted()) return failure("claude-start-aborted");
   if (prompt === undefined)
     return interruptedReply(request, "claude-turn-interrupted");
-  parts.settings.recovered?.({ runId: intent.runId, way: recoveryWay(plan) });
+  let way: RecoveryWay = "resumed";
+  if ("attach" in plan) way = "connected";
+  else if ("wait" in plan) way = "waiting";
+  parts.settings.recovered?.({ runId: intent.runId, way });
   const noted = await parts.notes.recorded({ ...intent, prompt, started });
   await begun(parts, {
     key,
@@ -216,11 +212,6 @@ function recoveryPlan(
   const { wait } = request;
   if (wait !== undefined) return waitPlan(settings, { ...request, wait });
   return resumePlan(settings, request);
-}
-
-function recoveryWay(plan: object): RecoveryWay {
-  if ("attach" in plan) return "connected";
-  return "wait" in plan ? "waiting" : "resumed";
 }
 
 function failure(reason: string): AdapterOutcome {
