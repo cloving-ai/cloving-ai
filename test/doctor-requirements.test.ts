@@ -1,4 +1,5 @@
-import { withDoctor } from "./doctor-fixture.ts";
+import { check, settings, withDoctor } from "./doctor-fixture.ts";
+import { writeQueueWorkflow } from "./workflow-folder-fixture.ts";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { doctorWorkflows } from "../src/cli/doctor-workflows.ts";
@@ -14,6 +15,49 @@ const issue: DoctorWorkflow = {
   workflowId: "develop-issue",
   capabilities: ["github"],
 };
+
+await test("CLV-359 doctor accepts workflow working lanes below the general lane count", () =>
+  withDoctor(async (scene) => {
+    await writeQueueWorkflow(join(scene.repository, ".cloving/workflows"));
+    const output = await scene.report({
+      CLOVING_QUEUE_SECONDS: undefined,
+      CLOVING_QUEUE_LANES: "6",
+      CLOVING_QUEUES: '{"queued":{"workingLanes":5}}',
+    });
+    const interval = check(output, "queue-interval");
+    assert.equal(interval["result"], "ok", String(interval["detail"]));
+    assert.equal(interval["required"], true);
+    assert.equal(interval["detail"], "120 seconds from the default");
+    assert.equal(output.status, 0);
+  }));
+
+await test("CLV-359 doctor does not require the next command for a disabled queue", () =>
+  withDoctor(async (scene) => {
+    await writeQueueWorkflow(join(scene.repository, ".cloving/workflows"));
+    await settings(scene, {
+      version: 1,
+      queues: { queued: { state: "off" } },
+    });
+    const environment = {
+      CLOVING_QUEUE_SECONDS: undefined,
+      CLOVING_NEXT_COMMAND: undefined,
+    };
+    const disabled = await scene.report(environment);
+    assert.equal(check(disabled, "next-command")["required"], false);
+    assert.equal(check(disabled, "ticket-command")["required"], true);
+    assert.equal(check(disabled, "queue-interval")["result"], "ok");
+    assert.match(
+      String(check(disabled, "queue-interval")["detail"]),
+      /queues setting turns off the queue of queued/,
+    );
+    assert.equal(disabled.status, 0);
+    const enabled = await scene.report({
+      ...environment,
+      CLOVING_QUEUES: '{"queued":{"state":"on"}}',
+    });
+    assert.equal(check(enabled, "next-command")["required"], true);
+    assert.equal(enabled.status, 1);
+  }));
 
 for (const queue of [false, true]) {
   await test(`CLV-218 doctor discovers declared ticket and queue requirements with queue ${String(queue)}`, async () => {

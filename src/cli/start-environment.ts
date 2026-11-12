@@ -1,21 +1,25 @@
 import { readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
-import { withoutFileVariables } from "../project-settings.ts";
-import { restartFiles } from "../restart-request.ts";
+import { restartedEnvironment, restartFiles } from "../restart-request.ts";
 
-function settingsNote(directory: string): string {
-  return join(directory, restartFiles.settings);
+const notes = [restartFiles.settings, restartFiles.variables];
+
+function noteText(directory: string, name: string): Promise<string> {
+  return readFile(join(directory, name), "utf8").catch(() => "");
 }
 
 export async function clearedSettingsNote(directory: string): Promise<void> {
-  await rm(settingsNote(directory), { force: true });
+  await Promise.all(
+    notes.map((name) => rm(join(directory, name), { force: true })),
+  );
 }
 
 export async function restartEnvironment(
   directory: string,
   environment: NodeJS.ProcessEnv,
 ): Promise<NodeJS.ProcessEnv> {
-  const note = await readFile(settingsNote(directory), "utf8").catch(() => "");
+  const settings = await noteText(directory, restartFiles.settings);
+  const variables = await noteText(directory, restartFiles.variables);
   await clearedSettingsNote(directory);
-  return note === "files" ? withoutFileVariables(environment) : environment;
+  return restartedEnvironment(environment, { settings, variables });
 }

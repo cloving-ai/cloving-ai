@@ -3,7 +3,7 @@
     "workflowId": "develop",
     "effectLimit": 87,
     "capabilities": ["claude", "github"],
-    "queue": true,
+    "queue": { "everySeconds": 120, "lanes": 1 },
     "input": {
       "maximumBytes": 65536,
       "fields": { "ticket": { "type": "ticket" } }

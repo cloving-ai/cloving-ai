@@ -3,6 +3,7 @@ import type { Readable } from "node:stream";
 interface ProbeChild {
   readonly pid?: number | undefined;
   readonly stdout: Readable;
+  readonly stderr: Readable;
   kill(signal: NodeJS.Signals): boolean;
   once(event: "error", listener: (error: Error) => void): this;
   once(event: "close", listener: (code: number | null) => void): this;
@@ -15,7 +16,7 @@ interface ProbeEffects {
     readonly options: {
       readonly env: Readonly<NodeJS.ProcessEnv>;
       readonly cwd?: string;
-      readonly stdio: ["ignore", "pipe", "ignore"];
+      readonly stdio: ["ignore", "pipe", "pipe"];
       readonly detached: true;
     };
   }) => ProbeChild;
@@ -37,6 +38,7 @@ export type ProbeRunner = (
 export interface ProbeOutput {
   readonly exitCode?: number | null;
   readonly stdout: string;
+  readonly stderr?: string;
   readonly reason: string | null;
 }
 
@@ -67,23 +69,30 @@ function executeProbe(input: {
       options: {
         env: options.env,
         ...(options.directory === undefined ? {} : { cwd: options.directory }),
-        stdio: ["ignore", "pipe", "ignore"],
+        stdio: ["ignore", "pipe", "pipe"],
         detached: true,
       },
     });
     const chunks: Buffer[] = [];
+    const errors: Buffer[] = [];
     let bytes = 0;
+    let errorBytes = 0;
     let reason: string | null = null;
     const stop = (failure: string): void => {
       if (reason !== null) return;
       reason = failure;
       killProbe(child, effects);
       child.stdout.destroy();
+      child.stderr.destroy();
     };
     child.stdout.on("data", (chunk: Buffer) => {
       bytes += chunk.length;
       if (bytes > (options.bytes ?? 65536)) stop("probe-output-limit");
       else chunks.push(chunk);
+    });
+    child.stderr.on("data", (chunk: Buffer) => {
+      if (errorBytes < (options.bytes ?? 65536)) errors.push(chunk);
+      errorBytes += chunk.length;
     });
     const timer = setTimeout(() => {
       stop("probe-timeout");
@@ -96,6 +105,7 @@ function executeProbe(input: {
       complete({
         exitCode: code,
         stdout: Buffer.concat(chunks).toString("utf8"),
+        stderr: Buffer.concat(errors).toString("utf8"),
         reason: reason ?? (code === 0 ? null : "probe-exit"),
       });
     });

@@ -1,3 +1,4 @@
+import { declaredQueueValues, defaultQueueSeconds } from "../queue-settings.ts";
 import { join } from "node:path";
 import { record } from "../protocol.ts";
 import type {
@@ -7,6 +8,7 @@ import type {
 } from "../service/workflow-reload.ts";
 import { serviceLimits } from "../service/service.ts";
 import {
+  declaresQueue,
   isWorkflowDeclaration,
   type DeclaredWorkflow,
 } from "../workflow-declaration.ts";
@@ -54,8 +56,8 @@ function refused(code: string, detail: string): Refused {
 export function queueWorkflowId(settings: {
   readonly declarations?: readonly DeclaredWorkflow[];
 }): string | undefined {
-  return settings.declarations?.find(
-    (declaration) => declaration.queue === true,
+  return settings.declarations?.find((declaration) =>
+    declaresQueue(declaration.queue),
   )?.workflowId;
 }
 
@@ -195,6 +197,17 @@ async function prepared(
   return preparedBundle(output.stdout, output.failure);
 }
 
+function queueFact(
+  declarations: readonly DeclaredWorkflow[],
+): readonly [string, number] | null {
+  const queued = declarations.find((declaration) =>
+    declaresQueue(declaration.queue),
+  );
+  if (queued === undefined) return null;
+  const { everySeconds } = declaredQueueValues(queued);
+  return [queued.workflowId, everySeconds ?? defaultQueueSeconds];
+}
+
 function restartFacts(declarations: readonly DeclaredWorkflow[]): string {
   const schedules = new Map(
     declarations
@@ -205,7 +218,7 @@ function restartFacts(declarations: readonly DeclaredWorkflow[]): string {
       ),
   );
   return JSON.stringify({
-    queue: queueWorkflowId({ declarations }) ?? null,
+    queue: queueFact(declarations),
     schedules: [...schedules.keys()]
       .sort()
       .map((workflowId) => [workflowId, schedules.get(workflowId)]),

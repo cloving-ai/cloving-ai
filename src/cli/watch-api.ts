@@ -282,7 +282,13 @@ const routes = new Map<string, Route>([
   ],
   [
     "/runs/{runId}/turns/{operationId}/transcript",
-    { parameters: new Map([["after", wholeNumber]]), reply: transcriptReply },
+    {
+      parameters: new Map([
+        ["after", wholeNumber],
+        ["before", (value: string) => wholeNumber(value) && Number(value) > 0],
+      ]),
+      reply: transcriptReply,
+    },
   ],
   [
     "/runs/{runId}/turns/{operationId}/transcript-stream",

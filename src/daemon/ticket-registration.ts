@@ -1,5 +1,6 @@
 import { admitCompiled } from "../cli/validate.ts";
 import {
+  declaresQueue,
   isCommandWaits,
   workflowQueueRefusals,
   type DeclaredWorkflow,
@@ -183,8 +184,9 @@ export function ticketRegistrationTable(
   source: TicketSource,
   declarations: readonly DeclaredWorkflow[] = [],
 ): readonly TicketRegistration[] {
-  return declarations.map(({ input, ...declaration }) => ({
+  return declarations.map(({ input, queue, ...declaration }) => ({
     ...declaration,
+    ...(queue === undefined ? {} : { queue: declaresQueue(queue) }),
     submission: input,
     resolver: declaredResolver(source, input),
   }));

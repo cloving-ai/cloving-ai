@@ -1,4 +1,9 @@
 import { hasTicketField, type SubmissionContract } from "./submission.ts";
+import { parseQueuesSetting } from "./queue-settings.ts";
+import {
+  declaresQueue,
+  type WorkflowDeclaration,
+} from "./workflow-declaration.ts";
 
 export const doctorCodes = [
   "git-repository",
@@ -20,6 +25,7 @@ export const doctorCodes = [
   "queue-interval",
   "private-texts",
   "turn-environment",
+  "commit-signatures",
   "turn-runners",
   "command-gh-no-login",
   "retention",
@@ -70,6 +76,7 @@ export function doctorFixes(
     "queue-interval": `Set an interval from 10 to 3600: CLOVING_QUEUE_SECONDS=30 ${client} doctor`,
     "private-texts": `Set a nonblank private text: CLOVING_PRIVATE_TEXTS='["TEXT TO KEEP PRIVATE"]' ${client} doctor`,
     "turn-environment": `Give a turn a variable that the project needs: ${client} config set turns.environment '["NAME"]' --private`,
+    "commit-signatures": `Let turns commit with no signature: ${client} config set turns.commitSignatures off --private. Or give turns the SSH agent: add SSH_AUTH_SOCK to turns.environment.`,
     "turn-runners":
       "Install the engine or the sandbox runtime of each profile runner, or set runner.kind to host",
     "command-gh-no-login":
@@ -87,15 +94,28 @@ export function doctorExitCode(checks: readonly DoctorCheck[]): number {
 }
 
 export interface DoctorWorkflow {
-  readonly queue?: boolean;
+  readonly queue?: WorkflowDeclaration["queue"];
   readonly scope: "project" | "user";
   readonly workflowId: string;
   readonly capabilities: readonly string[];
   readonly input?: SubmissionContract;
 }
 
+function needsNextCommand(
+  workflow: DoctorWorkflow,
+  queues: string | undefined,
+): boolean {
+  if (!declaresQueue(workflow.queue)) return false;
+  try {
+    return parseQueuesSetting(queues)[workflow.workflowId]?.state !== "off";
+  } catch {
+    return true;
+  }
+}
+
 export function requiredDoctorCodes(
   workflows: readonly DoctorWorkflow[],
+  queues?: string,
 ): readonly DoctorCode[] {
   const codes = new Set<DoctorCode>([
     "git-repository",
@@ -104,15 +124,16 @@ export function requiredDoctorCodes(
     "settings-files",
     "no-workflow",
     "runtime-directory",
+    "commit-signatures",
   ]);
   if (workflows.some((workflow) => workflow.capabilities.includes("github"))) {
     codes.add("gh-login");
     codes.add("github-origin");
   }
-  if (workflows.some((workflow) => workflow.queue === true)) {
+  if (workflows.some((workflow) => needsNextCommand(workflow, queues)))
     codes.add("next-command");
+  if (workflows.some((workflow) => declaresQueue(workflow.queue)))
     codes.add("queue-interval");
-  }
   if (workflows.some((workflow) => hasTicketField(workflow.input)))
     codes.add("ticket-command");
   return [...codes];

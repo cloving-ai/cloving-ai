@@ -27,11 +27,13 @@ launches.push({
   terminal: shown("tty"),
   output: process.stdout.isTTY === true,
   mergeMode: process.env.CLOVING_MERGE_MODE ?? null,
+  lanes: process.env.CLOVING_QUEUE_LANES ?? null,
   marker: process.env.CLOVING_TEST_MARKER ?? null,
   startedAt: performance.timeOrigin,
 });
 writeFileSync("launches.json", JSON.stringify(launches));
 if (launches.length === 1) writeFileSync("restart-settings", "files");
+if (launches.length === 1) writeFileSync("restart-variables", JSON.stringify({ CLOVING_QUEUE_LANES: "8" }));
 process.exitCode = await replacedHost({
   directory: process.cwd(),
   runtime: ${JSON.stringify(join(root, "adopted", "run"))},
@@ -52,7 +54,13 @@ function inTerminal(command: readonly string[]): readonly string[] {
   return ["script", "-qec", command.map(quoted).join(" "), "/dev/null"];
 }
 
-await test("CLV-320 a host that ends with 75 replaces itself in place, in the same terminal, with the restart settings", async () => {
+const startVariables = {
+  CLOVING_MERGE_MODE: "queue",
+  CLOVING_QUEUE_LANES: "4",
+  CLOVING_TEST_MARKER: "kept",
+};
+
+await test("CLV-320 CLV-352 a host that ends with 75 replaces itself in place, in the same terminal, with the restart settings and the set values", async () => {
   const root = await realpath(
     await mkdtemp(join(tmpdir(), "cloving-replace-")),
   );
@@ -72,11 +80,7 @@ await test("CLV-320 a host that ends with 75 replaces itself in place, in the sa
     ]);
     const result = spawnSync(file, rest, {
       cwd: root,
-      env: {
-        ...process.env,
-        CLOVING_MERGE_MODE: "queue",
-        CLOVING_TEST_MARKER: "kept",
-      },
+      env: { ...process.env, ...startVariables },
       stdio: ["ignore", "pipe", "pipe"],
       encoding: "utf8",
       timeout: testMilliseconds(15000),
@@ -102,6 +106,8 @@ await test("CLV-320 a host that ends with 75 replaces itself in place, in the sa
     ]);
     assert.equal(first["mergeMode"], "queue");
     assert.equal(second["mergeMode"], null);
+    assert.equal(first["lanes"], "4");
+    assert.equal(second["lanes"], "8");
     assert.equal(second["marker"], "kept");
     for (const launch of [first, second]) {
       assert.equal(launch["output"], true);

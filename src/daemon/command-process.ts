@@ -17,6 +17,7 @@ import {
   attachedProcess,
   inputDescriptor,
   launchedProcess,
+  launchMarker,
   type DetachedProcess,
   type Ending,
   type LaunchedProcess,
@@ -197,13 +198,19 @@ function launchedCommand(
   const opened = journalFiles(start, setup.clock);
   if ("reason" in opened) return opened;
   const [executable = "", ...argumentsList] = start.command;
+  const files = commandFiles(start.folder);
   const process = launchedProcess({
     executable,
     arguments: argumentsList,
     environment: commandEnvironment(start, setup.configuration),
     directory: start.directory,
     descriptors: opened.descriptors,
-    exit: commandFiles(start.folder).exit,
+    marker: launchMarker(start.folder, {
+      output: files.output,
+      offset: 0,
+      exit: files.exit,
+      configuration: setup.configuration,
+    }),
     limits: {
       ...timeLimit(start, setup.clock),
       outputBytes: commandLimits.stdoutBytes,

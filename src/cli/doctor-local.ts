@@ -1,7 +1,15 @@
 import { access, constants, stat } from "node:fs/promises";
 import { basename, delimiter, isAbsolute, resolve } from "node:path";
 import { parseCommands } from "../command-settings.ts";
-import type { DoctorObservation } from "../doctor-report.ts";
+import type { DoctorObservation, DoctorWorkflow } from "../doctor-report.ts";
+import {
+  declaredQueueValues,
+  parseQueuesSetting,
+  queueIntervalValue,
+  type WorkflowQueueSetting,
+} from "../queue-settings.ts";
+import { queueOffDetail } from "../queue-state.ts";
+import { declaresQueue } from "../workflow-declaration.ts";
 import { mergeMode, mergeModeRefusal } from "../merge-mode.ts";
 import { supportedNode, supportedNodes } from "./toolchain.ts";
 
@@ -105,20 +113,81 @@ export async function demoToolObservation(
   }
 }
 
-export function queueObservation(text: string | undefined): DoctorObservation {
+const intervalRefusal: DoctorObservation = {
+  result: "fail",
+  detail: "queue.everySeconds must be a whole number from 10 to 3600",
+};
+
+function intervalSeconds(text: string | undefined): number | undefined {
   const seconds = Number(text);
-  const valid =
-    text !== undefined &&
+  return text !== undefined &&
     /^\d+$/.test(text) &&
-    Number.isInteger(seconds) &&
     seconds >= 10 &&
-    seconds <= 3600;
+    seconds <= 3600
+    ? seconds
+    : undefined;
+}
+
+function queueSetting(
+  environment: Readonly<NodeJS.ProcessEnv>,
+  workflowId: string,
+): WorkflowQueueSetting | undefined {
+  return parseQueuesSetting(environment["CLOVING_QUEUES"])[workflowId];
+}
+
+function declaredInterval(
+  given: QueueObservationInput,
+  declared: DoctorWorkflow,
+): DoctorObservation {
+  const { environment, sources } = given;
+  const seconds = intervalSeconds(environment["CLOVING_QUEUE_SECONDS"]);
+  const setting = queueSetting(environment, declared.workflowId);
+  if (setting?.state === "off")
+    return { result: "ok", detail: queueOffDetail(declared.workflowId) };
+  const source =
+    sources["queue.everySeconds"] === "private" ||
+    sources["queue.everySeconds"] === "project"
+      ? "queue setting"
+      : "environment";
+  const everySeconds = queueIntervalValue({
+    declared: declaredQueueValues(declared),
+    setting,
+    general:
+      seconds === undefined ? {} : { everySeconds: { value: seconds, source } },
+  });
   return {
-    result: valid ? "ok" : "fail",
-    detail: valid
-      ? `${String(seconds)} seconds`
-      : "queue.everySeconds must be a whole number from 10 to 3600",
+    result: "ok",
+    detail: `${String(everySeconds.value)} seconds from the ${everySeconds.source}`,
   };
+}
+
+interface QueueObservationInput {
+  readonly environment: Readonly<NodeJS.ProcessEnv>;
+  readonly sources: Readonly<Record<string, string>>;
+  readonly workflows: readonly DoctorWorkflow[];
+}
+
+export function queueObservation(
+  given: QueueObservationInput,
+): DoctorObservation {
+  const text = given.environment["CLOVING_QUEUE_SECONDS"];
+  const seconds = intervalSeconds(text);
+  if (text !== undefined && seconds === undefined) return intervalRefusal;
+  const declared = given.workflows.find((workflow) =>
+    declaresQueue(workflow.queue),
+  );
+  if (declared === undefined)
+    return seconds === undefined
+      ? intervalRefusal
+      : { result: "ok", detail: `${String(seconds)} seconds` };
+  try {
+    return declaredInterval(given, declared);
+  } catch {
+    return {
+      result: "fail",
+      detail: "queues must map workflow IDs to queue settings",
+    };
+  }
 }
 
 export function privateTextsObservation(

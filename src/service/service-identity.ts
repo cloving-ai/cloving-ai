@@ -9,6 +9,7 @@ export interface ServiceIdentity {
   readonly restart?: RestartPort;
   readonly settingSources?: Readonly<Record<string, RecordedSource>>;
   readonly turnRecovery?: Pick<TurnRecoveries, "fields">;
+  readonly worker?: string;
 }
 
 export function serviceIdentity(options: ServiceIdentity): ServiceIdentity {
@@ -21,6 +22,7 @@ export function serviceIdentity(options: ServiceIdentity): ServiceIdentity {
         "restart",
         "settingSources",
         "turnRecovery",
+        "worker",
       ] as const
     ).flatMap((name) =>
       options[name] === undefined ? [] : [[name, options[name]]],

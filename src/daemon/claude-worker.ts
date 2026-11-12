@@ -5,7 +5,7 @@ import type {
   DeliveryIntent,
 } from "../broker/actor/delivery-intents.ts";
 import { begun } from "./claude-begin.ts";
-import { attachableLaunch, attachPlan, holdKeptTurn } from "./claude-attach.ts";
+import { attachPlan, holdKeptTurn, recordedLaunchOf } from "./claude-attach.ts";
 import { keptWait, waitPlan } from "./claude-wait.ts";
 import { stoppedLaunch } from "./detached-process.ts";
 import type { TurnLaunch, TurnWait } from "../turn-launch.ts";
@@ -98,39 +98,44 @@ async function reconcileOperation(
   if (parts.active.has(key)) return { kind: "accepted", receipt: key, worker };
   const started = await read(folder, "started.json");
   if (started === undefined) return { kind: "absent" };
-  const launch = await recordedLaunchOf({ folder, started, result });
-  if (launch === undefined && (await uncertainProcess(started)))
-    return { kind: "unknown", evidence: `claude-turn:${key}` };
-  return resumed(parts, {
+  const launch = await recordedLaunchOf(
+    { folder, started, result },
+    parts.settings.stopMilliseconds ?? claudeLimits.stopMilliseconds,
+  );
+  const wait = keptWait({ started, result });
+  return launchedOrResumed(parts, {
     intent,
     key,
     folder,
     started,
     signal,
-    ...recoveredTurn({ started, result, launch }),
+    launch,
+    ...(wait === undefined ? {} : { wait }),
   });
 }
 
-function recoveredTurn(journal: {
-  readonly started: unknown;
-  readonly result: unknown;
-  readonly launch: TurnLaunch | "gone" | undefined;
-}): { readonly launch?: TurnLaunch; readonly wait?: TurnWait } {
-  const { launch } = journal;
-  const wait = keptWait(journal);
-  return {
+async function launchedOrResumed(
+  parts: Parts,
+  request: Located & {
+    readonly intent: DeliveryIntent;
+    readonly started: unknown;
+    readonly signal: AbortSignal;
+    readonly launch: TurnLaunch | "gone" | "stopped" | "unknown" | undefined;
+    readonly wait?: TurnWait;
+  },
+): Promise<AdapterOutcome> {
+  const { launch, ...rest } = request;
+  if (launch === "stopped")
+    return interruptedReply(rest, "claude-turn-interrupted");
+  if (
+    launch === "unknown" ||
+    (launch === undefined && (await uncertainProcess(rest.started)))
+  )
+    return { kind: "unknown", evidence: `claude-turn:${rest.key}` };
+  return resumed(parts, {
+    ...rest,
     ...(launch === undefined || launch === "gone" ? {} : { launch }),
-    ...(wait === undefined ? {} : { wait }),
-  };
-}
-
-function recordedLaunchOf(journal: {
-  readonly folder: string;
-  readonly started: unknown;
-  readonly result: unknown;
-}): Promise<TurnLaunch | "gone" | undefined> {
-  if (journal.result !== undefined) return Promise.resolve(undefined);
-  return attachableLaunch(journal.folder, journal.started);
+  });
 }
 
 async function rejectedAttach(

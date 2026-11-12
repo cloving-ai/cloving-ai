@@ -3,7 +3,10 @@ import { createHash } from "node:crypto";
 import { realpath } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join } from "node:path";
 import ts from "typescript";
-import type { WorkflowDeclaration } from "../src/workflow-declaration.ts";
+import {
+  declaresQueue,
+  type WorkflowDeclaration,
+} from "../src/workflow-declaration.ts";
 import type { WorkflowLimits } from "../src/workflow-limits.ts";
 import {
   isCandidateDeclaration,
@@ -114,7 +117,8 @@ function identity(entry: DiscoveredWorkflow) {
   const declaration = record(record(parsed)?.["workflow"]);
   const workflowId = declaration?.["workflowId"];
   return {
-    queue: isCandidateDeclaration(parsed) && parsed.workflow.queue === true,
+    queue:
+      isCandidateDeclaration(parsed) && declaresQueue(parsed.workflow.queue),
     baseName: snapshot.baseName,
     workflowId: typeof workflowId === "string" ? workflowId : undefined,
     functionNames: source.statements

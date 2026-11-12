@@ -38,8 +38,13 @@ export interface WorkflowDeclaration {
   readonly handoffs?: readonly string[];
   readonly commands?: readonly string[];
   readonly commandWaits?: CommandWaits;
-  readonly queue?: boolean;
+  readonly queue?: boolean | QueueDeclaration;
   readonly schedule?: WorkflowSchedule;
+}
+
+export interface QueueDeclaration {
+  readonly everySeconds?: number;
+  readonly lanes?: number;
 }
 
 export interface DeclaredWorkflow extends WorkflowDeclaration {
@@ -47,14 +52,33 @@ export interface DeclaredWorkflow extends WorkflowDeclaration {
 }
 
 export type WorkflowQueueCode =
-  "queue-needs-ticket-field" | "queue-input-incomplete";
+  "queue-needs-ticket-field" | "queue-input-incomplete" | "invalid-queue-shape";
+
+export function isQueueDeclaration(value: unknown): value is QueueDeclaration {
+  const queue = record(value);
+  if (!keys(queue, ["everySeconds", "lanes"])) return false;
+  return (
+    (!Object.hasOwn(queue, "everySeconds") ||
+      integer(queue["everySeconds"], { minimum: 10, maximum: 3600 })) &&
+    (!Object.hasOwn(queue, "lanes") ||
+      integer(queue["lanes"], { minimum: 1, maximum: 16 }))
+  );
+}
+
+export function declaresQueue(queue: unknown): boolean {
+  return queue === true || isQueueDeclaration(queue);
+}
 
 export function workflowQueueRefusals(
   value: unknown,
 ): readonly WorkflowQueueCode[] {
   const declaration = record(value);
-  if (declaration?.["queue"] !== true || !isInput(declaration["input"]))
+  if (declaration === undefined || !Object.hasOwn(declaration, "queue"))
     return [];
+  const queue = declaration["queue"];
+  if (typeof queue !== "boolean" && !isQueueDeclaration(queue))
+    return ["invalid-queue-shape"];
+  if (!declaresQueue(queue) || !isInput(declaration["input"])) return [];
   const input = declaration["input"];
   if (!hasTicketField(input)) return ["queue-needs-ticket-field"];
   return Object.entries(input.fields).some(
@@ -325,8 +349,6 @@ function declaredOptions(
   input: SubmissionContract,
 ): boolean {
   return (
-    (!Object.hasOwn(declaration, "queue") ||
-      typeof declaration["queue"] === "boolean") &&
     workflowQueueRefusals(declaration).length === 0 &&
     (!Object.hasOwn(declaration, "stages") ||
       isWorkflowStages(declaration["stages"])) &&
