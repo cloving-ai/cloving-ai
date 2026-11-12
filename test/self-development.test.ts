@@ -22,7 +22,7 @@ await test("CLV-227 start admits the default develop copy from private settings 
       const develop = declarations
         .map(record)
         .find((item) => item?.["workflowId"] === "develop");
-      assert.equal(develop?.["queue"], true);
+      assert.deepEqual(develop?.["queue"], { everySeconds: 120, lanes: 1 });
       const listed = cli(fixture.root, {
         args: ["list", "--json"],
         entry,

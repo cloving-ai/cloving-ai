@@ -245,7 +245,10 @@ function watched(
       );
     })
     .catch(() => undefined)
-    .finally(() => parts.active.delete(key));
+    .finally(async () => {
+      await recorded;
+      parts.active.delete(key);
+    });
   parts.active.set(key, { command: running, concluded, stopping, recorded });
 }
 

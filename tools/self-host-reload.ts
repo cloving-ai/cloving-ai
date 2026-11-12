@@ -8,7 +8,8 @@ import {
   projectConfiguration,
 } from "./project-configuration.ts";
 import { preparedBundle } from "./self-host-project.ts";
-import { queueLimits } from "./self-host-queue.ts";
+import { reloadedQueueLimits } from "./self-host-queue.ts";
+import type { DeclaredWorkflow } from "../src/workflow-declaration.ts";
 import { workflowLimits, type WorkflowLimits } from "../src/workflow-limits.ts";
 
 const settings = record(JSON.parse(String(process.argv[2]))) ?? {};
@@ -52,17 +53,6 @@ function startEnvironment(): NodeJS.ProcessEnv {
   };
 }
 
-function reloadedLimits(environment: NodeJS.ProcessEnv) {
-  try {
-    return queueLimits(environment);
-  } catch (error) {
-    const detail = String(Reflect.get(Object(error), "message"));
-    throw new Error(detail.replace(/^The daemon did not start: /, ""), {
-      cause: error,
-    });
-  }
-}
-
 async function reloadedSettings(repository: string) {
   const configuration = await projectConfiguration(
     repository,
@@ -70,25 +60,42 @@ async function reloadedSettings(repository: string) {
   );
   const turnSettings = await configuredTurnSettings(configuration);
   return {
+    configuration,
     userFolder: absoluteWorkflowFolder(
       configuration.environment["CLOVING_WORKFLOW_FOLDER"],
     ),
     turnSettings,
     settingDigests: configurationDigests(configuration, turnSettings.profiles),
-    queueLimits: reloadedLimits(configuration.environment),
   };
 }
 
 function settingsRefusal(error: unknown) {
-  const detail = String(Reflect.get(Object(error), "message"));
+  const detail = String(Reflect.get(Object(error), "message")).replace(
+    /^The daemon did not start: /,
+    "",
+  );
   return { refusal: { code: detail.replace(/:.*$/s, ""), detail } };
+}
+
+function reloadedLimits(
+  configuration: Awaited<ReturnType<typeof projectConfiguration>>,
+  declarations: readonly DeclaredWorkflow[],
+) {
+  const { environment, sources } = configuration;
+  try {
+    return {
+      queueLimits: reloadedQueueLimits(environment, { declarations, sources }),
+    };
+  } catch (error) {
+    return settingsRefusal(error);
+  }
 }
 
 async function reloadedBundle(directory: string) {
   const repository = required("repository");
   const reloaded = await reloadedSettings(repository).catch(settingsRefusal);
   if ("refusal" in reloaded) return reloaded;
-  const { userFolder, ...turns } = reloaded;
+  const { userFolder, configuration, ...turns } = reloaded;
   const project = await mkdtemp(join(directory, "reload-"));
   try {
     const prepared = await preparedBundle({
@@ -101,6 +108,8 @@ async function reloadedBundle(directory: string) {
       userFolder,
       limits: startLimits(),
     });
+    const limits = reloadedLimits(configuration, prepared.declarations);
+    if ("refusal" in limits) return limits;
     const bundle = join(directory, "workflow-bundles", prepared.bundleDigest);
     return {
       ...prepared,
@@ -111,6 +120,7 @@ async function reloadedBundle(directory: string) {
         ]),
       ),
       ...turns,
+      ...limits,
     };
   } finally {
     await rm(project, { recursive: true, force: true });

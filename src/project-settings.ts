@@ -8,6 +8,11 @@ import type { TurnProfiles } from "./turn-profile.ts";
 import type { TokenPrices } from "./token-prices.ts";
 import type { LocalCommands } from "./command-settings.ts";
 import type { Fields } from "./protocol.ts";
+import {
+  parseQueuesSetting,
+  type QueuesSetting,
+  type WorkflowQueueSetting,
+} from "./queue-settings.ts";
 
 export type SettingSource = "environment" | "private" | "project";
 
@@ -40,6 +45,7 @@ export type SettingValue =
   | TokenPrices
   | RedGreenSettings
   | LocalCommands
+  | QueuesSetting
   | Readonly<Record<string, Fields>>;
 
 export const settingVariables: Readonly<Record<string, string>> = {
@@ -56,6 +62,7 @@ export const settingVariables: Readonly<Record<string, string>> = {
   "queue.maxLoadPerCore": "CLOVING_QUEUE_MAX_LOAD_PER_CORE",
   "queue.maxMemoryPressure": "CLOVING_QUEUE_MAX_MEMORY_PRESSURE",
   "queue.dailySpendLimitUsd": "CLOVING_QUEUE_DAILY_SPEND_USD",
+  queues: "CLOVING_QUEUES",
   "limits.effects": "CLOVING_LIMIT_EFFECTS",
   "limits.chain": "CLOVING_LIMIT_CHAIN",
   "spend.scope": "CLOVING_SPEND_SCOPE",
@@ -74,6 +81,7 @@ export const settingVariables: Readonly<Record<string, string>> = {
   "retention.days": "CLOVING_RETENTION_DAYS",
   "retention.action": "CLOVING_RETENTION_ACTION",
   "retention.archiveFolder": "CLOVING_RETENTION_ARCHIVE_FOLDER",
+  "turns.commitSignatures": "CLOVING_TURN_COMMIT_SIGNATURES",
   "turns.environment": "CLOVING_TURN_ENVIRONMENT",
   commands: "CLOVING_COMMANDS",
   commandSeconds: "CLOVING_COMMAND_SECONDS",
@@ -160,6 +168,7 @@ export function configurationValues(
     commands: values.commands,
     commandSeconds: values.commandSeconds,
     schedules: values.schedules,
+    queues: values.queues,
   };
   for (const [name, value] of Object.entries(direct))
     if (value !== undefined) entries.push([name, value]);
@@ -171,8 +180,9 @@ function encoded(value: SettingValue): string {
 }
 
 function harnessCommandMapping(
-  name: SettingValue | undefined,
+  name: unknown,
 ): Readonly<Record<string, string>> {
+  if (name === "pi") return { "harness.command": "CLOVING_PI_COMMAND" };
   if (name === "opencode")
     return { "harness.command": "CLOVING_OPENCODE_COMMAND" };
   if (name === "grok") return { "harness.command": "CLOVING_GROK_COMMAND" };
@@ -241,16 +251,24 @@ export function startSettingLines(settings: {
   ];
 }
 
-const harnessNames = ["claude", "codex", "gemini", "grok", "opencode"];
+const harnessNames = ["claude", "codex", "gemini", "grok", "opencode", "pi"];
+
+export const harnessCommandVariables: readonly string[] = harnessNames.flatMap(
+  (name) => Object.values(harnessCommandMapping(name)),
+);
+
+export function workerSettingVariables(
+  worker: unknown,
+): Readonly<Record<string, string>> {
+  return { ...settingVariables, ...harnessCommandMapping(worker) };
+}
 
 export function withoutFileVariables(
   environment: Readonly<NodeJS.ProcessEnv>,
 ): NodeJS.ProcessEnv {
   const names = new Set([
     ...Object.values(settingVariables),
-    ...harnessNames.flatMap((name) =>
-      Object.values(harnessCommandMapping(name)),
-    ),
+    ...harnessCommandVariables,
     "CLOVING_PROFILES",
   ]);
   return Object.fromEntries(
@@ -326,21 +344,56 @@ function resolvedValue(
     : resolved.environment[variable];
 }
 
+function parsedQueues(
+  value: SettingValue | undefined,
+): QueuesSetting | undefined {
+  try {
+    return parseQueuesSetting(typeof value === "string" ? value : undefined);
+  } catch {
+    return undefined;
+  }
+}
+
+function queuesDigest(
+  value: SettingValue | undefined,
+  digest: (text: string) => string,
+): string {
+  const settings = parsedQueues(value);
+  if (settings === undefined) return `${digest(JSON.stringify(value))}:`;
+  const rows = Object.entries(settings).sort(([first], [second]) =>
+    first < second ? -1 : Number(first > second),
+  );
+  const part = (names: readonly (keyof WorkflowQueueSetting)[]) =>
+    digest(
+      JSON.stringify(
+        rows.flatMap(([workflowId, setting]) => {
+          const values = names.map((name) => setting[name] ?? null);
+          return values.every((value) => value === null)
+            ? []
+            : [[workflowId, ...values]];
+        }),
+      ),
+    );
+  return `${part(["state", "everySeconds"])}:${part(["lanes", "workingLanes"])}`;
+}
+
 export function settingDigests(
   resolved: ResolvedFields,
   digest: (text: string) => string,
 ): Readonly<Record<string, string>> {
   const fields = {
     ...resolved,
-    variables: {
-      ...settingVariables,
-      ...harnessCommandMapping(resolved.values["harness.name"]),
-    },
+    variables: workerSettingVariables(resolved.values["harness.name"]),
   };
   return Object.fromEntries(
-    settingFields().map((field) => [
-      field,
-      digest(JSON.stringify(resolvedValue(fields, field) ?? null)),
-    ]),
+    settingFields().map((field) => {
+      const value = resolvedValue(fields, field);
+      return [
+        field,
+        field === "queues"
+          ? queuesDigest(value, digest)
+          : digest(JSON.stringify(value ?? null)),
+      ];
+    }),
   );
 }

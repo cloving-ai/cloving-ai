@@ -1,3 +1,4 @@
+import { piAccountingOf, type PiAccounting } from "../pi-usage.ts";
 import type { ReviewVerdict } from "../review-subject.ts";
 import type { TicketStatus } from "../ticket-status.ts";
 import { grokResultFields } from "../grok-result.ts";
@@ -14,6 +15,7 @@ import {
 export type Worker = string;
 
 export interface StreamResult {
+  readonly piAccounting?: PiAccounting;
   readonly reviewFeedback?: string;
   readonly reviewVerdict?: ReviewVerdict | null;
   readonly models?: readonly WorkerModelUsage[];
@@ -86,6 +88,7 @@ export function streamResult(
   const models = modelUsageOf(field("models"));
   return {
     ...(models === undefined ? {} : { models }),
+    ...piFields(record, worker),
     ...(typeof field("subtype") === "string"
       ? { subtype: String(field("subtype")) }
       : {}),
@@ -101,4 +104,18 @@ export function streamResult(
     turns: numberOf(field("num_turns")),
     ...(worker === "grok" ? grokResultFields(record) : {}),
   };
+}
+
+function piFields(
+  value: object,
+  worker: Worker | undefined,
+): Pick<StreamResult, "piAccounting" | "pricingModel"> {
+  if (worker !== "pi") return {};
+  const piAccounting = piAccountingOf(Reflect.get(value, "piAccounting"));
+  return piAccounting === undefined
+    ? {}
+    : {
+        piAccounting,
+        pricingModel: textOf(Reflect.get(value, "pricingModel")),
+      };
 }

@@ -11,6 +11,7 @@ import {
 import { delimiter, join, resolve } from "node:path";
 import { codexStream } from "./codex-stream.ts";
 import { cursorStream } from "./cursor-stream.ts";
+import { piStream } from "./pi-stream.ts";
 import { opencodeStream } from "./opencode-stream.ts";
 import { textOutput } from "./text-output.ts";
 import {
@@ -32,14 +33,17 @@ import { usageOf, type ResumeReason, type RetryKind } from "../worker-usage.ts";
 export { streamResult, capacityRefusal, retryKind } from "./claude-stream.ts";
 export type { Worker, StreamResult } from "./claude-stream.ts";
 export type { TurnProgress } from "./turn-stream.ts";
-import { shellTurnScript } from "../agent-harness-shell.ts";
+import { shellTurnCommand } from "../agent-harness-shell.ts";
 import type { TurnRunner } from "../turn-runner.ts";
 import { runnerLaunch, type RunnerLaunch } from "./turn-runner-spawn.ts";
 import { attachedTurn, detachedTurn, type TurnExit } from "./detached-turn.ts";
 import type { TurnLaunch } from "../turn-launch.ts";
 import {
+  commitSignatureSettings,
   githubTokens,
   passedVariables,
+  withGitSettings,
+  type CommitSignatures,
   type TurnVariables,
 } from "../turn-environment.ts";
 
@@ -62,6 +66,7 @@ export interface TurnStart {
   readonly turnId?: string;
   readonly environment?: Readonly<Record<string, string>>;
   readonly variables?: TurnVariables;
+  readonly commitSignatures?: CommitSignatures;
   readonly runner?: TurnRunner;
   readonly command: readonly string[];
   readonly directory: string;
@@ -124,21 +129,12 @@ function spawnTurn(start: TurnStart): {
   readonly standardInput: string | undefined;
   readonly launch: RunnerLaunch;
 } {
-  const configuration = mkdtempSync(join(start.folder, "gh-config-"));
   const { parts, standardInput } = turnCommand(start);
+  const configuration = mkdtempSync(join(start.folder, "gh-config-"));
   const command =
     start.shell === undefined
       ? parts
-      : [
-          start.shell,
-          "-l",
-          "-i",
-          "-c",
-          shellTurnScript,
-          "cloving-harness",
-          configuration,
-          ...parts,
-        ];
+      : shellTurnCommand(start.shell, { configuration, parts });
   const environment = turnEnvironment(configuration, start);
   const launch = runnerLaunch(start, {
     command,
@@ -163,13 +159,20 @@ function spawnTurn(start: TurnStart): {
 function streamAdapter(
   worker: Worker | undefined,
   stderr: ChildProcessWithoutNullStreams["stderr"],
-) {
+):
+  | {
+      readonly line: (line: string) => readonly string[];
+      readonly result: (exitCode: number | null) => string;
+      readonly finish?: (pending: string) => readonly string[];
+    }
+  | undefined {
   if (worker === "opencode") {
     const translated = opencodeStream();
     stderr.setEncoding("utf8");
     stderr.on("data", translated.stderr);
     return translated;
   }
+  if (worker === "pi") return piStream();
   if (worker === "codex") return codexStream();
   if (worker === "cursor-agent") return cursorStream();
   if (worker === "gemini") return geminiStream();
@@ -213,7 +216,7 @@ function turnOutput(
   });
   return async (exitCode, close) => {
     if (adapter !== undefined) {
-      written(adapter.line(stream.pending));
+      written(adapter.finish?.(stream.pending) ?? adapter.line(stream.pending));
       written(close.refused ? [] : [adapter.result(exitCode)]);
     }
     await ended(output);
@@ -279,7 +282,10 @@ function launchedTurn(start: TurnStart): StartedTurn | undefined {
   const { parts, standardInput } = turnCommand(start);
   const [executable = "", ...rest] = parts;
   const configuration = mkdtempSync(join(start.folder, "gh-config-"));
-  const environment = turnEnvironment(configuration, start);
+  const environment = withGitSettings(
+    turnEnvironment(configuration, start),
+    commitSignatureSettings(start.commitSignatures),
+  );
   try {
     if (!commandFound(executable, { ...start, path: environment["PATH"] })) {
       rmSync(configuration, { recursive: true, force: true });

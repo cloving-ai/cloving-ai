@@ -1,8 +1,34 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { queueLanes, queueLimits } from "../tools/self-host-queue.ts";
+import {
+  queueLanes,
+  queueLimits,
+  queuePlan,
+} from "../tools/self-host-queue.ts";
 
 const queue = { CLOVING_QUEUE_SECONDS: "10" };
+
+await test("CLV-359 a constructor queue without its own setting or ticket commands leaves the service without a queue", () => {
+  const configuration = {
+    declarations: [{ workflowId: "constructor", queue: true }],
+    sources: {},
+  };
+  for (const setting of [undefined, "{}", '{"other":{"lanes":2}}'])
+    assert.deepEqual(queuePlan({ CLOVING_QUEUES: setting }, configuration), {
+      kind: "none",
+    });
+  assert.throws(
+    () => queuePlan({ CLOVING_QUEUES: '{"constructor":{}}' }, configuration),
+    { message: "The daemon did not start: queue-needs-next-command" },
+  );
+  assert.deepEqual(
+    queuePlan(
+      { CLOVING_QUEUES: '{"constructor":{"state":"off"}}' },
+      configuration,
+    ),
+    { kind: "off", workflowId: "constructor" },
+  );
+});
 
 await test("CLV-309 queue lanes take a whole number from 1 to 16", () => {
   assert.equal(queueLanes({ ...queue, CLOVING_QUEUE_LANES: "16" }), 16);

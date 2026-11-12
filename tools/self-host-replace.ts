@@ -1,7 +1,6 @@
 import { readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
-import { withoutFileVariables } from "../src/project-settings.ts";
-import { restartFiles } from "../src/restart-request.ts";
+import { restartedEnvironment, restartFiles } from "../src/restart-request.ts";
 
 export interface EndedHost {
   readonly directory: string;
@@ -28,13 +27,20 @@ function keptArguments(argumentsList: readonly string[]): readonly string[] {
   );
 }
 
+async function noteText(directory: string, name: string): Promise<string> {
+  const note = join(directory, name);
+  const text = await readFile(note, "utf8").catch(() => "");
+  await rm(note, { force: true });
+  return text;
+}
+
 async function restartEnvironment(
   directory: string,
 ): Promise<NodeJS.ProcessEnv> {
-  const note = join(directory, restartFiles.settings);
-  const settings = await readFile(note, "utf8").catch(() => "");
-  await rm(note, { force: true });
-  return settings === "files" ? withoutFileVariables(process.env) : process.env;
+  return restartedEnvironment(process.env, {
+    settings: await noteText(directory, restartFiles.settings),
+    variables: await noteText(directory, restartFiles.variables),
+  });
 }
 
 export async function replacedHost(host: EndedHost): Promise<number> {

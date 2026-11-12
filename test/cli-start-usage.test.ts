@@ -23,9 +23,10 @@ await test("CLV-228 queue guidance requires a declared queue workflow", () => {
   const readme = readFileSync(new URL("../README.md", import.meta.url), "utf8");
   const queue = readme
     .split("\n")
-    .find((line) => line.startsWith("Set `CLOVING_QUEUE_SECONDS`"));
+    .find((line) => line.startsWith("A workflow declares the queue with"));
   assert.ok(queue);
-  assert.match(queue, /no workflow declares it, no queue starts/);
+  assert.match(queue, /No interval setting is necessary/);
+  assert.match(queue, /no workflow declares a queue, no queue starts/);
   assert.doesNotMatch(queue, /bundled|develop-issue/);
 });
 
@@ -71,6 +72,10 @@ const facts: readonly (readonly [string, RegExp])[] = [
   ],
   ["CLOVING_NOTIFY_COMMAND", /JSON list.*standard input.*no default/],
   [
+    "CLOVING_QUEUES",
+    /JSON object.*state.*on or off.*everySeconds.*lanes.*workingLanes.*cloving reload/,
+  ],
+  [
     "CLOVING_QUEUE_SECONDS",
     /10.*3600.*CLOVING_NEXT_COMMAND.*CLOVING_TICKET_COMMAND.*no queue.*manual.*workflow-active/,
   ],
@@ -83,6 +88,7 @@ const facts: readonly (readonly [string, RegExp])[] = [
     /JSON list .*Requires CLOVING_QUEUE_SECONDS.*queue starts.*one queue interval after each run ends.*no added argument.*JSON list of the ready tickets.*Queue checks do not wait.*id.*readyAt UTC time.*watch page.*not in work.*dependency.*oldest wait.*no default/,
   ],
   ["CLOVING_CLAUDE_COMMAND", /JSON list/],
+  ["CLOVING_PI_COMMAND", /JSON list.*Pi v1\.5\.2.*pi --mode json --no-session/],
   [
     "CLOVING_GROK_COMMAND",
     /JSON list.*streaming-messages-json.*--always-approve.*-p/,
@@ -128,6 +134,10 @@ const facts: readonly (readonly [string, RegExp])[] = [
     /inherit, or a JSON list of variable names\. The default is an empty list\..*login variables of its harness.*one release/,
   ],
   [
+    "CLOVING_TURN_COMMIT_SIGNATURES",
+    /keep or off\. The default is keep\..*commit\.gpgsign=false and tag\.gpgsign=false.*private setting turns\.commitSignatures/,
+  ],
+  [
     "CLOVING_DEMO_TOOL",
     /absolute path of the instruction file or folder of a demo tool.*private setting demo\.tool.*each turn gets it/,
   ],
@@ -152,7 +162,7 @@ await test("CLV-061 the help text of the start command has one line for each set
   const settingLines = (name: string): readonly string[] =>
     lines.filter((line) => line.startsWith(`  ${name} `));
   const names = [...new Set(program.match(/CLOVING_[A-Z_]+/g))];
-  assert.equal(names.length, 39);
+  assert.equal(names.length, 42);
   for (const name of names) assert.equal(settingLines(name).length, 1, name);
   for (const [name, fact] of facts)
     assert.match(String(settingLines(name)[0]), fact);

@@ -256,7 +256,7 @@ export async function stopFixturePrograms(root: string): Promise<void> {
   }
 }
 
-function stalledGit(root: string, options: StalledCheck): string {
+export function stalledGit(root: string, options: StalledCheck): string {
   return `#!${process.execPath}
 import { existsSync, readFileSync, watch, writeFileSync } from "node:fs";
 if (process.argv[4] !== ${JSON.stringify(options.command)}) process.exit(0);
@@ -266,13 +266,16 @@ if (${JSON.stringify(options.signal)} === "deadline" && existsSync(root + "/git-
   process.exit(0);
 }
 process.on("SIGTERM", () => {});
-setInterval(() => {}, 1000);
+let notified = false;
+setInterval(ready, 20);
 const watcher = watch(root, ready);
 function ready() {
+  if (notified) return;
   if (!["daemon-ready", "watch-ready"].every(name => existsSync(root + "/" + name))) return;
   const daemon = Number(readFileSync(root + "/daemon-ready", "utf8"));
   const watch = Number(readFileSync(root + "/watch-ready", "utf8"));
   if (![daemon, watch].every(pid => Number.isSafeInteger(pid) && pid > 0)) return;
+  notified = true;
   watcher.close();
   writeFileSync(root + "/git-pid", String(process.pid));
   if (${JSON.stringify(options.signal)} === "daemon")

@@ -218,7 +218,7 @@ for (const [startup, reason] of [
 ] as const) {
   await test(`CLV-208 Bash discovers interactive agents after login reports ${reason}`, () =>
     withHarnesses(async (scene) => {
-      const path = await scene.file("pi", 'printf "pi 1.2\\n"');
+      const path = await scene.file("pi", 'printf "1.5.2\\n"');
       await scene.startup(startup);
       await writeFile(
         join(scene.directory, ".bashrc"),
@@ -233,7 +233,7 @@ for (const [startup, reason] of [
           name: "pi",
           kind: "file",
           path,
-          version: "pi 1.2",
+          version: "1.5.2",
           working: true,
           reason: null,
         },
@@ -257,7 +257,7 @@ for (const [startup, reason] of [
 ] as const) {
   await test(`CLV-208 Bash retains login entries when the extra scan reports ${reason}`, () =>
     withHarnesses(async (scene) => {
-      const path = await scene.file("pi", 'printf "pi 1.2\\n"');
+      const path = await scene.file("pi", 'printf "1.5.2\\n"');
       await scene.startup(
         'codex() { test "$1" = --version && printf "codex-cli 0.105.0\\n"; }\n',
       );
@@ -271,7 +271,7 @@ for (const [startup, reason] of [
           name: "pi",
           kind: "file",
           path,
-          version: "pi 1.2",
+          version: "1.5.2",
           working: true,
           reason: null,
         },

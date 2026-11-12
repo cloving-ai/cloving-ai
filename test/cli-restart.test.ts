@@ -215,6 +215,7 @@ async function directRestart(
       cancel: false,
       resumeQueue: false,
       settings: "environment",
+      set: {},
       update: false,
       within: null,
       commandId: null,

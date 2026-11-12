@@ -6,7 +6,8 @@ import { checkScheduleTiming } from "./workflow-schedule.ts";
 import type { TurnProfiles } from "./turn-profile.ts";
 import type { TokenPrices } from "./token-prices.ts";
 import { isTurnCommand } from "./harness-defaults.ts";
-import type { TurnVariables } from "./turn-environment.ts";
+import type { CommitSignatures, TurnVariables } from "./turn-environment.ts";
+import { isQueuesSetting, type QueuesSetting } from "./queue-settings.ts";
 
 export interface RedGreenSettings {
   readonly test: readonly string[];
@@ -37,6 +38,7 @@ export interface Configuration {
     readonly maxMemoryPressure?: "normal" | "warn";
     readonly dailySpendLimitUsd?: number;
   };
+  readonly queues?: QueuesSetting;
   readonly limits?: {
     readonly effects?: number;
     readonly chain?: number;
@@ -72,7 +74,10 @@ export interface Configuration {
     readonly action?: "archive" | "delete";
     readonly archiveFolder?: string | null;
   };
-  readonly turns?: { readonly environment?: TurnVariables };
+  readonly turns?: {
+    readonly commitSignatures?: CommitSignatures;
+    readonly environment?: TurnVariables;
+  };
   readonly demo?: { readonly tool?: string };
 }
 
@@ -153,6 +158,7 @@ const specialChecks: Readonly<Record<string, (value: unknown) => boolean>> = {
   "harness.turn": isTurnCommand,
   commands: validCommands,
   schedules: validSchedules,
+  queues: isQueuesSetting,
 };
 
 function scalar(value: unknown, checked: Checked): void {

@@ -8,6 +8,7 @@ import {
   type DoctorCheck,
   type DoctorCode,
   type DoctorObservation,
+  type DoctorWorkflow,
 } from "../doctor-report.ts";
 import { privateSettingsPath, projectSettings } from "./project-settings.ts";
 import { githubObservations } from "./doctor-github.ts";
@@ -15,11 +16,15 @@ import { doctorWorkflows, workflowObservation } from "./doctor-workflows.ts";
 import { runtimeObservation, serviceObservation } from "./doctor-runtime.ts";
 import type { ProbeRunner } from "./probe-command.ts";
 import type { TurnProfiles } from "../turn-profile.ts";
+import type { HarnessSettings } from "../harness-defaults.ts";
 import { harnessObservations } from "./doctor-harness.ts";
 import { retentionObservation } from "./doctor-retention.ts";
 import { themeObservation } from "./doctor-theme.ts";
-import { turnEnvironmentObservation } from "./doctor-turns.ts";
-import { turnRunnerObservation } from "./doctor-runners.ts";
+import {
+  commitSignatureObservation,
+  turnEnvironmentObservation,
+} from "./doctor-turns.ts";
+import { profileRunners, turnRunnerObservation } from "./doctor-runners.ts";
 import { threadPoolObservation } from "./doctor-thread-pool.ts";
 import {
   commandLoginObservation,
@@ -48,6 +53,7 @@ function settings(
     const resolved = projectSettings(environment, repository);
     return {
       environment: resolved.environment,
+      sources: resolved.sources,
       harness: resolved.harness,
       profiles: resolved.profiles,
       observation: {
@@ -153,34 +159,43 @@ async function repositoryObservations(
     environment,
   });
   observations["no-workflow"] = workflowObservation(workflowContext);
-  const required = requiredDoctorCodes(workflowContext.workflows);
-  observations["demo-tool"] = await demoToolObservation(
-    environment["CLOVING_DEMO_TOOL"],
+  const required = requiredDoctorCodes(
+    workflowContext.workflows,
+    environment["CLOVING_QUEUES"],
   );
+  const { prerequisite, workflows } = workflowContext;
+  const sources = "sources" in configured ? configured.sources : {};
   const dependent = await configuredObservations(
     { ...options, environment },
-    { prerequisite: workflowContext.prerequisite, project, serviceEnvironment },
+    { prerequisite, project, serviceEnvironment, workflows, sources },
   );
   return { observations: { ...observations, ...dependent }, required };
 }
 
 async function settingObservations(context: {
   readonly environment: Readonly<NodeJS.ProcessEnv>;
+  readonly harness?: HarnessSettings["harness"];
   readonly profiles?: TurnProfiles;
   readonly repository: string;
   readonly probe: ProbeRunner;
 }): Promise<Observations> {
   const { environment } = context;
+  const runners = await profileRunners({
+    ...context,
+    profiles: context.profiles ?? {},
+  });
   return {
+    "demo-tool": await demoToolObservation(environment["CLOVING_DEMO_TOOL"]),
     "merge-mode": mergeModeObservation(environment["CLOVING_MERGE_MODE"]),
     "turn-environment": turnEnvironmentObservation(environment),
+    "commit-signatures": await commitSignatureObservation({
+      ...context,
+      runners,
+    }),
     "command-gh-no-login": commandLoginObservation(
       environment["CLOVING_COMMANDS"],
     ),
-    "turn-runners": await turnRunnerObservation({
-      ...context,
-      profiles: context.profiles ?? {},
-    }),
+    "turn-runners": turnRunnerObservation(runners),
   };
 }
 
@@ -215,6 +230,8 @@ async function configuredObservations(
     readonly prerequisite: string | undefined;
     readonly project: string | undefined;
     readonly serviceEnvironment: Readonly<NodeJS.ProcessEnv>;
+    readonly workflows: readonly DoctorWorkflow[];
+    readonly sources: Readonly<Record<string, string>>;
   },
 ): Promise<Observations> {
   const { environment, repository, probe } = options;
@@ -253,9 +270,11 @@ async function configuredObservations(
   const login = observations["gh-login"];
   if (login !== undefined)
     observations["gh-login"] = { ...login, fix: github.loginFix };
-  observations["queue-interval"] = queueObservation(
-    environment["CLOVING_QUEUE_SECONDS"],
-  );
+  observations["queue-interval"] = queueObservation({
+    environment,
+    sources: location.sources,
+    workflows: location.workflows,
+  });
   observations["private-texts"] = privateTextsObservation(
     environment["CLOVING_PRIVATE_TEXTS"],
   );
