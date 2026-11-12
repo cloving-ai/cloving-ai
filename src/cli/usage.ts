@@ -191,7 +191,7 @@ New turns use the new values. A turn in work keeps the values of its start.
 The reply lists each other changed field as a field that needs a restart. The service keeps its old value.
 An invalid settings file, an invalid profiles file or a profile harness with no worker at the start refuses the reload. Then nothing changes.
 `,
-  restart: `Usage: cloving restart [--at keep|gap|now] [--within <duration>] [--resume-queue] [--settings environment|files] [--update] [--command-id <id>] [--json]
+  restart: `Usage: cloving restart [--at keep|gap|now] [--within <duration>] [--resume-queue] [--settings environment|files] [--set <key>=<value>]... [--update] [--command-id <id>] [--json]
        cloving restart --cancel [--command-id <id>] [--json]
 
 Restarts the service that cloving start runs, with the settings files and the product files of the new start.
@@ -210,6 +210,10 @@ Control-C stops the wait and keeps the restart pending. --cancel cancels a pendi
 The restart keeps a drain of the queue and its failure count.
 --resume-queue clears the drain at the new start and keeps the failure count. cloving start --reset-queue clears both.
 --settings files starts without the CLOVING_* variables that the settings files can set. The files and the defaults decide.
+--set <key>=<value> sets the CLOVING_* variable of a settings file key in the new start. Give it one time for each key.
+For harness.command, it sets the command variable of the worker of the service, or of the --set harness.name worker.
+The command checks each value as cloving config set does. An unknown key or an invalid value refuses the restart.
+The value applies after --settings files, and later restarts of this cloving start keep it.
 --update updates the product checkout after the stop. Local changes skip the update.
 The update fetches the default branch and needs a fast-forward.
 It runs npm ci --ignore-scripts when package-lock.json changed, and then npm run build.
@@ -218,7 +222,7 @@ While a workspace runs, cloving restart with no --repository restarts all reposi
 and each one keeps its turns running. With --at gap, it restarts them at a common gap.
 The workspace supervisor then holds the queue runs of all repositories, waits until no repository has work,
 and then restarts each repository at once. --at now does not wait for the gap.
-A workspace restart has no --update, --cancel or --within; use --repository <name> to restart one repository.
+A workspace restart has no --update, --cancel, --within or --set; use --repository <name> to restart one repository.
 `,
   watch: `Usage: cloving watch [--port <n>] [--workspace]
 

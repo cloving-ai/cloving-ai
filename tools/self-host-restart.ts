@@ -312,16 +312,26 @@ async function restarted(
   if (stopSignalled(watch)) return undefined;
   await updateNoted(watch, claimed);
   if (stopSignalled(watch)) return undefined;
-  if (claimed.resumeQueue)
-    await writeFile(join(watch.directory, "resume-queue"), "", {
-      mode: 0o600,
-    });
-  if (claimed.settings === "files")
-    await writeFile(join(watch.directory, restartFiles.settings), "files", {
-      mode: 0o600,
-    });
+  await notesWritten(watch.directory, claimed);
   await clearedRestart(watch.directory);
   return 75;
+}
+
+async function notesWritten(
+  directory: string,
+  claimed: RestartMark,
+): Promise<void> {
+  const notes = [
+    ...(claimed.resumeQueue ? [["resume-queue", ""] as const] : []),
+    ...(claimed.settings === "files"
+      ? [[restartFiles.settings, "files"] as const]
+      : []),
+    ...(claimed.variables === undefined
+      ? []
+      : [[restartFiles.variables, JSON.stringify(claimed.variables)] as const]),
+  ];
+  for (const [name, text] of notes)
+    await writeFile(join(directory, name), text, { mode: 0o600 });
 }
 
 export async function restartWatch(

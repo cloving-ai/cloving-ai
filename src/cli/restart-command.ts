@@ -303,6 +303,7 @@ function requested(invocation: RestartInvocation, commandId: string): Fields {
     commandId,
     ...(invocation.resumeQueue ? { resumeQueue: true } : {}),
     ...(invocation.settings === "files" ? { settings: "files" } : {}),
+    ...(Object.keys(invocation.set).length > 0 ? { set: invocation.set } : {}),
     ...(invocation.update ? { update: true } : {}),
     ...(invocation.within === null ? {} : { within: invocation.within }),
   };

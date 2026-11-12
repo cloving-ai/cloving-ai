@@ -6,6 +6,23 @@ import {
 
 type Environment = Readonly<Record<string, string | undefined>>;
 
+export function queueCommands(settings: {
+  readonly queueMilliseconds: number | undefined;
+  readonly declarations: readonly { readonly queue?: boolean }[];
+  readonly nextCommand: readonly string[] | undefined;
+  readonly ticketCommand: readonly string[] | undefined;
+}): void {
+  if (
+    settings.queueMilliseconds === undefined ||
+    !settings.declarations.some((declaration) => declaration.queue === true)
+  )
+    return;
+  if (!settings.nextCommand?.length)
+    throw new Error("The daemon did not start: queue-needs-next-command");
+  if (!settings.ticketCommand?.length)
+    throw new Error("The daemon did not start: queue-needs-ticket-command");
+}
+
 const laneCount = /^(?:[1-9]|1[0-6])$/;
 
 function refusedStart(code: string): never {
