@@ -103,6 +103,7 @@ export async function scripted(scene: Scene): Promise<{
         cancel: false,
         resumeQueue: false,
         settings: "environment",
+        set: {},
         update: false,
         within: null,
         commandId: null,

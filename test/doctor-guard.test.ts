@@ -78,3 +78,40 @@ await test("CLV-207 the effective harness command uses the service search path",
     assert.equal(check(output, "default-harness")["result"], "ok");
     await assert.doesNotReject(access(marker));
   }));
+
+await test("CLV-359 a declared queue with no interval setting passes queue-interval and names the source of the interval", () =>
+  withDoctor(async (scene) => {
+    const folder = join(scene.repository, ".cloving/workflows");
+    const interval = async (environment: NodeJS.ProcessEnv) => {
+      const found = check(await scene.report(environment), "queue-interval");
+      return [found["result"], found["detail"]];
+    };
+    await writeQueueWorkflow(folder, { queue: { everySeconds: 300 } });
+    assert.deepEqual(await interval({ CLOVING_QUEUE_SECONDS: undefined }), [
+      "ok",
+      "300 seconds from the declaration",
+    ]);
+    await writeQueueWorkflow(folder);
+    assert.deepEqual(await interval({ CLOVING_QUEUE_SECONDS: undefined }), [
+      "ok",
+      "120 seconds from the default",
+    ]);
+    assert.deepEqual(await interval({ CLOVING_QUEUE_SECONDS: "30" }), [
+      "ok",
+      "30 seconds from the environment",
+    ]);
+    assert.deepEqual(
+      await interval({
+        CLOVING_QUEUE_SECONDS: "30",
+        CLOVING_QUEUES: '{"queued":{"everySeconds":600}}',
+      }),
+      ["ok", "600 seconds from the queues setting"],
+    );
+    assert.deepEqual(
+      await interval({
+        CLOVING_QUEUE_SECONDS: undefined,
+        CLOVING_QUEUES: '{"queued":{"state":"off"}}',
+      }),
+      ["ok", "The queues setting turns off the queue of queued."],
+    );
+  }));

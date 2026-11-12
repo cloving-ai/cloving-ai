@@ -12,6 +12,7 @@ import {
   inputDescriptor,
   intervals,
   launchedProcess,
+  launchMarker,
   type Watch,
 } from "./detached-process.ts";
 import type { TurnProgress } from "./turn-stream.ts";
@@ -274,14 +275,6 @@ function launchFiles(start: DetachedStart) {
 
 export function detachedTurn(start: DetachedStart): FollowedTurn {
   const files = launchFiles(start);
-  const detached = launchedProcess({
-    executable: start.executable,
-    arguments: start.arguments,
-    environment: start.environment,
-    directory: start.directory,
-    descriptors: files.descriptors,
-    exit: files.exit,
-  });
   const recordedFiles = {
     output: files.path,
     offset: files.offset,
@@ -290,6 +283,14 @@ export function detachedTurn(start: DetachedStart): FollowedTurn {
     ...("transcript" in files ? { transcript: files.transcript } : {}),
     ...(start.runnerPlace === undefined ? {} : { runner: start.runnerPlace }),
   };
+  const detached = launchedProcess({
+    executable: start.executable,
+    arguments: start.arguments,
+    environment: start.environment,
+    directory: start.directory,
+    descriptors: files.descriptors,
+    marker: launchMarker(start.folder, recordedFiles),
+  });
   const launch = detached.launch.then((recorded) =>
     recorded === null ? null : { ...recorded, ...recordedFiles },
   );

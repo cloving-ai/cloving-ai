@@ -278,7 +278,7 @@ await test("CLV-349 the README Restart section lists each kind of turn that keep
   );
   for (const kind of [
     "- A Claude turn.",
-    "- A turn of the Codex, Gemini, Cursor, OpenCode and Grok harnesses.",
+    "- A turn of the Codex, Gemini, Cursor, OpenCode, Grok and Pi harnesses.",
     '- A turn of a shell harness (`kind: "shell"`).',
     "- A turn of the `host`, `seatbelt` and `container` runners.",
   ])

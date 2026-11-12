@@ -1,3 +1,4 @@
+import { declaresQueue } from "../src/workflow-declaration.ts";
 import { readdir, readFile, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
@@ -151,7 +152,7 @@ async function copied(
     );
   if (queued.length > 1)
     process.stderr.write(
-      `queue-workflow-conflict: ${queued.join(", ")} have "queue": true. Select "a person" for the select point of one copy: remove workflow.queue from its declaration.\n`,
+      `queue-workflow-conflict: ${queued.join(", ")} declare a queue. Select "a person" for the select point of one copy: remove workflow.queue from its declaration.\n`,
     );
   return 0;
 }
@@ -216,7 +217,7 @@ async function queuedId(
   }
   if (
     !isCandidateDeclaration(declaration) ||
-    declaration.workflow.queue !== true
+    !declaresQueue(declaration.workflow.queue)
   )
     return undefined;
   const source = join(folder, name.replace(/\.declaration\.json$/, ".ts"));

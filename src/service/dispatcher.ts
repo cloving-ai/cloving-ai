@@ -2,6 +2,7 @@ import type { Reply, ServiceRequest } from "../protocol.ts";
 import { continueHandler } from "./continue-handler.ts";
 import { decision, questions } from "./decision-handler.ts";
 import { dismissRun } from "./dismiss-handler.ts";
+import { effectResult } from "./effect-result-handler.ts";
 import { events, type Connection } from "./event-handler.ts";
 import { queueCommand, queueRead } from "./queue-handlers.ts";
 import { failed, type ServiceContext } from "./replies.ts";
@@ -46,6 +47,7 @@ export function dispatcher(
     ["steer-run", (request) => steerRun(context, request.parameters)],
     ["rename-run", (request) => renameRun(context, request.parameters)],
     ["transcript", (request) => transcript(context, request.parameters)],
+    ["effect-result", (request) => effectResult(context, request.parameters)],
     ["reload", () => context.reload?.() ?? reloadUnavailable()],
     ["restart", (request) => restartOperation(context, request.parameters)],
     [

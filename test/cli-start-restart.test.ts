@@ -61,8 +61,9 @@ import { dirname, join } from "node:path";
 let launches = [];
 try { launches = JSON.parse(readFileSync("launches.json", "utf8")); }
 catch (error) { if (error.code !== "ENOENT") throw error; }
-launches.push({ arguments: process.argv.slice(2), marker: process.env.CLOVING_TEST_MARKER, mergeMode: process.env.CLOVING_MERGE_MODE, watchPort: process.env.CLOVING_WATCH_PORT });
+launches.push({ arguments: process.argv.slice(2), marker: process.env.CLOVING_TEST_MARKER, mergeMode: process.env.CLOVING_MERGE_MODE, watchPort: process.env.CLOVING_WATCH_PORT, lanes: process.env.CLOVING_QUEUE_LANES });
 if (process.env.CLOVING_TEST_FILES && launches.length === 1) writeFileSync("restart-settings", "files");
+if (process.env.CLOVING_TEST_SET && launches.length === 1) writeFileSync("restart-variables", JSON.stringify({ CLOVING_QUEUE_LANES: "8" }));
 ${adoptionScript}
 writeFileSync("launches.json", JSON.stringify(launches));
 const status = ${JSON.stringify(launch.statuses)}[launches.length - 1] ?? 2;
@@ -87,6 +88,7 @@ interface StartOptions {
   readonly stallMilliseconds?: number;
   readonly mergeMode?: string;
   readonly files?: "first" | "stale";
+  readonly set?: true;
   readonly adopt?: true;
   readonly workspace?: true;
 }
@@ -115,6 +117,8 @@ function startEnvironment(input: {
     CLOVING_MERGE_MODE: options.mergeMode,
     CLOVING_WATCH_PORT: undefined,
     CLOVING_TEST_FILES: options.files === "first" ? "1" : undefined,
+    CLOVING_TEST_SET: options.set === true ? "1" : undefined,
+    CLOVING_QUEUE_LANES: options.set === true ? "4" : undefined,
     NODE_OPTIONS: nodeOptions,
     ...(options.adopt === true
       ? {
@@ -148,6 +152,14 @@ async function workspaceArguments(root: string): Promise<readonly string[]> {
   return ["start", "--workspace"];
 }
 
+async function staleNotes(root: string): Promise<void> {
+  await writeFile(join(root, "restart-settings"), "files");
+  await writeFile(
+    join(root, "restart-variables"),
+    JSON.stringify({ CLOVING_QUEUE_LANES: "8" }),
+  );
+}
+
 async function started(
   statuses: readonly number[],
   options: StartOptions = {},
@@ -158,8 +170,7 @@ async function started(
       statuses,
       stallMilliseconds: options.stallMilliseconds ?? 0,
     });
-    if (options.files === "stale")
-      await writeFile(join(root, "restart-settings"), "files");
+    if (options.files === "stale") await staleNotes(root);
     if (options.adopt === true)
       spawnSync("git", ["init", "-q", join(root, "chosen")]);
     const command =
@@ -262,7 +273,31 @@ await test("CLV-306 a restart from the files starts without the variables that t
   ]);
 });
 
-await test("CLV-306 start removes a settings note that no restart of this start wrote", async () => {
+await test("CLV-352 a restart with a set value starts with that value and keeps it at later restarts", async () => {
+  const result = await started([75, 75, 0], { mergeMode: "queue", set: true });
+  assert.equal(result.status, 0);
+  assert.deepEqual(result.launches, [
+    { ...result.expected, mergeMode: "queue", lanes: "4" },
+    { ...result.expected, mergeMode: "queue", lanes: "8" },
+    { ...result.expected, mergeMode: "queue", lanes: "8" },
+  ]);
+});
+
+await test("CLV-352 a restart from the files with a set value starts with the set value and without the other file variables", async () => {
+  const result = await started([75, 75, 0], {
+    mergeMode: "queue",
+    files: "first",
+    set: true,
+  });
+  assert.equal(result.status, 0);
+  assert.deepEqual(result.launches, [
+    { ...result.expected, mergeMode: "queue", lanes: "4" },
+    { ...result.expected, lanes: "8" },
+    { ...result.expected, lanes: "8" },
+  ]);
+});
+
+await test("CLV-306 CLV-352 start removes the settings notes that no restart of this start wrote", async () => {
   const result = await started([75, 0], { mergeMode: "queue", files: "stale" });
   assert.equal(result.status, 0);
   assert.deepEqual(result.launches, [

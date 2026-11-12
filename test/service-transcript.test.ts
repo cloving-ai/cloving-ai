@@ -197,3 +197,33 @@ await test("CLV-329 the transcript cache keeps the parsed entries of the last ei
     ["b", "c", "d", "e", "f", "g", "old", "h"],
   );
 });
+
+await test("CLV-364 earlier transcript pages start just before the requested sparse position", () =>
+  withHarness(async (harness) => {
+    const scene = await openTurn(harness);
+    const operationId = await journal(
+      scene,
+      Array.from({ length: 450 }, (_, index) =>
+        JSON.stringify({
+          type: "assistant",
+          message: {
+            content: [{ type: "text", text: `Entry ${String(index)}` }],
+          },
+          replaceId: `block-${String(Math.floor(index / 2))}`,
+        }),
+      ).join("\n") + "\n",
+    );
+    const first = await transcript(scene, { operationId, before: 451 });
+    const entries = items(field(first, "entries"));
+    assert.equal(entries.length, 200);
+    assert.equal(field(entries[0], "position"), 52);
+    assert.equal(field(entries.at(-1), "position"), 450);
+    const earlier = await transcript(scene, { operationId, before: 52 });
+    assert.equal(items(field(earlier, "entries")).length, 25);
+    assert.equal(field(earlier, "hasEarlier"), false);
+    for (const before of [-1, 0, 1.5, "bad"])
+      assert.equal(
+        field(await transcript(scene, { operationId, before }), "code"),
+        "invalid-request",
+      );
+  }));

@@ -1,4 +1,4 @@
-import type { TurnVariables } from "./turn-environment.ts";
+import type { CommitSignatures, TurnVariables } from "./turn-environment.ts";
 import type { TurnRunner } from "./turn-runner.ts";
 
 export const defaultCommand = [
@@ -49,8 +49,10 @@ export const defaultGrokCommand = [
   "-p",
 ];
 
+export const defaultPiCommand = ["pi", "--mode", "json", "--no-session"];
+
 export type NativeHarness =
-  "claude" | "codex" | "gemini" | "grok" | "opencode" | "cursor-agent";
+  "claude" | "codex" | "gemini" | "grok" | "opencode" | "cursor-agent" | "pi";
 
 const defaultCommands = {
   claude: defaultCommand,
@@ -58,6 +60,7 @@ const defaultCommands = {
   gemini: defaultGeminiCommand,
   grok: defaultGrokCommand,
   opencode: defaultOpencodeCommand,
+  pi: defaultPiCommand,
   "cursor-agent": defaultCursorCommand,
 };
 
@@ -77,6 +80,7 @@ export interface HarnessSettings {
   };
   readonly shell?: string;
   readonly turnVariables?: TurnVariables;
+  readonly turnCommitSignatures?: CommitSignatures;
 }
 
 function matchingHarness(
@@ -128,6 +132,7 @@ export function harnessDefaults(value: unknown): {
     gemini: "CLOVING_GEMINI_COMMAND",
     grok: "CLOVING_GROK_COMMAND",
     opencode: "CLOVING_OPENCODE_COMMAND",
+    pi: "CLOVING_PI_COMMAND",
     "cursor-agent": undefined,
   }[name];
   return {
@@ -157,6 +162,27 @@ function selectedCommand(
   };
 }
 
+function turnSettings(settings: HarnessSettings): {
+  readonly variables: TurnVariables;
+  readonly commitSignatures: CommitSignatures;
+} {
+  return {
+    variables: settings.turnVariables ?? [],
+    commitSignatures: settings.turnCommitSignatures ?? "keep",
+  };
+}
+
+export function turnShell(
+  settings: HarnessSettings,
+  profile: { readonly harness?: string } = {},
+): string | undefined {
+  const name =
+    profile.harness ?? settings.worker ?? settings.harness?.name ?? "claude";
+  return matchingHarness(settings, name).kind === "shell"
+    ? (settings.shell ?? "/bin/sh")
+    : undefined;
+}
+
 export function turnHarness(
   settings: HarnessSettings,
   profile: { readonly harness?: string; readonly runner?: TurnRunner } = {},
@@ -166,16 +192,17 @@ export function turnHarness(
   readonly shell?: string;
   readonly output?: "text";
   readonly variables: TurnVariables;
+  readonly commitSignatures: CommitSignatures;
   readonly runner?: TurnRunner;
 } {
   const name =
     profile.harness ?? settings.worker ?? settings.harness?.name ?? "claude";
-  const saved = matchingHarness(settings, name);
+  const shell = turnShell(settings, profile);
   return {
     worker: name,
-    variables: settings.turnVariables ?? [],
+    ...turnSettings(settings),
     ...selectedCommand(settings, name),
-    ...(saved.kind === "shell" ? { shell: settings.shell ?? "/bin/sh" } : {}),
+    ...(shell === undefined ? {} : { shell }),
     ...(profile.runner === undefined ? {} : { runner: profile.runner }),
   };
 }

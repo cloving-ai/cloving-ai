@@ -2,6 +2,7 @@ import type { Recorded } from "./operation-journal.ts";
 import { ticketStatus, type TicketStatus } from "../ticket-status.ts";
 import { reviewReport, type ReviewVerdict } from "../review-subject.ts";
 import { sumPrices } from "../worker-usage.ts";
+import type { PiAccounting } from "../pi-usage.ts";
 import { changes, type Changes, type WorkTree } from "./work-tree.ts";
 import { succeeded, type StreamResult, type TurnEnd } from "./claude-turn.ts";
 
@@ -10,6 +11,9 @@ type ReportFields = Changes &
     StreamResult,
     "costUsd" | "usage" | "model" | "attempts" | "sessionId" | "turns"
   > & {
+    readonly piAccounting?: Omit<PiAccounting, "responses"> & {
+      readonly responseCount: number;
+    };
     readonly harness: string;
     readonly ticketStatus: TicketStatus;
     readonly summary: string;
@@ -113,6 +117,16 @@ export async function turnReport(
           : feedback.slice(0, limits.summaryCharacters),
       ...(await changes(tree)),
       worktree: tree.path,
+      ...(result.piAccounting === undefined
+        ? {}
+        : {
+            piAccounting: {
+              scope: result.piAccounting.scope,
+              responseCount: result.piAccounting.responses.length,
+              auxiliaryWork: result.piAccounting.auxiliaryWork,
+              nestedUsage: result.piAccounting.nestedUsage,
+            },
+          }),
       costUsd: result.costUsd,
       usage: result.usage,
       model: result.model,

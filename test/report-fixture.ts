@@ -12,7 +12,7 @@ import {
 import { withHarness, type Harness } from "./service-fixture.ts";
 
 export async function withReportSource<Result>(
-  reply: (request: ServiceRequest) => Reply,
+  reply: (request: ServiceRequest) => Reply | Promise<Reply>,
   inspect: (
     harness: Harness,
     requests: readonly ServiceRequest[],
@@ -33,7 +33,15 @@ export async function withReportSource<Result>(
         const parsed = parseRequest(input);
         assert.equal(parsed.kind, "request");
         requests.push(parsed.request);
-        socket.end(replyLine(reply(parsed.request)));
+        Promise.resolve(reply(parsed.request))
+          .then((result) => {
+            socket.end(replyLine(result));
+          })
+          .catch((error: unknown) => {
+            socket.destroy(
+              error instanceof Error ? error : new Error(String(error)),
+            );
+          });
       });
     });
     await new Promise<void>((resolve) => server.listen(address.path, resolve));

@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { modelStream } from "./gemini-fixture.ts";
+import { piEvents } from "./pi-fixture.ts";
 import { opencodeEvents } from "./opencode-fixture.ts";
 import {
   grokMessages,
@@ -97,6 +98,7 @@ const cursorOutput: HarnessOutput = {
 
 export const harnessOutputs: Readonly<Record<string, HarnessOutput>> = {
   codex: codexOutput,
+  pi: { head: piEvents().slice(0, 3), tail: piEvents().slice(3) },
   gemini: { head: modelStream.slice(0, 3), tail: modelStream.slice(3) },
   "cursor-agent": cursorOutput,
   opencode: {
@@ -121,6 +123,7 @@ export const harnessOutputs: Readonly<Record<string, HarnessOutput>> = {
 };
 
 export const harnessPrices = {
+  "test-provider/test-model": { input: 2, cachedInput: 0.5, output: 8 },
   priced: { input: 2, cachedInput: 0.5, output: 8 },
   "gemini-test-pro": { input: 2, cachedInput: 0.5, output: 8 },
   "gemini-test-flash": { input: 1, cachedInput: 0.25, output: 4 },

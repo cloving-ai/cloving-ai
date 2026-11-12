@@ -1,6 +1,7 @@
+import { harnessEnvironmentUsage } from "./usage-harnesses.ts";
+
 const binding =
   "--expected-revision <n> --generation <n> --subject-digest <digest>";
-
 export const configUsage = `Usage: cloving config list [--json]
        cloving config get <field> [--json]
        cloving config set <field> <value> [--private] [--json]
@@ -13,7 +14,7 @@ list and get show the effective source and hidden file values. Unconfigured valu
 Changes keep the previous file as .bak and replace the file atomically under a lock.
 A live lock waits at most ten seconds, then exits with settings-locked.
 Private files, backups and temporary files have mode 0600.
-cloving reload applies changes of profiles, fallbackModels, tokenPrices, workflows.folder, queue.lanes, queue.workingLanes, queue.maxLoadPerCore, queue.maxMemoryPressure and effects.reserved. Other changes require a service restart.
+cloving reload applies changes of profiles, fallbackModels, tokenPrices, workflows.folder, queue.lanes, queue.workingLanes, queue.maxLoadPerCore, queue.maxMemoryPressure and effects.reserved. It also applies the lanes and workingLanes of each workflow in queues. Other changes require a service restart.
 `;
 
 export const commandUsage: Readonly<Record<string, string>> = {
@@ -185,13 +186,14 @@ Prints the committed events after a sequence. With --json, each line is one even
 Checks and compiles the workflow files again while the service runs.
 New runs use the new bundle. A run that started before the reload stays on the bundle of its pin.
 A new refusal of a workflow file keeps the current workflows and shows the reason.
-A change of the queue workflow or of a schedule needs a restart.
+A change of the queue workflow, of its declared interval or of a schedule needs a restart.
 It also reads the settings files and the profiles file again, and applies changes of profiles, fallbackModels, tokenPrices, workflows.folder, queue.lanes, queue.workingLanes, queue.maxLoadPerCore, queue.maxMemoryPressure and effects.reserved.
+It applies the lanes and workingLanes of each workflow in queues. A change of state or everySeconds in queues needs a restart.
 New turns use the new values. A turn in work keeps the values of its start.
 The reply lists each other changed field as a field that needs a restart. The service keeps its old value.
 An invalid settings file, an invalid profiles file or a profile harness with no worker at the start refuses the reload. Then nothing changes.
 `,
-  restart: `Usage: cloving restart [--at keep|gap|now] [--within <duration>] [--resume-queue] [--settings environment|files] [--update] [--command-id <id>] [--json]
+  restart: `Usage: cloving restart [--at keep|gap|now] [--within <duration>] [--resume-queue] [--settings environment|files] [--set <key>=<value>]... [--update] [--command-id <id>] [--json]
        cloving restart --cancel [--command-id <id>] [--json]
 
 Restarts the service that cloving start runs, with the settings files and the product files of the new start.
@@ -210,6 +212,9 @@ Control-C stops the wait and keeps the restart pending. --cancel cancels a pendi
 The restart keeps a drain of the queue and its failure count.
 --resume-queue clears the drain at the new start and keeps the failure count. cloving start --reset-queue clears both.
 --settings files starts without the CLOVING_* variables that the settings files can set. The files and the defaults decide.
+--set <key>=<value> sets the CLOVING_* variable of a settings file key in the new start. Give it one time for each key.
+For harness.command, it sets the command variable of the worker of the service, or of the --set harness.name worker.
+The command checks each value as cloving config set does. An unknown key or an invalid value refuses the restart. The value applies after --settings files, and later restarts of this cloving start keep it.
 --update updates the product checkout after the stop. Local changes skip the update.
 The update fetches the default branch and needs a fast-forward.
 It runs npm ci --ignore-scripts when package-lock.json changed, and then npm run build.
@@ -218,7 +223,7 @@ While a workspace runs, cloving restart with no --repository restarts all reposi
 and each one keeps its turns running. With --at gap, it restarts them at a common gap.
 The workspace supervisor then holds the queue runs of all repositories, waits until no repository has work,
 and then restarts each repository at once. --at now does not wait for the gap.
-A workspace restart has no --update, --cancel or --within; use --repository <name> to restart one repository.
+A workspace restart has no --update, --cancel, --within or --set; use --repository <name> to restart one repository.
 `,
   watch: `Usage: cloving watch [--port <n>] [--workspace]
 
@@ -264,14 +269,15 @@ Settings files: .cloving/config.json in the repository and <config>/cloving/proj
   CLOVING_TICKET_COMMAND           A JSON list of a command and its arguments. The command gets a ticket ID as its last argument and prints the ticket. The setting has no default, and a run with --ticket needs it.
   CLOVING_NOTIFY_COMMAND           A JSON list of a command and its arguments. Every 15 seconds, new decisions, blocked runs, failed runs and stopped schedules send JSON on standard input with no added argument. The setting has no default.
   CLOVING_NEXT_COMMAND             A JSON list of a command and its arguments. The command runs with no added argument and prints one ready ticket ID for --next. It must exclude the space-separated ticket IDs in CLOVING_SKIP_TICKETS. The setting has no default.
-  CLOVING_READY_COMMAND            A JSON list of a command and its arguments. Requires CLOVING_QUEUE_SECONDS. When the queue starts, and one queue interval after each run ends, the command runs with no added argument and prints a JSON list of the ready tickets. Queue checks do not wait for it. Each item is an object with an id and a readyAt UTC time, such as 2026-11-03T07:30:00Z. The watch page shows the count of ready tickets that are not in work and do not wait for a dependency, and the oldest wait. The setting has no default.
-  CLOVING_QUEUE_SECONDS            A whole number from 10 to 3600 seconds between checks for a declared workflow with queue: true; requires CLOVING_NEXT_COMMAND and CLOVING_TICKET_COMMAND when that workflow exists. Unset or no queue workflow means no queue. The queue stops after three runs in a row without a successful handoff; manual submissions to that workflow are refused with workflow-active when all lanes are busy.
-  CLOVING_QUEUE_LANES              A whole number from 1 to 16; the default is 1. Requires CLOVING_QUEUE_SECONDS. Active tickets are refused with ticket-active. Needs #N sentences in the ticket's ## Dependencies section refuse admission with ticket-dependency-open while issue #N is open. cloving reload applies a change; fewer lanes stop new starts and do not stop active runs.
-  CLOVING_QUEUE_WORKING_LANES      A whole number from 1 to 16 and not more than CLOVING_QUEUE_LANES. It limits the queue runs in which a turn or a command runs; a run that waits for CI, a review or a person holds a lane but not a working lane. The default is CLOVING_QUEUE_LANES. Requires CLOVING_QUEUE_SECONDS. cloving reload applies a change.
+  CLOVING_READY_COMMAND            A JSON list of a command and its arguments. Requires CLOVING_QUEUE_SECONDS or a declared queue workflow. When the queue starts, and one queue interval after each run ends, the command runs with no added argument and prints a JSON list of the ready tickets. Queue checks do not wait for it. Each item is an object with an id and a readyAt UTC time, such as 2026-11-03T07:30:00Z. The watch page shows the count of ready tickets that are not in work and do not wait for a dependency, and the oldest wait. The setting has no default.
+  CLOVING_QUEUE_SECONDS            A whole number from 10 to 3600 seconds between checks for a declared workflow with queue: true or a queue object. It overrides the everySeconds of the declaration, and queues.<workflow>.everySeconds overrides it. Unset means the declared value or 120. A declared queue starts when CLOVING_NEXT_COMMAND and CLOVING_TICKET_COMMAND are set; with this setting, the start requires both. With no queue workflow, there is no queue. The queue stops after three runs in a row without a successful handoff; manual submissions to that workflow are refused with workflow-active when all lanes are busy.
+  CLOVING_QUEUES                   A JSON object mapping a workflow ID to {state, everySeconds, lanes, workingLanes}. The state is on or off; off stops the start of that queue. everySeconds (10 to 3600), lanes (1 to 16) and workingLanes override CLOVING_QUEUE_SECONDS, CLOVING_QUEUE_LANES, CLOVING_QUEUE_WORKING_LANES and the declaration. cloving reload applies lanes and workingLanes. Unset keeps the other values.
+  CLOVING_QUEUE_LANES              A whole number from 1 to 16; the default is 1, or the lanes of the declaration. queues.<workflow>.lanes overrides it. Requires CLOVING_QUEUE_SECONDS or a declared queue workflow. Active tickets are refused with ticket-active. Needs #N sentences in the ticket's ## Dependencies section refuse admission with ticket-dependency-open while issue #N is open. cloving reload applies a change; fewer lanes stop new starts and do not stop active runs.
+  CLOVING_QUEUE_WORKING_LANES      A whole number from 1 to 16 and not more than CLOVING_QUEUE_LANES. It limits the queue runs in which a turn or a command runs; a run that waits for CI, a review or a person holds a lane but not a working lane. The default is CLOVING_QUEUE_LANES. Requires CLOVING_QUEUE_SECONDS or a declared queue workflow. cloving reload applies a change.
   CLOVING_EFFECT_RESERVED          A whole number from 0 to 8; the default is 2. The broker keeps this count of effect leases for runs that are not queue runs. The effect capacity is CLOVING_QUEUE_LANES plus this reserve, and queue runs together hold at most CLOVING_QUEUE_LANES leases. Other values stop the start with invalid-effect-settings. cloving reload applies a change.
-  CLOVING_QUEUE_MAX_LOAD_PER_CORE  A number from 0.1 to 4; the default is 0.7. The queue starts a run only when the 1-minute load average divided by the available cores is below this limit. Requires CLOVING_QUEUE_SECONDS. cloving reload applies a change.
-  CLOVING_QUEUE_MAX_MEMORY_PRESSURE normal or warn; the default is normal. The queue starts a run only when the memory pressure is at or below this level: on macOS from sysctl kern.memorystatus_vm_pressure_level, on Linux from MemAvailable of /proc/meminfo (warn below 20 percent, critical below 10 percent). Requires CLOVING_QUEUE_SECONDS. cloving reload applies a change.
-  CLOVING_QUEUE_DAILY_SPEND_USD    A positive finite USD number. Requires CLOVING_QUEUE_SECONDS, unless CLOVING_SPEND_SCOPE is all. Holds new queue runs at 85 percent of the limit in the last 24 hours; active runs continue. Unset adds no spend limit.
+  CLOVING_QUEUE_MAX_LOAD_PER_CORE  A number from 0.1 to 4; the default is 0.7. The queue starts a run only when the 1-minute load average divided by the available cores is below this limit. Requires CLOVING_QUEUE_SECONDS or a declared queue workflow. cloving reload applies a change.
+  CLOVING_QUEUE_MAX_MEMORY_PRESSURE normal or warn; the default is normal. The queue starts a run only when the memory pressure is at or below this level: on macOS from sysctl kern.memorystatus_vm_pressure_level, on Linux from MemAvailable of /proc/meminfo (warn below 20 percent, critical below 10 percent). Requires CLOVING_QUEUE_SECONDS or a declared queue workflow. cloving reload applies a change.
+  CLOVING_QUEUE_DAILY_SPEND_USD    A positive finite USD number. Requires CLOVING_QUEUE_SECONDS or a declared queue workflow, unless CLOVING_SPEND_SCOPE is all. Holds new queue runs at 85 percent of the limit in the last 24 hours; active runs continue. Unset adds no spend limit.
   CLOVING_SPEND_SCOPE              queue or all; the default is queue. The private or project setting spend.scope sets it. With all, the daily spend limit counts the turns of every workflow and holds the admission of every workflow, and the limit does not need CLOVING_QUEUE_SECONDS.
   CLOVING_LIMIT_EFFECTS            A whole number from 1 to 1000; the default is 100. The private or project setting limits.effects sets it. A declared workflow with an effectLimit above it is refused with effect-limit-above-maximum.
   CLOVING_LIMIT_CHAIN              A whole number from 2 to 50; the default is 5. The private or project setting limits.chain sets it. A declared chainLimit above it is refused with chain-limit-above-maximum.
@@ -283,17 +289,13 @@ Settings files: .cloving/config.json in the repository and <config>/cloving/proj
   CLOVING_RETENTION_ARCHIVE_FOLDER An absolute folder path, or null for <state>/archive. The folder can be on another volume. When the folder is not available, the sweep moves nothing, logs the reason and tries again in the next hour.
   CLOVING_DEMO_TOOL                The absolute path of the instruction file or folder of a demo tool. The private setting demo.tool sets it. The service does not read the tool; each turn gets it as CLOVING_DEMO_TOOL, and the demo option of the develop template reads it there.
   CLOVING_TURN_ENVIRONMENT         inherit, or a JSON list of variable names. The default is an empty list. A turn gets only the base variables (PATH, HOME, USER, LOGNAME, SHELL, TERM, TMPDIR, TZ, LANG, LC_ALL, LC_CTYPE and XDG_CONFIG_HOME, XDG_DATA_HOME, XDG_CACHE_HOME, XDG_STATE_HOME), the login variables of its harness, the profile env and the listed variables. The value inherit gives a turn the whole environment except the GitHub tokens, as before; it stays for one release. The private setting turns.environment sets it.
-  CLOVING_GROK_COMMAND             A JSON list of a command and its arguments for Grok. The default uses streaming-messages-json, --always-approve and -p; the turn text follows -p or --single as one argument, or is appended if neither flag is present.
-  CLOVING_CLAUDE_COMMAND           A JSON list of a command and its arguments for the Claude worker. The default is the claude command with a limit of 5 USD for each turn.
+  CLOVING_TURN_COMMIT_SIGNATURES   keep or off. The default is keep. With off, Cloving adds commit.gpgsign=false and tag.gpgsign=false to the git configuration of each turn, so a turn commits and tags with no signature. The private setting turns.commitSignatures sets it.
   CLOVING_PROFILES                 The path of a JSON file of operator-defined Claude turn profiles, read at start and at each cloving reload. A relative path starts at the folder of cloving start. The setting has no default.
   CLOVING_COMMANDS                A JSON object mapping names to argument arrays with an absolute executable path. Invalid values refuse startup with invalid-commands. Unset means no commands. Command execution is not available yet.
   CLOVING_COMMAND_SECONDS         A whole number from 1 to 3600 seconds; the default is 60. Invalid values refuse startup with invalid-command-seconds. Reserved for command execution.
   CLOVING_TOKEN_PRICES             A JSON object from model names to input, cachedInput and output USD prices per million tokens for estimates; entries override matching built-in prices.
   CLOVING_FALLBACK_MODELS          A JSON array of at most three nonempty model names; the default is no fallback. After capacity refusals the first retry keeps the main model and the third attempt uses the first fallback, with the same waits and attempt limit. Requires an explicit -m, --model or --model= argument. A fallback can have a higher price.
-  CLOVING_WORKER                   The worker for each turn: claude, codex, gemini, grok, cursor-agent or opencode. The default is claude. Other values stop the start with harness-no-worker.
-  CLOVING_CODEX_COMMAND            A JSON list of a command and its arguments, used only when CLOVING_WORKER is codex; CLOVING_CLAUDE_COMMAND is then ignored. The default is codex exec --json --dangerously-bypass-approvals-and-sandbox --skip-git-repo-check -, with no sandbox and no approval prompts.
-  CLOVING_GEMINI_COMMAND           A JSON list of a command and its arguments for the gemini worker. The default is gemini --output-format stream-json --approval-mode yolo; Cloving appends -p and the turn text; turn text of 64 KiB or more in UTF-8 goes through standard input instead. No approval prompts or capacity retries.
-  CLOVING_OPENCODE_COMMAND         A JSON list of a command and its arguments for opencode. The default is opencode run --format json; the turn text is appended as one argument. OPENCODE_PERMISSION permits unattended tools.
+${harnessEnvironmentUsage}
   CLOVING_WATCH_REPOSITORY         The service repository context for the watch board, set by start from --repository. Its local origin supplies the GitHub identity. There is no current-directory default.
   CLOVING_WATCH_ACTIONS            The value off removes the board run form, the queue control, the loop controls, the run controls and their write endpoints. The default is on.
   CLOVING_WATCH_PORT               The port number of the watch page. The value off starts no watch page. The default is 3663.

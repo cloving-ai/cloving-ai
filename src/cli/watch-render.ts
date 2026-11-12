@@ -300,17 +300,6 @@ export function clockTime(time: string): string {
   return Number.isNaN(moment.getTime()) ? "" : moment.toLocaleTimeString();
 }
 
-export function groupActivity(activity: readonly WatchItem[]): WatchItem[][] {
-  const routine = (item: WatchItem | undefined): boolean =>
-    item?.kind === "tool" || item?.kind === "error";
-  return activity.reduce<WatchItem[][]>((groups, item) => {
-    const last = groups.at(-1) ?? [];
-    if (routine(item) && routine(last[0]))
-      return [...groups.slice(0, -1), [...last, item]];
-    return [...groups, [item]];
-  }, []);
-}
-
 export function turnTime(turn: WatchTurn, now: string): string {
   if (turn.outcome === "in work") return elapsed(turn.startedAt, now);
   return turn.endedAt === null ? "" : elapsed(turn.startedAt, turn.endedAt);

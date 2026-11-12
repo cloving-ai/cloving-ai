@@ -161,7 +161,8 @@ function launcherVersionArguments(
       ? ["--", script, "--version"]
       : [];
   }
-  return !nativeHarness(launch.worker) ||
+  return launch.worker === "pi" ||
+    !nativeHarness(launch.worker) ||
     arguments_.length === 0 ||
     [launch.worker, "claude", "codex"].includes(program)
     ? ["--version"]
@@ -234,7 +235,8 @@ async function usableHarnessCommand(
     output.reason === null &&
     harnessVersion(
       output.stdout,
-      harnessDefinition(basename(path)).versionPattern,
+      harnessDefinition(location.worker === "pi" ? "pi" : basename(path))
+        .versionPattern,
     ) !== null
   );
 }

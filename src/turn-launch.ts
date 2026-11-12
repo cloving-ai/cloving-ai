@@ -76,22 +76,19 @@ function recordedTranscript(
   return { transcript: { path, offset } };
 }
 
-export function recordedLaunch(value: unknown): TurnLaunch | undefined {
+export type PlannedLaunch = Omit<TurnLaunch, "processId" | "processStart">;
+
+export function plannedLaunch(value: unknown): PlannedLaunch | undefined {
   const fields = record(value);
   if (fields === undefined) return undefined;
-  const { processId, processStart, marker, output, offset } = fields;
-  const { exit, configuration } = fields;
-  if (typeof processId !== "number" || !Number.isSafeInteger(processId))
-    return undefined;
-  if (processId <= 0 || typeof offset !== "number") return undefined;
-  const texts = [processStart, marker, output, exit, configuration];
+  const { marker, output, offset, exit, configuration } = fields;
+  if (typeof offset !== "number") return undefined;
+  const texts = [marker, output, exit, configuration];
   if (!texts.every((text) => typeof text === "string")) return undefined;
   const transcript = recordedTranscript(fields["transcript"]);
   const runner = recordedRunner(fields["runner"]);
   if (transcript === undefined || runner === undefined) return undefined;
   return {
-    processId,
-    processStart: String(processStart),
     marker: String(marker),
     output: String(output),
     offset,
@@ -100,6 +97,17 @@ export function recordedLaunch(value: unknown): TurnLaunch | undefined {
     ...transcript,
     ...runner,
   };
+}
+
+export function recordedLaunch(value: unknown): TurnLaunch | undefined {
+  const planned = plannedLaunch(value);
+  const fields = record(value);
+  if (planned === undefined || fields === undefined) return undefined;
+  const { processId, processStart } = fields;
+  if (typeof processId !== "number" || !Number.isSafeInteger(processId))
+    return undefined;
+  if (processId <= 0 || typeof processStart !== "string") return undefined;
+  return { processId, processStart, ...planned };
 }
 
 export function attemptNumber(started: unknown): number | undefined {

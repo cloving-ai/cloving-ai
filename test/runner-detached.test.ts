@@ -23,7 +23,8 @@ import {
   stopHarnessGroups,
 } from "./harness-detached-fixture.ts";
 import type { TurnRunner } from "../src/turn-runner.ts";
-import { runnerLaunch, volumeName } from "../src/daemon/turn-runner-spawn.ts";
+import { runnerLaunch } from "../src/daemon/turn-runner-spawn.ts";
+import { volumeName } from "../src/cli/runner-setup.ts";
 import { releasedLaunch } from "../src/daemon/detached-turn.ts";
 import { recordedLaunch } from "../src/turn-launch.ts";
 

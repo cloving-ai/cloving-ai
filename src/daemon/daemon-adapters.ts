@@ -1,3 +1,4 @@
+import type { QueueSource } from "../queue-settings.ts";
 import { turnRecoveries, type TurnRecoveries } from "../turn-recovery.ts";
 import type { ThreadPoolSettings } from "../cli/thread-pool.ts";
 import type { HostSignals, QueueLimits } from "../queue-room.ts";
@@ -33,6 +34,7 @@ import type { ProtectedIntent } from "../broker/actor/delivery-intents.ts";
 import { resumableHarness } from "./claude-recovery.ts";
 import type { RetentionSettings } from "../record-retention.ts";
 import type { MergeMode } from "../merge-mode.ts";
+import type { ValidateRestart } from "../restart-request.ts";
 import { clovingVersion } from "../cli/toolchain.ts";
 import type { RecordedSource } from "../project-settings.ts";
 import type { RunWaitChecks } from "../run-wait.ts";
@@ -62,6 +64,7 @@ export interface DaemonSettings extends HarnessSettings {
   readonly handler: WorkflowHandler;
   readonly loadBundle?: WorkflowBundleLoader;
   readonly reloadCommand?: readonly string[];
+  readonly validateRestart?: ValidateRestart;
   readonly command: readonly string[];
   readonly ticketCommand?: readonly string[];
   readonly nextCommand?: readonly string[];
@@ -70,6 +73,8 @@ export interface DaemonSettings extends HarnessSettings {
   readonly notifyCommand?: readonly string[];
   readonly notifyMilliseconds?: number;
   readonly queueMilliseconds?: number;
+  readonly queueIntervalSource?: QueueSource;
+  readonly queueState?: "off";
   readonly runWaitChecks?: RunWaitChecks;
   readonly scheduleClock?: () => number;
   readonly retention?: RetentionSettings;
@@ -131,14 +136,21 @@ function githubOf(
   });
 }
 
+function selectedWorker(
+  settings: Pick<DaemonSettings, "worker" | "harness">,
+): string {
+  return settings.worker ?? settings.harness?.name ?? "claude";
+}
+
 function workerHarness(settings: DaemonSettings) {
   return {
-    worker: settings.worker ?? settings.harness?.name ?? "claude",
+    worker: selectedWorker(settings),
     workerCommands: settings.workerCommands ?? {},
     harness: settings.harness ?? {},
     shell: settings.shell ?? process.env["SHELL"] ?? "/bin/sh",
     command: settings.command,
     turnVariables: settings.turnVariables ?? [],
+    turnCommitSignatures: settings.turnCommitSignatures ?? "keep",
   };
 }
 
@@ -297,11 +309,17 @@ async function recoveryCalls(
   return calls;
 }
 
-export function daemonIdentity(settings: DaemonSettings) {
+export function daemonIdentity(
+  settings: Pick<
+    DaemonSettings,
+    "commit" | "settingSources" | "worker" | "harness"
+  >,
+) {
   return {
     version: clovingVersion,
     commit: settings.commit ?? null,
     startedAt: new Date().toISOString(),
+    worker: selectedWorker(settings),
     ...(settings.settingSources === undefined
       ? {}
       : { settingSources: settings.settingSources }),

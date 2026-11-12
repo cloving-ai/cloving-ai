@@ -7,6 +7,7 @@ import { withFiles } from "./quality/files-fixture.ts";
 
 import { developFiles } from "./develop-template-flow-fixture.ts";
 import { isCandidateDeclaration } from "../src/workflow-candidate.ts";
+import { declaresQueue } from "../src/workflow-declaration.ts";
 import {
   configuredDevelopFiles,
   completeConfigurations,
@@ -25,7 +26,10 @@ await test("CLV-221 the executable default passes folder admission", async () =>
       loaded.candidates[0]?.declaration ?? "null",
     );
     assert.ok(isCandidateDeclaration(declaration));
-    assert.equal(declaration.workflow.queue, true);
+    assert.deepEqual(declaration.workflow.queue, {
+      everySeconds: 120,
+      lanes: 1,
+    });
   });
 });
 
@@ -55,7 +59,7 @@ for (const selected of completeConfigurations)
         );
         assert.ok(isCandidateDeclaration(declaration));
         assert.equal(
-          declaration.workflow.queue === true,
+          declaresQueue(declaration.workflow.queue),
           selected.select === "queue",
         );
         assert.deepEqual(

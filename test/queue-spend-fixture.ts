@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { declaresQueue } from "../src/workflow-declaration.ts";
 import { writeDeclaredWorkflow } from "./workflow-folder-fixture.ts";
 import { issueQueue } from "../src/daemon/issue-queue.ts";
 import type { WorkflowDeclaration } from "../src/workflow-declaration.ts";
@@ -164,7 +165,7 @@ function spendOptions(harness: Harness, state: SpendState) {
   const registration = {
     ...harness.registration,
     workflowId: workflow.workflowId,
-    queue: state.reloadedLanes !== undefined || (workflow.queue ?? false),
+    queue: state.reloadedLanes !== undefined || declaresQueue(workflow.queue),
     admission: state.lanes ?? 2,
     effectLimit: 20,
     manifest: {

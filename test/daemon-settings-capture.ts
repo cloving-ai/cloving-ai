@@ -16,7 +16,7 @@ export function capturedSetting(input: {
     }`,
   );
   const launcher = readFileSync(join(project, "main.mjs"), "utf8").replace(
-    /from "[^"\n]*\/src\/daemon\/daemon\.ts";/,
+    /from "[^"\n]*\/src\/daemon\/daemon\.(?:ts|js)";/,
     'from "./capture-settings.mjs";',
   );
   writeFileSync(join(project, "capture.mjs"), launcher);

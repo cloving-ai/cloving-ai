@@ -1,3 +1,5 @@
+import { isQueueSource, type QueueSource } from "./queue-settings.ts";
+
 export const maximumQueueLanes = 16;
 export type MemoryPressure = "normal" | "warn" | "critical" | "unknown";
 
@@ -14,11 +16,17 @@ export interface RoomLimits {
   readonly maxMemoryPressure: PressureLimit;
 }
 
+export interface QueueLimitSources {
+  readonly lanes: QueueSource;
+  readonly workingLanes: QueueSource;
+}
+
 export interface QueueLimits {
   readonly lanes: number;
   readonly workingLanes: number;
   readonly room?: RoomLimits;
   readonly reserved?: number;
+  readonly sources?: QueueLimitSources;
 }
 
 export const defaultReserved = 2;
@@ -79,15 +87,29 @@ function reserveOf(value: object): { readonly reserved?: number } | undefined {
   return isReserve(reserved) ? { reserved } : undefined;
 }
 
+function sourcesOf(
+  value: object,
+): { readonly sources?: QueueLimitSources } | undefined {
+  const sources: unknown = Reflect.get(value, "sources");
+  if (sources === undefined) return {};
+  if (sources === null || typeof sources !== "object") return undefined;
+  const lanes: unknown = Reflect.get(sources, "lanes");
+  const workingLanes: unknown = Reflect.get(sources, "workingLanes");
+  return isQueueSource(lanes) && isQueueSource(workingLanes)
+    ? { sources: { lanes, workingLanes } }
+    : undefined;
+}
+
 export function queueLimitsOf(value: unknown): QueueLimits | undefined {
   if (value === null || typeof value !== "object") return undefined;
   const lanes: unknown = Reflect.get(value, "lanes");
   const workingLanes: unknown = Reflect.get(value, "workingLanes");
   const given: unknown = Reflect.get(value, "room");
   const reserve = reserveOf(value);
+  const sources = sourcesOf(value);
   if (!wholeIn(lanes, maximumQueueLanes) || !wholeIn(workingLanes, lanes))
     return undefined;
-  if (reserve === undefined) return undefined;
+  if (reserve === undefined || sources === undefined) return undefined;
   const room = roomOf(given);
   if (given !== undefined && room === undefined) return undefined;
   return {
@@ -95,6 +117,7 @@ export function queueLimitsOf(value: unknown): QueueLimits | undefined {
     workingLanes,
     ...(room === undefined ? {} : { room }),
     ...reserve,
+    ...sources,
   };
 }
 

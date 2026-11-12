@@ -39,6 +39,7 @@ const codes = [
   "queue-interval",
   "private-texts",
   "turn-environment",
+  "commit-signatures",
   "turn-runners",
   "command-gh-no-login",
   "retention",

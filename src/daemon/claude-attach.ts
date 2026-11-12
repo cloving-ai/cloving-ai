@@ -2,8 +2,10 @@ import { turnHarness } from "../harness-defaults.ts";
 import { resumeReasonField } from "../worker-usage.ts";
 import { record } from "../protocol.ts";
 import type { ProtectedIntent } from "../broker/actor/delivery-intents.ts";
-import { located, readRecord } from "./operation-journal.ts";
+import { join } from "node:path";
+import { located, readRecord, writeRecord } from "./operation-journal.ts";
 import { keepTurn } from "./turn-owners.ts";
+import { markedProcesses } from "./process-identity.ts";
 import {
   priorEnd,
   recordedField,
@@ -12,8 +14,19 @@ import {
   recordedTree,
   resumableHarness,
 } from "./claude-recovery.ts";
-import { launchState } from "./detached-process.ts";
-import { attemptNumber, keptLaunch, type TurnLaunch } from "../turn-launch.ts";
+import {
+  foundLaunch,
+  launchState,
+  markerRecord,
+  type FoundLaunch,
+} from "./detached-process.ts";
+import {
+  attemptNumber,
+  keptLaunch,
+  plannedLaunch,
+  type PlannedLaunch,
+  type TurnLaunch,
+} from "../turn-launch.ts";
 import type { TurnAttach } from "./turn-attempts.ts";
 import { selectedProfile, type WorkerProfiles } from "./worker-profile.ts";
 
@@ -27,6 +40,77 @@ export async function attachableLaunch(
   const launch = keptLaunch({ started, entry });
   if (launch === undefined) return undefined;
   return (await launchState(launch)) === "gone" ? "gone" : launch;
+}
+
+async function connectedRecords(
+  folder: string,
+  connected: {
+    readonly started: unknown;
+    readonly attempt: number;
+    readonly found: FoundLaunch;
+  },
+): Promise<void> {
+  const { launch, startedAt } = connected.found;
+  const running = {
+    ...record(connected.started),
+    phase: "running",
+    processId: launch.processId,
+    launch,
+  };
+  await writeRecord(folder, {
+    name: `attempt-${String(connected.attempt)}.json`,
+    value: {
+      ...running,
+      startedAt: new Date(startedAt).toISOString(),
+      sessionId: null,
+      sessionCostUsd: null,
+      costUsd: null,
+    },
+    permissions: "private",
+  });
+  await writeRecord(folder, {
+    name: "started.json",
+    value: running,
+    permissions: "private",
+  });
+}
+
+interface MarkerSearch {
+  readonly attempt: number;
+  readonly planned: PlannedLaunch;
+  readonly since: number;
+}
+
+async function markerSearch(
+  folder: string,
+  started: unknown,
+): Promise<MarkerSearch | undefined> {
+  const attempt = attemptNumber(started);
+  if (attempt === undefined || recordedField(started, "phase") !== "starting")
+    return undefined;
+  const place =
+    attempt === 1 ? folder : join(folder, `attempt-${String(attempt)}`);
+  const planned = plannedLaunch(await readRecord(place, markerRecord));
+  if (planned === undefined) return undefined;
+  const since = Date.parse(String(recordedField(started, "startedAt")));
+  return { attempt, planned, since };
+}
+
+export async function markedTurn(
+  folder: string,
+  request: { readonly started: unknown; readonly stopMilliseconds: number },
+): Promise<TurnLaunch | "stopped" | "unknown" | undefined> {
+  const { started } = request;
+  const search = await markerSearch(folder, started);
+  if (search === undefined) return undefined;
+  const found = await foundLaunch(search.planned, {
+    since: search.since,
+    stopMilliseconds: request.stopMilliseconds,
+  });
+  if (found === undefined || found === "stopped" || found === "unknown")
+    return found;
+  await connectedRecords(folder, { started, attempt: search.attempt, found });
+  return found.launch;
 }
 
 async function readAttach(
@@ -100,12 +184,31 @@ export async function keptTurn(
   return { directory: tree.path, runId: intent.runId, launch };
 }
 
+async function holdMarkedTurn(
+  journal: string,
+  intent: { readonly runId: string; readonly operationId: string },
+): Promise<boolean> {
+  const { folder } = located(journal, intent.operationId);
+  const started = await readRecord(folder, "started.json");
+  const tree = recordedTree(started);
+  const search = await markerSearch(folder, started);
+  if (tree === undefined || search === undefined) return false;
+  const { marker } = search.planned;
+  const found = await markedProcesses({ marker, since: search.since });
+  for (const { processId, processStart } of found ?? [])
+    keepTurn(tree.path, {
+      runId: intent.runId,
+      launch: { processId, processStart, marker },
+    });
+  return true;
+}
+
 export async function holdKeptTurn(
   journal: string,
   intent: { readonly runId: string; readonly operationId: string },
 ): Promise<boolean> {
   const kept = await keptTurn(journal, intent);
-  if (kept === undefined) return false;
+  if (kept === undefined) return holdMarkedTurn(journal, intent);
   keepTurn(kept.directory, kept);
   return true;
 }
@@ -116,5 +219,10 @@ export async function recoverableTurn(
 ): Promise<boolean> {
   if (resumableHarness(await recordedHarness(journal, intent.operationId)))
     return true;
-  return (await keptTurn(journal, intent)) !== undefined;
+  if ((await keptTurn(journal, intent)) !== undefined) return true;
+  const { folder } = located(journal, intent.operationId);
+  return (
+    (await markerSearch(folder, await readRecord(folder, "started.json"))) !==
+    undefined
+  );
 }

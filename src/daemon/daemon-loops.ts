@@ -5,6 +5,8 @@ import { issueQueue } from "./issue-queue.ts";
 import { notifyRuns } from "./notify.ts";
 import type { HostSignals, QueueLimits } from "../queue-room.ts";
 import { workspacePermits } from "../cli/workspace-permit.ts";
+import type { QueueSource } from "../queue-settings.ts";
+import { queueOffPort } from "./queue-control.ts";
 
 interface LoopSettings extends ParametersOfSchedules {
   readonly scheduleConnection?: ReturnType<typeof scheduleConnection>;
@@ -12,6 +14,8 @@ interface LoopSettings extends ParametersOfSchedules {
   readonly notifyCommand?: readonly string[];
   readonly notifyMilliseconds?: number;
   readonly queueMilliseconds?: number;
+  readonly queueIntervalSource?: QueueSource;
+  readonly queueState?: "off";
   readonly queueLimits: () => QueueLimits;
   readonly hostSignals?: () => Promise<HostSignals>;
   readonly readyCommand?: readonly string[];
@@ -22,18 +26,30 @@ interface LoopSettings extends ParametersOfSchedules {
 
 type ParametersOfSchedules = Parameters<typeof workflowSchedules>[0];
 
+function offQueue(settings: LoopSettings): void {
+  const workflowId = settings.queueWorkflowId;
+  if (workflowId !== undefined && settings.queueState === "off")
+    settings.queueConnection?.connect(queueOffPort(workflowId));
+}
+
+function intervalSource(settings: LoopSettings) {
+  return settings.queueIntervalSource === undefined
+    ? {}
+    : { intervalSource: settings.queueIntervalSource };
+}
+
 async function startedQueue(
   settings: LoopSettings,
 ): Promise<ReturnType<typeof issueQueue> | undefined> {
-  if (
-    settings.queueMilliseconds === undefined ||
-    settings.queueWorkflowId === undefined
-  )
+  offQueue(settings);
+  const workflowId = settings.queueWorkflowId;
+  if (settings.queueMilliseconds === undefined || workflowId === undefined)
     return undefined;
   const queue = issueQueue({
     directory: settings.directory,
     runtimeDirectory: settings.runtimeDirectory,
     intervalMilliseconds: settings.queueMilliseconds,
+    ...intervalSource(settings),
     limits: settings.queueLimits,
     ...(settings.hostSignals === undefined
       ? {}
@@ -45,7 +61,7 @@ async function startedQueue(
     ...(settings.workspacePermits === undefined
       ? {}
       : { permit: workspacePermits(settings.workspacePermits) }),
-    workflowId: settings.queueWorkflowId,
+    workflowId,
   });
   settings.queueConnection?.connect(queue.port);
   await queue.ready;

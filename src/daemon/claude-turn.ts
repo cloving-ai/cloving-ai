@@ -21,7 +21,7 @@ import type { ResumeReason, RetryKind } from "../worker-usage.ts";
 export { streamResult, capacityRefusal, retryKind } from "./claude-stream.ts";
 export type { Worker, StreamResult } from "./claude-stream.ts";
 export type { TurnProgress } from "./turn-stream.ts";
-import { shellTurnScript } from "../agent-harness-shell.ts";
+import { shellTurnCommand } from "../agent-harness-shell.ts";
 import { runnerProgram, type TurnRunner } from "../turn-runner.ts";
 import { runnerLaunch, type RunnerLaunch } from "./turn-runner-spawn.ts";
 import { attachedTurn, detachedTurn, type TurnExit } from "./detached-turn.ts";
@@ -29,6 +29,7 @@ import type { TurnLaunch } from "../turn-launch.ts";
 import {
   githubTokens,
   passedVariables,
+  type CommitSignatures,
   type TurnVariables,
 } from "../turn-environment.ts";
 
@@ -51,6 +52,7 @@ export interface TurnStart {
   readonly turnId?: string;
   readonly environment?: Readonly<Record<string, string>>;
   readonly variables?: TurnVariables;
+  readonly commitSignatures?: CommitSignatures;
   readonly runner?: TurnRunner;
   readonly command: readonly string[];
   readonly directory: string;
@@ -112,16 +114,7 @@ function shellCommand(
   turn: { readonly configuration: string; readonly parts: readonly string[] },
 ): readonly string[] {
   if (start.shell === undefined) return turn.parts;
-  return [
-    start.shell,
-    "-l",
-    "-i",
-    "-c",
-    shellTurnScript,
-    "cloving-harness",
-    turn.configuration,
-    ...turn.parts,
-  ];
+  return shellTurnCommand(start.shell, turn);
 }
 
 function spawnTurn(start: TurnStart): {
@@ -130,8 +123,8 @@ function spawnTurn(start: TurnStart): {
   readonly standardInput: string | undefined;
   readonly launch: RunnerLaunch;
 } {
-  const configuration = mkdtempSync(join(start.folder, "gh-config-"));
   const { parts, standardInput } = turnCommand(start);
+  const configuration = mkdtempSync(join(start.folder, "gh-config-"));
   const command = shellCommand(start, { configuration, parts });
   const environment = turnEnvironment(configuration, start);
   const launch = runnerLaunch(start, {

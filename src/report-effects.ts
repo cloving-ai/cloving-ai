@@ -17,6 +17,43 @@ function resultOf(value: unknown): Fields {
   return result;
 }
 
+export type ReportEffectResult =
+  { readonly body: string } | { readonly reason: string };
+
+export type ReportEffectResults = Readonly<Record<string, ReportEffectResult>>;
+
+type ReadResult =
+  | { readonly kind: "read"; readonly result: Fields }
+  | { readonly kind: "unread"; readonly reason: string };
+
+export function isReportResultDigest(value: unknown): value is string {
+  return typeof value === "string" && /^sha256:[a-f0-9]{64}$/.test(value);
+}
+
+function parsedResult(value: unknown): ReadResult {
+  try {
+    return { kind: "read", result: resultOf(value) };
+  } catch {
+    return { kind: "unread", reason: "invalid-effect-result" };
+  }
+}
+
+function storedResult(
+  value: unknown,
+  results: ReportEffectResults,
+): ReadResult {
+  if (!isReportResultDigest(value)) return parsedResult(value);
+  const stored = results[value];
+  if (stored === undefined)
+    return { kind: "unread", reason: "effect-result-not-read" };
+  if ("reason" in stored) return { kind: "unread", reason: stored.reason };
+  return parsedResult(stored.body);
+}
+
+function reasonOf(read: ReadResult): Fields {
+  return read.kind === "unread" ? { reason: read.reason } : {};
+}
+
 function requestsOf(events: readonly Fields[]): Map<string, Fields> {
   const requests = new Map<string, Fields>();
   for (const event of events) {
@@ -66,52 +103,83 @@ function historyOf(events: readonly Fields[] | null): EffectHistory | null {
   }
 }
 
-function fixRoundDatum(
+function requestedNumber(request: Fields): unknown {
+  const read = parsedResult(payloadOf(request)["payload"]);
+  return read.kind === "read" ? read.result["number"] : undefined;
+}
+
+function mergeRead(
   pair: EffectPair,
-  requests: readonly Fields[],
-): ReportDatum[] {
-  const { request, report } = pair;
-  const payload = payloadOf(report);
+  results: ReportEffectResults,
+): ReadResult | null {
+  const payload = payloadOf(pair.report);
   if (
-    payloadOf(request)["method"] !== "merge" ||
+    payloadOf(pair.request)["method"] !== "merge" ||
     payload["outcome"] !== "completed"
   )
-    return [];
-  const result = resultOf(payload["result"]);
-  if (!mergedResult(result["merged"])) return [];
-  const own = requests;
-  const opened = own.find((item) => payloadOf(item)["method"] === "open-pr");
+    return null;
+  const read = storedResult(payload["result"], results);
+  if (read.kind === "read" && !mergedResult(read.result["merged"])) return null;
+  return read;
+}
+
+function roundsBefore(
+  report: Fields,
+  requests: readonly Fields[],
+): number | null {
+  const opened = requests.find(
+    (item) => payloadOf(item)["method"] === "open-pr",
+  );
+  if (opened === undefined) return null;
+  return requests.filter(
+    (item) =>
+      payloadOf(item)["method"] === "run-turn" &&
+      Number(item["sequence"]) > Number(opened["sequence"]) &&
+      Number(item["sequence"]) < Number(report["sequence"]),
+  ).length;
+}
+
+function fixRoundDatum(
+  pair: EffectPair,
+  context: {
+    readonly requests: readonly Fields[];
+    readonly results: ReportEffectResults;
+  },
+): ReportDatum[] {
+  const read = mergeRead(pair, context.results);
+  if (read === null) return [];
+  const { request, report } = pair;
   const rounds =
-    opened === undefined
-      ? null
-      : own.filter(
-          (item) =>
-            payloadOf(item)["method"] === "run-turn" &&
-            Number(item["sequence"]) > Number(opened["sequence"]) &&
-            Number(item["sequence"]) < Number(report["sequence"]),
-        ).length;
+    read.kind === "read" ? roundsBefore(report, context.requests) : null;
+  const number = read.kind === "read" ? read.result["number"] : undefined;
   return [
     {
       at: Number(report["at"]),
       value: rounds,
       evidence: {
         runId: report["runId"],
-        pullRequest:
-          result["number"] ?? resultOf(payloadOf(request)["payload"])["number"],
-        operationId: payload["operationId"],
+        pullRequest: number ?? requestedNumber(request),
+        operationId: payloadOf(report)["operationId"],
         fixRounds: rounds,
+        ...reasonOf(read),
       },
     },
   ];
 }
 
-function fixRounds(history: EffectHistory | null): ReportDatum[] | null {
+function fixRounds(
+  history: EffectHistory | null,
+  results: ReportEffectResults,
+): ReportDatum[] | null {
   if (history === null) return null;
   try {
     return history.pairs.flatMap((pair) => {
       const runId = pair.report["runId"];
       if (typeof runId !== "string") throw new Error("invalid-report-run-id");
-      return fixRoundDatum(pair, history.runs.get(runId) ?? []);
+      return fixRoundDatum(pair, {
+        requests: history.runs.get(runId) ?? [],
+        results,
+      });
     });
   } catch {
     return null;
@@ -140,8 +208,11 @@ function phaseTimes(
   });
 }
 
-export function reportFixRounds(events: readonly Fields[] | null) {
-  return fixRounds(historyOf(events));
+export function reportFixRounds(
+  events: readonly Fields[] | null,
+  results: ReportEffectResults = {},
+) {
+  return fixRounds(historyOf(events), results);
 }
 
 export function reportPhaseTimes(
@@ -151,10 +222,13 @@ export function reportPhaseTimes(
   return phaseTimes(historyOf(events), method);
 }
 
-export function reportEffectData(events: readonly Fields[] | null) {
+export function reportEffectData(
+  events: readonly Fields[] | null,
+  results: ReportEffectResults = {},
+) {
   const history = historyOf(events);
   return {
-    fixRounds: fixRounds(history),
+    fixRounds: fixRounds(history, results),
     workerTurn: phaseTimes(history, "run-turn"),
     codeReview: phaseTimes(history, "wait-review"),
     merge: phaseTimes(history, "merge"),
@@ -168,7 +242,10 @@ function mergedResult(value: unknown): boolean {
   );
 }
 
-export function reportReviewScores(events: readonly Fields[] | null) {
+export function reportReviewScores(
+  events: readonly Fields[] | null,
+  results: ReportEffectResults = {},
+) {
   const history = historyOf(events);
   if (history === null) return null;
   const rounds: Record<string, ReportDatum[]> = { round1: [] };
@@ -182,7 +259,7 @@ export function reportReviewScores(events: readonly Fields[] | null) {
     ).length;
     const key = `round${String(round)}`;
     const data = rounds[key] ?? [];
-    const score = reviewScoreOf(report);
+    const { score, reason } = reviewScoreOf(report, results);
     data.push({
       at: Number(report["at"]),
       value: score,
@@ -192,6 +269,7 @@ export function reportReviewScores(events: readonly Fields[] | null) {
         sequence: report["sequence"],
         round,
         score,
+        ...reason,
       },
     });
     rounds[key] = data;
@@ -199,53 +277,72 @@ export function reportReviewScores(events: readonly Fields[] | null) {
   return rounds;
 }
 
-function reviewScoreOf(report: Fields): number | null {
-  let score: number | null = null;
-  try {
-    const result = resultOf(payloadOf(report)["result"]);
-    const value = result["score"];
-    if (
-      payloadOf(report)["outcome"] === "completed" &&
-      typeof value === "number" &&
-      Number.isFinite(value) &&
-      value >= 0 &&
-      value <= 5
-    )
-      score = value;
-  } catch {
-    score = null;
-  }
-  return score;
+function reviewScoreOf(
+  report: Fields,
+  results: ReportEffectResults,
+): { readonly score: number | null; readonly reason: Fields } {
+  const payload = payloadOf(report);
+  if (payload["outcome"] !== "completed") return { score: null, reason: {} };
+  const read = storedResult(payload["result"], results);
+  if (read.kind === "unread") return { score: null, reason: reasonOf(read) };
+  const value = read.result["score"];
+  const valid =
+    typeof value === "number" &&
+    Number.isFinite(value) &&
+    value >= 0 &&
+    value <= 5;
+  return { score: valid ? value : null, reason: {} };
+}
+
+export interface ReportOperatorEffect {
+  readonly number: number | null;
+  readonly at: number;
+  readonly reason?: string;
+}
+
+const noResult: ReadResult = { kind: "read", result: {} };
+
+function pullNumberOf(value: unknown): number | null {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 1
+    ? value
+    : null;
+}
+
+function operatorEffect(
+  pair: EffectPair,
+  context: {
+    readonly method: "merge" | "label";
+    readonly results: ReportEffectResults;
+  },
+): ReportOperatorEffect[] {
+  const { request, report } = pair;
+  if (payloadOf(request)["method"] !== context.method) return [];
+  const read =
+    context.method === "merge" ? mergeRead(pair, context.results) : noResult;
+  if (read === null) return [];
+  const at = Number(report["at"]);
+  if (!Number.isFinite(at)) throw new Error("invalid-report-effect");
+  const given = read.kind === "read" ? read.result["number"] : undefined;
+  const number = pullNumberOf(given ?? requestedNumber(request));
+  if (read.kind === "unread") return [{ number, at, reason: read.reason }];
+  if (number === null) throw new Error("invalid-report-effect");
+  return [{ number, at }];
 }
 
 export function reportOperatorEffects(
-  events: readonly Fields[] | null,
+  source: {
+    readonly effects: readonly Fields[] | null;
+    readonly effectResults?: ReportEffectResults;
+  },
   method: "merge" | "label",
-) {
-  const history = historyOf(events);
+): ReportOperatorEffect[] | null {
+  const history = historyOf(source.effects);
   if (history === null) return null;
+  const results = source.effectResults ?? {};
   try {
-    return history.pairs.flatMap(({ request, report }) => {
-      const requested = payloadOf(request);
-      const reported = payloadOf(report);
-      if (requested["method"] !== method) return [];
-      if (
-        method === "merge" &&
-        (reported["outcome"] !== "completed" ||
-          !mergedResult(resultOf(reported["result"])["merged"]))
-      )
-        return [];
-      const number = resultOf(requested["payload"])["number"];
-      const at = Number(report["at"]);
-      if (
-        typeof number !== "number" ||
-        !Number.isSafeInteger(number) ||
-        number < 1 ||
-        !Number.isFinite(at)
-      )
-        throw new Error("invalid-report-effect");
-      return [{ number, at }];
-    });
+    return history.pairs.flatMap((pair) =>
+      operatorEffect(pair, { method, results }),
+    );
   } catch {
     return null;
   }
