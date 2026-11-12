@@ -23,9 +23,16 @@ export function turnCommand(start: CommandStart): {
         : start.prompt,
     };
   if (start.worker === "pi") return piCommand(start);
-  if (argumentWorker(start))
+  if (
+    ["gemini", "cursor-agent"].some((worker) => worker === start.worker) &&
+    argumentPrompt(start.prompt)
+  )
     return {
-      parts: [...start.command, ...promptOption(start.worker), start.prompt],
+      parts: [
+        ...start.command,
+        ...(start.worker === "gemini" ? ["-p"] : []),
+        start.prompt,
+      ],
       standardInput: undefined,
     };
   if (start.worker === "opencode")
@@ -55,15 +62,4 @@ function piCommand(start: CommandStart) {
       "Pi v1.5.2 cannot preserve boundary whitespace through stdin",
     );
   return { parts: start.command, standardInput: start.prompt };
-}
-
-function argumentWorker(start: CommandStart): boolean {
-  return (
-    ["gemini", "cursor-agent"].includes(start.worker ?? "") &&
-    argumentPrompt(start.prompt)
-  );
-}
-
-function promptOption(worker: string | undefined): readonly string[] {
-  return worker === "gemini" ? ["-p"] : [];
 }
