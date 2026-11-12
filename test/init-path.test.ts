@@ -8,6 +8,7 @@ import {
   initCommand,
   localWorkerTurn,
 } from "../src/cli/init-command.ts";
+import { main } from "../src/cli/main.ts";
 import { privateSettingsPath } from "../src/cli/project-settings.ts";
 import { record } from "../src/protocol.ts";
 import { withProject } from "./cli-fixture.ts";
@@ -190,6 +191,40 @@ await test("start accepts the repository option after the command", () => {
   );
   assert.match(missed.stderr, /unknown-command/);
 });
+
+await test("init --local reports a missing local preset", () =>
+  withDoctor(async (scene) => {
+    const harness = await scene.program(
+      "claude",
+      'if (process.argv[2] === "--version") console.log("1.0.0 (Claude Code)"); else process.exit(91);',
+    );
+    const lines: string[] = [];
+    const write = process.stderr.write.bind(process.stderr);
+    const prior = process.exitCode;
+    process.stderr.write = (chunk: string | Uint8Array): boolean => {
+      lines.push(String(chunk));
+      return true;
+    };
+    try {
+      await main(["init", "--local", "--harness", harness], {
+        repository: scene.repository,
+        environment: scene.environment,
+        doctorProbe: () =>
+          Promise.resolve({
+            stdout: "1.0.0 (Claude Code)\n",
+            stderr: "",
+            reason: null,
+            exitCode: 0,
+          }),
+        startHarness: () => Promise.resolve(0),
+      });
+      assert.equal(process.exitCode, 2);
+      assert.match(lines.join(""), /local-preset-unavailable/);
+    } finally {
+      process.stderr.write = write;
+      process.exitCode = prior;
+    }
+  }));
 
 await test("init rejects both path flags", () =>
   withProject({}, (cli) => {
