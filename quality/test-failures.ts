@@ -55,8 +55,30 @@ function isFailure(value: unknown): value is TestFailure {
   );
 }
 
+const maximumMessageLines = 20;
+const lastMessageLines = 10;
+const errorLine = /\b[A-Za-z]*Error(?: \[\w+\])?:/;
+const valueLine = /^\s*(?:[+-] |Expected )|\s!==\s/;
+const testFrame = /^\s*at\s.*(?:\.test\.|scenario)[^/\\]*:\d+:\d+\)?$/;
+
+function messageLines(message: string): readonly string[] {
+  const lines = message
+    .split(/\r\n|[\r\n]/)
+    .filter((line) => line.trim() !== "");
+  const frame = lines.findIndex((line) => testFrame.test(line));
+  const chosen = lines.filter(
+    (line, index) =>
+      index === frame || errorLine.test(line) || valueLine.test(line),
+  );
+  if (chosen.length === 0) return lines.slice(-lastMessageLines);
+  return chosen.slice(0, maximumMessageLines);
+}
+
 function failureLines(failure: TestFailure): string[] {
-  const lines = [failure.name, `  ${failure.message}`];
+  const lines = [
+    failure.name,
+    ...messageLines(failure.message).map((line) => `  ${line}`),
+  ];
   if (failure.file !== undefined) {
     const location = [failure.file, failure.line, failure.column]
       .filter((value) => value !== undefined)

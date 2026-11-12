@@ -1759,6 +1759,7 @@
     "test/relay-hpke.test.ts": "test",
     "test/release-ci-changes.test.ts": "test",
     "test/release-ci-macos.test.ts": "test",
+    "test/release-ci-report.test.ts": "test",
     "test/release-ci-shells.test.ts": "test",
     "test/release-ci.test.ts": "test",
     "test/release-fixture.ts": "test",
