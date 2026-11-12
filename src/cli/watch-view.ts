@@ -1,3 +1,5 @@
+import type { QueueControls } from "./watch-queue-card-view.ts";
+export type { QueueControls } from "./watch-queue-card-view.ts";
 import type { SteerControls } from "./watch-steer-view.ts";
 import type { RunCommandControls } from "./watch-run-command-view.ts";
 import { RunNotes } from "./watch-notes-view.ts";
@@ -10,11 +12,9 @@ import {
   BannerBack,
   Header,
   type BannerBackProps,
-  Queue,
   RefusedWorkflows,
-  type QueueControls,
 } from "./watch-header-view.ts";
-export { clove, Header, type QueueControls } from "./watch-header-view.ts";
+export { clove, Header } from "./watch-header-view.ts";
 import { Phases } from "./watch-run-parts.ts";
 export { Phases, RunTotals } from "./watch-run-parts.ts";
 import { component, element, type Shown } from "./watch-element.ts";
@@ -198,7 +198,7 @@ export function Page(props: PageProps): Shown {
       repository: location.repository,
     };
     return [
-      component(Header, { model, stale, queue: props.queue, theme }),
+      component(Header, { model, stale, theme }),
       down,
       component(RefusedWorkflows, { model }),
       run === undefined
@@ -244,7 +244,6 @@ export function FloorPage(
         model,
         stale,
         phone: props.phone,
-        queue: props.queue,
         theme,
         now,
       }),
@@ -265,6 +264,7 @@ export function FloorPage(
                 controlling,
                 renaming: props.renaming,
                 looping: props.loops,
+                queuing: props.queue,
               }),
               component(NeedsYou, {
                 runs: model.runs,
@@ -280,7 +280,6 @@ export function FloorPage(
             class: "side-panels",
             children: [
               component(Today, { model, words }),
-              component(Queue, { model, words }),
               component(RefusedWorkflows, { model }),
             ],
           }),
@@ -307,11 +306,9 @@ export function BoardPage(
         model,
         stale,
         phone: props.phone,
-        queue: props.queue,
         theme,
         now,
       }),
-      component(Queue, { model, words }),
       down,
       model.schedules !== undefined && "status" in model.schedules
         ? element("p", { class: "meta", children: "Schedules: unavailable" })

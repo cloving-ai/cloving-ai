@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
 import { keptDigests, settingChanges } from "../src/daemon/settings-reload.ts";
 import { test } from "node:test";
+import type { SettingValue } from "../src/project-settings.ts";
 import {
   parseQueuesSetting,
+  queuesDigest,
   queueValues,
   type GeneralQueueValues,
 } from "../src/queue-settings.ts";
@@ -11,6 +13,14 @@ const general: GeneralQueueValues = {
   everySeconds: { value: 30, source: "queue setting" },
   lanes: { value: 3, source: "environment" },
 };
+
+await test("CLV-361 queue digests keep the concrete setting input type", () => {
+  const concreteInput: Parameters<typeof queuesDigest>[0] extends
+    SettingValue | undefined
+    ? true
+    : false = true;
+  assert.equal(concreteInput, true);
+});
 
 await test("CLV-359 a mixed queues edit reports both the applied limits and the restart fields", () => {
   assert.deepEqual(

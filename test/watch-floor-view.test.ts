@@ -152,7 +152,10 @@ await test("CLV-286 the line end of a queued workflow shows the count of ready t
   const end = (ready: unknown) => {
     const [queued = "", other = ""] = lines(page(queuedModel(ready)));
     assert.match(other, /<div class="line-end"><\/div>/);
-    return /<div class="line-end">([\s\S]*?)<\/div>/.exec(queued)?.[1];
+    assert.match(queued, /line-queue/);
+    return /<div class="line-end">([\s\S]*?)<div class="line-queue/.exec(
+      queued,
+    )?.[1];
   };
   assert.equal(
     end({ count: 3, oldestAt: minutesBefore(125) }),

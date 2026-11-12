@@ -155,7 +155,8 @@ export async function queueOverview(context: ServiceContext): Promise<Fields> {
     .filter(
       (workflow): workflow is Registered =>
         workflow !== undefined &&
-        (workflow.admission !== undefined ||
+        (workflow.manifest.queue === true ||
+          workflow.admission !== undefined ||
           queuePort(context, workflow.workflowId)?.control()?.off !==
             undefined),
     );
@@ -201,7 +202,14 @@ async function workflowOverview(
       busyRunIds: runs.map((run) => run.runId),
       skipped,
       ...(control === undefined
-        ? {}
+        ? {
+            state: "off",
+            nextCheckAt: null,
+            off: {
+              workflowId: workflow.workflowId,
+              reason: "no ticket command",
+            },
+          }
         : {
             ...queueStateFields(control, active.length),
             ...readyFields(

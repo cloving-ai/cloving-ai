@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import type { QueueChange, QueuePort } from "../src/queue-state.ts";
+import type {
+  QueueChange,
+  QueuePort,
+  QueueLaneChange,
+} from "../src/queue-state.ts";
 import {
   admitted,
   call,
@@ -65,6 +69,7 @@ await test("CLV-273 the queue read and the status show a queue stopped on an err
       busyRunIds: [],
       skipped: [],
       state: "stopped",
+      nextCheckAt: null,
       stop: { reason: "invalid-ticket-id" },
       failedRunIds: ["run-first"],
       drain: null,
@@ -153,4 +158,85 @@ await test("CLV-309 a start that waits for its ticket reads the lanes again afte
     const reply = await second;
     assert.equal(reply["code"], "workflow-active");
     assert.equal(reply["commandId"], "second-lane");
+  }));
+
+await test("CLV-361 a declared queue without a running loop stays visible as off with its reason", () =>
+  withHarness(async (harness) => {
+    await harness.start({
+      workflows: [
+        {
+          ...harness.registration,
+          manifest: { ...harness.registration.manifest, queue: true },
+        },
+      ],
+    });
+    const status = await call(harness, { operation: "status", parameters: {} });
+    const queues = status["queues"];
+    assert.ok(Array.isArray(queues));
+    assert.equal(queues.length, 1);
+    assert.equal(Reflect.get(Object(queues[0]), "state"), "off");
+    assert.equal(Reflect.get(Object(queues[0]), "nextCheckAt"), null);
+    assert.deepEqual(Reflect.get(Object(queues[0]), "off"), {
+      workflowId: "develop",
+      reason: "no ticket command",
+    });
+  }));
+
+type LaneFailure = "stale" | "unavailable" | "conflicting-command" | "failed";
+
+function laneFailure(change: LaneFailure): Promise<QueueLaneChange> {
+  if (change === "failed") return Promise.reject(new Error("write failed"));
+  if (change === "unavailable")
+    return Promise.resolve({ kind: change, detail: "not running" });
+  return Promise.resolve({ kind: change });
+}
+
+await test("CLV-361 the lane endpoint rejects invalid requests and reports stale, unavailable and failed writes", () =>
+  withHarness(async (harness) => {
+    let change: LaneFailure = "stale";
+    let calls = 0;
+    await harness.start({
+      workflows: [queued(harness)],
+      queue: {
+        ...port({ kind: "changed" }),
+        changeLanes: () => {
+          calls += 1;
+          return laneFailure(change);
+        },
+      },
+    });
+    const parameters = {
+      workflowId: "develop",
+      lanes: 3,
+      expectedLanes: 2,
+      commandId: "change-lanes",
+    };
+    for (const patch of [
+      { lanes: 0 },
+      { lanes: 17 },
+      { lanes: 1.5 },
+      { expectedLanes: 0 },
+      { commandId: "bad id" },
+      { workflowId: "bad id" },
+    ]) {
+      const reply = await call(harness, {
+        operation: "queue-lanes",
+        parameters: { ...parameters, ...patch },
+      });
+      assert.equal(reply["code"], "invalid-request");
+    }
+    assert.equal(calls, 0);
+    for (const [state, code] of [
+      ["stale", "queue-lanes-changed"],
+      ["unavailable", "queue-unavailable"],
+      ["conflicting-command", "conflicting-command"],
+      ["failed", "queue-lanes-failed"],
+    ] as const) {
+      change = state;
+      const reply = await call(harness, {
+        operation: "queue-lanes",
+        parameters,
+      });
+      assert.equal(reply["code"], code);
+    }
   }));

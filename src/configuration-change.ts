@@ -16,7 +16,8 @@ export interface SettingChange {
 
 export type HarnessSelection = Required<
   Pick<NonNullable<Configuration["harness"]>, "name" | "kind" | "path">
->;
+> &
+  Pick<NonNullable<Configuration["harness"]>, "turn">;
 
 export interface HarnessChange {
   readonly harness: HarnessSelection;
@@ -124,4 +125,27 @@ export function changedConfiguration(
   const next = assign(root, change);
   configuration(next, change.scope);
   return JSON.stringify(next, null, 2) + "\n";
+}
+
+export interface QueueLanesSettingChange {
+  readonly scope: "private";
+  readonly queueLanes: { readonly workflowId: string; readonly lanes: number };
+}
+
+export function changedQueueLanesConfiguration(
+  contents: string | undefined,
+  change: QueueLanesSettingChange,
+): string {
+  const previous = parseConfiguration(contents, "private");
+  const { workflowId, lanes } = change.queueLanes;
+  const queues = {
+    ...previous.queues,
+    [workflowId]: { ...previous.queues?.[workflowId], lanes },
+  };
+  return changedConfiguration(contents, {
+    field: "queues",
+    scope: "private",
+    action: "set",
+    value: JSON.stringify(queues),
+  });
 }

@@ -159,3 +159,78 @@ process.exit(0);
 `);
     assert.equal(result.status, 0, result.stderr);
   }));
+
+await test("CLV-361 each queue status exposes the next scheduled check", () =>
+  withConsumer(queueWorkflow, async (consumer) => {
+    const result = await consumer.run(`${limitsPrelude}
+const before = Date.now();
+const daemon = await launched({ queueMilliseconds: 60000 });
+try {
+  const queue = await queueOf();
+  assert.equal(typeof queue.nextCheckAt, "string");
+  const next = Date.parse(queue.nextCheckAt);
+  assert.ok(next >= before + 60000 && next <= Date.now() + 60000, JSON.stringify(queue));
+} finally { await daemon.close(); }
+process.exit(0);
+`);
+    assert.equal(result.status, 0, result.stderr);
+  }));
+
+await test("CLV-361 queue-lanes writes only the private lane field, applies it now and refuses a stale count", () =>
+  withConsumer(queueWorkflow, async (consumer) => {
+    const result = await consumer.run(`${limitsPrelude}
+const { privateSettingsPath } = await import(${JSON.stringify(new URL("../src/cli/project-settings.ts", import.meta.url).href)});
+const { mkdirSync, statSync } = await import("node:fs");
+const { dirname } = await import("node:path");
+process.env.XDG_CONFIG_HOME = directory + "/private-settings";
+const file = privateSettingsPath(process.env, directory);
+mkdirSync(dirname(file), { recursive: true });
+const original = { version: 1, queues: { develop: { everySeconds: 120 }, other: { lanes: 4 } } };
+writeFileSync(file, JSON.stringify(original));
+const daemon = await launched({ queueLanes: 2 });
+try {
+  await until(async () => (await runs()).length === 2);
+  const request = { workflowId: "develop", lanes: 3, expectedLanes: 2, commandId: "more-lanes" };
+  const changed = await asked("queue-lanes", request);
+  assert.equal(changed.kind, "queue-lanes", JSON.stringify(changed));
+  assert.equal(changed.queue.lanes, 3);
+  assert.deepEqual(changed.queue.settings.lanes, { value: 3, source: "queues setting (private file)" });
+  assert.deepEqual(JSON.parse(readFileSync(file, "utf8")), { ...original, queues: { ...original.queues, develop: { everySeconds: 120, lanes: 3 } } });
+  assert.equal(statSync(file).mode & 0o777, 0o600);
+  assert.equal((await asked("queue-lanes", request)).replayed, true);
+  assert.equal((await asked("queue-lanes", { ...request, lanes: 4 })).code, "conflicting-command");
+  assert.equal((await asked("queue-lanes", { ...request, commandId: "stale" })).code, "queue-lanes-changed");
+  await until(async () => (await runs()).length === 3);
+  const activeIds = (await runs()).map(run => run.runId).sort();
+  const reduced = await asked("queue-lanes", { workflowId: "develop", lanes: 1, expectedLanes: 3, commandId: "fewer-lanes" });
+  assert.equal(reduced.queue.lanes, 1);
+  assert.deepEqual((await runs()).map(run => run.runId).sort(), activeIds);
+  assert.equal((await runs()).some(run => ["cancelled", "failed", "completed"].includes(run.state)), false);
+  writeFileSync("outcome-900", "handoff_requested");
+  await until(async () => (await runs()).filter(run => run.state === "completed").length === 1);
+  await delay(150);
+  assert.equal((await runs()).length, 3);
+} finally { await daemon.close(); }
+process.exit(0);
+`);
+    assert.equal(result.status, 0, result.stderr);
+  }));
+
+await test("CLV-361 a lane change preserves the reload rule for an explicit working lane limit and writes nothing on refusal", () =>
+  withConsumer(queueWorkflow, async (consumer) => {
+    const result = await consumer.run(`${limitsPrelude}
+const { privateSettingsPath } = await import(${JSON.stringify(new URL("../src/cli/project-settings.ts", import.meta.url).href)});
+process.env.XDG_CONFIG_HOME = directory + "/private-settings";
+const file = privateSettingsPath(process.env, directory);
+const daemon = await launched({ queueMilliseconds: 60000, queueLanes: 3, queueLimits: { lanes: 3, workingLanes: 2, sources: { lanes: "environment", workingLanes: "environment" } } });
+try {
+  const reply = await asked("queue-lanes", { workflowId: "develop", lanes: 1, expectedLanes: 3, commandId: "below-working" });
+  assert.equal(reply.code, "queue-lanes-failed", JSON.stringify(reply));
+  assert.match(reply.detail, /working lane setting/);
+  assert.equal((await queueOf()).lanes, 3);
+  assert.equal(existsSync(file), false);
+} finally { await daemon.close(); }
+process.exit(0);
+`);
+    assert.equal(result.status, 0, result.stderr);
+  }));

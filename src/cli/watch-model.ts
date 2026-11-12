@@ -213,6 +213,7 @@ export interface WatchInputs {
   readonly schedules?: ShownSchedules;
   readonly loopRuns?: readonly Fields[];
   readonly queue?: Fields;
+  readonly queues?: readonly Fields[];
   readonly repository?: PrRepository | null;
   readonly workflows: readonly string[];
   readonly workflowRefusals?: readonly WorkflowRefusal[];
@@ -366,6 +367,7 @@ export function watchModel(inputs: WatchInputs): WatchModel {
           loops: loopRows(inputs.schedules, inputs.loopRuns ?? []),
         }),
     ...(inputs.queue === undefined ? {} : { queue: inputs.queue }),
+    ...(inputs.queues === undefined ? {} : { queues: inputs.queues }),
     ...(inputs.today === undefined ? {} : { today: inputs.today }),
     workflowRefusals: workflowRefusals(inputs.workflowRefusals),
     updatedAt: inputs.updatedAt,

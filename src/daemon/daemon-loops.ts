@@ -23,6 +23,7 @@ interface LoopSettings extends ParametersOfSchedules {
   readonly queueLimits?: QueueLimits;
   readonly queueLanes?: number;
   readonly limits: (workflowId?: string) => QueueLimits;
+  readonly writeLanes?: (workflowId: string, lanes: number) => Promise<void>;
   readonly queueConfigurations?: Readonly<Record<string, QueueConfiguration>>;
   readonly hostSignals?: () => Promise<HostSignals>;
   readonly readyCommand?: readonly string[];
@@ -33,8 +34,15 @@ interface LoopSettings extends ParametersOfSchedules {
 
 type ParametersOfSchedules = Parameters<typeof workflowSchedules>[0];
 
-function queueAdapters(settings: LoopSettings) {
+function queueAdapters(settings: LoopSettings, workflowId: string) {
   return {
+    ...(settings.writeLanes === undefined
+      ? {}
+      : {
+          writeLanes: (lanes: number) =>
+            settings.writeLanes?.(workflowId, lanes) ?? Promise.resolve(),
+        }),
+
     ...(settings.hostSignals === undefined
       ? {}
       : { signals: settings.hostSignals }),
@@ -70,7 +78,7 @@ async function startedQueue(
       ? {}
       : { intervalSource: configuration.intervalSource }),
     limits: () => settings.limits(workflowId),
-    ...queueAdapters(settings),
+    ...queueAdapters(settings, workflowId),
     resetQueue: settings.resetQueue ?? false,
     resumeQueue: settings.resumeQueue,
     workflowId,

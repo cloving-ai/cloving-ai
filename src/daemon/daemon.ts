@@ -36,7 +36,11 @@ import { pinnedWorkflowHandler } from "./workflow-replay.ts";
 import { scheduledDeclarations } from "./workflow-schedules.ts";
 import { queueConnection } from "./queue-control.ts";
 import { scheduleConnection } from "./schedule-control.ts";
-import { queueLimitsSource, type QueueLimitsSource } from "./queue-limits.ts";
+import {
+  queueLaneWriter,
+  queueLimitsSource,
+  type QueueLimitsSource,
+} from "./queue-limits.ts";
 import { effectLeaseLimits } from "../queue-room.ts";
 import { restartMarks } from "./restart-marks.ts";
 import type { RestartPort } from "../restart-request.ts";
@@ -375,6 +379,7 @@ async function runningDaemon(
     scheduleConnection: resources.schedules,
     queueConnection: resources.queues,
     limits: resources.queueLimitSource.current,
+    writeLanes: queueLaneWriter(settings, resources.queueLimitSource),
     submit: service.worker.submit,
     queueWorkflowIds: queueWorkflowIds(settings),
   }).catch(async (error: unknown) => {

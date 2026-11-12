@@ -1,3 +1,4 @@
+import { queueFileLayers } from "./queue-settings.ts";
 import { settingFields, settingScope } from "./configuration-schema.ts";
 import {
   configurationValues,
@@ -64,12 +65,7 @@ export function configurationEntries(input: {
   readonly field?: string;
   readonly profiles?: TurnProfiles;
 }): readonly SettingEntry[] {
-  const project = configurationValues(
-    parseConfiguration(input.project, "project"),
-  );
-  const privateFile = configurationValues(
-    parseConfiguration(input.private, "private"),
-  );
+  const { project, privateFile } = fileLayers(input);
   const name =
     input.environment["CLOVING_WORKER"] ?? privateFile["harness.name"];
   const harness =
@@ -116,4 +112,22 @@ export function configurationEntries(input: {
       hidden,
     };
   });
+}
+
+function fileLayers(input: {
+  readonly project: string | undefined;
+  readonly private: string | undefined;
+}) {
+  const project = parseConfiguration(input.project, "project");
+  const privateFile = parseConfiguration(input.private, "private");
+  const queues = queueFileLayers(project.queues, privateFile.queues).values;
+  return {
+    project: configurationValues(project),
+    privateFile: configurationValues({
+      ...privateFile,
+      ...(privateFile.queues === undefined
+        ? {}
+        : { queues: queues ?? privateFile.queues }),
+    }),
+  };
 }

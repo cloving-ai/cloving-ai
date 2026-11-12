@@ -163,17 +163,11 @@ await test("CLV-289 the table has one row for each workflow with its completed r
   );
 });
 
-await test("CLV-289 the queue line shows one mark for each lane, busy or free", () => {
-  const html = panel(todayModel());
-  assert.match(
-    html,
-    /<p class="today-queue"><span>Queue running, 3 of 4 lanes busy<\/span><span class="lanes" aria-hidden="true"><span class="lane busy"><\/span><span class="lane busy"><\/span><span class="lane busy"><\/span><span class="lane free"><\/span><\/span><\/p><\/section>$/,
-  );
+await test("CLV-361 Today has no global queue line or lane dots", () => {
   assert.doesNotMatch(
-    panel(todayModel({ queue: { workflowId: "develop-issue" } })),
-    /today-queue/,
+    panel(todayModel()),
+    /today-queue|lanes busy|class="lane /,
   );
-  assert.doesNotMatch(panel({ ...twoLineModel(), today }), /today-queue/);
 });
 
 await test("CLV-289 the floor has no Today panel without the numbers of the day", () => {
@@ -200,5 +194,5 @@ console.log(JSON.stringify({ html: app.inner }));
     html,
     /aria-label="Completed runs: Thu 0, Fri 0, Sat 0, Sun 0, Mon 1, Tue 1, Wed 3"/,
   );
-  assert.match(html, /<span>Queue running, 3 of 4 lanes busy<\/span>/);
+  assert.doesNotMatch(html, /today-queue/);
 });
