@@ -13,11 +13,16 @@ export async function queueAction(
   request: IncomingMessage,
 ): Promise<string | null> {
   if (!actionAllowed(actions, request)) return null;
-  const command = record(await actionBody(request))?.["command"];
+  const body = record(await actionBody(request));
+  const command = body?.["command"];
   if (command !== "drain" && command !== "resume") return null;
   const reply = await send(actions.runtimeDirectory, {
     operation: "queue-command",
-    parameters: { command, commandId: randomUUID() },
+    parameters: {
+      command,
+      commandId: randomUUID(),
+      workflowId: body?.["workflowId"],
+    },
   });
   return JSON.stringify(
     reply.kind === "result" ? reply.result : { error: reply.error },

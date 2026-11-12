@@ -10,7 +10,6 @@ const refusalCodes = new Set([
   "invalid-declaration",
   "queue-needs-ticket-field",
   "queue-input-incomplete",
-  "queue-workflow-conflict",
   "invalid-queue-shape",
   "forbidden-import",
   "missing-export",

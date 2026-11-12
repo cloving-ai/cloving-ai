@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { queueOffPort } from "../src/daemon/queue-control.ts";
 import {
   call,
   field,
@@ -148,4 +149,80 @@ await test("CLV-244 queue status identifies its workflow and current lanes", () 
     } finally {
       await service.close();
     }
+  }));
+
+await test("CLV-360 status keeps disabled queues beside enabled queues in workflow order", () =>
+  withHarness(async (harness) => {
+    const disabled = queueOffPort("a-disabled");
+    await harness.start({
+      workflows: [
+        { ...harness.registration, admission: 2 },
+        {
+          ...harness.registration,
+          workflowId: "a-disabled",
+          manifest: { ...harness.registration.manifest, queue: true },
+        },
+      ],
+      queues: new Map([["a-disabled", disabled]]),
+    });
+    const status = await call(harness, { operation: "status", parameters: {} });
+    const queues = items(status["queues"]);
+    assert.deepEqual(
+      queues.map((queue) => [
+        field(queue, "workflowId"),
+        field(queue, "state"),
+      ]),
+      [
+        ["a-disabled", "off"],
+        ["develop", undefined],
+      ],
+    );
+    assert.deepEqual(status["queue"], queues[0]);
+    assert.deepEqual(field(queues[0], "off"), {
+      workflowId: "a-disabled",
+      source: "queues setting",
+    });
+  }));
+
+await test("CLV-360 a disabled queue keeps its live runs out of another queue busy count", () =>
+  withHarness(async (harness) => {
+    const queued = {
+      ...harness.registration,
+      manifest: { ...harness.registration.manifest, queue: true },
+    };
+    const service = await harness.start({
+      workflows: [
+        { ...queued, admission: 2 },
+        { ...queued, workflowId: "triage-issue", admission: 1 },
+      ],
+    });
+    const admitted = await call(harness, {
+      operation: "run",
+      parameters: {
+        workflowId: "triage-issue",
+        source: "prompt",
+        submission: { prompt: "pending" },
+        commandId: "disabled-live",
+      },
+    });
+    assert.equal(admitted["kind"], "run-admitted");
+    await service.close();
+    await harness.start({
+      workflows: [
+        { ...queued, admission: 2 },
+        { ...queued, workflowId: "triage-issue" },
+      ],
+      queues: new Map([["triage-issue", queueOffPort("triage-issue")]]),
+    });
+    const status = await call(harness, { operation: "status", parameters: {} });
+    assert.deepEqual(
+      items(status["queues"]).map((queue) => [
+        field(queue, "workflowId"),
+        field(queue, "busy"),
+      ]),
+      [
+        ["develop", 0],
+        ["triage-issue", 1],
+      ],
+    );
   }));

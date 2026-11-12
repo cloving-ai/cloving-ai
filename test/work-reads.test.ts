@@ -69,3 +69,12 @@ await test("CLV-306 the daemon work reads fail on a refused status and on a fold
       await assert.rejects(broken.pendingSubmission(), { code: "ENOTDIR" });
     },
   ));
+
+await test("CLV-360 pending submissions in every queue prevent a repository gap", async () => {
+  await withService(quiet, async (places) => {
+    const queue = join(places.directory, "queues", "triage-issue");
+    await mkdir(queue, { recursive: true });
+    await writeFile(join(queue, "queue-submission"), "");
+    assert.equal(await daemonWorkReads(places).pendingSubmission(), true);
+  });
+});

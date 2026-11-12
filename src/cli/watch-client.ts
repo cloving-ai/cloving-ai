@@ -55,7 +55,7 @@ async function queuePost(command) {
     const response = await fetch("actions/queue", {
       method: "POST",
       headers: { "content-type": "application/json", "x-cloving-token": actionToken },
-      body: JSON.stringify({ command }),
+      body: JSON.stringify({ command, workflowId: state.model?.queue?.workflowId }),
     });
     const reply = response.ok ? await response.json() : { error: { detail: "The watch page refused the request. Refresh the page." } };
     state.queueMessage = reply.error?.detail ?? "";

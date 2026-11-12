@@ -35,17 +35,25 @@ const unavailable: QueueChange = {
 
 export function queueConnection(): {
   readonly port: QueuePort;
-  readonly connect: (port: QueuePort) => void;
+  readonly ports: ReadonlyMap<string, QueuePort>;
+  readonly connect: (port: QueuePort, workflowId?: string) => void;
 } {
   let connected: QueuePort | undefined;
+  const ports = new Map<string, QueuePort>();
   return {
     port: {
       control: () => connected?.control(),
       change: (request) =>
         connected?.change(request) ?? Promise.resolve(unavailable),
     },
-    connect: (port) => {
-      connected = port;
+    ports,
+    connect: (port, workflowId) => {
+      if (workflowId === undefined) {
+        connected = port;
+        return;
+      }
+      ports.set(workflowId, port);
+      connected = ports.get([...ports.keys()].sort()[0] ?? "");
     },
   };
 }

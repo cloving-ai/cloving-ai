@@ -68,6 +68,7 @@ function drainState(drain: QueueDrain, busy: number): string {
 }
 
 function stateName(control: QueueControl, busy: number): string {
+  if (control.off !== undefined) return "off";
   if (control.error !== undefined) return "stopped";
   if (control.drain !== undefined) return drainState(control.drain, busy);
   if (stopReason(control) !== undefined) return "stopped";
@@ -91,6 +92,7 @@ export function queueStateFields(control: QueueControl, busy: number): Fields {
     holds: [...(control.holds ?? [])],
     holdsCutAt: control.holdsCutAt ?? null,
     ...(control.settings === undefined ? {} : { settings: control.settings }),
+    ...(control.off === undefined ? {} : { off: { ...control.off } }),
   };
 }
 

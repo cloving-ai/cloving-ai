@@ -158,3 +158,22 @@ await test("CLV-321 a continuation of a run outside the queue takes no lane", ()
     },
     { limitUsd: 1000 },
   ));
+
+await test("CLV-360 a continuation holds when other queues fill the repository", () =>
+  withQueueSpend(
+    async (scene) => {
+      const stopped = await stoppedRun(scene, "repository-stopped");
+      for (let index = 0; index < 16; index += 1)
+        await scene.begin(`repository-busy-${String(index)}`, "queued");
+      const continued = await call(scene.harness, {
+        operation: "continue-run",
+        parameters: {
+          runId: stopped,
+          commandId: "repository-continue",
+          from: "work/turn/1",
+        },
+      });
+      assert.equal(continued["code"], "queue-repository-full");
+    },
+    { limitUsd: 1000, lanes: 16 },
+  ));

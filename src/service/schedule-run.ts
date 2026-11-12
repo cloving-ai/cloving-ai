@@ -76,8 +76,16 @@ async function loopRun(
     workflowId,
   });
   if (found.kind === "error") return found;
-  return lock(admissionKeys(admission), () =>
-    lockedLoopRun(context, { ...admission, submission: found.result["input"] }),
+  return lock(
+    admissionKeys({
+      ...admission,
+      queue: context.registry.byId(workflowId)?.manifest.queue === true,
+    }),
+    () =>
+      lockedLoopRun(context, {
+        ...admission,
+        submission: found.result["input"],
+      }),
   );
 }
 

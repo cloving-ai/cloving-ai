@@ -19,16 +19,7 @@ import {
   commitSignaturesSetting,
   turnVariablesSetting,
 } from "../src/turn-environment.ts";
-import {
-  listedSetting,
-  queueLimits,
-  queueMilliseconds,
-  queuePlan,
-  queueSpendLimit,
-  spendScope,
-  readyTicketCommand,
-  type QueuePlan,
-} from "./self-host-queue.ts";
+import { listedSetting, queueStartup, spendScope } from "./self-host-queue.ts";
 import {
   configurationDigests,
   configuredTurnSettings,
@@ -160,6 +151,9 @@ interface Commands extends HarnessSettings {
   readonly queueState?: "off";
   readonly queueLanes: number;
   readonly queueLimits: QueueLimits;
+  readonly queueConfigurations: ReturnType<
+    typeof queueStartup
+  >["queueConfigurations"];
   readonly queueDailySpendLimitUsd: number | undefined;
   readonly spendScope: "queue" | "all";
   readonly resetQueue: boolean;
@@ -313,19 +307,10 @@ const folders = {
 };
 const profilesPath = environment["CLOVING_PROFILES"];
 const manifests = await preparedProject({ product, project, ...folders });
-const plan = queuePlan(environment, {
+const queue = queueStartup(environment, {
   declarations: manifests.declarations,
   sources: configuration.sources,
 });
-const queueDailySpendLimitUsd = queueSpendLimit(environment, plan);
-const queueRoom = queueLimits(environment, plan);
-const readyCommand = readyTicketCommand(environment, plan);
-
-function queueSwitch(given: QueuePlan) {
-  if (given.kind === "off") return { queueState: "off" as const };
-  if (given.kind === "none") return {};
-  return { queueIntervalSource: given.values.everySeconds.source };
-}
 
 await launchers(
   {
@@ -344,13 +329,8 @@ await launchers(
     command,
     ticketCommand,
     nextCommand,
-    readyCommand,
     workspacePermits: environment["CLOVING_WORKSPACE_PERMITS"],
-    queueMilliseconds: queueMilliseconds(plan),
-    ...queueSwitch(plan),
-    queueLanes: queueRoom.lanes,
-    queueLimits: queueRoom,
-    queueDailySpendLimitUsd,
+    ...queue,
     spendScope: scope,
     resetQueue: flags.includes("--reset-queue"),
     retention,

@@ -119,12 +119,18 @@ async function removed(file: string): Promise<boolean> {
 }
 
 export async function startedQueue(
-  settings: { readonly directory: string; readonly resetQueue?: boolean },
+  settings: {
+    readonly directory: string;
+    readonly resetQueue?: boolean;
+    readonly resumeQueue?: boolean;
+  },
   pending: Pick<QueueJournal, "failures" | "save"> & {
     drain: QueueJournal["drain"];
   },
 ): Promise<void> {
-  const resumed = await removed(join(settings.directory, "resume-queue"));
+  const resumed =
+    settings.resumeQueue ??
+    (await removed(join(settings.directory, "resume-queue")));
   if (settings.resetQueue !== true && !resumed) return;
   if (settings.resetQueue === true) pending.failures.length = 0;
   pending.drain = undefined;

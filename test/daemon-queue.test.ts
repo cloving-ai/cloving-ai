@@ -143,7 +143,7 @@ process.exit(0);
 await test("CLV-084 empty next results keep polling silently and retire each persisted command", () =>
   withConsumer(queueWorkflow, async (consumer) => {
     const result = await consumer.run(`${queuePrelude}
-writeFileSync("next.mjs", 'import { appendFileSync, readFileSync } from "node:fs"; const saved = JSON.parse(readFileSync("queue-commands.json", "utf8")); const ids = saved.commands; if (ids.length !== 1) process.exit(2); appendFileSync("checks", ids[0] + "\\\\n");');
+writeFileSync("next.mjs", 'import { appendFileSync, readFileSync } from "node:fs"; const saved = JSON.parse(readFileSync("queues/develop/queue-commands.json", "utf8")); const ids = saved.commands; if (ids.length !== 1) process.exit(2); appendFileSync("checks", ids[0] + "\\\\n");');
 const daemon = await launched();
 try {
   await until(() => existsSync("checks") && readFileSync("checks", "utf8").trim().split("\\n").length >= 3);
@@ -232,4 +232,27 @@ process.exit(0);
     assert.deepEqual(lines, [
       `Queue run ended blocked: ${String(run.runId)}; continuing`,
     ]);
+  }));
+
+await test("CLV-360 each declared queue has its own lanes, journal and status", () =>
+  withConsumer(queueWorkflow, async (consumer) => {
+    const result = await consumer.run(`${queuePrelude}
+settings.declarations[0].queue = { lanes: 2 };
+settings.declarations.push({ ...settings.declarations[0], workflowId: "triage-issue", queue: { lanes: 1 } });
+writeFileSync("next.mjs", 'import { appendFileSync, readFileSync } from "node:fs"; const file = "next-counter"; let count = 0; try { count = readFileSync(file, "utf8").length; } catch {} appendFileSync(file, "x"); process.stdout.write("CLV-" + (900 + count));');
+const daemon = await launched();
+try {
+  await until(async () => (await runs()).length >= 3);
+  await delay(200);
+  const status = await asked("status");
+  assert.deepEqual(status.queues.map(queue => [queue.workflowId, queue.busy, queue.lanes]), [["develop", 2, 2], ["triage-issue", 1, 1]]);
+  assert.deepEqual(status.queue, status.queues[0]);
+  const journals = ["develop", "triage-issue"].map(id => JSON.parse(readFileSync("queues/" + id + "/queue-commands.json", "utf8")).commands);
+  assert.deepEqual(journals.map(ids => ids.length), [2, 1]);
+  assert.equal(new Set(journals.flat()).size, 3);
+  assert.deepEqual((await runs()).map(run => run.workflowId).sort(), ["develop", "develop", "triage-issue"]);
+} finally { await daemon.close(); }
+process.exit(0);
+`);
+    assert.equal(result.status, 0, result.stderr);
   }));
