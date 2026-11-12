@@ -14,8 +14,10 @@ import {
   type PiResponseUsage,
 } from "../pi-usage.ts";
 import { sumUsage, type WorkerUsage } from "../worker-usage.ts";
+import { piActivity } from "./pi-activity.ts";
 
 interface State {
+  readonly activity: ReturnType<typeof piActivity>;
   sessionId: string | null;
   settled: boolean;
   aborted: boolean;
@@ -97,8 +99,7 @@ function assistant(message: Fields, state: State): readonly string[] {
   if (identity !== undefined && state.responseIds.has(identity)) return [];
   if (identity !== undefined) state.responseIds.add(identity);
   state.responses.push(response);
-  const content = parts.filter((part) => part["type"] !== "toolCall");
-  return [JSON.stringify({ type: "assistant", message: { content } })];
+  return state.activity.completed(message);
 }
 
 function toolResult(event: Fields, state: State): readonly string[] {
@@ -112,14 +113,19 @@ function toolResult(event: Fields, state: State): readonly string[] {
   }
   if (state.tools.has(id)) return [];
   state.tools.add(id);
+  return toolOutput(event, result);
+}
+
+function toolOutput(event: Fields, result: Fields): readonly string[] {
   return [
     JSON.stringify({
       type: "user",
+      replaceId: `pi:tool-result:${text(event["toolCallId"])}`,
       message: {
         content: [
           {
             type: "tool_result",
-            tool_use_id: id,
+            tool_use_id: event["toolCallId"],
             content: result["content"],
             is_error: event["isError"] === true,
           },
@@ -169,14 +175,27 @@ function activity(event: Fields, state: State): readonly string[] {
       settled(event, state);
       break;
     case "message_start":
-      if (record(event["message"])?.["role"] === "assistant")
+      if (record(event["message"])?.["role"] === "assistant") {
         state.openAssistant = true;
+        return state.activity.start(record(event["message"]) ?? {});
+      }
       break;
+    case "message_update":
+      state.openAssistant = true;
+      return state.activity.update(event);
     case "message_end":
       return messageEnded(event, state);
     case "compaction_end":
       state.auxiliaryWork = true;
       break;
+    default:
+      return toolActivity(event, state);
+  }
+  return [];
+}
+
+function toolActivity(event: Fields, state: State): readonly string[] {
+  switch (event["type"]) {
     case "tool_execution_start":
       return [
         JSON.stringify({
@@ -195,6 +214,10 @@ function activity(event: Fields, state: State): readonly string[] {
       ];
     case "tool_execution_end":
       return toolResult(event, state);
+    case "tool_execution_update":
+      return state.tools.has(text(event["toolCallId"]))
+        ? []
+        : toolOutput(event, record(event["partialResult"]) ?? {});
   }
   return [];
 }
@@ -234,6 +257,7 @@ function parsed(line: string, state: State): readonly string[] {
 
 export function piStream() {
   const state: State = {
+    activity: piActivity(),
     sessionId: null,
     settled: false,
     aborted: false,

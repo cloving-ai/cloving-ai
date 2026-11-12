@@ -3,6 +3,7 @@ import { test } from "node:test";
 import { piStream } from "../src/daemon/pi-stream.ts";
 import { resultOf } from "./claude-worker-fixture.ts";
 import { piEvents, piMessage, piReport } from "./pi-fixture.ts";
+import { read } from "./turn-transcript-fixture.ts";
 
 function parsed(events: readonly unknown[], exitCode = 0) {
   const stream = piStream();
@@ -101,7 +102,9 @@ await test("CLV-364 authoritative Pi messages and tool output appear once", () =
     { type: "message_end", message },
     ...piEvents().slice(4),
   ]);
-  const output = lines.join("\n");
+  const output = read(lines.join("\n") + "\n")
+    .map((entry) => entry.text)
+    .join("\n");
   assert.equal(output.includes("Obsolete"), false);
   assert.equal(output.match(/Implemented the change/g)?.length, 1);
 });
@@ -118,6 +121,8 @@ await test("CLV-364 Pi tool output replaces partial and duplicate tool records",
     {
       type: "tool_execution_update",
       toolCallId: "call-1",
+      toolName: "bash",
+      args: { command: "check" },
       partialResult: { content: [{ type: "text", text: "old output" }] },
     },
     {
@@ -139,12 +144,16 @@ await test("CLV-364 Pi tool output replaces partial and duplicate tool records",
     },
     ...piEvents().slice(2),
   ]);
-  const output = lines.join("\n");
+  const entries = read(lines.join("\n") + "\n");
+  const output = entries.map((entry) => entry.text).join("\n");
   assert.equal(output.includes("old output"), false);
   assert.equal(output.match(/Final output/g)?.length, 1);
   assert.equal(output.match(/Implemented the change/g)?.length, 1);
-  assert.equal(output.includes('"type":"tool_use"'), true);
-  assert.equal(output.includes('"is_error":true'), true);
+  assert.equal(entries.filter((entry) => entry.kind === "tool-call").length, 1);
+  assert.equal(
+    entries.some((entry) => entry.kind === "tool-result" && entry.error),
+    true,
+  );
 });
 
 await test("CLV-364 Pi accounts completed responses once and preserves primary and nested usage", () => {

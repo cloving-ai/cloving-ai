@@ -17,6 +17,11 @@ function transcriptRedraw() {
   transcriptDrawing = true;
   setTimeout(() => { transcriptDrawing = false; draw(); }, 50);
 }
+function transcriptReplaced(entries, entry) {
+  const kept = entry.replaceId === undefined ? entries : entries.filter((previous) => previous.attempt !== entry.attempt || previous.replaceId !== entry.replaceId);
+  if (!entry.removed) kept.push(entry);
+  return kept;
+}
 function transcriptReceived(item, entry) {
   if (entry.position <= item.latest) return;
   item.latest = entry.position;
@@ -24,7 +29,7 @@ function transcriptReceived(item, entry) {
   if (item.detached || !item.following) item.unseen += 1;
   transcriptRedraw();
   if (item.detached) return;
-  item.entries.push(entry);
+  item.entries = transcriptReplaced(item.entries, entry);
   if (item.entries.length <= transcriptWindow) return;
   item.entries.splice(0, item.entries.length - transcriptWindow);
   item.earlier = true;
@@ -72,24 +77,26 @@ function transcriptClosed(item) {
 async function transcriptEarlier(target) {
   const item = transcriptItem(target);
   const first = item.entries[0]?.position ?? item.latest + 1;
-  const found = [];
-  let after = Math.max(0, first - 201);
+  let found = [];
+  let earlier = false;
+  let after = 0;
   try {
     while (after < first - 1) {
       const reply = await fetch(transcriptPath(item, target.operationId, "transcript") + "?after=" + after, { cache: "no-store" });
       if (!reply.ok) break;
       const page = await reply.json();
-      found.push(...page.entries.filter((entry) => entry.position < first));
+      for (const entry of page.entries.filter((entry) => entry.position < first)) found = transcriptReplaced(found, entry);
+      if (found.length > 200) { found = found.slice(-200); earlier = true; }
       if (page.entries.length === 0) break;
       after = page.nextAfter;
     }
   } catch {}
-  item.entries = [...found, ...item.entries];
+  item.entries = item.entries.reduce(transcriptReplaced, found);
   if (item.entries.length > transcriptWindow) {
     item.entries = item.entries.slice(0, transcriptWindow);
     item.detached = true;
   }
-  item.earlier = (item.entries[0]?.position ?? 1) > 1;
+  item.earlier = earlier;
   draw();
 }
 function transcriptBox(operationId) {
@@ -122,8 +129,8 @@ function transcriptJumped(target) {
   transcriptClosed(item);
   item.detached = false;
   item.entries = [];
-  item.latest = Math.max(0, item.latest - transcriptWindow);
-  item.earlier = item.latest > 0;
+  item.latest = 0;
+  item.earlier = false;
   item.state = "loading";
   transcriptOpened(item, target.operationId);
   draw();

@@ -75,6 +75,10 @@ function words(value: unknown): string {
 function entryOf(value: unknown): TranscriptEntry {
   const item = record(value) ?? {};
   return {
+    ...(typeof item["replaceId"] === "string"
+      ? { replaceId: item["replaceId"] }
+      : {}),
+    ...(item["removed"] === true ? { removed: true } : {}),
     position: count(item["position"]),
     attempt: count(item["attempt"]),
     kind: transcriptKinds.find((kind) => kind === item["kind"]) ?? "notice",

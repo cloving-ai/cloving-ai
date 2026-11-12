@@ -32,6 +32,24 @@ export function problem(description: string) {
   };
 }
 
+export function transcriptEntrySchema(kinds: readonly string[]) {
+  const schema = closed({
+    position: integer,
+    attempt: integer,
+    kind: { type: "string", enum: kinds },
+    text,
+    tool: nullableText,
+    callId: nullableText,
+    summary: text,
+    error: flag,
+    omittedBytes: integer,
+  });
+  return {
+    ...schema,
+    properties: { ...schema.properties, replaceId: text, removed: flag },
+  };
+}
+
 export const invalidQuery = problem(
   "A query parameter is unknown, repeated or has an invalid value.",
 );

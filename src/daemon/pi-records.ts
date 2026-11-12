@@ -22,6 +22,16 @@ export function validPiActivity(event: Fields): boolean {
       return update(event);
     case "tool_execution_start":
       return toolStart(event);
+    case "tool_execution_update":
+      return (
+        toolStart(event) &&
+        validPiToolResult({
+          ...record(event["partialResult"]),
+          toolCallId: event["toolCallId"],
+          toolName: event["toolName"],
+          isError: false,
+        })
+      );
     case "tool_execution_end":
       return toolEnd(event);
     default:
