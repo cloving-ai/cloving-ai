@@ -82,14 +82,14 @@ else {
 
 await test("init --local refuses a custom agent that has no one-shot command", () =>
   withDoctor(async (scene) => {
-    const harness = await scene.program("pi", 'console.log("1.0.0")');
+    const harness = await scene.program("amp", 'console.log("1.0.0")');
     const result = spawnSync(
       process.execPath,
       [resolve("src/cli.ts"), "init", "--local", "--harness", harness],
       { cwd: scene.repository, env: scene.environment, encoding: "utf8" },
     );
     assert.equal(result.status, 2);
-    assert.match(result.stderr, /harness-no-worker: pi/);
+    assert.match(result.stderr, /harness-no-worker: amp/);
     await assert.rejects(
       readFile(join(scene.repository, ".cloving/workflows/develop.ts")),
     );
@@ -100,7 +100,7 @@ await test("init --local refuses a custom agent that has no one-shot command", (
 
 await test("init --local stores a one-shot command for a custom agent", () =>
   withDoctor(async (scene) => {
-    const harness = await scene.program("pi", 'console.log("1.0.0")');
+    const harness = await scene.program("amp", 'console.log("1.0.0")');
     const status = await initCommand({
       repository: scene.repository,
       environment: scene.environment,
@@ -113,7 +113,7 @@ await test("init --local stores a one-shot command for a custom agent", () =>
         }),
       harness,
       path: "local",
-      askTurn: () => Promise.resolve('["pi","{prompt}"]'),
+      askTurn: () => Promise.resolve('["amp","{prompt}"]'),
       applyLocal: () => Promise.resolve(0),
       start: () => Promise.resolve(0),
     });
@@ -128,24 +128,24 @@ await test("init --local stores a one-shot command for a custom agent", () =>
     );
     const saved = record(settings?.["harness"]);
     assert.ok(saved);
-    assert.deepEqual(saved["turn"], ["pi", "{prompt}"]);
+    assert.deepEqual(saved["turn"], ["amp", "{prompt}"]);
   }));
 
 await test("a custom agent one-shot command must be a JSON list", async () => {
   assert.deepEqual(
     await localWorkerTurn({
-      name: "pi",
-      question: () => Promise.resolve(' ["pi","{prompt}"] '),
+      name: "amp",
+      question: () => Promise.resolve(' ["amp","{prompt}"] '),
     }),
-    ["pi", "{prompt}"],
+    ["amp", "{prompt}"],
   );
   await assert.rejects(
-    localWorkerTurn({ name: "pi", question: () => Promise.resolve("nope") }),
-    /harness-no-worker: pi/,
+    localWorkerTurn({ name: "amp", question: () => Promise.resolve("nope") }),
+    /harness-no-worker: amp/,
   );
   await assert.rejects(
-    localWorkerTurn({ name: "pi", question: () => Promise.resolve("{") }),
-    /harness-no-worker: pi/,
+    localWorkerTurn({ name: "amp", question: () => Promise.resolve("{") }),
+    /harness-no-worker: amp/,
   );
 });
 

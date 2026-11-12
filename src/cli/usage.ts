@@ -51,10 +51,8 @@ Uses temporary detached worktrees. CLOVING_COMMAND_SECONDS bounds each prepare o
 `,
   init: `Usage: cloving init [--harness <name or path>] [--local | --factory] [--repository <directory>]
 
-On a terminal, asks you to try one task locally or to build your factory.
---local copies develop with the first-run choices and does not start an agent.
---factory starts the setup agent with the message "run \`cloving init-prompt\`".
-With no terminal, the command builds the factory.
+On a terminal, asks you to try one task locally or to build your factory. With no terminal, the command builds the factory.
+--local copies develop with the first-run choices and does not start an agent. --factory starts the setup agent with the message "run \`cloving init-prompt\`".
 Choose an installed harness at the terminal, or pass --harness to skip the question.
 A name must have exactly one usable entry; shell:<name> selects a shell function or alias.
 The selection is saved in private settings. A factory returns the agent's exit status.
