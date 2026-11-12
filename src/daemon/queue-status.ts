@@ -1,5 +1,6 @@
 import { send } from "../cli/client.ts";
-import { record } from "../protocol.ts";
+import { runIdentity } from "../service/submission-handler.ts";
+import { record, type Fields } from "../protocol.ts";
 
 function queueBusy(value: unknown): number | undefined {
   const busy = record(value)?.["busy"];
@@ -9,10 +10,33 @@ function queueBusy(value: unknown): number | undefined {
   return busy;
 }
 
+function overviewStatus(result: Fields, workflowId: string) {
+  const queues = result["queues"];
+  const queue = Array.isArray(queues)
+    ? queues.map(record).find((entry) => entry?.["workflowId"] === workflowId)
+    : record(result["queue"]);
+  const busy = queueBusy(queue);
+  if (busy === undefined) return undefined;
+  return {
+    busy,
+    repositoryBusy: Array.isArray(queues)
+      ? queues.reduce(
+          (total: number, entry: unknown) => total + (queueBusy(entry) ?? 0),
+          0,
+        )
+      : busy,
+    holding: record(queue?.["spend"])?.["holding"] === true,
+  };
+}
+
 export async function queueStatus(settings: {
   readonly runtimeDirectory: string;
   readonly workflowId: string;
-}): Promise<{ readonly busy: number; readonly holding: boolean }> {
+}): Promise<{
+  readonly busy: number;
+  readonly holding: boolean;
+  readonly repositoryBusy: number;
+}> {
   let count = 0;
   let after: string | null = "";
   do {
@@ -21,14 +45,8 @@ export async function queueStatus(settings: {
       parameters: { after, limit: 500 },
     });
     if (reply.kind === "error") throw new Error(reply.error.code);
-    const busy = queueBusy(reply.result["queue"]);
-    if (busy !== undefined)
-      return {
-        busy,
-        holding:
-          record(record(reply.result["queue"])?.["spend"])?.["holding"] ===
-          true,
-      };
+    const status = overviewStatus(reply.result, settings.workflowId);
+    if (status !== undefined) return status;
     const runs = reply.result["runs"];
     if (!Array.isArray(runs)) throw new Error("invalid-run-list");
     count += runs.filter((value: unknown) => {
@@ -43,7 +61,7 @@ export async function queueStatus(settings: {
       throw new Error("invalid-run-page");
     after = next;
   } while (after !== null);
-  return { busy: count, holding: false };
+  return { busy: count, holding: false, repositoryBusy: count };
 }
 
 export function spendNotice(): (status: {
@@ -56,4 +74,47 @@ export function spendNotice(): (status: {
     held = holding;
     return holding;
   };
+}
+
+export async function runStatus(
+  runtimeDirectory: string,
+  commandId: string,
+): Promise<Fields | undefined> {
+  const reply = await send(runtimeDirectory, {
+    operation: "status",
+    parameters: { runId: runIdentity(commandId) },
+  });
+  if (reply.kind === "error" && reply.error.code === "unknown-run")
+    return undefined;
+  if (reply.kind === "error") throw new Error(reply.error.code);
+  const run = record(reply.result["run"]);
+  if (run === undefined) throw new Error("invalid-run-status");
+  return run;
+}
+
+export async function trackedRuns(
+  runtimeDirectory: string,
+  commands: readonly string[],
+): Promise<readonly { readonly commandId: string; readonly run: Fields }[]> {
+  if (commands.length === 0) return [];
+  if (commands.length === 1) {
+    const commandId = String(commands[0]);
+    const run = await runStatus(runtimeDirectory, commandId);
+    if (run === undefined) throw new Error("queue-run-missing");
+    return [{ commandId, run }];
+  }
+  const reply = await send(runtimeDirectory, {
+    operation: "status",
+    parameters: { runIds: commands.map(runIdentity) },
+  });
+  if (reply.kind === "error") throw new Error(reply.error.code);
+  const runs = reply.result["runs"];
+  if (!Array.isArray(runs)) throw new Error("invalid-run-list");
+  return commands.map((commandId) => {
+    const run = runs
+      .map(record)
+      .find((item) => item?.["runId"] === runIdentity(commandId));
+    if (run === undefined) throw new Error("queue-run-missing");
+    return { commandId, run };
+  });
 }

@@ -8,7 +8,7 @@ import {
   projectConfiguration,
 } from "./project-configuration.ts";
 import { preparedBundle } from "./self-host-project.ts";
-import { reloadedQueueLimits } from "./self-host-queue.ts";
+import { queueWorkflowLimits, reloadedQueueLimits } from "./self-host-queue.ts";
 import type { DeclaredWorkflow } from "../src/workflow-declaration.ts";
 import { workflowLimits, type WorkflowLimits } from "../src/workflow-limits.ts";
 
@@ -85,6 +85,10 @@ function reloadedLimits(
   try {
     return {
       queueLimits: reloadedQueueLimits(environment, { declarations, sources }),
+      queueWorkflowLimits: queueWorkflowLimits(environment, {
+        declarations,
+        sources,
+      }),
     };
   } catch (error) {
     return settingsRefusal(error);

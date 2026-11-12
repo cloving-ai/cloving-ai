@@ -73,6 +73,7 @@ export interface ServiceReads {
 export interface ServiceContext extends ServiceReads, ServiceIdentity {
   readonly schedule?: SchedulePort;
   readonly queue?: QueuePort;
+  readonly queues?: ReadonlyMap<string, QueuePort>;
   readonly queueDailySpendLimitUsd?: number;
   readonly spendScope?: "queue" | "all";
   readonly commandEffects?: CommandEffects;
@@ -117,6 +118,7 @@ export function queryMetadata(
     ServiceIdentity & {
       readonly schedule?: SchedulePort;
       readonly queue?: QueuePort;
+      readonly queues?: ReadonlyMap<string, QueuePort>;
       readonly queueDailySpendLimitUsd?: number;
       readonly spendScope?: "queue" | "all";
       readonly commandEffects?: CommandEffects;
@@ -125,6 +127,7 @@ export function queryMetadata(
   ServiceContext,
   | "schedule"
   | "queue"
+  | "queues"
   | "workerHarness"
   | "noteReceipts"
   | "turnWaits"
@@ -144,6 +147,7 @@ export function queryMetadata(
     ...serviceIdentity(options),
     ...(options.schedule === undefined ? {} : { schedule: options.schedule }),
     ...(options.queue === undefined ? {} : { queue: options.queue }),
+    ...(options.queues === undefined ? {} : { queues: options.queues }),
     ...spendSettings(options),
     ...turnReads(options),
     ...(options.turnDetails === undefined

@@ -59,7 +59,7 @@ import { retentionLoop } from "./daemon-retention.ts";
 import type { CloseOptions } from "./claude-worker.ts";
 import {
   daemonRegistrations,
-  queueWorkflowId,
+  queueWorkflowIds,
   workflowReload,
 } from "./workflow-reload.ts";
 
@@ -195,6 +195,7 @@ function controlPorts(controls: ReturnType<typeof controlConnections>) {
   return {
     schedule: controls.schedules.request,
     queue: controls.queues.port,
+    queues: controls.queues.ports,
     threadPool: controls.pool.latest,
     restart: controls.restart,
     effectLeases: {
@@ -228,9 +229,7 @@ function retentionReads(settings: DaemonSettings, ports: Promise<HostPorts>) {
 function rejectedOpening(detail: string): DaemonOpening {
   return {
     kind: "refused",
-    reason: detail.startsWith("queue-workflow-conflict")
-      ? "queue-workflow-conflict"
-      : "workflow-rejected",
+    reason: "workflow-rejected",
     detail,
   };
 }
@@ -375,9 +374,9 @@ async function runningDaemon(
     ...settings,
     scheduleConnection: resources.schedules,
     queueConnection: resources.queues,
-    queueLimits: resources.queueLimitSource.current,
+    limits: resources.queueLimitSource.current,
     submit: service.worker.submit,
-    queueWorkflowId: queueWorkflowId(settings),
+    queueWorkflowIds: queueWorkflowIds(settings),
   }).catch(async (error: unknown) => {
     await retention.stop();
     await closeWorkers(resources);

@@ -47,17 +47,24 @@ function heldHours(flow: ReportFlow | undefined, window: ReportWindow) {
   const holds = flow?.holds;
   if (holds == null) return null;
   if (window.start < (flow?.holdsCutAt ?? window.start)) return null;
-  const spans = holds.map(
-    (hold) =>
-      Math.min(hold.end ?? window.end, window.end) -
-      Math.max(hold.start, window.start),
-  );
-  const held = spans.filter((span) => span > 0);
+  const spans = holds
+    .map((hold) => ({
+      start: Math.max(hold.start, window.start),
+      end: Math.min(hold.end ?? window.end, window.end),
+    }))
+    .filter((span) => span.end > span.start)
+    .toSorted((a, b) => a.start - b.start);
+  let end = window.start;
+  let held = 0;
+  for (const span of spans) {
+    held += Math.max(0, span.end - Math.max(span.start, end));
+    end = Math.max(end, span.end);
+  }
   return [
     {
       at: window.start,
-      value: held.reduce((sum, span) => sum + span, 0) / 3_600_000,
-      evidence: { periods: held.length },
+      value: held / 3_600_000,
+      evidence: { periods: spans.length },
     },
   ];
 }

@@ -297,3 +297,24 @@ await test("CLV-309 the report sums the hours that the queue held runs for load 
     null,
   );
 });
+
+await test("CLV-360 overlapping holds count repository elapsed time once", () => {
+  const report = loopReport({
+    ...window,
+    completions: [],
+    flow: {
+      queue: { workflowId: "develop", lanes: 2 },
+      runs: [],
+      holds: [
+        { reason: "memory", start: now - 4 * hour, end: now - hour },
+        { reason: "load", start: now - 5 * hour, end: now - 2 * hour },
+        { reason: "load", start: now - 3 * hour, end: now - 2 * hour },
+        { reason: "load", start: now - 0.5 * hour, end: null },
+      ],
+    },
+  });
+  assert.equal(
+    fields(fields(report.metrics)["flow.loadHoldHours"])["value"],
+    4.5,
+  );
+});

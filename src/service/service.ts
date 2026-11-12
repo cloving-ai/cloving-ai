@@ -113,6 +113,7 @@ export interface HostPorts {
 export interface ServiceOptions extends ServiceReads, ServiceIdentity {
   readonly schedule?: NonNullable<ServiceContext["schedule"]>;
   readonly queue?: NonNullable<ServiceContext["queue"]>;
+  readonly queues?: ReadonlyMap<string, NonNullable<ServiceContext["queue"]>>;
   readonly queueDailySpendLimitUsd?: number;
   readonly spendScope?: "queue" | "all";
   readonly commandEffects?: CommandEffects;
