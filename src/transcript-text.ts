@@ -58,7 +58,7 @@ function sequenceEnd(text: string, start: number): number {
   });
 }
 
-function printable(code: number): boolean {
+export function printable(code: number): boolean {
   if (code === 9 || code === 10) return true;
   return code >= 32 && (code < 0x7f || code > 0x9f);
 }
@@ -78,7 +78,7 @@ export function withoutControls(text: string): string {
   return kept.join("");
 }
 
-function literal(text: string): RegExp {
+export function literal(text: string): RegExp {
   return new RegExp(text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi");
 }
 

@@ -22,17 +22,20 @@ export function turnCommand(start: CommandStart): {
         ? undefined
         : start.prompt,
     };
-  if (start.worker === "gemini" && argumentPrompt(start.prompt))
+  if (start.worker === "pi") return piCommand(start);
+  if (
+    ["gemini", "cursor-agent"].some((worker) => worker === start.worker) &&
+    argumentPrompt(start.prompt)
+  )
     return {
-      parts: [...start.command, "-p", start.prompt],
+      parts: [
+        ...start.command,
+        ...(start.worker === "gemini" ? ["-p"] : []),
+        start.prompt,
+      ],
       standardInput: undefined,
     };
   if (start.worker === "opencode")
-    return {
-      parts: [...start.command, start.prompt],
-      standardInput: undefined,
-    };
-  if (start.worker === "cursor-agent" && argumentPrompt(start.prompt))
     return {
       parts: [...start.command, start.prompt],
       standardInput: undefined,
@@ -46,4 +49,17 @@ export function turnCommand(start: CommandStart): {
   );
   command.splice(index < 0 ? command.length : index + 1, 0, start.prompt);
   return { parts: command, standardInput: undefined };
+}
+
+function piCommand(start: CommandStart) {
+  if (argumentPrompt(start.prompt) && !start.prompt.startsWith("@"))
+    return {
+      parts: [...start.command, "--", start.prompt],
+      standardInput: undefined,
+    };
+  if (start.prompt.trim() !== start.prompt)
+    throw new Error(
+      "Pi v1.5.2 cannot preserve boundary whitespace through stdin",
+    );
+  return { parts: start.command, standardInput: start.prompt };
 }

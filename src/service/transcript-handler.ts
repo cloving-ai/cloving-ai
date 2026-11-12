@@ -19,6 +19,7 @@ import {
 const cachedTurns = 8;
 
 interface TranscriptQuery {
+  readonly before?: number;
   readonly runId: string;
   readonly operationId: string;
   readonly after: number;
@@ -27,11 +28,19 @@ interface TranscriptQuery {
 function queryOf(parameters: Fields): TranscriptQuery | string {
   const { runId, operationId } = parameters;
   const after = parameters["after"] ?? 0;
+  const before = parameters["before"];
   if (!isIdentifier(runId)) return "runId must be a run ID.";
   if (typeof operationId !== "string" || operationId === "")
     return "operationId must be the operation ID of an agent turn.";
   if (!wholeNumber(after, 0)) return "after must be a whole number.";
-  return { runId, operationId, after };
+  if (before !== undefined && !wholeNumber(before, 1))
+    return "before must be a positive whole number.";
+  return {
+    runId,
+    operationId,
+    after,
+    ...(before === undefined ? {} : { before }),
+  };
 }
 
 export function remembered(
@@ -69,7 +78,7 @@ export async function transcript(
 ): Promise<Reply> {
   const query = queryOf(parameters);
   if (typeof query === "string") return invalidRequest(query);
-  const { runId, operationId, after } = query;
+  const { runId, operationId } = query;
   const reads = context.turnTranscript;
   if (reads === undefined)
     return failed("transcript-unavailable", {
@@ -95,7 +104,7 @@ export async function transcript(
   return result("transcript", {
     runId,
     operationId,
-    ...transcriptPage(parsed?.entries ?? [], { after }),
+    ...transcriptPage(parsed?.entries ?? [], query),
     open,
   });
 }

@@ -84,7 +84,7 @@ console.log(JSON.stringify({ ...failed, retried: streams.length, address: stream
   });
 });
 
-await test("CLV-329 earlier entries of an ended turn with more than 2000 entries show Jump to the end, and the jump opens the stream after the last window", () => {
+await test("CLV-329 earlier entries of an ended turn with more than 2000 entries show Jump to the end, and the jump replays the stream into the last window", () => {
   const result = transcriptPlayed({
     outcome: "in work",
     reply: earlierReply,
@@ -104,7 +104,7 @@ console.log(JSON.stringify({ jump, streams: streams.length, address: streams.at(
   assert.deepEqual(result, {
     jump: "Jump to the end",
     streams: 2,
-    address: `${streamPath}?after=1`,
+    address: `${streamPath}?after=0`,
   });
 });
 

@@ -182,6 +182,7 @@ function encoded(value: SettingValue): string {
 function harnessCommandMapping(
   name: unknown,
 ): Readonly<Record<string, string>> {
+  if (name === "pi") return { "harness.command": "CLOVING_PI_COMMAND" };
   if (name === "opencode")
     return { "harness.command": "CLOVING_OPENCODE_COMMAND" };
   if (name === "grok") return { "harness.command": "CLOVING_GROK_COMMAND" };
@@ -250,7 +251,7 @@ export function startSettingLines(settings: {
   ];
 }
 
-const harnessNames = ["claude", "codex", "gemini", "grok", "opencode"];
+const harnessNames = ["claude", "codex", "gemini", "grok", "opencode", "pi"];
 
 export const harnessCommandVariables: readonly string[] = harnessNames.flatMap(
   (name) => Object.values(harnessCommandMapping(name)),

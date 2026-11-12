@@ -49,8 +49,10 @@ export const defaultGrokCommand = [
   "-p",
 ];
 
+export const defaultPiCommand = ["pi", "--mode", "json", "--no-session"];
+
 export type NativeHarness =
-  "claude" | "codex" | "gemini" | "grok" | "opencode" | "cursor-agent";
+  "claude" | "codex" | "gemini" | "grok" | "opencode" | "cursor-agent" | "pi";
 
 const defaultCommands = {
   claude: defaultCommand,
@@ -58,6 +60,7 @@ const defaultCommands = {
   gemini: defaultGeminiCommand,
   grok: defaultGrokCommand,
   opencode: defaultOpencodeCommand,
+  pi: defaultPiCommand,
   "cursor-agent": defaultCursorCommand,
 };
 
@@ -129,6 +132,7 @@ export function harnessDefaults(value: unknown): {
     gemini: "CLOVING_GEMINI_COMMAND",
     grok: "CLOVING_GROK_COMMAND",
     opencode: "CLOVING_OPENCODE_COMMAND",
+    pi: "CLOVING_PI_COMMAND",
     "cursor-agent": undefined,
   }[name];
   return {
