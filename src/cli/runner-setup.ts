@@ -69,7 +69,7 @@ function containerName(turnId: string | undefined): string {
   return `cloving-${name}-${Date.now().toString(36)}`;
 }
 
-function volumeName(directory: string): string {
+export function volumeName(directory: string): string {
   const name = basename(directory).replace(/[^A-Za-z0-9_.-]/g, "-");
   const digest = createHash("sha256").update(directory).digest("hex");
   return `cloving-modules-${name}-${digest.slice(0, 16)}`;

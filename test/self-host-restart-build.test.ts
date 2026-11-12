@@ -81,6 +81,9 @@ await test("CLV-320 a restart with no dist builds first, a failed build starts n
       output:
         "> tsc --project tsconfig.build.json\nerror TS2322: Type 'string' is not assignable",
     });
+    await eventually(() =>
+      existsSync(join(directory, "claimed-restart")) ? undefined : true,
+    );
     assert.equal(existsSync(join(directory, "claimed-restart")), false);
     assert.equal(existsSync(join(root, "daemon-signals")), false);
     const passed = join(repository, "dist", ".restart-build");

@@ -13,6 +13,8 @@ import {
   resultOf,
   until,
   withScene,
+  type Scene,
+  type WorkerOverrides,
 } from "./claude-worker-fixture.ts";
 
 const signal = new AbortController().signal;
@@ -214,9 +216,19 @@ await test("CLV-013 an absent payload, a capability or a method that the worker 
     });
   }));
 
-await test("CLV-013 reconcile gives absent for an operation with no record, accepted for a turn in work, unknown for a non-Claude turn of a different process that is alive, and failed for an interrupted turn whose recorded process is not alive", () =>
+function textHarness(scene: Scene): WorkerOverrides {
+  const program = join(scene.directory, "fake-claude.mjs");
+  const turns = join(scene.directory, "turns.log");
+  const node = ["env", "-u", "NODE_V8_COVERAGE", process.execPath];
+  return {
+    worker: "custom",
+    harness: { name: "custom", turn: [...node, program, "hold", turns] },
+  };
+}
+
+await test("CLV-013 CLV-349 reconcile gives absent for an operation with no record, accepted for a turn in work, unknown for a text turn of a different process that is alive, and failed for an interrupted turn whose recorded process is not alive", () =>
   withScene(async (scene) => {
-    const worker = scene.worker("hold", { worker: "gemini" });
+    const worker = scene.worker("hold", textHarness(scene));
     assert.deepEqual(await worker.reconcile(intent(), signal), {
       kind: "absent",
     });
@@ -225,7 +237,7 @@ await test("CLV-013 reconcile gives absent for an operation with no record, acce
       kind: "accepted",
       ...accepted,
     });
-    const later = scene.worker("hold", { worker: "gemini" });
+    const later = scene.worker("hold", textHarness(scene));
     assert.deepEqual(await later.reconcile(intent(), signal), {
       kind: "unknown",
       evidence: `claude-turn:${key}`,

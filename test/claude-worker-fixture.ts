@@ -20,7 +20,7 @@ import {
 } from "../src/daemon/claude-worker.ts";
 import type { TurnSettings } from "../src/project-settings.ts";
 import type { WorkerReport } from "../src/daemon/operation-journal.ts";
-import { stopChild, stopChildGroup } from "./stop-child.ts";
+import { signalGroup, stopChild, stopChildGroup } from "./stop-child.ts";
 import { testMilliseconds } from "./test-timing.ts";
 
 const disposableNode = [
@@ -307,7 +307,7 @@ export async function withScene<Result>(
 
 function stopKeptTurn(turn: TurnRecord): void {
   if (turn.parentId !== process.pid && alive(turn.processId))
-    process.kill(-turn.parentId, "SIGKILL");
+    signalGroup(turn.parentId, "SIGKILL");
 }
 
 function turnRecord(line: string): TurnRecord {

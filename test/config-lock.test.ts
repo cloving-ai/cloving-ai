@@ -4,6 +4,7 @@ import {
   existsSync,
   readFileSync,
   readdirSync,
+  renameSync,
   rmSync,
   symlinkSync,
 } from "node:fs";
@@ -20,10 +21,12 @@ await test("CLV-206 simultaneous setters hold a lock before reading and preserve
   await using second = fixture.start(["set", "checks.required", '["unit"]']);
   await setTimeout(500);
   assert.equal(existsSync(fixture.project), false);
-  fixture.write(fixture.project, {
+  const pending = `${fixture.project}.tmp`;
+  fixture.write(pending, {
     version: 1,
     tickets: { command: ["keep"] },
   });
+  renameSync(pending, fixture.project);
   rmSync(lock);
   const results = await Promise.all([first.ended, second.ended]);
   for (const result of results) assert.equal(result.status, 0, result.output);

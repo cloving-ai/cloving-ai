@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
+import { existsSync, writeFileSync } from "node:fs";
 import { mkdir, readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -10,6 +11,37 @@ import { stopChild, stopChildGroup } from "./stop-child.ts";
 import { testMilliseconds } from "./test-timing.ts";
 import { ended as endedDaemon } from "./self-host-fixture.ts";
 import { killVerificationGroup } from "../quality/verification-process-group.ts";
+import { withScene } from "./claude-worker-fixture.ts";
+
+for (const code of ["ESRCH", "EPERM"])
+  await test(`CLV-349 turn fixture cleanup tolerates ${code} after the liveness probe`, async () => {
+    const group = process.pid + 1;
+    const descriptor = Object.getOwnPropertyDescriptor(process, "kill");
+    assert.ok(descriptor);
+    const signals: unknown[][] = [];
+    process.kill = (identifier, signal) => {
+      signals.push([identifier, signal]);
+      if (identifier === -group)
+        throw Object.assign(new Error("group changed"), { code });
+      return true;
+    };
+    try {
+      const directory = await withScene((scene) => {
+        writeFileSync(
+          join(scene.directory, "turns.log"),
+          JSON.stringify({ processId: process.pid, parentId: group }) + "\n",
+        );
+        return Promise.resolve(scene.directory);
+      });
+      assert.deepEqual(signals, [
+        [process.pid, 0],
+        [-group, "SIGKILL"],
+      ]);
+      assert.equal(existsSync(directory), false);
+    } finally {
+      Object.defineProperty(process, "kill", descriptor);
+    }
+  });
 
 await test("CLV-219 the legacy workflow fixture observes a daemon that already closed", async () => {
   for (const signal of [undefined, "SIGTERM"] as const) {
