@@ -246,12 +246,13 @@ async function spendRefusal(
   context: ServiceContext,
   admission: Admission,
 ): Promise<Reply | undefined> {
-  if (admission.workflow.manifest.queue === true) {
-    const repository = await repositoryQueueRefusal(context, {
-      commandId: admission.commandId,
-    });
-    if (repository !== undefined) return repository;
-  }
+  const repository =
+    admission.workflow.manifest.queue === true
+      ? await repositoryQueueRefusal(context, {
+          commandId: admission.commandId,
+        })
+      : undefined;
+  if (repository !== undefined) return repository;
   if (
     admission.workflow.manifest.queue !== true &&
     context.spendScope !== "all"

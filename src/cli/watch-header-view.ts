@@ -158,7 +158,7 @@ export function QueueControl(props: {
 }): Shown {
   const { queue } = props;
   const state = props.model?.queue?.["state"];
-  if (typeof state !== "string") return null;
+  if (typeof state !== "string" || state === "off") return null;
   const command = state === "running" ? "drain" : "resume";
   return [
     element("button", {

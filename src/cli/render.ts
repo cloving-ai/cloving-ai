@@ -132,7 +132,9 @@ function runList(result: Fields): readonly string[] {
     `Workflows: ${visible(listing(result["workflows"]))}`,
     ...serviceLines(result),
     ...queuesLines(result),
-    ...queueOffLines(result["queueOff"]),
+    ...queueOffLines(
+      result["queue"] === undefined ? result["queueOff"] : undefined,
+    ),
     ...statusScheduleLines(result["schedules"]).map(oneLine),
     ...refusalLines(result["workflowRefusals"]),
     ...threadPoolLines(result["threadPool"]),

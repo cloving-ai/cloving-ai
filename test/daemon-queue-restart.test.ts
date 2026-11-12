@@ -125,3 +125,66 @@ process.exit(0);
 `);
     assert.equal(result.status, 0, result.stderr);
   }));
+
+await test("CLV-360 startup removes a legacy pending submission before gap checks", () =>
+  withConsumer(queueWorkflow, async (consumer) => {
+    const result = await consumer.run(`${queuePrelude}
+writeFileSync("queue-submission", "");
+const daemon = await launched();
+try {
+  assert.equal(existsSync("queue-submission"), false);
+} finally { await daemon.close(); }
+process.exit(0);
+`);
+    assert.equal(result.status, 0, result.stderr);
+  }));
+
+await test("CLV-360 restart resume clears every queue drain and keeps each failure streak", () =>
+  withConsumer(queueWorkflow, async (consumer) => {
+    const result = await consumer.run(`${queuePrelude}
+import { mkdirSync } from "node:fs";
+settings.declarations.push({ ...settings.declarations[0], workflowId: "triage-issue" });
+for (const id of ["develop", "triage-issue"]) {
+  mkdirSync("queues/" + id, { recursive: true });
+  writeFileSync("queues/" + id + "/queue-commands.json", JSON.stringify({ commands: [], failures: ["failed-" + id], drain: { startedAt: 1, drainedAt: 2 } }));
+}
+writeFileSync("resume-queue", "");
+let daemon = await launched();
+try {
+  await until(async () => (await asked("status")).queues.every(queue => queue.state === "running"));
+  assert.equal(existsSync("resume-queue"), false);
+} finally { await daemon.close(); }
+daemon = await launched();
+try {
+  const status = await asked("status");
+  assert.deepEqual(status.queues.map(queue => [queue.workflowId, queue.state, queue.failedRunIds]), [["develop", "running", ["failed-develop"]], ["triage-issue", "running", ["failed-triage-issue"]]]);
+} finally { await daemon.close(); }
+process.exit(0);
+`);
+    assert.equal(result.status, 0, result.stderr);
+  }));
+
+await test("CLV-360 a later queue startup failure stops earlier queue timers", () =>
+  withConsumer(queueWorkflow, async (consumer) => {
+    const result = await consumer.run(`${queuePrelude}
+import { mkdirSync } from "node:fs";
+import timers from "node:timers/promises";
+import { syncBuiltinESMExports } from "node:module";
+const sleeping = timers.setTimeout;
+const signals = [];
+timers.setTimeout = (milliseconds, value, options) => {
+  if (milliseconds === 12345) signals.push(options.signal);
+  return sleeping(milliseconds, value, options);
+};
+syncBuiltinESMExports();
+settings.declarations.push({ ...settings.declarations[0], workflowId: "triage-issue" });
+mkdirSync("queues", { recursive: true });
+writeFileSync("queues/triage-issue", "blocked folder");
+await assert.rejects(startDaemon({ ...settings, queueMilliseconds: 12345, readyCommand: [process.execPath, "-e", 'process.stdout.write("[]")'] }));
+await sleeping(100);
+print({ observed: signals.length > 0, aborted: signals.every(signal => signal.aborted) });
+process.exit(0);
+`);
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(result.lines, [{ observed: true, aborted: true }]);
+  }));

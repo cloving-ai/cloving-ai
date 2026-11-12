@@ -81,6 +81,7 @@ export function queuesLines(result: Fields): readonly string[] {
 export function queueLines(value: unknown): readonly string[] {
   const queue = record(value);
   if (queue === undefined) return [];
+  if (queue["off"] !== undefined) return queueOffLines(queue["off"]);
   const skipped = queue["skipped"];
   return [
     queueHeadline(queue),

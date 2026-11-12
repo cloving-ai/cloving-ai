@@ -40,6 +40,7 @@ interface QueueSettings {
   readonly intervalSource?: QueueSource;
   readonly limits?: () => QueueLimits;
   readonly resetQueue?: boolean;
+  readonly resumeQueue?: boolean;
   readonly readyCommand?: readonly string[];
   readonly workflowId: string;
   readonly signals?: () => Promise<HostSignals>;
@@ -205,9 +206,16 @@ async function drained(
 ): Promise<void> {
   const { drain } = pending;
   if (drain === undefined || drain.drainedAt !== null) return;
-  if (settings.queueDirectory === undefined) {
-    if (!atGap(await workInProgress(daemonWorkReads(settings)))) return;
-  } else if ((await queueStatus(settings)).busy > 0) return;
+  if (
+    settings.queueDirectory === undefined &&
+    !atGap(await workInProgress(daemonWorkReads(settings)))
+  )
+    return;
+  if (
+    settings.queueDirectory !== undefined &&
+    (await queueStatus(settings)).busy > 0
+  )
+    return;
   pending.drain = { ...drain, drainedAt: Date.now() };
   await pending.save();
   process.stderr.write("Queue drained\n");
@@ -251,7 +259,6 @@ async function cycle(
   },
 ): Promise<void> {
   const { signal, pending, room } = run;
-  await startedQueue(settings, pending);
   const selfUpdate = updateHold(settings.directory, pending);
   const restart = restartHold(settings.directory);
   const update = async (activeRuns = 0) => {
@@ -265,10 +272,6 @@ async function cycle(
     const spend = notice(await queueStatus(settings));
     return updating || spend;
   };
-  await rm(
-    join(settings.queueDirectory ?? settings.directory, "queue-submission"),
-    { force: true },
-  );
   await recover(settings, pending);
   const stopped = (): boolean => signal.aborted;
   const checks = { pending, stop, notice, update, room };
@@ -306,6 +309,17 @@ function queueRoom(
   );
 }
 
+async function loadedQueue(settings: QueueSettings, runtime: QueueRuntime) {
+  const directory = settings.queueDirectory ?? settings.directory;
+  const pending = await queueJournal(directory);
+  const holds = await holdRecord(directory);
+  await startedQueue(settings, pending);
+  await rm(join(directory, "queue-submission"), { force: true });
+  runtime.pending = pending;
+  runtime.holds = holds;
+  return { pending, holds };
+}
+
 export function issueQueue(settings: QueueSettings): {
   readonly stop: () => Promise<void>;
   readonly port: QueuePort;
@@ -325,16 +339,7 @@ export function issueQueue(settings: QueueSettings): {
           },
         }),
   };
-  const loaded = queueJournal(
-    settings.queueDirectory ?? settings.directory,
-  ).then(async (pending) => {
-    const holds = await holdRecord(
-      settings.queueDirectory ?? settings.directory,
-    );
-    runtime.pending = pending;
-    runtime.holds = holds;
-    return { pending, holds };
-  });
+  const loaded = loadedQueue(settings, runtime);
   const running = loaded
     .then(({ pending, holds }) =>
       Promise.all([

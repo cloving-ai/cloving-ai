@@ -134,10 +134,10 @@ async function spendRefusal(
   context: ServiceContext,
   request: ContinueRequest,
 ): Promise<Reply | undefined> {
-  if (await queueRun(context, request.runId)) {
-    const repository = await repositoryQueueRefusal(context, identity(request));
-    if (repository !== undefined) return repository;
-  }
+  const repository = (await queueRun(context, request.runId))
+    ? await repositoryQueueRefusal(context, identity(request))
+    : undefined;
+  if (repository !== undefined) return repository;
   if (!(await spendCounted(context, request.runId))) return undefined;
   return spendLimitRefusal(context, identity(request));
 }

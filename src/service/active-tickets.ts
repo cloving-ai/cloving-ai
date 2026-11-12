@@ -97,7 +97,8 @@ async function queueMembership(
     .filter(
       (id) =>
         context.registry.byId(id)?.manifest.queue === true &&
-        context.registry.byId(id)?.admission !== undefined,
+        (context.registry.byId(id)?.admission !== undefined ||
+          queuePort(context, id)?.control()?.off !== undefined),
     )
     .toSorted();
   const historical =
@@ -152,7 +153,11 @@ export async function queueOverview(context: ServiceContext): Promise<Fields> {
     .toSorted()
     .map((id) => currentLanes(context, context.registry.byId(id)))
     .filter(
-      (workflow): workflow is Registered => workflow?.admission !== undefined,
+      (workflow): workflow is Registered =>
+        workflow !== undefined &&
+        (workflow.admission !== undefined ||
+          queuePort(context, workflow.workflowId)?.control()?.off !==
+            undefined),
     );
   const overviews = await Promise.all(
     workflows.map((workflow) => workflowOverview(context, workflow)),
@@ -162,14 +167,18 @@ export async function queueOverview(context: ServiceContext): Promise<Fields> {
     const off = context.queue?.control()?.off;
     return off === undefined ? { queues } : { queues, queueOff: { ...off } };
   }
-  return { queues, queue: queues[0] };
+  const off = context.queue?.control()?.off;
+  return {
+    queues,
+    queue: queues[0],
+    ...(off === undefined ? {} : { queueOff: { ...off } }),
+  };
 }
 
 async function workflowOverview(
   context: ServiceContext,
   workflow: Registered,
 ): Promise<Fields> {
-  if (workflow.admission === undefined) return {};
   const runs = await activeRuns(context, workflow.workflowId);
   const active = runs.map((run) => run.input);
   const activeTicketIds = active.flatMap((input) =>
@@ -187,7 +196,7 @@ async function workflowOverview(
     queue: {
       workflowId: workflow.workflowId,
       ...(await queueSpend(context)),
-      lanes: laneCount(workflow.admission),
+      lanes: laneCount(workflow.admission ?? 0),
       busy: active.length,
       busyRunIds: runs.map((run) => run.runId),
       skipped,

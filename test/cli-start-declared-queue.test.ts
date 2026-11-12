@@ -208,7 +208,8 @@ await test("CLV-359 the queues state off starts no declared queue and the status
     environment,
     inspect: () => {
       const status = statusOf(fixture);
-      assert.equal(status["queue"], undefined);
+      assert.equal(record(status["queue"])?.["state"], "off");
+      assert.deepEqual(status["queues"], [status["queue"]]);
       assert.deepEqual(status["queueOff"], {
         workflowId: "develop",
         source: "queues setting",

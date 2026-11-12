@@ -1,3 +1,5 @@
+import { readFile, rm } from "node:fs/promises";
+import { join } from "node:path";
 import type { scheduleConnection } from "./schedule-control.ts";
 import type { queueConnection } from "./queue-control.ts";
 import { workflowSchedules } from "./workflow-schedules.ts";
@@ -46,7 +48,7 @@ function queueAdapters(settings: LoopSettings) {
 }
 
 async function startedQueue(
-  settings: LoopSettings,
+  settings: LoopSettings & { readonly resumeQueue: boolean },
   workflowId: string,
 ): Promise<ReturnType<typeof issueQueue> | undefined> {
   const configuration = queueConfiguration(settings, workflowId);
@@ -70,6 +72,7 @@ async function startedQueue(
     limits: () => settings.limits(workflowId),
     ...queueAdapters(settings),
     resetQueue: settings.resetQueue ?? false,
+    resumeQueue: settings.resumeQueue,
     workflowId,
   });
   settings.queueConnection?.connect(queue.port, workflowId);
@@ -77,13 +80,33 @@ async function startedQueue(
   return queue;
 }
 
+async function resumeRequested(directory: string): Promise<boolean> {
+  return readFile(join(directory, "resume-queue")).then(
+    () => true,
+    (error: unknown) => {
+      if (error instanceof Error && "code" in error && error.code === "ENOENT")
+        return false;
+      throw error;
+    },
+  );
+}
+
 export async function daemonLoops(
   settings: LoopSettings,
 ): Promise<{ readonly stop: () => Promise<void> }> {
   const schedules = await workflowSchedules(settings);
   settings.scheduleConnection?.connect(schedules.request);
+  const queues: ReturnType<typeof issueQueue>[] = [];
+  let notifier: Awaited<ReturnType<typeof notifyRuns>> | undefined;
+  const stop = async () => {
+    await Promise.all([
+      schedules.stop(),
+      notifier?.stop(),
+      ...queues.map((queue) => queue.stop()),
+    ]);
+  };
   try {
-    const notifier =
+    notifier =
       settings.notifyCommand === undefined
         ? undefined
         : await notifyRuns({
@@ -94,20 +117,20 @@ export async function daemonLoops(
               ? {}
               : { intervalMilliseconds: settings.notifyMilliseconds }),
           });
-    const queues: ReturnType<typeof issueQueue>[] = [];
+    const resumeQueue = await resumeRequested(settings.directory);
+    await rm(join(settings.directory, "queue-submission"), { force: true });
     for (const workflowId of settings.queueWorkflowIds) {
-      const queue = await startedQueue(settings, workflowId);
+      const queue = await startedQueue(
+        { ...settings, resumeQueue },
+        workflowId,
+      );
       if (queue !== undefined) queues.push(queue);
     }
-    return {
-      stop: async () => {
-        await schedules.stop();
-        await notifier?.stop();
-        await Promise.all(queues.map((queue) => queue.stop()));
-      },
-    };
+    if (resumeQueue)
+      await rm(join(settings.directory, "resume-queue"), { force: true });
+    return { stop };
   } catch (error) {
-    await schedules.stop();
+    await stop();
     throw error;
   }
 }
