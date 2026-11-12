@@ -2,7 +2,6 @@ import { shownCommandWaits, commandWaitText } from "./command-waits.ts";
 import {
   continuedCostText,
   priceText,
-  queueSpendLines,
   spendLimitText,
   usageText,
   totalsSuffix,
@@ -21,9 +20,9 @@ import { clientProgram } from "./runtime-directory.ts";
 import { decisionCommand, isDecisionCommand } from "./decision-command.ts";
 import {
   effectLeaseText,
-  queueHeadline,
+  queueLines,
+  queuesLines,
   queueOffLines,
-  queueStateLines,
 } from "./queue-render.ts";
 import { threadPoolLines } from "./thread-pool-render.ts";
 import { noteLines, runNotedLines } from "./note-render.ts";
@@ -132,7 +131,7 @@ function runList(result: Fields): readonly string[] {
   return [
     `Workflows: ${visible(listing(result["workflows"]))}`,
     ...serviceLines(result),
-    ...queueLines(result["queue"]),
+    ...queuesLines(result),
     ...queueOffLines(result["queueOff"]),
     ...statusScheduleLines(result["schedules"]).map(oneLine),
     ...refusalLines(result["workflowRefusals"]),
@@ -146,26 +145,6 @@ function runList(result: Fields): readonly string[] {
       ? [
           `${String(hiddenRuns)} older runs: use --limit and --after to see them`,
         ]
-      : []),
-  ];
-}
-
-export function queueLines(value: unknown): readonly string[] {
-  const queue = record(value);
-  if (queue === undefined) return [];
-  const skipped = queue["skipped"];
-  return [
-    queueHeadline(queue),
-    ...queueStateLines(queue),
-    ...queueSpendLines(queue["spend"]),
-    ...(Array.isArray(skipped)
-      ? skipped.map((item: unknown) => {
-          const dependencies = part(item, "dependencies");
-          const needs = Array.isArray(dependencies)
-            ? `; needs ${dependencies.map(visible).join(", ")}`
-            : "";
-          return `Skipped ticket ${visible(part(item, "ticketId"))}: ${visible(part(item, "reason"))}${needs}`;
-        })
       : []),
   ];
 }

@@ -4,7 +4,7 @@ import { queuePrelude, queueWorkflow } from "./daemon-queue-fixture.ts";
 import { withConsumer } from "./world-host-fixture.ts";
 
 const sequence = `${queuePrelude}
-const failures = () => JSON.parse(readFileSync("queue-commands.json", "utf8")).failures;
+const failures = () => JSON.parse(readFileSync("queues/develop/queue-commands.json", "utf8")).failures;
 const finish = async (ticket, next, outcome) => {
   await until(() => existsSync("input-" + ticket));
   const [command] = commands();
@@ -210,4 +210,33 @@ process.exit(0);
       `Queue run ended blocked: ${String(value.runIds[1])}; continuing`,
       `Queue stopped: 3 runs in a row ended without handoff: ${value.runIds.join(", ")}`,
     ]);
+  }));
+
+await test("CLV-360 three failed runs stop only their own queue", () =>
+  withConsumer(queueWorkflow, async (consumer) => {
+    const result = await consumer.run(
+      `${queuePrelude}
+settings.declarations.push({ ...settings.declarations[0], workflowId: "triage-issue" });
+writeFileSync("next.mjs", 'import { randomUUID } from "node:crypto"; process.stdout.write(randomUUID());');
+const daemon = await launched({ concurrency: 4 });
+try {
+  for (let index = 0; index < 3; index += 1) {
+    const command = await until(() => commands()[0]);
+    const cycleId = "task-" + runIdentity(command).slice(4, 16);
+    const input = await until(() => readdirSync(".").filter(name => name.startsWith("input-")).map(name => JSON.parse(readFileSync(name, "utf8"))).find(input => input.cycleId === cycleId));
+    writeFileSync("outcome-" + input.input.ticket.id, "blocked");
+    await until(() => !commands().includes(command));
+  }
+  const queues = (await asked("status")).queues;
+  assert.equal(queues[0].state, "stopped");
+  assert.equal(queues[0].failedRunIds.length, 3);
+  assert.equal(queues[1].state, "running");
+  assert.equal(queues[1].busy, 1);
+  assert.deepEqual(queues[1].failedRunIds, []);
+} finally { await daemon.close(); }
+process.exit(0);
+`,
+      { WORKFLOW_LOCAL_QUEUE_CONCURRENCY: "4" },
+    );
+    assert.equal(result.status, 0, result.stderr);
   }));

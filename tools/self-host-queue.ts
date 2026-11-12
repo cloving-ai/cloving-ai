@@ -2,6 +2,7 @@ import {
   defaultRoom,
   isPressureLimit,
   type QueueLimits,
+  type QueueConfiguration,
 } from "../src/queue-room.ts";
 import {
   declaredQueueValues,
@@ -305,6 +306,70 @@ export function queuePlan(
     return { kind: "off", workflowId: declared.workflowId };
   if (!ticketCommands(environment, setting)) return noQueue;
   return configuredPlan(configuration);
+}
+
+export function queueConfigurations(
+  environment: Environment,
+  given: QueueConfigurationInput,
+): Readonly<Record<string, QueueConfiguration>> {
+  return Object.fromEntries(
+    given.declarations
+      .filter((row) => declaresQueue(row.queue))
+      .map((declaration) => {
+        const input = { ...given, declarations: [declaration] };
+        const plan = queuePlan(environment, input);
+        const limits = reloadedQueueLimits(environment, input);
+        const configuration: QueueConfiguration =
+          plan.kind === "on"
+            ? {
+                limits,
+                intervalMilliseconds: plan.values.everySeconds.value * 1000,
+                intervalSource: plan.values.everySeconds.source,
+              }
+            : {
+                limits,
+                ...(plan.kind === "off" ? { state: "off" as const } : {}),
+              };
+        return [declaration.workflowId, configuration];
+      }),
+  );
+}
+
+export function queueWorkflowLimits(
+  environment: Environment,
+  given: QueueConfigurationInput,
+): Readonly<Record<string, QueueLimits>> {
+  return Object.fromEntries(
+    given.declarations
+      .filter((row) => declaresQueue(row.queue))
+      .map((declaration) => [
+        declaration.workflowId,
+        reloadedQueueLimits(environment, {
+          ...given,
+          declarations: [declaration],
+        }),
+      ]),
+  );
+}
+
+export function queueStartup(
+  environment: Environment,
+  given: QueueConfigurationInput,
+) {
+  const plan = queuePlan(environment, given);
+  const limits = queueLimits(environment, plan);
+  return {
+    queueMilliseconds: queueMilliseconds(plan),
+    ...(plan.kind === "off" ? { queueState: "off" as const } : {}),
+    ...(plan.kind === "on"
+      ? { queueIntervalSource: plan.values.everySeconds.source }
+      : {}),
+    queueLimits: limits,
+    queueLanes: limits.lanes,
+    queueConfigurations: queueConfigurations(environment, given),
+    queueDailySpendLimitUsd: queueSpendLimit(environment, plan),
+    readyCommand: readyTicketCommand(environment, plan),
+  };
 }
 
 export function reloadedQueueLimits(

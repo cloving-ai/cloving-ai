@@ -90,7 +90,7 @@ await test("CLV-218 a declared queue preserves its failure streak until reset", 
   withConsumer(queueWorkflow, async (consumer) => {
     const first = await consumer.run(`${declared}
 writeFileSync("ready", "900");
-const failures = () => JSON.parse(readFileSync("queue-commands.json", "utf8")).failures;
+const failures = () => JSON.parse(readFileSync("queues/develop/queue-commands.json", "utf8")).failures;
 const daemon = await launched();
 try {
   for (const ticket of [900, 901, 902]) {

@@ -33,6 +33,24 @@ async function turnOpen(directory: string): Promise<boolean> {
   return false;
 }
 
+async function pendingSubmission(directory: string): Promise<boolean> {
+  if (await found(join(directory, "queue-submission"))) return true;
+  const queues = join(directory, "queues");
+  const entries = await readdir(queues, { withFileTypes: true }).catch(
+    (error: unknown) => {
+      if (missing(error)) return [];
+      throw error;
+    },
+  );
+  return (
+    await Promise.all(
+      entries
+        .filter((entry) => entry.isDirectory())
+        .map((entry) => found(join(queues, entry.name, "queue-submission"))),
+    )
+  ).includes(true);
+}
+
 export function daemonWorkReads(settings: {
   readonly directory: string;
   readonly runtimeDirectory: string;
@@ -47,7 +65,6 @@ export function daemonWorkReads(settings: {
       return reply.result;
     },
     openTurn: () => turnOpen(settings.directory),
-    pendingSubmission: () =>
-      found(join(settings.directory, "queue-submission")),
+    pendingSubmission: () => pendingSubmission(settings.directory),
   };
 }

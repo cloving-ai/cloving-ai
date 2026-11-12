@@ -5,16 +5,11 @@ export interface WorkflowDiscoveryIdentity {
   readonly functionNames: readonly string[];
 }
 
-export type WorkflowConflictCode =
-  "workflow-conflict" | "queue-workflow-conflict";
+export type WorkflowConflictCode = "workflow-conflict";
 
-function identityKeys(identity: {
-  readonly baseName?: string | undefined;
-  readonly workflowId?: string | undefined;
-  readonly functionNames: readonly string[];
-}): readonly string[] {
+function identityKeys(identity: WorkflowDiscoveryIdentity): readonly string[] {
   return [
-    ...(identity.baseName === undefined ? [] : [`base:${identity.baseName}`]),
+    `base:${identity.baseName}`,
     ...(identity.workflowId === undefined ? [] : [`id:${identity.workflowId}`]),
     ...identity.functionNames.map((name) => `function:${name}`),
   ];
@@ -29,11 +24,8 @@ export function workflowConflicts(
     for (const name of new Set(names))
       counts.set(name, (counts.get(name) ?? 0) + 1);
   }
-  const queued = candidates.filter((candidate) => candidate.queue === true);
-  return keys.map((names, index) => {
+  return keys.map((names) => {
     const codes: WorkflowConflictCode[] = [];
-    if (queued.length > 1 && candidates[index]?.queue === true)
-      codes.push("queue-workflow-conflict");
     if (names.some((name) => (counts.get(name) ?? 0) > 1))
       codes.push("workflow-conflict");
     return codes;

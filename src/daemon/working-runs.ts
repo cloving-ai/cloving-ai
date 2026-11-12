@@ -164,7 +164,10 @@ function nextPage(result: Fields, after: string): string | null {
   return next;
 }
 
-async function busyRuns(runtimeDirectory: string): Promise<Fields[]> {
+async function busyRuns(
+  runtimeDirectory: string,
+  workflowId?: string,
+): Promise<Fields[]> {
   const runs: Fields[] = [];
   let busy: ReadonlySet<string> | undefined;
   let after: string | null = "";
@@ -175,7 +178,14 @@ async function busyRuns(runtimeDirectory: string): Promise<Fields[]> {
     });
     if (reply.kind === "error") throw new Error(reply.error.code);
     const page = pageRuns(reply.result);
-    busy ??= busyRunIdsOf(reply.result["queue"]);
+    const queues = reply.result["queues"];
+    const queue =
+      workflowId !== undefined && Array.isArray(queues)
+        ? queues
+            .map(record)
+            .find((entry) => entry?.["workflowId"] === workflowId)
+        : reply.result["queue"];
+    busy ??= busyRunIdsOf(queue);
     runs.push(...page.filter((run) => busy?.has(String(run["runId"]))));
     after = nextPage(reply.result, after);
   } while (after !== null);
@@ -193,9 +203,10 @@ function waitsForPerson(run: Fields): boolean {
 export async function waitingRuns(settings: {
   readonly directory: string;
   readonly runtimeDirectory: string;
+  readonly workflowId?: string;
 }): Promise<number> {
   const work = await openWork(settings.directory);
-  const runs = await busyRuns(settings.runtimeDirectory);
+  const runs = await busyRuns(settings.runtimeDirectory, settings.workflowId);
   return runs.filter((run) => {
     const runId = String(run["runId"]);
     if (work.working.has(runId)) return false;

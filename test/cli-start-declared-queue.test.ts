@@ -113,20 +113,20 @@ await test("CLV-218 start prints the specific queue input refusal codes", async 
   assert.match(output, /incomplete.ts: queue-input-incomplete/);
 });
 
-await test("CLV-218 start stops for conflicting project and user queue workflows", async () => {
+await test("CLV-360 start admits project and user queue workflows", async () => {
   const fixture = await scene();
   const fields: SubmissionContract["fields"] = { ticket: { type: "ticket" } };
   await workflowFile(join(fixture.repository, ".cloving/workflows"), {
-    name: "projectQueue",
+    name: "projectqueue",
     fields,
   });
   await workflowFile(join(fixture.root, "config/cloving/workflows"), {
-    name: "userQueue",
+    name: "userqueue",
     fields,
   });
   const output = await startOutput(fixture);
-  assert.match(output, /The daemon did not start: queue-workflow-conflict/);
-  assert.doesNotMatch(output, /Cloving runs/);
+  assert.match(output, /Cloving runs/);
+  assert.doesNotMatch(output, /The daemon did not start/);
 });
 
 await test("CLV-359 start starts a declared queue with no interval setting and admits the first ticket after the declared interval", async () => {
@@ -236,26 +236,6 @@ await test("CLV-359 a declared queue without ticket commands or an interval sett
     },
   });
   assert.match(output, /Cloving runs/);
-});
-
-await test("CLV-359 start stops for conflicting project and user queue workflows with object queues", async () => {
-  const fixture = await scene();
-  const fields: SubmissionContract["fields"] = { ticket: { type: "ticket" } };
-  await workflowFile(join(fixture.repository, ".cloving/workflows"), {
-    name: "projectQueue",
-    fields,
-    queue: { lanes: 2 },
-  });
-  await workflowFile(join(fixture.root, "config/cloving/workflows"), {
-    name: "userQueue",
-    fields,
-    queue: {},
-  });
-  const output = await startOutput(fixture);
-  assert.match(
-    output,
-    /The daemon did not start: queue-workflow-conflict: queue-workflow-conflict: project projectQueue\.ts/,
-  );
 });
 
 await test("CLV-359 a reload applies the queues lanes with no restart and names a state change as a restart field", async () => {

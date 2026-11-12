@@ -97,3 +97,31 @@ process.exit(0);
 `);
     assert.equal(result.status, 0, result.stderr);
   }));
+
+await test("CLV-360 the only queue takes the legacy journal and holds and keeps its drain", () =>
+  withConsumer(queueWorkflow, async (consumer) => {
+    const result = await consumer.run(`${queuePrelude}
+const startedAt = Date.now() - 1000;
+writeFileSync("queue-commands.json", JSON.stringify({ commands: [], failures: [], drain: { startedAt, drainedAt: null }, controls: [{ command: "drain", commandId: "legacy-drain" }] }));
+const holds = { periods: [{ reason: "load", startedAt: startedAt - 1000, endedAt: startedAt }], open: null, cutAt: startedAt - 1000 };
+writeFileSync("queue-holds.json", JSON.stringify(holds));
+writeFileSync("ready", "CLV-900");
+const daemon = await launched();
+try {
+  await until(async () => (await asked("status")).queue?.state === "drained");
+  const status = await asked("status");
+  assert.equal(status.queue.drain.startedAt, startedAt);
+  assert.deepEqual(status.queues, [status.queue]);
+  assert.deepEqual(await runs(), []);
+  assert.equal(existsSync("queue-commands.json"), false);
+  assert.equal(existsSync("queue-holds.json"), false);
+  const journal = JSON.parse(readFileSync("queues/develop/queue-commands.json", "utf8"));
+  assert.equal(journal.drain.startedAt, startedAt);
+  assert.deepEqual(journal.controls, [{ command: "drain", commandId: "legacy-drain" }]);
+  assert.deepEqual(status.queue.holds, holds.periods);
+  assert.deepEqual(JSON.parse(readFileSync("queues/develop/queue-holds.json", "utf8")).periods, holds.periods);
+} finally { await daemon.close(); }
+process.exit(0);
+`);
+    assert.equal(result.status, 0, result.stderr);
+  }));
