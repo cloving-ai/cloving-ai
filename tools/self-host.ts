@@ -19,6 +19,7 @@ import { turnVariablesSetting } from "../src/turn-environment.ts";
 import {
   listedSetting,
   queueInterval,
+  queueCommands,
   queueLimits,
   queueSpendLimit,
   spendScope,
@@ -174,13 +175,7 @@ async function launchers(
   commands: Commands,
   workflows: RegisteredWorkflows,
 ): Promise<void> {
-  const queueEnabled =
-    commands.queueMilliseconds !== undefined &&
-    workflows.declarations.some((declaration) => declaration.queue === true);
-  if (queueEnabled && !commands.nextCommand?.length)
-    throw new Error("The daemon did not start: queue-needs-next-command");
-  if (queueEnabled && !commands.ticketCommand?.length)
-    throw new Error("The daemon did not start: queue-needs-ticket-command");
+  queueCommands({ ...commands, declarations: workflows.declarations });
   const settings = {
     ...commands,
     directory,

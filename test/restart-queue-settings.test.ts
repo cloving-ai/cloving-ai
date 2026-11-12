@@ -79,6 +79,76 @@ const incompatible = [
   },
 ] as const;
 
+const startupRefusals = [
+  {
+    set: { "harness.name": "my-tool" },
+    key: "harness.name",
+    detail: /harness-no-worker: my-tool/,
+    nextCommand: undefined,
+  },
+  {
+    set: { "queue.everySeconds": "60" },
+    key: "queue.everySeconds",
+    detail: /queue-needs-next-command/,
+    nextCommand: undefined,
+  },
+  {
+    set: { "queue.everySeconds": "60" },
+    key: "queue.everySeconds",
+    detail: /queue-needs-ticket-command/,
+    nextCommand: '["false"]',
+  },
+  {
+    set: { "queue.everySeconds": "60", "tickets.nextCommand": "[]" },
+    key: "tickets.nextCommand",
+    detail: /queue-needs-next-command/,
+    nextCommand: '["false"]',
+  },
+  {
+    set: { "queue.everySeconds": "60", "tickets.command": "[]" },
+    key: "tickets.command",
+    detail: /queue-needs-ticket-command/,
+    nextCommand: '["false"]',
+  },
+  {
+    set: { "selfUpdate.everySeconds": "60" },
+    key: "selfUpdate.everySeconds",
+    detail: /self-update-needs-own-repository/,
+    nextCommand: undefined,
+  },
+] as const;
+
+for (const options of startupRefusals)
+  await test(`CLV-352 ${options.detail.source} refuses a restart and preserves the running service`, () =>
+    withoutChildren(async () => {
+      const fixture = await scene(
+        'throw new Error("unexpected-worker");',
+        join(candidatePackageRoot, "dist/src/cli.js"),
+      );
+      await writeQueueWorkflow(join(fixture.repository, ".cloving/workflows"));
+      await fixture.start({
+        CLOVING_QUEUE_SECONDS: undefined,
+        CLOVING_NEXT_COMMAND: options.nextCommand,
+        CLOVING_TICKET_COMMAND: undefined,
+        CLOVING_SELF_UPDATE_SECONDS: undefined,
+      });
+      const before = await status(fixture);
+      const reply = await call(fixture, {
+        operation: "restart",
+        parameters: { at: "gap", commandId: "invalid-start", set: options.set },
+      });
+      assert.equal(
+        reply["code"],
+        "invalid-restart-setting",
+        JSON.stringify(reply),
+      );
+      assert.equal(reply["key"], options.key);
+      assert.match(String(reply["detail"]), options.detail);
+      const after = await status(fixture);
+      assert.equal(after["serviceStartedAt"], before["serviceStartedAt"]);
+      assert.equal(after["restart"], null);
+    }));
+
 for (const options of incompatible)
   await test(`CLV-352 incompatible restart queue settings refuse before recording or stopping with ${"settings" in options ? "files" : "environment"} precedence`, () =>
     withoutChildren(async () => {
