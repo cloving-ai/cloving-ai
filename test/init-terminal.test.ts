@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { test } from "node:test";
+import { privateSettingsPath } from "../src/cli/project-settings.ts";
+import { record } from "../src/protocol.ts";
 import { withDoctor } from "./doctor-fixture.ts";
 import { initCli } from "./init-fixture.ts";
 import { terminalInit } from "./init-terminal-fixture.ts";
@@ -26,6 +28,7 @@ else if (process.stdin.isTTY) {
     const result = await terminalInit(scene);
     assert.deepEqual(result.ended, [7, null], result.stdout + result.stderr);
     assert.equal(result.stderr, "");
+    assert.equal(result.factory, true);
     assert.equal(result.selected, true);
     assert.equal(result.answered, true);
     assert.match(result.stdout, /1\. agent-my-agent-sh/);
@@ -38,5 +41,45 @@ else if (process.stdin.isTTY) {
         reply: "hello harness",
         tty: [true, true, true],
       },
+    );
+  }));
+
+await test("terminal init stores a one-shot command for a local custom agent", () =>
+  withDoctor(async (scene) => {
+    const file = await scene.program(
+      "My Agent.sh",
+      `if (process.argv[2] === "--version") console.log("1.0.0");
+else if (process.stdin.isTTY) {
+  const { writeFileSync } = require("node:fs");
+  writeFileSync("started.json", "started");
+  process.exit(7);
+}`,
+    );
+    assert.equal(initCli(scene, { arguments: ["--harness", file] }).status, 0);
+    const result = await terminalInit(scene, { path: "local" });
+    assert.deepEqual(result.ended, [0, null], result.stdout + result.stderr);
+    assert.equal(result.stderr, "");
+    assert.equal(result.factory, false);
+    assert.equal(result.selected, true);
+    assert.equal(result.turn, true);
+    await assert.rejects(readFile(join(scene.repository, "started.json")));
+    const settings = record(
+      JSON.parse(
+        await readFile(
+          privateSettingsPath(scene.environment, scene.repository),
+          "utf8",
+        ),
+      ),
+    );
+    const saved = record(settings?.["harness"]);
+    assert.ok(saved);
+    assert.deepEqual(saved["turn"], ["amp", "{prompt}"]);
+    const workflow = await readFile(
+      join(scene.repository, ".cloving/workflows/develop.ts"),
+      "utf8",
+    );
+    assert.match(workflow, /localRound as developRound/);
+    assert.ok(
+      result.stdout.includes(`cloving start --repository ${scene.repository}`),
     );
   }));

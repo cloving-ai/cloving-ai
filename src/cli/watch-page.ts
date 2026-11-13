@@ -130,6 +130,7 @@ import {
 import {
   clockTime,
   completedDetail,
+  localOfferSuffix,
   counted,
   elapsed,
   pageTitle,
@@ -275,6 +276,7 @@ const functions = [
   runTone,
   runName,
   waitingDetail,
+  localOfferSuffix,
   completedDetail,
   phaseTime,
   selectedRun,
