@@ -274,11 +274,20 @@ function nativeCommands(): Readonly<
     ),
   ]);
   return Object.fromEntries(
-    [...names].filter(nativeHarness).flatMap((name) => {
-      const variable = harnessDefaults(name).variable;
-      const command = variable === undefined ? undefined : listed(variable);
-      return command === undefined ? [] : [[name, command]];
-    }),
+    [...names]
+      .filter((name) =>
+        nativeHarness(
+          name,
+          configuration.harness?.name === name
+            ? configuration.harness.turn
+            : undefined,
+        ),
+      )
+      .flatMap((name) => {
+        const variable = harnessDefaults(name).variable;
+        const command = variable === undefined ? undefined : listed(variable);
+        return command === undefined ? [] : [[name, command]];
+      }),
   );
 }
 const workerCommands = nativeCommands();

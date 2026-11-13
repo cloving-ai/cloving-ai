@@ -40,6 +40,34 @@ await test("CLV-373 legacy pi settings do not inherit native commands or hide th
   }
 });
 
+await test("CLV-373 native Pi command display ignores an unrelated saved text turn", () => {
+  const command = ["native-pi", "--mode", "json"];
+  for (const saved of [undefined, ["custom", "{prompt}"]]) {
+    const [entry] = configurationEntries({
+      project: undefined,
+      private: JSON.stringify({
+        version: 1,
+        harness: {
+          name: "mytool",
+          turn: ["custom"],
+          ...(saved === undefined ? {} : { command: saved }),
+        },
+      }),
+      environment: {
+        CLOVING_WORKER: "pi",
+        CLOVING_PI_COMMAND: JSON.stringify(command),
+      },
+      field: "harness.command",
+    });
+    assert.deepEqual(entry, {
+      field: "harness.command",
+      value: command,
+      source: "environment",
+      hidden: saved === undefined ? [] : [{ source: "private", value: saved }],
+    });
+  }
+});
+
 for (const kind of ["file", "shell"] as const) {
   await test(`CLV-373 doctor probes custom pi ${kind} as a generic text harness`, () =>
     withDoctor(async (scene) => {

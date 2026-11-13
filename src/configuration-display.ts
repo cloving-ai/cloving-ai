@@ -68,9 +68,12 @@ export function configurationEntries(input: {
   const { project, privateFile } = fileLayers(input);
   const name =
     input.environment["CLOVING_WORKER"] ?? privateFile["harness.name"];
+  const turn =
+    name === privateFile["harness.name"]
+      ? privateFile["harness.turn"]
+      : undefined;
   const harness =
-    typeof name === "string" &&
-    !nativeHarness(name, privateFile["harness.turn"])
+    typeof name === "string" && !nativeHarness(name, turn)
       ? undefined
       : harnessDefaults(name);
   const environment: Record<string, DisplayValue> = Object.fromEntries(
