@@ -3,6 +3,7 @@ import { constants } from "node:fs";
 import { mkdir, open, realpath, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { record } from "../protocol.ts";
+import { attemptNumber, recordedLaunch } from "../turn-launch.ts";
 import { readRecord } from "./operation-journal.ts";
 
 export interface PiSession {
@@ -182,6 +183,49 @@ export async function piOperationRecord(
   return active === undefined
     ? readRecord(folder, "started.json")
     : { harness: active.worker, ...active.intent };
+}
+
+export async function piAttemptRefusal(
+  folder: string,
+  started: unknown,
+): Promise<string | undefined> {
+  const fields = record(started);
+  if (fields?.["harness"] !== "pi" || fields["phase"] !== "running")
+    return undefined;
+  const attempt = attemptNumber(started);
+  if (attempt === undefined) return "pi-attempt-ownership-conflict";
+  const value = await readRecord(
+    folder,
+    `attempt-${String(attempt)}.json`,
+  ).catch(() => null);
+  if (value === undefined) return "pi-attempt-state-missing";
+  const entry = record(value);
+  if (entry === undefined) return "pi-attempt-state-invalid";
+  return piAttemptEvidenceFailure(fields, entry);
+}
+
+function piAttemptEvidenceFailure(
+  started: Readonly<Record<string, unknown>>,
+  entry: Readonly<Record<string, unknown>>,
+): string | undefined {
+  const keys = [
+    "attempt",
+    "harness",
+    "operationId",
+    "target",
+    "worktree",
+    "processId",
+    "startCommit",
+    "turnStartCommit",
+  ];
+  if (keys.some((name) => started[name] !== entry[name]))
+    return "pi-attempt-ownership-conflict";
+  const launch = recordedLaunch(started["launch"]);
+  if (launch === undefined) return "pi-prior-result-uncertain";
+  return JSON.stringify(launch) ===
+    JSON.stringify(recordedLaunch(entry["launch"]))
+    ? undefined
+    : "pi-attempt-ownership-conflict";
 }
 
 export async function ownedPiSession(

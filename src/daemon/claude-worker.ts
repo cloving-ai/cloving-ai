@@ -1,5 +1,9 @@
 import { turnHarness } from "../harness-defaults.ts";
-import { piOperationRecord, piOperationRefusal } from "./pi-session.ts";
+import {
+  piAttemptRefusal,
+  piOperationRecord,
+  piOperationRefusal,
+} from "./pi-session.ts";
 import type {
   AdapterOutcome,
   Delivery,
@@ -7,10 +11,9 @@ import type {
 } from "../broker/actor/delivery-intents.ts";
 import { begun } from "./claude-begin.ts";
 import {
-  attachableLaunch,
   attachPlan,
   holdKeptTurn,
-  markedTurn,
+  recordedTurnLaunch,
   recoverableTurn,
   rejectedAttach,
 } from "./claude-attach.ts";
@@ -105,7 +108,14 @@ async function reconcileOperation(
   if (parts.active.has(key)) return { kind: "accepted", receipt: key, worker };
   const started = await read(folder, "started.json");
   if (started === undefined) return { kind: "absent" };
-  const launch = await recordedLaunchOf(parts, { folder, started, result });
+  const conflict = await piAttemptRefusal(folder, started);
+  if (conflict !== undefined)
+    return { kind: "unknown", evidence: `${conflict}:${key}` };
+  const launch = await recordedTurnLaunch(parts.settings, {
+    folder,
+    started,
+    result,
+  });
   return launchedOrResumed(parts, {
     intent,
     key,
@@ -129,6 +139,14 @@ async function launchedOrResumed(
   if (launch === "stopped")
     return interruptedReply(rest, "claude-turn-interrupted");
   if (
+    (launch === "gone" || launch === undefined) &&
+    recordedField(rest.started, "harness") === "pi"
+  )
+    return {
+      kind: "unknown",
+      evidence: `pi-prior-result-uncertain:${rest.key}`,
+    };
+  if (
     launch === "unknown" ||
     (launch === undefined && (await uncertainProcess(rest.started)))
   )
@@ -137,25 +155,6 @@ async function launchedOrResumed(
     ...rest,
     ...(launch === undefined || launch === "gone" ? {} : { launch }),
   });
-}
-
-async function recordedLaunchOf(
-  parts: Parts,
-  journal: {
-    readonly folder: string;
-    readonly started: unknown;
-    readonly result: unknown;
-  },
-): Promise<TurnLaunch | "gone" | "stopped" | "unknown" | undefined> {
-  if (journal.result !== undefined) return undefined;
-  return (
-    (await attachableLaunch(journal.folder, journal.started)) ??
-    markedTurn(journal.folder, {
-      started: journal.started,
-      stopMilliseconds:
-        parts.settings.stopMilliseconds ?? claudeLimits.stopMilliseconds,
-    })
-  );
 }
 
 async function resumed(
