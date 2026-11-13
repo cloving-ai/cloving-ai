@@ -331,6 +331,7 @@
     "src/cli/turn-waits.ts": "cli",
     "src/cli/usage-harnesses.ts": "pure",
     "src/cli/usage-render.ts": "cli",
+    "src/cli/usage-start.ts": "pure",
     "src/cli/usage.ts": "cli",
     "src/cli/validate.ts": "cli",
     "src/cli/watch-actions.ts": "cli",
