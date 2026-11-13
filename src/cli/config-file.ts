@@ -12,6 +12,8 @@ import { dirname } from "node:path";
 import { acquireSettingsLock, releaseSettingsLock } from "./config-lock.ts";
 import {
   changedConfiguration,
+  changedQueueLanesConfiguration,
+  type QueueLanesSettingChange,
   selectedHarnessConfiguration,
   type SettingChange,
   type HarnessChange,
@@ -46,7 +48,7 @@ async function atomicWrite(
 
 export async function changeConfigFile(
   path: string,
-  change: SettingChange | HarnessChange,
+  change: SettingChange | HarnessChange | QueueLanesSettingChange,
 ): Promise<void> {
   await mkdir(dirname(path), { recursive: true, mode: 0o700 });
   const lock = await acquireSettingsLock(`${path}.lock`);
@@ -59,13 +61,10 @@ export async function changeConfigFile(
 
 async function writeChange(
   path: string,
-  change: SettingChange | HarnessChange,
+  change: SettingChange | HarnessChange | QueueLanesSettingChange,
 ): Promise<void> {
   const previous = await readConfigFile(path);
-  const next =
-    "harness" in change
-      ? selectedHarnessConfiguration(previous, change.harness)
-      : changedConfiguration(previous, change);
+  const next = changedText(previous, change);
   const mode =
     previous !== undefined && change.scope === "project"
       ? (await stat(path)).mode & 0o777
@@ -75,4 +74,15 @@ async function writeChange(
   if (previous !== undefined)
     await atomicWrite(`${path}.bak`, { text: previous });
   await atomicWrite(path, { text: next, mode });
+}
+
+function changedText(
+  previous: string | undefined,
+  change: SettingChange | HarnessChange | QueueLanesSettingChange,
+): string {
+  if ("harness" in change)
+    return selectedHarnessConfiguration(previous, change.harness);
+  if ("queueLanes" in change)
+    return changedQueueLanesConfiguration(previous, change);
+  return changedConfiguration(previous, change);
 }

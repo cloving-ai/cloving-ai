@@ -60,6 +60,7 @@ export async function main(
     readonly startHarness?: (
       request: HarnessStartRequest,
     ) => Promise<number | null>;
+    readonly applyLocal?: (repository: string) => Promise<number>;
     readonly environment?: Readonly<NodeJS.ProcessEnv>;
     readonly repository: string | undefined;
     readonly workspace?: WorkspaceRecord | undefined;
@@ -175,6 +176,7 @@ async function inspectionCommand(
     readonly startHarness?: (
       request: HarnessStartRequest,
     ) => Promise<number | null>;
+    readonly applyLocal?: (repository: string) => Promise<number>;
     readonly repository: string | undefined;
     readonly environment: Readonly<NodeJS.ProcessEnv>;
   },
@@ -193,6 +195,12 @@ async function inspectionCommand(
     return await initCommand({
       ...options,
       harness: invocation.harness,
+      path: invocation.path,
+      applyLocal:
+        context.applyLocal ??
+        (() => {
+          throw new Error("local-preset-unavailable");
+        }),
       start:
         context.startHarness ??
         (() => {

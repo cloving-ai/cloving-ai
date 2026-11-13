@@ -102,7 +102,7 @@ await test("CLV-306 a service folder with no turn journal has no run that cannot
   }
 });
 
-await test("CLV-337 a Claude turn that keeps running through the restart is not in the list, also before it records a session", async () => {
+await test("CLV-337 CLV-349 a turn of any harness that keeps running through the restart is not in the list, also before it records a session", async () => {
   const directory = await mkdtemp(join(tmpdir(), "cloving-unresumable-"));
   const live = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], {
     stdio: "ignore",
@@ -128,6 +128,13 @@ await test("CLV-337 a Claude turn that keeps running through the restart is not 
       key: "claude-kept",
       files: {
         "started.json": { ...started("run-kept", "claude"), ...running },
+        "attempt-1.json": { attempt: 1, startedAt: "2026-11-05T10:00:00Z" },
+      },
+    });
+    await turn(directory, {
+      key: "gemini-kept",
+      files: {
+        "started.json": { ...started("run-gemini", "gemini"), ...running },
         "attempt-1.json": { attempt: 1, startedAt: "2026-11-05T10:00:00Z" },
       },
     });

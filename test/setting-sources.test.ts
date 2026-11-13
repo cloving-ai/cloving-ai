@@ -180,7 +180,7 @@ await test("CLV-359 the project and the private file set queues, the private fil
   assert.equal(
     resolved.environment["CLOVING_QUEUES"],
     JSON.stringify({
-      develop: { lanes: 3, workingLanes: 2, everySeconds: 60 },
+      develop: { state: "off", lanes: 3, workingLanes: 2, everySeconds: 60 },
     }),
   );
   assert.equal(resolved.sources["queues"], "private");

@@ -291,3 +291,73 @@ await test("CLV-360 simultaneous scheduled queue runs share repository lanes", (
       16,
     );
   }));
+
+await test("CLV-361 cloving queue lanes sends the same optimistic lane operation for its workflow", () =>
+  withHarness(async (harness) => {
+    let lanes = 2;
+    const requests: unknown[] = [];
+    await harness.start({
+      workflows: [{ ...harness.registration, queue: true, admission: 2 }],
+      queue: {
+        ...memoryPort(),
+        control: () => ({
+          failedRunIds: [],
+          drain: undefined,
+          error: undefined,
+          lanes,
+        }),
+        changeLanes: (request) => {
+          requests.push(request);
+          lanes = request.lanes;
+          return Promise.resolve({ kind: "changed" });
+        },
+      },
+    });
+    const reply = await harness.cli([
+      "queue",
+      "lanes",
+      "3",
+      "--workflow",
+      "develop",
+      "--command-id",
+      "cli-lanes",
+      "--json",
+    ]);
+    assert.equal(reply.status, 0, reply.stdout + reply.stderr);
+    assert.equal(parsed(reply)["kind"], "queue-lanes");
+    assert.deepEqual(requests, [
+      { lanes: 3, expectedLanes: 2, commandId: "cli-lanes" },
+    ]);
+    assert.equal(lanes, 3);
+  }));
+
+await test("CLV-361 queue lanes accepts only a whole count from 1 to 16 and a workflow", () => {
+  for (const args of [
+    ["lanes"],
+    ["lanes", "0", "--workflow", "develop"],
+    ["lanes", "17", "--workflow", "develop"],
+    ["lanes", "2.5", "--workflow", "develop"],
+    ["lanes", "3"],
+    ["lanes", "3", "extra", "--workflow", "develop"],
+  ])
+    assert.equal(
+      parseInvocation(["queue", ...args]).kind,
+      "usage-error",
+      JSON.stringify(args),
+    );
+  assert.deepEqual(
+    parseInvocation(["queue", "lanes", "3", "--workflow", "develop"]),
+    {
+      kind: "queue",
+      action: "lanes",
+      lanes: 3,
+      workflowId: "develop",
+      commandId: null,
+      json: false,
+    },
+  );
+  assert.match(
+    String(commandUsage["queue"]),
+    /cloving queue lanes <n> --workflow <id>/,
+  );
+});

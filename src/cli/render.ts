@@ -17,6 +17,7 @@ import {
 } from "./schedule-render.ts";
 import { show, oneLine, visible } from "./terminal-text.ts";
 import { clientProgram } from "./runtime-directory.ts";
+import { localOfferSuffix } from "./watch-render.ts";
 import { decisionCommand, isDecisionCommand } from "./decision-command.ts";
 import {
   effectLeaseText,
@@ -167,11 +168,13 @@ function outcomeLines(value: unknown): readonly string[] {
   if (record(value) === undefined) return ["Outcome: none"];
   const reason = part(value, "reason");
   const kind = visible(part(value, "kind"));
+  const offer = localOfferSuffix(part(value, "promotionId")).trim();
   return [
     `Outcome: ${typeof reason === "string" ? `${kind}: ${visible(reason)}` : kind}`,
     ...(typeof part(value, "promotionId") === "string"
       ? [`Promotion: ${visible(part(value, "promotionId"))}`]
       : []),
+    ...(offer === "" ? [] : [offer]),
     ...(typeof part(value, "ticketStatus") === "string"
       ? [`Ticket status: ${visible(part(value, "ticketStatus"))}`]
       : []),
@@ -355,6 +358,7 @@ const renderers = new Map<string, (result: Fields) => readonly string[]>([
   ["run-renamed", runRenamedLines],
   ["queue", (result) => queueLines(result["queue"])],
   ["queue-command", (result) => queueLines(result["queue"])],
+  ["queue-lanes", (result) => queueLines(result["queue"])],
   ["event-page", eventPage],
   ["reload", reloadLines],
   ["restart", restartLines],

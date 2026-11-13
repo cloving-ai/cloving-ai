@@ -39,7 +39,7 @@ function recovery() {
     pausedFrom: null,
     gates: [],
   };
-  const current = { run, operation, harness: "claude" };
+  const current = { run, operation, harness: "claude", kept: false };
   const calls: DeliveryIntent[] = [];
   const events: string[] = [];
   return {
@@ -50,7 +50,7 @@ function recovery() {
       harness: () => Promise.resolve(current.harness),
       hold: (intent: DeliveryIntent) => {
         events.push(`hold ${intent.operationId}`);
-        return Promise.resolve();
+        return Promise.resolve(current.kept);
       },
       recover: (intent: DeliveryIntent) => {
         calls.push(intent);
@@ -124,6 +124,15 @@ for (const harness of ["gemini", "opencode", "grok", "cursor", "shell"])
     scene.current.harness = harness;
     await recoverClaude(scene.worker, scene.ports);
     assert.deepEqual(scene.calls, []);
+  });
+
+for (const harness of ["gemini", "opencode", "grok", "cursor-agent"])
+  await test(`CLV-349 startup recovers a kept turn of the ${harness} harness through the worker`, async () => {
+    const scene = recovery();
+    scene.current.harness = harness;
+    scene.current.kept = true;
+    await recoverClaude(scene.worker, scene.ports);
+    assert.equal(scene.calls.length, 1);
   });
 
 await test("CLV-239 startup revalidates cancellation after reading the harness", async () => {

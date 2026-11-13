@@ -8,6 +8,7 @@
   "test/watch-card-browser.test.ts",
   "test/watch-floor-browser.test.ts",
   "test/watch-phone-browser.test.ts",
+  "test/watch-queue-card-browser.test.ts",
   "test/watch-run-back-browser.test.ts",
   "test/watch-run-command-browser.test.ts",
   "test/watch-run-menu-browser.test.ts",

@@ -99,9 +99,11 @@ Run the command in a git repository. You need these items:
 
 The command does these steps:
 
-1. It asks which coding agent to use for setup.
-2. It saves that agent in your private settings for this repository, outside the repository.
-3. It starts the agent in your terminal with the first message ``run `cloving init-prompt` ``. The agent can use the `cloving` command in that session.
+1. On a terminal, it asks you to try one task locally or to build your factory. `--local` and `--factory` select the path and skip that question. With no terminal, the command builds the factory.
+2. It asks which coding agent to use for setup. `--harness <name or path>` skips that question.
+3. It saves that agent in your private settings for this repository, outside the repository.
+4. For one local task, it copies `develop` with the choices in [A first useful run](#a-first-useful-run). It prints the next commands. It does not start the agent.
+5. For a factory, it starts the agent in your terminal with the first message ``run `cloving init-prompt` ``. The agent can use the `cloving` command in that session.
 
 `cloving init-prompt` gives the agent the facts of the repository and the setup steps. The agent then works with you, one question at a time:
 
@@ -118,12 +120,15 @@ The command does these steps:
 
 For a first run, select these options of `develop`:
 
-- input: **A task text**
-- select: **A person**
-- verify: **No additional verification**
-- accept: **A person**
-- merge: **A person merges the local branch**
-- partial: **A person decides**
+- input: **A task text** (`task-text`)
+- select: **A person** (`person`)
+- verify: **No additional verification** (`none`)
+- accept: **A person** (`person`)
+- merge: **A person merges the local branch** (`local`)
+- partial: **A person decides** (`person`)
+- recovery: **Stop as today** (`stop`)
+- lessons: **No lessons** (`none`)
+- demo: **No demo** (`none`)
 
 With these options, Cloving does not push, open a pull request or merge. You see the work of the agent before it goes to GitHub. The agent still sends your code to the provider of its model, as it does without Cloving.
 
@@ -140,12 +145,14 @@ cloving run develop --prompt "Add a test for the date parser"
 cloving questions
 ```
 
+The init command prints the next commands for this program and this repository.
+
 Open `http://127.0.0.1:3663/` to watch the run. The run stops at your review of the commit of the agent. Read the diff of that commit. Then copy one of the commands that `cloving questions` prints:
 
 - `cloving approve ...` completes the run. Merge the branch yourself.
 - `cloving deny ... --text "FEEDBACK"` sends your feedback to the agent for another round.
 
-When you trust a step, change it to a hands-off option. Ask the setup agent again with `cloving init`, or edit the copy yourself. Then run `cloving workflows test develop` and `cloving reload`.
+When you trust a step, change it to a hands-off option. Ask the setup agent again with `cloving init --factory`, or edit the copy yourself. Then run `cloving workflows test develop` and `cloving reload`. After the first local run completes, the same command adds review, a plan, and regular maintenance.
 
 ### Keep the `cloving` command
 
@@ -414,13 +421,13 @@ A permit counts as one active run until the daemon has its run. The hold shows i
 
 The page opens on the **Floor**. Each workflow is one line with its name, its count of active runs, its stations and the line end. The stations are the declared stages of the workflow in order. Each active run is a token under the station of its current step. A token shows the worker initial (`Y` when the run needs you), the ticket number (`Draft` for a run with no ticket) and the time at that step. Select a token to open the run.
 
-The diamond lamp of a station shows the most urgent state of its runs: stopped (red), needs you (blue), waiting (yellow), then running (green). A station with no run has an empty lamp. The line end of a scheduled workflow shows its next run time. When the service has a ready-ticket command, the line end of the queue workflow shows the count of ready tickets and the oldest wait. The count does not include a ticket that is in work or that waits for a dependency. Select a workflow name to open its board with its columns and cards. The header shows the count of active runs and the count of items in the **Needs you** panel. This count includes the decisions and the stopped runs. When the service has a queue, **Drain queue** and **Resume queue** send the same commands as `cloving queue drain` and `cloving queue resume`.
+The diamond lamp of a station shows the most urgent state of its runs: stopped (red), needs you (blue), waiting (yellow), then running (green). A station with no run has an empty lamp. The line end of a scheduled workflow shows its next run time. When the service has a ready-ticket command, the line end of the queue workflow shows the count of ready tickets and the oldest wait. The count does not include a ticket that is in work or that waits for a dependency. Select a workflow name to open its board with its columns and cards. The header shows the count of active runs and the count of items in the **Needs you** panel. This count includes the decisions and the stopped runs. Each declared queue has a card at the end of its workflow row, with the same box as a loop card. The card shows its state and interval, busy lanes and lane dots, the next check time, and the source of the interval, lanes and working lanes. A held queue shows the present hold reason. Skipped tickets and their reasons stay in a folded list. A queue that does not run stays visible as **Queue off**, with its reason. With watch actions on, the switch sends Drain for Off and Resume for On. The **-** and **+** buttons change the private lane setting by one, from 1 to 16, and apply it at once.
 
 The **Needs you** panel under the floor lists each pending decision, each paused run, and each failed or blocked run with no continuation, with the count of items. A decision has a blue mark. A paused, failed or blocked run has a red mark. Each item shows the run title, one sentence that tells you what to do, the workflow and the wait time. A paused run also shows the reason of the pause, for example `Why it paused: operator-pause: The operator paused the run.`, and its run detail shows the same reason at the top. The item that waited longest is first. With watch actions on, an approval has **Approve** and **Deny** buttons. **Answer** opens the link `#run=<run-id>&decision=<decision-id>`. The page scrolls to the decision and puts the focus in its text field. **Open run** opens the run with its stop reason. With no item, the panel shows "Nothing needs you."
 
 The run detail has a banner with the state of the run. The banner stays at the top of the window when you scroll the run. The first item of the banner is a back link. From the floor, the link shows `← Floor` and opens the floor. When the theme gives a word for the floor title, the link shows that word. From a board, the link shows `← <workflowId>` and opens that board. In a workspace, the link keeps the repository of the board.
 
-The banner also shows the label and the title of the run, with a pencil that edits both in place: Enter saves and Escape cancels. Under them, one line shows the state, the current phase and its time, and the next line shows the activity of the turn in work or the reason of the state in plain words. For a turn in work, that line ends with the first line of the latest agent output as plain text, cut at the banner width. The full output shows when the pointer rests on it. One action bar holds **Steer**, **Pause** or **Resume**, and a `⋯` menu with **Rename** and **Drop**. The menu opens when the pointer rests on `⋯` or when `⋯` has the keyboard focus. The menu is the same popover as the token menu of the floor. A pick in it closes it at once. It also closes a moment after the pointer leaves, or with Escape. Under the banner, one line shows the pull request with its latest review score, the cost and the place of the run in its chain. A fact that is not known does not show. The run detail does not show the skipped tickets of the queue; the floor and the boards show them.
+The banner also shows the label and the title of the run, with a pencil that edits both in place: Enter saves and Escape cancels. Under them, one line shows the state, the current phase and its time, and the next line shows the activity of the turn in work or the reason of the state in plain words. For a turn in work, that line ends with the first line of the latest agent output as plain text, cut at the banner width. The full output shows when the pointer rests on it. One action bar holds **Steer**, **Pause** or **Resume**, and a `⋯` menu with **Rename** and **Drop**. The menu opens when the pointer rests on `⋯` or when `⋯` has the keyboard focus. The menu is the same popover as the token menu of the floor. A pick in it closes it at once. It also closes a moment after the pointer leaves, or with Escape. Under the banner, one line shows the pull request with its latest review score, the cost and the place of the run in its chain. A fact that is not known does not show. The run detail does not show the skipped tickets of the queue; the queue cards on the floor show them.
 
 The run detail shows a pending decision at the top, above the phases, under the heading `Your decision`. The heading names the kind of the decision and the wait time, for example `Your decision · approval · waiting 12m`. The full text of the request shows open, as text only, with the same masks as the rest of the page. With watch actions on, the decision has these controls:
 
@@ -454,7 +461,7 @@ The header count and the panel use only the runs of the floor. When a link opens
 
 The watch reads the state of an issue and of a pull request with the GitHub command of `CLOVING_GH_COMMAND` (default `gh`). It reads one item at a time. It reads an open issue again after one minute, and it does not read a closed issue again. Until the first read of an issue completes, the panel shows the run.
 
-The **Today** panel at the side of the floor shows the numbers of the day: the runs completed, the cost, the cost per completed run and the stopped runs. A stopped run is a run that ended as failed, cancelled or blocked. Under the completed runs and the cost, the panel shows the values of yesterday. A bar chart shows the completed runs of each of the last 7 days, today last. A table shows the completed runs and the cost of today for each workflow. The last line shows the queue state, with one mark for each lane, busy or free.
+The **Today** panel at the side of the floor shows the numbers of the day: the runs completed, the cost, the cost per completed run and the stopped runs. A stopped run is a run that ended as failed, cancelled or blocked. Under the completed runs and the cost, the panel shows the values of yesterday. A bar chart shows the completed runs of each of the last 7 days, today last. A table shows the completed runs and the cost of today for each workflow.
 
 The floor shows each loop in the right cell of the line of its workflow. A loop is a schedule of the service. The cell shows the state (`active`, `paused` or `stopped`) and the rule, for example `active · every 30 min` or `stopped · Mondays at 07:00 America/Los_Angeles`. An active loop shows its next run in the local time of the browser, for example `next run 04:57 PM` or `next run 06:05 AM tomorrow`. A paused or stopped loop has no next run. The cell also shows the last run of the loop as a link to its run detail, with a short end time and a mark, for example `last run 05:00 PM yesterday ✓` or `last run 05:00 PM · failed`. The link title gives the state, the outcome and the end time. The last run is the latest scheduled run or `manual from loop` run of the workflow. The cell shows the failures in a row only when the count is not 0. The cell refreshes on each poll of the page.
 
@@ -472,7 +479,7 @@ Below the floor, the **Completed today** shelf shows the count of runs that comp
 
 Each workflow board with supported inputs has **+ Add a card** at the bottom of its first column, including an empty board. The form uses the string and ticket fields of the workflow's registered declaration. Ticket fields are labeled **Ticket ID**; other fields use their declared names, and optional fields can be left out. Unsupported inputs have no control. Select **Add card** or press Enter in a field to send. **Cancel** and Esc close the form. The service reply shows the admitted run ID or a refusal code; admitted cards arrive through the existing live stream.
 
-The form sends the same run request as the CLI and retains its random command ID for retries, including a lost reply. Retry the same form to avoid duplicate runs. The write endpoint accepts at most 16 KiB of JSON, requires the page's random token, matching Origin and a loopback/localhost Host with the bound port, and allows no cross-origin preflight. The switches and the **Run now** buttons of the loops on the floor use the same write rules. The decision controls (endpoint `actions/decision`) use the same write rules too. `CLOVING_WATCH_ACTIONS=off` removes the form control, the queue control, the loop controls, the run controls and their endpoints; actions are enabled by default. It also removes the decision controls and the endpoint `actions/decision`. The loops stay on the floor. Decisions then use their displayed CLI commands with the copy buttons.
+The form sends the same run request as the CLI and retains its random command ID for retries, including a lost reply. Retry the same form to avoid duplicate runs. The write endpoint accepts at most 16 KiB of JSON, requires the page's random token, matching Origin and a loopback/localhost Host with the bound port, and allows no cross-origin preflight. The queue switches and lane buttons use endpoint `actions/queue` with the workflow ID and retain the command ID and request for a retry after a lost reply. Each queue status includes `nextCheckAt`. The switches and the **Run now** buttons of the loops on the floor use the same write rules. The decision controls (endpoint `actions/decision`) use the same write rules too. `CLOVING_WATCH_ACTIONS=off` removes the form control, the queue switches and lane buttons, the loop controls, the run controls and their endpoints; actions are enabled by default. It also removes the decision controls and the endpoint `actions/decision`. The loops stay on the floor. Decisions then use their displayed CLI commands with the copy buttons.
 
 `cloving start` reads its settings from the environment. `cloving start --help` gives the form and the default of each setting:
 
@@ -485,7 +492,7 @@ The form sends the same run request as the CLI and retains its random command ID
 - `CLOVING_PROFILES`: a JSON file of named turn profiles. The service reads it at the start and at each `cloving reload`.
 - `CLOVING_COMMANDS`: a JSON object mapping command names to argument arrays, such as `{"review-requests":["/opt/cloving/scan-reviews.mjs"]}`. Names contain 1–64 ASCII letters, digits or hyphens; the first argument must be an absolute executable path. Unset means no commands. Invalid values stop startup with `invalid-commands`. A command gets no GitHub login; use the methods of the `github` capability to read or change GitHub.
 - `CLOVING_COMMAND_SECONDS`: a whole number from 1 to 3600, default 60. Invalid values stop startup with `invalid-command-seconds`. A command exceeding the deadline fails with `command-timeout`.
-- `CLOVING_WATCH_ACTIONS`: `off` disables starting runs from the board, the queue control, the loop controls and the run controls; default `on`.
+- `CLOVING_WATCH_ACTIONS`: `off` disables starting runs from the board, the queue switches and lane buttons, the loop controls and the run controls; default `on`.
 - `CLOVING_WATCH_PORT`: the port of the watch page, or `off`.
 - `CLOVING_WATCH_REPOSITORY`: repository context for a separate watch process. `start` sets this from its service repository. The watch process uses its local origin and has no current-directory default.
 - `CLOVING_WORKSPACE_PERMITS`: the permit socket of the workspace supervisor. A workspace start sets it for each repository.
@@ -1494,6 +1501,7 @@ The operator selects a queue with `--workflow <id>`. With one queue, the option 
 
 - `cloving queue [--workflow <id>] [--json]` shows the state of the queue: `running`, `stopped`, `draining` or `drained`. It also shows the busy lanes, the failed runs in a row and, for a stopped queue, the reason. `cloving status` and the watch page show the same state.
 - `cloving queue resume [--workflow <id>] [--command-id <id>] [--json]` sets the failure count to 0 and ends a stop or a drain. The next queue check can start a ready ticket. No restart is necessary.
+- `cloving queue lanes <n> --workflow <id> [--command-id <id>] [--json]` sets `queues.<workflow>.lanes` in the private settings file and applies it with no restart. The count is a whole number from 1 to 16. The request uses the current lane count as `expectedLanes`; a stale count gets `queue-lanes-changed`. Private queue fields override the same project fields; other project queue fields and workflows stay in effect. The private queues field takes precedence over `CLOVING_QUEUE_LANES` after a restart. Fewer lanes stop new starts and keep the runs in work. As with reload, an explicit working-lane setting must fit within the lane count.
 - `cloving queue drain [--workflow <id>] [--command-id <id>] [--json]` makes the queue start no new run. The runs in work continue to their end. When all runs of that queue end, its journal records the drain time, the service log shows `Queue drained` one time, and the state changes to `drained`. Until the queue records that time, the state stays `draining`.
 
 A drain applies only to the selected queue. Other queues can continue. A repository restart still requires a gap across all workflows. The drain stays in place after a restart. `cloving queue resume`, `cloving restart --resume-queue` or `cloving start --reset-queue` ends it. A drain does not stop manual runs. A manual run that starts after the drain time shows `draining` until the run ends.
@@ -1555,23 +1563,38 @@ cloving restart --at now
 - `cloving restart` restarts the service at once when each open turn and each open command effect can keep running through the restart. This is `--at keep`, the default. The restart waits while a turn or a command effect that cannot keep running, or a queue submission, is open. Other runs do not hold the restart, for example a run that waits for a decision, a sleep or a check. The self-update uses the same rule.
 - `cloving restart --update` waits in the same way, stops the service, updates the product checkout and starts the service on the new commit. Each turn that keeps running goes on with the workflow bundle that its run pinned.
 - `cloving restart --at gap` waits for the next gap, as before. A gap has no run of any workflow that has not ended, no open turn and no pending queue submission. A queue drain waits only for the runs of its own queue.
-- `cloving restart --at now` stops the service at once. A Claude turn keeps running, and the new service connects to it again (see below). A Codex turn resumes its session after the start, as after Control-C. The reply lists the runs with a turn that cannot go on: a turn of another harness, a turn that waits for a retry, or a turn that does not keep running and has no recorded session. `--json` shows them in `restart.unresumableRuns`.
+- `cloving restart --at now` stops the service at once. Each turn that can keep running keeps running, and the new service connects to it again (see below). A Claude or Codex turn that does not keep running resumes its session after the start, as after Control-C. The reply lists the runs with a turn that cannot go on: a turn of a text harness, a turn that waits for a retry, or a turn that does not keep running and has no recorded session. `--json` shows them in `restart.unresumableRuns`.
 
-A Claude turn on the `host` runner keeps running through a restart. A small start program starts the turn in its own process group and session. The turn writes its output directly to `turn.jsonl` and its errors to `turn.stderr.log` in the journal folder, with no pipe to the service. When the turn ends, the start program writes the exit code and the end time to `turn.exit.json`. `started.json` records the process ID of the start program, the start time of the process and a turn marker. The restart and the self-update stop the service with the signal `SIGUSR2`, and the service then does not stop its Claude turns and their tool processes. A stop with Control-C or `SIGTERM` stops each turn, as before. After the start, the new service finds each Claude turn that has a start record and no result:
+These kinds of turns keep running through a restart:
+
+- A Claude turn.
+- A turn of the Codex, Gemini, Cursor, OpenCode, Grok and Pi harnesses.
+- A turn of a shell harness (`kind: "shell"`).
+- A turn of the `host`, `seatbelt` and `container` runners.
+
+A small start program starts the turn in its own process group and session. The turn writes its output to a file and its errors to `turn.stderr.log` in the journal folder, with no pipe to the service. When the turn ends, the start program writes the exit code and the end time to `turn.exit.json`. `started.json` records the process ID of the start program, the start time of the process and a turn marker. The restart and the self-update stop the service with the signal `SIGUSR2`, and the service then does not stop these turns and their tool processes. A stop with Control-C or `SIGTERM` stops each turn, as before.
+
+- A Claude or Grok turn writes its output directly to `turn.jsonl`.
+- A Codex, Gemini, Cursor, OpenCode or Pi turn writes its output to `turn.harness.jsonl`. The service reads this file, translates each line to the transcript format, and writes the lines to `turn.jsonl`. At the end, it reads `turn.stderr.log` and writes the result line. After a restart, the new service reads `turn.harness.jsonl` again from the start of the attempt and writes only the lines that `turn.jsonl` does not have yet.
+- A shell turn starts its login shell under the start program, so the shell and the harness are in the process group of the turn.
+- A `seatbelt` turn starts the sandbox runtime under the start program, so the sandbox runtime is the root of the turn processes in the process group. The deny and read-only rules of the runner do not change.
+- A `container` turn starts the container engine command under the start program, so the container keeps running while no service runs. `started.json` records the runner folder and the container name. The service that sees the end of the turn removes the runner folder and the container, also when it is the new service. The service finds a runner refusal (`runner-git-readonly`) in `turn.stderr.log`.
+
+After the start, the new service finds each turn that has a start record and no result:
 
 - When the same process still runs, with the same process ID, start time and turn marker, the service reads `turn.jsonl` from the start of the attempt, follows the new lines and waits for the exit file.
 - When the process ended during the restart, the service reads the rest of the output and the exit file, and ends the turn normally.
 - When the process is gone and left no exit file, for example after a crash or a reboot, the service resumes the session, as before.
 - When the service cannot use the turn, for example because its profile is gone or its harness changed, it stops the process group of the turn, waits for its end, and then records the failure.
 
-The service never connects to a process with a different start time or turn marker, and never sends it a signal, also when the system gives its process ID to a new process. When the service cannot read the identity of a process that still runs, for example because `ps` fails, it does not end the turn and sends no signal. It keeps a stop request, reads the identity again at each check, and sends the signal when the identity matches. The cost, the budget and the steer notes of the turn go on through the restart, and the transcript shows each line one time. The turns of other harnesses, the turns of the `seatbelt` and `container` runners and a turn that waits for a retry still stop at a restart. A restart with `--at keep` waits until each of them ends.
+The service never connects to a process with a different start time or turn marker, and never sends it a signal, also when the system gives its process ID to a new process. When the service cannot read the identity of a process that still runs, for example because `ps` fails, it does not end the turn and sends no signal. It keeps a stop request, reads the identity again at each check, and sends the signal when the identity matches. The cost, the budget and the steer notes of the turn go on through the restart, and the transcript shows each line one time. A turn of a text harness (a harness with `turn` and no stream output) and a turn that waits for a retry still stop at a restart. A restart with `--at keep` waits until each of them ends.
 
 A command effect keeps running through a restart in the same way. The same start program starts the command in its own process group and session. The command reads its input from a file and writes its output to `command.stdout` and its errors to `command.stderr.log` in the folder of the command, with no pipe to the service. The start program also applies the time limit and the output limits of the command, also while no service runs. It writes the exit code, the end time and, after a limit stop, the reason to `command.exit.json`. Then it stops each process that the command left in its process group, so that no background process writes without a limit. `launch.json` in the same folder records the process ID, the start time of the process and the marker. After the start, the new service connects again to each command that still runs and reports its result one time. A command that ended during the restart ends with its result. The service compares the end time of the command, not the time of the new start, with the deadline of the command. A command whose process is gone with no exit file ends with `command-interrupted`, as before. The time limit of the command counts from its first start. A stop of a command that the new service connected to ends only when the process of the command is gone. Until `launch.json` exists, a restart with `--at keep` waits for the command.
 
 The service writes the marker to `launch-marker.json` in the journal folder of the turn or the command before it starts the start program. The service records the process identity only after the start, when `ps` reads it. When the service stops between the start and that record, for example after a crash, the new service searches for the marker. It reads the command lines of the processes of the same user. It accepts only a process that started after the recorded start of the turn or the command.
 
 - Exactly one match: the service records the identity of the process and connects to it, as above. A turn does not resume.
-- No match: the result is the same as before. A command ends with `command-interrupted`.
+- No match: a turn with a completed launch reads its saved output and exit result. The exit record must have the same marker, a valid process identity and start and end times for this launch. Its process ID must no longer exist. A missing or invalid record uses session recovery, as before. A command ends with `command-interrupted`.
 - More than one match: the service stops each matched process and records the turn or the command as interrupted.
 - A failed search: the service does not end the turn or the command and sends no signal. The effect stays in recovery, and the service searches again at the next recovery check.
 
@@ -1585,8 +1608,8 @@ The restart does these steps in this order:
 
 1. After each passed build, the restart writes the record `dist/.restart-build`. When this record is missing or older than the sources of the commit, the restart runs `npm run build` while the old service runs. When the build fails, the command prints `restart-build-failed` with the output. Nothing starts, and the old service keeps running. A failed build writes no record, so the next restart builds again, also when the failed build wrote new files into `dist`.
 2. The restart stops the watch server and the phone relay, and waits up to 60 seconds for them to end. When a child process still runs after 60 seconds, the command prints `restart-children-alive` with the process ID and the name of each child. The old service keeps running, and the watch server starts again.
-3. The restart checks the work again. Work can start while the build runs or while the watch server stops, for example a turn of another harness after the end of a Claude turn. When a turn or a command effect that cannot keep running, or a queue submission, is open now, the restart does not stop the service. The request goes back to pending, the watch server and the phone relay start again, and the restart waits as before. The output of `cloving start` shows `Restart waits: work started before the stop.` and the open work.
-4. The restart stops the service. The service stops each turn and each command effect that cannot keep running. A Claude turn and a command effect with a launch record keep running. A command effect whose start is in progress at the stop also starts and keeps running.
+3. The restart checks the work again. Work can start while the build runs or while the watch server stops, for example a turn of a text harness after the end of a Claude turn. When a turn or a command effect that cannot keep running, or a queue submission, is open now, the restart does not stop the service. The request goes back to pending, the watch server and the phone relay start again, and the restart waits as before. The output of `cloving start` shows `Restart waits: work started before the stop.` and the open work.
+4. The restart stops the service. The service stops each turn and each command effect that cannot keep running. A turn and a command effect with a launch record keep running. A command effect whose start is in progress at the stop also starts and keeps running.
 5. With `--update`, the update starts after the stop:
    - When the checkout has local changes, the update does not run. The command prints `Update skipped: the checkout has local changes.` and the changed files, and the restart goes on with the current commit.
    - The update fetches the default branch and needs a fast-forward. It runs `npm ci --ignore-scripts` when `package-lock.json` changed, and then `npm run build`.

@@ -164,6 +164,15 @@ function containerCommand(
   ];
 }
 
+export function runnerProgram(
+  runner: TurnRunner | undefined,
+  command: readonly string[],
+): string {
+  if (runner === undefined || runner.kind === "host") return command[0] ?? "";
+  if (runner.kind === "container") return runner.engine;
+  return runner.command ?? "srt";
+}
+
 export function runnerCommand(
   runner: TurnRunner | undefined,
   start: { readonly command: readonly string[]; readonly places: RunnerPlaces },
@@ -171,7 +180,7 @@ export function runnerCommand(
   if (runner === undefined || runner.kind === "host") return start.command;
   if (runner.kind === "container") return containerCommand(runner, start);
   return [
-    runner.command ?? "srt",
+    runnerProgram(runner, start.command),
     "--settings",
     start.places.settingsFile,
     "--",
@@ -206,6 +215,13 @@ export function runnerRefusal(
   end: { readonly exitCode: number | null; readonly error: string },
 ): string | undefined {
   if (runner === undefined || runner.kind === "host") return undefined;
+  return runnerRefused(end);
+}
+
+export function runnerRefused(end: {
+  readonly exitCode: number | null;
+  readonly error: string;
+}): string | undefined {
   return end.exitCode === 78 && /^runner-git-readonly$/m.test(end.error)
     ? "runner-git-readonly"
     : undefined;

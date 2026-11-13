@@ -283,8 +283,6 @@ export async function recoverTurn(
   reconcile: () => Promise<AdapterOutcome>,
 ): Promise<void> {
   const { intent, journal, report } = operation;
-  if (!resumableHarness(await recordedHarness(journal, intent.operationId)))
-    return;
   const result = await reconcile();
   if (operation.signal.aborted) return;
   if (

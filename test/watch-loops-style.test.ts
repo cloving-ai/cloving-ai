@@ -10,7 +10,7 @@ await test("CLV-340 the loop cell of a floor line stacks its lines at the right 
     /grid-template-columns: 180px minmax\(0, 1fr\) 240px/,
   );
   assert.match(
-    rule(".line-loop"),
+    rule(".line-loop, .line-queue"),
     /display: flex; flex-direction: column; align-items: flex-end/,
   );
   assert.match(

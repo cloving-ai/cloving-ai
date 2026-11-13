@@ -21,7 +21,10 @@ export async function stopChild(
   });
 }
 
-function signalGroup(identifier: number, signal: NodeJS.Signals | 0): boolean {
+export function signalGroup(
+  identifier: number,
+  signal: NodeJS.Signals | 0,
+): boolean {
   try {
     return process.kill(-identifier, signal);
   } catch (error) {

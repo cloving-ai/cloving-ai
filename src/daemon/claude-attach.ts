@@ -9,10 +9,13 @@ import { markedProcesses } from "./process-identity.ts";
 import {
   priorEnd,
   recordedField,
+  recordedHarness,
   recordedTexts,
   recordedTree,
+  resumableHarness,
 } from "./claude-recovery.ts";
 import {
+  completedLaunch,
   foundLaunch,
   launchState,
   markerRecord,
@@ -101,10 +104,11 @@ export async function markedTurn(
   const { started } = request;
   const search = await markerSearch(folder, started);
   if (search === undefined) return undefined;
-  const found = await foundLaunch(search.planned, {
-    since: search.since,
-    stopMilliseconds: request.stopMilliseconds,
-  });
+  const found =
+    (await foundLaunch(search.planned, {
+      since: search.since,
+      stopMilliseconds: request.stopMilliseconds,
+    })) ?? (await completedLaunch(search.planned, search.since));
   if (found === undefined || found === "stopped" || found === "unknown")
     return found;
   await connectedRecords(folder, { started, attempt: search.attempt, found });
@@ -185,12 +189,12 @@ export async function keptTurn(
 async function holdMarkedTurn(
   journal: string,
   intent: { readonly runId: string; readonly operationId: string },
-): Promise<void> {
+): Promise<boolean> {
   const { folder } = located(journal, intent.operationId);
   const started = await readRecord(folder, "started.json");
   const tree = recordedTree(started);
   const search = await markerSearch(folder, started);
-  if (tree === undefined || search === undefined) return;
+  if (tree === undefined || search === undefined) return false;
   const { marker } = search.planned;
   const found = await markedProcesses({ marker, since: search.since });
   for (const { processId, processStart } of found ?? [])
@@ -198,13 +202,29 @@ async function holdMarkedTurn(
       runId: intent.runId,
       launch: { processId, processStart, marker },
     });
+  return true;
 }
 
 export async function holdKeptTurn(
   journal: string,
   intent: { readonly runId: string; readonly operationId: string },
-): Promise<void> {
+): Promise<boolean> {
   const kept = await keptTurn(journal, intent);
   if (kept === undefined) return holdMarkedTurn(journal, intent);
   keepTurn(kept.directory, kept);
+  return true;
+}
+
+export async function recoverableTurn(
+  journal: string,
+  intent: { readonly runId: string; readonly operationId: string },
+): Promise<boolean> {
+  if (resumableHarness(await recordedHarness(journal, intent.operationId)))
+    return true;
+  if ((await keptTurn(journal, intent)) !== undefined) return true;
+  const { folder } = located(journal, intent.operationId);
+  return (
+    (await markerSearch(folder, await readRecord(folder, "started.json"))) !==
+    undefined
+  );
 }

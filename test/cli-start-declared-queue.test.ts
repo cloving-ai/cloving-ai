@@ -193,9 +193,9 @@ await test("CLV-359 the start environment, the queue setting and the private que
     environment: { ...environment, CLOVING_QUEUE_LANES: "3" },
     inspect: () => {
       assert.deepEqual(shown(), {
-        everySeconds: { value: 600, source: "queues setting" },
-        lanes: { value: 4, source: "queues setting" },
-        workingLanes: { value: 2, source: "queues setting" },
+        everySeconds: { value: 600, source: "queues setting (private file)" },
+        lanes: { value: 4, source: "queues setting (private file)" },
+        workingLanes: { value: 2, source: "queues setting (private file)" },
       });
     },
   });
@@ -233,7 +233,9 @@ await test("CLV-359 a declared queue without ticket commands or an interval sett
       CLOVING_NEXT_COMMAND: undefined,
     },
     inspect: () => {
-      assert.equal(statusOf(fixture)["queue"], undefined);
+      const queue = record(statusOf(fixture)["queue"]);
+      assert.equal(queue?.["state"], "off");
+      assert.equal(record(queue["off"])?.["reason"], "no ticket command");
     },
   });
   assert.match(output, /Cloving runs/);
@@ -271,7 +273,7 @@ await test("CLV-359 a reload applies the queues lanes with no restart and names 
       assert.equal(queue?.["lanes"], 3);
       assert.deepEqual(record(queue["settings"])?.["lanes"], {
         value: 3,
-        source: "queues setting",
+        source: "queues setting (private file)",
       });
       cli(fixture, [
         "config",
@@ -289,7 +291,7 @@ await test("CLV-359 a reload applies the queues lanes with no restart and names 
       );
       assert.deepEqual(record(statusOf(fixture)["queue"])?.["settings"], {
         everySeconds: { value: 300, source: "declaration" },
-        lanes: { value: 3, source: "queues setting" },
+        lanes: { value: 3, source: "queues setting (private file)" },
         workingLanes: { value: 3, source: "default" },
       });
     },

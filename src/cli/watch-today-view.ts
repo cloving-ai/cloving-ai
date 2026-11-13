@@ -1,4 +1,3 @@
-import type { Fields } from "../protocol.ts";
 import type { DailyNumbers, KnownSpend } from "../report-days.ts";
 import { component, element, type Shown } from "./watch-element.ts";
 import {
@@ -185,32 +184,11 @@ export function RepositoryTable(props: {
   });
 }
 
-export function LaneLine(props: { readonly queue: Fields | undefined }): Shown {
-  const { state, busy, lanes } = props.queue ?? {};
-  if (typeof busy !== "number" || typeof lanes !== "number") return null;
-  const named = typeof state === "string" ? ` ${state}` : "";
-  return element("p", {
-    class: "today-queue",
-    children: [
-      element("span", {
-        children: `Queue${named}, ${String(busy)} of ${String(lanes)} lanes busy`,
-      }),
-      element("span", {
-        class: "lanes",
-        "aria-hidden": "true",
-        children: Array.from({ length: lanes }, (_, index) =>
-          element("span", { class: index < busy ? "lane busy" : "lane free" }),
-        ),
-      }),
-    ],
-  });
-}
-
 export function Today(props: {
   readonly model: WatchModel;
   readonly words?: WatchWords | undefined;
 }): Shown {
-  const { today, queue } = props.model;
+  const { today } = props.model;
   if (today === undefined) return null;
   return element("section", {
     class: "today",
@@ -252,7 +230,6 @@ export function Today(props: {
                 }),
               ],
       }),
-      component(LaneLine, { queue }),
     ],
   });
 }

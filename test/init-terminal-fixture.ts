@@ -26,7 +26,11 @@ _, status = os.waitpid(child, 0)
 sys.exit(os.waitstatus_to_exitcode(status))
 `;
 
-export async function terminalInit(scene: DoctorScene) {
+export async function terminalInit(
+  scene: DoctorScene,
+  options: { readonly path?: "local" | "factory" } = {},
+) {
+  const path = options.path ?? "factory";
   const child = spawn(
     "/usr/bin/python3",
     ["-c", terminalBridge, process.execPath, resolve("src/cli.ts"), "init"],
@@ -36,12 +40,29 @@ export async function terminalInit(scene: DoctorScene) {
       detached: true,
     },
   );
-  const output = { stdout: "", stderr: "", selected: false, answered: false };
+  const output = {
+    stdout: "",
+    stderr: "",
+    factory: false,
+    selected: false,
+    answered: false,
+    turn: false,
+  };
+  let pathAnswered = false;
   child.stdout.on("data", (data: Buffer) => {
     output.stdout += data.toString();
+    if (!pathAnswered && output.stdout.includes("Select 1 or 2:")) {
+      pathAnswered = true;
+      output.factory = path === "factory";
+      child.stdin.write(path === "local" ? "1\n" : "2\n");
+    }
     if (!output.selected && output.stdout.includes("for the setup?")) {
       output.selected = true;
       child.stdin.write("\n");
+    }
+    if (!output.turn && output.stdout.includes("one-shot command")) {
+      output.turn = true;
+      child.stdin.write('["amp","{prompt}"]\n');
     }
     if (!output.answered && output.stdout.includes("harness-question: ")) {
       output.answered = true;
