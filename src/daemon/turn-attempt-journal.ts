@@ -124,6 +124,7 @@ function progressFields(
     costUsd: attemptCost([...attempts.ends, end], attempts.ends.length),
     usage: result.usage,
     turns: result.turns,
+    ...piFields(attempts.start.worker, result),
   };
 }
 
@@ -206,7 +207,7 @@ export async function recordedEnd(
       endedAt: new Date().toISOString(),
       exitCode: end.exitCode,
       capacity: capacityRefusal(end.result),
-      ...piPricing(start.worker, end.result),
+      ...piFields(start.worker, end.result),
       sessionCostUsd: end.result?.costUsd ?? null,
       turns: end.result?.turns ?? null,
     },
@@ -239,6 +240,11 @@ export async function waited(
   });
 }
 
-function piPricing(worker: string | undefined, result: TurnEnd["result"]) {
-  return worker === "pi" ? { pricingModel: result?.pricingModel ?? null } : {};
+function piFields(worker: string | undefined, result: TurnEnd["result"]) {
+  return worker === "pi"
+    ? {
+        pricingModel: result?.pricingModel ?? null,
+        piAccounting: result?.piAccounting,
+      }
+    : {};
 }

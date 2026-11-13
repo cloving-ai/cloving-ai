@@ -1,4 +1,6 @@
 import { usageOf, priceOf, resumeReasonField } from "../worker-usage.ts";
+import { piAccountingOf } from "../pi-usage.ts";
+import { recordedLaunch } from "../turn-launch.ts";
 import type { TurnEnd } from "./claude-turn.ts";
 import {
   located,
@@ -104,6 +106,24 @@ export function processAlive(processId: unknown): boolean {
   }
 }
 
+export function stopRecoveryPlan(request: {
+  readonly started: unknown;
+  readonly key: string;
+}): "reconcile" | AdapterOutcome | undefined {
+  const { started, key } = request;
+  const harness = recordedField(started, "harness");
+  if (
+    !resumableHarness(harness) &&
+    recordedLaunch(recordedField(started, "launch")) === undefined
+  )
+    return harness === "pi"
+      ? { kind: "unknown", evidence: `pi-prior-result-uncertain:${key}` }
+      : "reconcile";
+  return processAlive(recordedField(started, "processId"))
+    ? { kind: "unknown", evidence: `claude-turn:${key}` }
+    : undefined;
+}
+
 export async function uncertainProcess(started: unknown): Promise<boolean> {
   const processId = recordedField(started, "processId");
   if (typeof processId !== "number" || !processAlive(processId)) return false;
@@ -184,6 +204,7 @@ export function priorEnd(record: unknown): TurnEnd {
   const sessionId = field("sessionId");
   const model = field("model");
   const retryKind = field("retryKind");
+  const piAccounting = piAccountingOf(field("piAccounting"));
   return {
     ...(retryKind === "capacity" ||
     retryKind === "network" ||
@@ -199,6 +220,7 @@ export function priorEnd(record: unknown): TurnEnd {
       failed: true,
       ...(field("harness") === "pi"
         ? {
+            ...(piAccounting === undefined ? {} : { piAccounting }),
             pricingModel:
               typeof field("pricingModel") === "string"
                 ? String(field("pricingModel"))

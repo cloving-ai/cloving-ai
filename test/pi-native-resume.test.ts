@@ -107,6 +107,7 @@ await test("CLV-365 a confirmed Pi shutdown resumes the owned session once with 
     );
     const result = resultOf(scene.reports[0].result);
     assert.equal(result["turns"], 2);
+    assert.equal(field(result["piAccounting"], "responseCount"), 2);
     assert.equal(field(result["usage"], "input_tokens"), 200);
     assert.equal((await next.reconcile(intent(), signal)).kind, "completed");
   }));
@@ -124,6 +125,7 @@ await test("CLV-365 native Pi resume excludes old assistant replay after the new
     assert.equal(scene.reports[0]?.outcome, "completed");
     const result = resultOf(scene.reports[0].result);
     assert.equal(result["turns"], 2);
+    assert.equal(field(result["piAccounting"], "responseCount"), 2);
     assert.equal(field(result["usage"], "input_tokens"), 200);
     const attempts = result["attempts"];
     assert.ok(Array.isArray(attempts));
@@ -181,6 +183,13 @@ await test("CLV-365 a resumed Pi process reconnects after a second daemon restar
       await until(() => scene.reports.length === 1);
       assert.equal(scene.reports[0]?.outcome, "completed");
       assert.equal(resultOf(scene.reports[0].result)["turns"], 2);
+      assert.equal(
+        field(
+          resultOf(scene.reports[0].result)["piAccounting"],
+          "responseCount",
+        ),
+        2,
+      );
       assert.equal(prompts(scene).length, 2);
     } finally {
       writeFileSync(gate, "release");
@@ -192,6 +201,17 @@ await test("CLV-365 native Pi resume preserves unknown pricing from an invocatio
     const events = [
       ...piEvents().slice(0, -1),
       { type: "compaction_end" },
+      {
+        type: "message_end",
+        message: {
+          role: "toolResult",
+          toolName: "bash",
+          toolCallId: "nested",
+          usage: piMessage().usage,
+          content: [],
+          isError: false,
+        },
+      },
       ...piEvents().slice(-1),
     ];
     const { signal, next } = await stoppedPi(scene, { events });
@@ -199,6 +219,12 @@ await test("CLV-365 native Pi resume preserves unknown pricing from an invocatio
     await until(() => scene.reports.length === 1);
     const result = resultOf(scene.reports[0]?.result);
     assert.equal(result["estimatedCostUsd"], null);
+    assert.equal(field(result["piAccounting"], "auxiliaryWork"), true);
+    assert.equal(field(result["piAccounting"], "responseCount"), 2);
+    assert.equal(
+      field(field(result["piAccounting"], "nestedUsage"), "input_tokens"),
+      100,
+    );
     const attempts = result["attempts"];
     assert.ok(Array.isArray(attempts));
     assert.equal(field(attempts[0], "estimatedCostUsd"), null);

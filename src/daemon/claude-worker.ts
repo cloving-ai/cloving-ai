@@ -18,7 +18,7 @@ import {
   recoverableTurn,
   rejectedAttach,
 } from "./claude-attach.ts";
-import { recordedLaunch, type TurnLaunch } from "../turn-launch.ts";
+import type { TurnLaunch } from "../turn-launch.ts";
 import {
   located,
   readRecord as read,
@@ -32,11 +32,10 @@ import { firstTurn, treeFailure, workTree } from "./work-tree.ts";
 import {
   recordedHarness,
   interruptedReply,
-  processAlive,
+  stopRecoveryPlan,
   uncertainProcess,
   resumePlan,
   recordedField,
-  resumableHarness,
   recoverTurn,
   turnIntent,
 } from "./claude-recovery.ts";
@@ -276,13 +275,10 @@ async function stopped(
     return replied({ receipt: key, worker }, result);
   const started = await read(folder, "started.json");
   if (started === undefined) return { kind: "absent" };
-  if (
-    !resumableHarness(recordedField(started, "harness")) &&
-    recordedLaunch(recordedField(started, "launch")) === undefined
-  )
+  const plan = stopRecoveryPlan({ started, key });
+  if (plan === "reconcile")
     return reconcileOperation(parts, { intent, signal: parts.stopping.signal });
-  if (processAlive(recordedField(started, "processId")))
-    return { kind: "unknown", evidence: `claude-turn:${key}` };
+  if (plan !== undefined) return plan;
   if (!turnIntent(intent)) return failure("unsupported-effect");
   const recorded: Recorded = {
     outcome: "stopped",

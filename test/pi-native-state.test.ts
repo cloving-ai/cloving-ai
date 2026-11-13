@@ -2,11 +2,19 @@ import assert from "node:assert/strict";
 import { appendFileSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
+import { setTimeout as delay } from "node:timers/promises";
 import { piResumeSession, preparedPiSession } from "../src/daemon/pi-resume.ts";
 import { createPiSession } from "../src/daemon/pi-session.ts";
 import { writeRecord } from "../src/daemon/operation-journal.ts";
 import { piMessage } from "./pi-fixture.ts";
-import { withScene, type Scene } from "./claude-worker-fixture.ts";
+import {
+  intent,
+  journalKey,
+  record,
+  withScene,
+  type Scene,
+} from "./claude-worker-fixture.ts";
+import { testMilliseconds } from "./test-timing.ts";
 
 async function checkpoint(scene: Scene) {
   const folder = join(scene.directory, "native-state");
@@ -192,4 +200,65 @@ await test("CLV-365 a later native checkpoint retains earlier invocation history
       await piResumeSession({ ...state.request, started: entry }),
       piSession,
     );
+  }));
+
+async function unlaunchedPi(scene: Scene) {
+  const folder = join(scene.journal, journalKey("operation-1"));
+  mkdirSync(folder, { recursive: true });
+  const piSession = await createPiSession({
+    folder,
+    directory: scene.repository,
+  });
+  const started = {
+    ...intent(),
+    harness: "pi",
+    phase: "starting",
+    attempt: 1,
+    processId: null,
+    piSession,
+  };
+  await writeRecord(folder, { name: "started.json", value: started });
+  return { folder, started };
+}
+
+await test("CLV-365 stopping an unlaunched Pi session settles with uncertainty and blocks replacement", () =>
+  withScene(async (scene) => {
+    const { folder, started } = await unlaunchedPi(scene);
+    const worker = scene.worker("unused", { harness: { name: "pi" } });
+    const signal = new AbortController().signal;
+    const stopping = worker.stop(intent(), signal);
+    const deadline = new AbortController();
+    try {
+      const reply = await Promise.race([
+        stopping,
+        delay(testMilliseconds(1000), undefined, {
+          signal: deadline.signal,
+        }).then(() => assert.fail("Pi stop did not settle")),
+      ]);
+      assert.equal(reply.kind, "unknown");
+      assert.match(
+        String(Reflect.get(reply, "evidence")),
+        /pi-prior-result-uncertain/,
+      );
+      const later = await Promise.all([
+        worker.reconcile(intent(), signal),
+        worker.reconcile(intent(), signal),
+        worker.deliver(intent(), signal),
+        worker.stop(intent(), signal),
+      ]);
+      assert.ok(
+        later.every(
+          (outcome) => "kind" in outcome && outcome.kind === "unknown",
+        ),
+      );
+      assert.deepEqual(record(scene, "operation-1/started.json"), started);
+      assert.equal(record(scene, "operation-1/result.json"), undefined);
+      assert.ok(record(scene, "operation-1/stop-request.json"));
+      assert.equal(scene.turns().length, 0);
+      assert.equal(scene.reports.length, 0);
+    } finally {
+      deadline.abort();
+      rmSync(join(folder, "started.json"));
+      await stopping;
+    }
   }));
