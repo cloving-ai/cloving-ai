@@ -47,9 +47,11 @@ function selection(context: ServiceContext, parameters: Fields) {
 
 async function selectedOverview(
   context: ServiceContext,
-  workflowId: string,
+  parameters: Fields,
 ): Promise<Fields> {
   const overview = await queueOverview(context);
+  const workflowId = parameters["workflowId"];
+  if (workflowId === undefined) return overview;
   const queues = overview["queues"];
   return {
     ...overview,
@@ -70,7 +72,7 @@ export async function queueRead(
     return failed("queue-unavailable", {
       detail: queueOffDetail(off.workflowId),
     });
-  const overview = await selectedOverview(context, selected.workflowId);
+  const overview = await selectedOverview(context, parameters);
   if (overview["queue"] === undefined) return noQueue;
   return result("queue", overview);
 }
@@ -85,7 +87,13 @@ export async function queueCommand(
   const selected = selection(context, parameters);
   if (selected.kind === "refused") return selected.reply;
   if (selected.port === undefined) return noQueue;
-  const change = await selected.port.change({ command, commandId });
+  const change = await selected.port.change({
+    command,
+    commandId,
+    ...(command === "drain" && parameters["workflowId"] !== undefined
+      ? { scope: "workflow" as const }
+      : {}),
+  });
   if (change.kind === "unavailable")
     return failed("queue-unavailable", { commandId, detail: change.detail });
   if (change.kind === "conflicting-command")
@@ -97,7 +105,7 @@ export async function queueCommand(
     command,
     commandId,
     replayed: change.kind === "replayed",
-    ...(await selectedOverview(context, selected.workflowId)),
+    ...(await selectedOverview(context, parameters)),
   });
 }
 
@@ -154,7 +162,7 @@ export async function queueLanes(
     return result("queue-lanes", {
       commandId,
       replayed: change.kind === "replayed",
-      ...(await selectedOverview(context, workflowId)),
+      ...(await selectedOverview(context, { workflowId })),
     });
   } catch (error) {
     return failed("queue-lanes-failed", {

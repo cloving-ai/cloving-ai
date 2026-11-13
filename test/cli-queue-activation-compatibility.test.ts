@@ -34,7 +34,10 @@ process.stdout.write("CLV-900");`,
       },
       inspect: async () => {
         const status = statusOf(fixture);
-        const queue = record(status["queue"]);
+        assert.equal(status["queue"], undefined);
+        const queues = status["queues"];
+        assert.ok(Array.isArray(queues));
+        const queue = record(queues[0]);
         assert.equal(queue?.["nextCheckAt"], null);
         assert.equal(queue["settings"], undefined);
         assert.deepEqual(status["runs"], []);

@@ -30,6 +30,7 @@ export interface QueueRuntime {
 interface QueueRequest {
   readonly command: QueueCommand;
   readonly commandId: string;
+  readonly scope?: "workflow";
 }
 
 const unavailable: QueueChange = {
@@ -124,17 +125,25 @@ function recorded(
   if (prior === undefined) return undefined;
   return {
     kind:
-      prior.command === request.command ? "replayed" : "conflicting-command",
+      prior.command === request.command && prior.scope === request.scope
+        ? "replayed"
+        : "conflicting-command",
   };
 }
 
-function applied(pending: QueueJournal, command: QueueCommand): void {
-  if (command === "drain") {
-    pending.drain ??= { startedAt: Date.now(), drainedAt: null };
+function applied(pending: QueueJournal, request: QueueRequest): void {
+  if (request.command === "resume") {
+    pending.failures.length = 0;
+    pending.drain = undefined;
     return;
   }
-  pending.failures.length = 0;
-  pending.drain = undefined;
+  if (request.scope === undefined && pending.drain?.scope === "workflow")
+    pending.drain = { startedAt: pending.drain.startedAt, drainedAt: null };
+  pending.drain ??= {
+    startedAt: Date.now(),
+    drainedAt: null,
+    ...(request.scope === undefined ? {} : { scope: request.scope }),
+  };
 }
 
 async function changed(
@@ -146,7 +155,7 @@ async function changed(
   if (pending === undefined) return unavailable;
   const prior = recorded(pending, request);
   if (prior !== undefined) return prior;
-  applied(pending, request.command);
+  applied(pending, request);
   pending.controls.push(request);
   pending.controls.splice(0, pending.controls.length - queueControlLimit);
   try {

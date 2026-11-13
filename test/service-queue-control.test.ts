@@ -38,6 +38,34 @@ const command = (
 ): Promise<Readonly<Record<string, unknown>>> =>
   call(harness, { operation: "queue-command", parameters });
 
+await test("CLV-373 only an explicit CLI workflow selector requests a workflow drain", () =>
+  withHarness(async (harness) => {
+    const changes: unknown[] = [];
+    await harness.start({
+      workflows: [queued(harness)],
+      queue: {
+        ...port({ kind: "changed" }),
+        change: (request) => {
+          changes.push(request);
+          return Promise.resolve({ kind: "changed" });
+        },
+      },
+    });
+    for (const args of [
+      ["drain", "--command-id", "legacy-drain"],
+      ["drain", "--workflow", "develop", "--command-id", "local-drain"],
+      ["resume", "--workflow", "develop", "--command-id", "resume-drain"],
+    ]) {
+      const reply = await harness.cli(["queue", ...args, "--json"]);
+      assert.equal(reply.status, 0, reply.stdout + reply.stderr);
+    }
+    assert.deepEqual(changes, [
+      { command: "drain", commandId: "legacy-drain" },
+      { command: "drain", commandId: "local-drain", scope: "workflow" },
+      { command: "resume", commandId: "resume-drain" },
+    ]);
+  }));
+
 await test("CLV-273 the service refuses a queue command ID that names another command", () =>
   withHarness(async (harness) => {
     await harness.start({

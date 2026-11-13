@@ -31,6 +31,36 @@ async function loaded(
   });
 }
 
+await test("CLV-373 drain command replay keeps the explicit workflow scope and refuses a scope change", () =>
+  withDirectory(async (directory) => {
+    const request = {
+      command: "drain" as const,
+      commandId: "scoped",
+      scope: "workflow" as const,
+    };
+    const port = await loaded(directory);
+    assert.deepEqual(await port.change(request), { kind: "changed" });
+    assert.equal(port.control()?.drain?.scope, "workflow");
+    const restarted = await loaded(directory);
+    assert.equal(restarted.control()?.drain?.scope, "workflow");
+    assert.deepEqual(await restarted.change(request), { kind: "replayed" });
+    assert.deepEqual(
+      await restarted.change({ command: "drain", commandId: "scoped" }),
+      { kind: "conflicting-command" },
+    );
+    await restarted.change({ command: "resume", commandId: "resume-scope" });
+    await restarted.change({ command: "drain", commandId: "legacy" });
+    const legacy = await loaded(directory);
+    assert.equal(legacy.control()?.drain?.scope, undefined);
+    assert.deepEqual(
+      await legacy.change({ command: "drain", commandId: "legacy" }),
+      { kind: "replayed" },
+    );
+    assert.deepEqual(await legacy.change({ ...request, commandId: "legacy" }), {
+      kind: "conflicting-command",
+    });
+  }));
+
 await test("CLV-273 a queue command ID replays its first command after a restart and refuses another command", () =>
   withDirectory(async (directory) => {
     const port = await loaded(directory);
@@ -63,6 +93,31 @@ await test("CLV-273 a queue command ID replays its first command after a restart
     assert.equal(restarted.control()?.drain, undefined);
   }));
 
+await test("CLV-373 an unqualified drain widens an existing workflow drain and a workflow drain cannot narrow it", () =>
+  withDirectory(async (directory) => {
+    await writeFile(
+      join(directory, "queue-commands.json"),
+      JSON.stringify({
+        commands: [],
+        failures: [],
+        drain: { startedAt: 1, drainedAt: 2, scope: "workflow" },
+      }),
+    );
+    const port = await loaded(directory);
+    await port.change({ command: "drain", commandId: "repository-drain" });
+    assert.deepEqual(port.control()?.drain, { startedAt: 1, drainedAt: null });
+    await port.change({
+      command: "drain",
+      commandId: "local-drain",
+      scope: "workflow",
+    });
+    const restarted = await loaded(directory);
+    assert.deepEqual(restarted.control()?.drain, {
+      startedAt: 1,
+      drainedAt: null,
+    });
+  }));
+
 await test("CLV-273 the queue journal keeps the newest 32 queue command IDs", () =>
   withDirectory(async (directory) => {
     const port = await loaded(directory);
@@ -91,10 +146,15 @@ await test("CLV-273 the queue journal refuses an invalid drain or queue command 
     for (const saved of [
       { drain: { startedAt: 0, drainedAt: null } },
       { drain: { startedAt: 1, drainedAt: "later" } },
+      { drain: { startedAt: 1, drainedAt: null, scope: "repository" } },
       { drain: "draining" },
       { controls: "resume" },
       { controls: [{ commandId: "", command: "resume" }] },
       { controls: [{ commandId: "one", command: "pause" }] },
+      { controls: [{ commandId: "one", command: "drain", scope: "all" }] },
+      {
+        controls: [{ commandId: "one", command: "resume", scope: "workflow" }],
+      },
       ...[
         { lanes: 0 },
         { lanes: 17 },
