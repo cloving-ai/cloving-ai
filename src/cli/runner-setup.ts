@@ -6,7 +6,7 @@ import {
   statSync,
   writeFileSync,
 } from "node:fs";
-import { basename, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import {
   runnerCommand,
   seatbeltSettings,
@@ -23,6 +23,7 @@ import {
 export type BoxedRunner = Exclude<TurnRunner, { readonly kind: "host" }>;
 
 export interface RunnerStart {
+  readonly piSession?: { readonly path: string };
   readonly runner?: TurnRunner;
   readonly piInputExtension?: string;
   readonly directory: string;
@@ -93,6 +94,9 @@ function places(
     name: containerName(start.turnId),
     volume: volumeName(start.directory),
     variables: Object.keys(launch.environment),
+    ...(start.piSession === undefined
+      ? {}
+      : { piSessionDirectory: dirname(start.piSession.path) }),
     ...(start.piInputExtension === undefined
       ? {}
       : { piInputExtension: start.piInputExtension }),

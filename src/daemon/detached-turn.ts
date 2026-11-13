@@ -16,6 +16,7 @@ import {
   type Watch,
 } from "./detached-process.ts";
 import type { TurnProgress } from "./turn-stream.ts";
+import type { PiSession } from "./pi-session.ts";
 import {
   harnessReader,
   translatedHarness,
@@ -37,6 +38,7 @@ export interface FollowedTurn {
 }
 
 export interface FollowStart {
+  readonly piSession?: PiSession;
   readonly progress?: ((progress: TurnProgress) => Promise<void>) | undefined;
   readonly worker?: string | undefined;
   readonly command: readonly string[];

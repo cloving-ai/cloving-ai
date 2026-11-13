@@ -1,9 +1,17 @@
 import { turnHarness } from "../harness-defaults.ts";
 import { resumeReasonField } from "../worker-usage.ts";
 import { record } from "../protocol.ts";
-import type { ProtectedIntent } from "../broker/actor/delivery-intents.ts";
+import type {
+  AdapterOutcome,
+  ProtectedIntent,
+} from "../broker/actor/delivery-intents.ts";
 import { join } from "node:path";
-import { located, readRecord, writeRecord } from "./operation-journal.ts";
+import {
+  located,
+  readRecord,
+  writeRecord,
+  type Located,
+} from "./operation-journal.ts";
 import { keepTurn } from "./turn-owners.ts";
 import { markedProcesses } from "./process-identity.ts";
 import {
@@ -13,12 +21,14 @@ import {
   recordedTexts,
   recordedTree,
   resumableHarness,
+  interruptedReply,
 } from "./claude-recovery.ts";
 import {
   completedLaunch,
   foundLaunch,
   launchState,
   markerRecord,
+  stoppedLaunch,
   type FoundLaunch,
 } from "./detached-process.ts";
 import {
@@ -30,6 +40,9 @@ import {
 } from "../turn-launch.ts";
 import type { TurnAttach } from "./turn-attempts.ts";
 import { selectedProfile, type WorkerProfiles } from "./worker-profile.ts";
+import { ownedPiSession } from "./pi-session.ts";
+import { releasedLaunch } from "./detached-turn.ts";
+import { claudeLimits } from "./claude-worker-parts.ts";
 
 export async function attachableLaunch(
   folder: string,
@@ -164,7 +177,31 @@ export async function attachPlan(
   const harness = turnHarness(settings, profile);
   if (recordedField(started, "harness") !== harness.worker)
     return "claude-turn-interrupted";
-  return { attach, tree, profile, harness };
+  if (harness.worker !== "pi") return { attach, tree, profile, harness };
+  const piSession = await ownedPiSession({
+    started,
+    entry: attach.entry,
+    folder,
+    operationId: intent.operationId,
+  });
+  if (typeof piSession === "string") return piSession;
+  return { attach, tree, profile, harness: { ...harness, piSession } };
+}
+
+export async function rejectedAttach(rejection: {
+  readonly request: Located;
+  readonly plan: string;
+  readonly launch: TurnLaunch | undefined;
+  readonly stopMilliseconds: number | undefined;
+}): Promise<AdapterOutcome> {
+  if (rejection.launch !== undefined) {
+    await stoppedLaunch(
+      rejection.launch,
+      rejection.stopMilliseconds ?? claudeLimits.stopMilliseconds,
+    );
+    await releasedLaunch(rejection.launch);
+  }
+  return interruptedReply(rejection.request, rejection.plan);
 }
 
 export interface KeptTurn {

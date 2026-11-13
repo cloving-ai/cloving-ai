@@ -125,7 +125,7 @@ await test("CLV-273 queue arguments refuse unknown actions, extra values and mis
   });
 });
 
-await test("CLV-273 the help names the queue commands and the drain end of the queue reset", () => {
+await test("CLV-361 the help names lane changes, queue commands and the drain end of the queue reset", () => {
   const help = String(commandUsage["queue"]);
   assert.match(help, /^Usage: cloving queue \[--workflow <id>\] \[--json\]\n/);
   assert.match(
@@ -138,7 +138,10 @@ await test("CLV-273 the help names the queue commands and the drain end of the q
   );
   assert.match(help, /running, stopped, draining or drained/);
   assert.match(help, /restart/);
-  assert.match(topUsage, /\n {2}queue +Show, resume and drain the queue\.\n/);
+  assert.match(
+    topUsage,
+    /\n {2}queue +Show queues, change their lanes and drain or resume them\.\n/,
+  );
   assert.match(String(commandUsage["start"]), /cloving queue resume/);
   assert.match(
     String(commandUsage["start"]),

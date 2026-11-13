@@ -26,6 +26,7 @@ import { runnerProgram, type TurnRunner } from "../turn-runner.ts";
 import { runnerLaunch, type RunnerLaunch } from "./turn-runner-spawn.ts";
 import { attachedTurn, detachedTurn, type TurnExit } from "./detached-turn.ts";
 import type { TurnLaunch } from "../turn-launch.ts";
+import type { PiSession } from "./pi-session.ts";
 import {
   githubTokens,
   passedVariables,
@@ -44,6 +45,7 @@ export interface TurnEnd {
 }
 
 export interface TurnStart {
+  readonly piSession?: PiSession;
   readonly progress?: (progress: TurnProgress) => Promise<void>;
   readonly resultBytes?: number;
   readonly output?: "text";

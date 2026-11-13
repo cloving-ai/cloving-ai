@@ -1,4 +1,5 @@
 import { record, type Fields } from "../protocol.ts";
+import { piResponse } from "../pi-usage.ts";
 import { tokenCount } from "../worker-usage.ts";
 
 function update(event: Fields): boolean {
@@ -121,4 +122,56 @@ export function validPiToolResult(message: Fields): boolean {
             typeof part["mimeType"] === "string";
     })
   );
+}
+
+export function responseIdentity(message: Fields): string | undefined {
+  const response = piResponse(message);
+  if (response.responseId !== null)
+    return JSON.stringify([
+      response.provider,
+      response.model,
+      response.responseId,
+    ]);
+  const timestamp = message["timestamp"];
+  if (
+    typeof timestamp !== "number" ||
+    !Number.isSafeInteger(timestamp) ||
+    timestamp < 0
+  )
+    return undefined;
+  return JSON.stringify([
+    response,
+    timestamp,
+    message["content"],
+    message["stopReason"],
+    message["errorMessage"],
+    message["api"],
+    message["thinkingLevel"],
+  ]);
+}
+
+export function responseAnchor(message: Fields): string | undefined {
+  const response = piResponse(message);
+  if (response.responseId !== null)
+    return JSON.stringify([
+      response.provider,
+      response.model,
+      response.responseId,
+    ]);
+  if (typeof message["timestamp"] !== "number") return undefined;
+  return JSON.stringify([
+    response.provider,
+    response.model,
+    message["timestamp"],
+  ]);
+}
+
+export function piSessionHeader(identity?: {
+  readonly id: string;
+  readonly cwd: string;
+  readonly timestamp: string;
+}): string | null {
+  return identity === undefined
+    ? null
+    : JSON.stringify([identity.id, identity.cwd, identity.timestamp]);
 }
