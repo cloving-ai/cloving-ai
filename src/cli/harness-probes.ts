@@ -1,4 +1,5 @@
 import type { ProbeRunner, ProbeOutput } from "./probe-command.ts";
+import type { HarnessSettings } from "../harness-defaults.ts";
 import { access, constants, stat } from "node:fs/promises";
 import { basename, delimiter, resolve } from "node:path";
 import {
@@ -35,12 +36,14 @@ export interface HarnessDiscovery {
 
 export interface HarnessOptions {
   readonly env?: Readonly<Record<string, string | undefined>>;
+  readonly harness?: HarnessSettings["harness"];
 }
 
 type Environment = Readonly<Record<string, string | undefined>>;
 interface ProbeContext {
   readonly env: Environment;
   readonly probe: ProbeRunner;
+  readonly harness?: HarnessSettings["harness"];
 }
 
 async function executableFile(path: string): Promise<boolean> {
@@ -67,13 +70,32 @@ async function findFile(
   return null;
 }
 
+function versionName(
+  entry: Pick<HarnessEntry, "name" | "kind" | "path">,
+  harness: HarnessSettings["harness"],
+): string {
+  if (
+    entry.name !== "pi" ||
+    harness?.name !== "pi" ||
+    harness.turn === undefined ||
+    (harness.kind !== undefined && harness.kind !== entry.kind) ||
+    (harness.path !== undefined && harness.path !== entry.path)
+  )
+    return entry.name;
+  return "";
+}
+
 function probeEntry(
   entry: Pick<HarnessEntry, "name" | "kind" | "path">,
-  output: ProbeOutput,
+  observed: {
+    readonly output: ProbeOutput;
+    readonly harness?: HarnessSettings["harness"];
+  },
 ): HarnessEntry {
+  const { output, harness } = observed;
   const version = harnessVersion(
     output.stdout,
-    harnessDefinition(entry.name).versionPattern,
+    harnessDefinition(versionName(entry, harness)).versionPattern,
   );
   const reason = output.reason ?? (version === null ? "no-version" : null);
   return {
@@ -94,7 +116,10 @@ async function probeFile(
     arguments: [harnessDefinition(name).versionOption],
     env,
   });
-  return probeEntry({ name, kind: "file", path }, output);
+  return probeEntry(
+    { name, kind: "file", path },
+    { output, harness: context.harness },
+  );
 }
 
 async function discoverFiles(
@@ -163,8 +188,11 @@ async function probeShell(
   return probeEntry(
     { name, kind, path, ...(kind === "shell" ? { shellMode: mode } : {}) },
     {
-      stdout: stdout ?? "",
-      reason: output.reason ?? (stdout === null ? "shell-protocol" : null),
+      output: {
+        stdout: stdout ?? "",
+        reason: output.reason ?? (stdout === null ? "shell-protocol" : null),
+      },
+      harness: context.harness,
     },
   );
 }
@@ -180,13 +208,9 @@ interface ShellCandidate {
 
 async function probeCandidates(
   candidates: readonly ShellCandidate[],
-  options: {
-    readonly files: readonly HarnessEntry[];
-    readonly env: Environment;
-    readonly probe: ProbeRunner;
-  },
+  options: ProbeContext & { readonly files: readonly HarnessEntry[] },
 ): Promise<HarnessEntry[]> {
-  const { files, env, probe } = options;
+  const { files } = options;
   const settled = new Set(files.filter((file) => file.working).map(entryKey));
   const groups = new Map<string, ShellCandidate[]>();
   for (const candidate of candidates) {
@@ -200,7 +224,7 @@ async function probeCandidates(
     [...groups.values()].map(async (group) => {
       let result: HarnessEntry[] = [];
       for (const { entry, mode } of group) {
-        const output = await probeShell({ entry, mode }, { env, probe });
+        const output = await probeShell({ entry, mode }, options);
         result = [output];
         if (output.working) break;
       }
@@ -212,13 +236,9 @@ async function probeCandidates(
 
 async function discoverShell(
   names: readonly string[],
-  options: {
-    readonly env: Environment;
-    readonly probe: ProbeRunner;
-    readonly files: readonly HarnessEntry[];
-  },
+  options: ProbeContext & { readonly files: readonly HarnessEntry[] },
 ): Promise<HarnessDiscovery> {
-  const { env, files, probe } = options;
+  const { env, probe } = options;
   const login = await inspectShell(names, { env, mode: "login", probe });
   const interactive =
     login.bash ||
@@ -232,7 +252,7 @@ async function discoverShell(
       mode: "interactive" as const,
     })),
   ];
-  const entries = await probeCandidates(found, { files, env, probe });
+  const entries = await probeCandidates(found, options);
   return { entries, shellReason: login.reason ?? interactive?.reason ?? null };
 }
 
@@ -240,11 +260,10 @@ async function discoverNames(
   definitions: readonly KnownHarness[],
   context: ProbeContext,
 ): Promise<HarnessDiscovery> {
-  const { env, probe } = context;
   const files = await discoverFiles(definitions, context);
   const shell = await discoverShell(
     definitions.map(({ name }) => name),
-    { env, files, probe },
+    { ...context, files },
   );
   return {
     entries: [
@@ -260,8 +279,8 @@ export function discoverHarnesses(
   options: HarnessOptions & { readonly probe: ProbeRunner },
 ): Promise<HarnessDiscovery> {
   return discoverNames(knownHarnesses, {
+    ...options,
     env: options.env ?? process.env,
-    probe: options.probe,
   });
 }
 
@@ -282,11 +301,14 @@ export async function probeHarness(
       path === null
         ? { stdout: "", reason: "not-found" }
         : await probe(path, { arguments: ["--version"], env });
-    return { entries: [probeEntry(entry, output)], shellReason: null };
+    return {
+      entries: [probeEntry(entry, { output, harness: options.harness })],
+      shellReason: null,
+    };
   }
   const found = await discoverNames([harnessDefinition(target)], {
+    ...options,
     env,
-    probe,
   });
   if (found.entries.length > 0) return found;
   return {
@@ -294,7 +316,7 @@ export async function probeHarness(
     entries: [
       probeEntry(
         { name: target, kind: "file", path: target },
-        { stdout: "", reason: "not-found" },
+        { output: { stdout: "", reason: "not-found" } },
       ),
     ],
   };

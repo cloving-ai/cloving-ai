@@ -1626,6 +1626,7 @@
     "test/pi-attempt-recovery.test.ts": "test",
     "test/pi-doctor.test.ts": "test",
     "test/pi-fixture.ts": "test",
+    "test/pi-init-compatibility.test.ts": "test",
     "test/pi-input-extension.test.ts": "test",
     "test/pi-input.test.ts": "test",
     "test/pi-live.test.ts": "test",
