@@ -1,4 +1,7 @@
 import {
+  responseIdentity,
+  responseAnchor,
+  piSessionHeader,
   validPiActivity,
   validPiToolResult,
   piMessageFailure,
@@ -52,32 +55,6 @@ function messageText(message: State["message"]): string {
     .join("\n");
 }
 
-function responseIdentity(message: Fields): string | undefined {
-  const response = piResponse(message);
-  if (response.responseId !== null)
-    return JSON.stringify([
-      response.provider,
-      response.model,
-      response.responseId,
-    ]);
-  const timestamp = message["timestamp"];
-  if (
-    typeof timestamp !== "number" ||
-    !Number.isSafeInteger(timestamp) ||
-    timestamp < 0
-  )
-    return undefined;
-  return JSON.stringify([
-    response,
-    timestamp,
-    message["content"],
-    message["stopReason"],
-    message["errorMessage"],
-    message["api"],
-    message["thinkingLevel"],
-  ]);
-}
-
 function replayed(event: Fields, state: State): boolean {
   const message = record(event["message"]);
   if (
@@ -89,22 +66,6 @@ function replayed(event: Fields, state: State): boolean {
   if (identity === undefined) return false;
   if (state.responseIds.has(identity)) return true;
   return event["type"] === "message_start" && state.startIds.has(identity);
-}
-
-function responseAnchor(message: Fields): string | undefined {
-  const response = piResponse(message);
-  if (response.responseId !== null)
-    return JSON.stringify([
-      response.provider,
-      response.model,
-      response.responseId,
-    ]);
-  if (typeof message["timestamp"] !== "number") return undefined;
-  return JSON.stringify([
-    response.provider,
-    response.model,
-    message["timestamp"],
-  ]);
 }
 
 function replayedAssistant(message: Fields, state: State): readonly string[] {
@@ -310,11 +271,15 @@ function parsed(line: string, state: State): readonly string[] {
   }
 }
 
-export function piStream() {
+export function piStream(ownedSession?: {
+  readonly id: string;
+  readonly cwd: string;
+  readonly timestamp: string;
+}) {
   const state: State = {
     activity: piActivity(),
     sessionId: null,
-    sessionHeader: null,
+    sessionHeader: piSessionHeader(ownedSession),
     invocationStarted: false,
     settled: false,
     aborted: false,
