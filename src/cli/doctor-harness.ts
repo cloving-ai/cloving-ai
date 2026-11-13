@@ -209,7 +209,10 @@ function existingDirectory(path: string): Promise<string | undefined> {
 
 async function usableHarnessCommand(
   command: string,
-  location: HarnessCommandLocation & { readonly worker: string },
+  location: HarnessCommandLocation & {
+    readonly worker: string;
+    readonly output?: "text";
+  },
 ): Promise<boolean> {
   const configured = listedSetting(command) ?? [];
   const program = configured[0];
@@ -235,10 +238,17 @@ async function usableHarnessCommand(
     output.reason === null &&
     harnessVersion(
       output.stdout,
-      harnessDefinition(location.worker === "pi" ? "pi" : basename(path))
-        .versionPattern,
+      harnessDefinition(probeName(location, basename(path))).versionPattern,
     ) !== null
   );
+}
+
+function probeName(
+  selected: { readonly worker: string; readonly output?: "text" },
+  fallback: string,
+): string {
+  if (selected.worker !== "pi") return fallback;
+  return selected.output === "text" ? "" : "pi";
 }
 
 function workerCommands(
@@ -292,7 +302,7 @@ async function usableShellHarness(
     output.reason === null &&
     harnessVersion(
       shellBlock(output.stdout, 0) ?? "",
-      harnessDefinition(selected.worker).versionPattern,
+      harnessDefinition(probeName(selected, selected.worker)).versionPattern,
     ) !== null
   );
 }
@@ -318,6 +328,7 @@ async function selectedProbe(
     usable: await usableHarnessCommand(command, {
       ...location,
       worker: selected.worker,
+      ...(selected.output === undefined ? {} : { output: selected.output }),
     }),
     effective: await commandObservation(command, {
       directory: location.directory,

@@ -177,6 +177,8 @@ export async function attachPlan(
   const harness = turnHarness(settings, profile);
   if (recordedField(started, "harness") !== harness.worker)
     return "claude-turn-interrupted";
+  if (harness.worker === "pi" && harness.output === "text")
+    return "claude-turn-interrupted";
   if (harness.worker !== "pi") return { attach, tree, profile, harness };
   const piSession = await ownedPiSession({
     started,

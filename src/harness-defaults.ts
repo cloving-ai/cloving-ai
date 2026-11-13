@@ -148,8 +148,9 @@ function selectedCommand(
   readonly command: readonly string[];
   readonly output?: "text";
 } {
-  if (nativeHarness(name)) return { command: nativeCommand(settings, name) };
   const saved = matchingHarness(settings, name);
+  if (nativeHarness(name, saved.turn))
+    return { command: nativeCommand(settings, name) };
   if (saved.turn === undefined) throw new Error(`harness-no-worker: ${name}`);
   if (!isTurnCommand(saved.turn))
     throw new Error("invalid-setting: harness.turn");
@@ -207,6 +208,12 @@ export function turnHarness(
   };
 }
 
-export function nativeHarness(name: string): name is NativeHarness {
-  return Object.hasOwn(defaultCommands, name);
+export function nativeHarness(
+  name: string,
+  turn?: unknown,
+): name is NativeHarness {
+  return (
+    Object.hasOwn(defaultCommands, name) &&
+    !(name === "pi" && turn !== undefined)
+  );
 }
