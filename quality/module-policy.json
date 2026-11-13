@@ -1624,6 +1624,7 @@
     "test/pi-input-extension.test.ts": "test",
     "test/pi-input.test.ts": "test",
     "test/pi-live.test.ts": "test",
+    "test/pi-operation-ownership.test.ts": "test",
     "test/pi-protocol.test.ts": "test",
     "test/pi-recovery.test.ts": "test",
     "test/pi-session-recovery.test.ts": "test",

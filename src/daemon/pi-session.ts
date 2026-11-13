@@ -3,6 +3,7 @@ import { constants } from "node:fs";
 import { mkdir, open, realpath, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { record } from "../protocol.ts";
+import { readRecord } from "./operation-journal.ts";
 
 export interface PiSession {
   readonly path: string;
@@ -164,6 +165,23 @@ export function piOperationRefusal(
   )
     return undefined;
   return { kind: "unknown", evidence: `pi-session-ownership-conflict:${key}` };
+}
+
+export async function piOperationRecord(
+  folder: string,
+  active:
+    | {
+        readonly worker: string;
+        readonly intent: {
+          readonly operationId: string;
+          readonly target?: string;
+        };
+      }
+    | undefined,
+): Promise<unknown> {
+  return active === undefined
+    ? readRecord(folder, "started.json")
+    : { harness: active.worker, ...active.intent };
 }
 
 export async function ownedPiSession(
