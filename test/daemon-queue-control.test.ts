@@ -98,7 +98,12 @@ try {
   assert.equal(drained.state, "drained");
   assert.equal(drained.busy, 0);
   assert.equal(drained.drain.drainedAt, saved().drain.drainedAt);
-  assert.deepEqual((await asked("status")).queue, drained);
+  const currentQueue = await until(async () => {
+    const status = (await asked("status")).queue;
+    return status.nextCheckAt > drained.nextCheckAt ? status : undefined;
+  });
+  assert.equal(new Date(currentQueue.nextCheckAt).toISOString(), currentQueue.nextCheckAt);
+  assert.deepEqual(currentQueue, { ...drained, nextCheckAt: currentQueue.nextCheckAt });
   assert.equal(existsSync("input-CLV-901"), false);
   assert.equal((await runs()).length, 1);
   const resumed = await command("resume", "resume-two");
