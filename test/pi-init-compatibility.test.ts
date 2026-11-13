@@ -8,6 +8,8 @@ import { chooseHarness } from "../src/cli/init-selection.ts";
 import { createProbeRunner } from "../src/cli/probe-command.ts";
 import { check, withDoctor, type DoctorScene } from "./doctor-fixture.ts";
 import { initCli } from "./init-fixture.ts";
+import { turnHarness } from "../src/harness-defaults.ts";
+import { parseConfiguration } from "../src/project-settings.ts";
 
 const selections = ["file", "path", "shell", "profile"] as const;
 const probe = createProbeRunner({
@@ -73,6 +75,75 @@ for (const selection of selections) {
       );
     }));
 }
+
+for (const selection of selections)
+  for (const omitted of ["kind", "path", "both"]) {
+    await test(`CLV-373 init keeps custom pi ${selection} commands with ${omitted} omitted`, () =>
+      withDoctor(async (scene) => {
+        const legacy = await legacyPi(scene, selection);
+        const harness = {
+          ...legacy.harness,
+          ...(omitted === "path" ? {} : { kind: undefined }),
+          ...(omitted === "kind" ? {} : { path: undefined }),
+          command: [legacy.program, "--custom", "{prompt}"],
+          output: "text" as const,
+        };
+        const settings = { ...legacy.settings, harness };
+        await writeFile(legacy.file, JSON.stringify(settings));
+        const result = initCli(scene, {
+          arguments: [
+            "--harness",
+            {
+              file: "pi",
+              path: legacy.program,
+              shell: "shell:pi",
+              profile: "pi",
+            }[selection],
+          ],
+          environment: legacy.environment,
+        });
+        assert.equal(result.status, 7, result.stderr);
+        const saved = parseConfiguration(
+          await readFile(legacy.file, "utf8"),
+          "private",
+        );
+        assert.deepEqual(saved, {
+          ...settings,
+          harness: {
+            ...harness,
+            kind: legacy.harness.kind,
+            path: legacy.harness.path,
+          },
+        });
+        const worker = turnHarness(saved, { harness: "pi" });
+        assert.equal(worker.output, "text");
+        assert.deepEqual(worker.command, harness.command);
+        assert.deepEqual(
+          JSON.parse(await readFile(legacy.file + ".bak", "utf8")),
+          JSON.parse(JSON.stringify(settings)),
+        );
+      }));
+  }
+
+await test("CLV-373 init keeps a custom pi turn with kind and path omitted", () =>
+  withDoctor(async (scene) => {
+    const legacy = await legacyPi(scene, "file");
+    const harness = { name: "pi", turn: ["pi", "--print", "{prompt}"] };
+    await writeFile(legacy.file, JSON.stringify({ version: 1, harness }));
+    const result = initCli(scene, { arguments: ["--harness", "pi"] });
+    assert.equal(result.status, 7, result.stderr);
+    const saved = parseConfiguration(
+      await readFile(legacy.file, "utf8"),
+      "private",
+    );
+    assert.deepEqual(saved, {
+      version: 1,
+      harness: { ...harness, kind: "file", path: legacy.program },
+    });
+    const worker = turnHarness(saved);
+    assert.equal(worker.output, "text");
+    assert.deepEqual(worker.command, [legacy.program, "--print", "{prompt}"]);
+  }));
 
 for (const selection of ["file", "shell"]) {
   await test(`CLV-373 the picker rediscovers the matching custom pi ${selection} default`, () =>
