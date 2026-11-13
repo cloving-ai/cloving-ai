@@ -42,6 +42,7 @@ export async function harnessObservations(
   const discovery = await discoverHarnesses({
     env: environment,
     probe: location.probe,
+    harness: location.harness,
   });
   const harnesses: DoctorObservation = {
     result: discovery.entries.some((entry) => entry.working) ? "ok" : "fail",
