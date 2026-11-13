@@ -45,7 +45,11 @@ export async function queueDirectory(
 export const queueControlLimit = 32;
 
 export type QueueControlRecord =
-  | { readonly commandId: string; readonly command: QueueCommand }
+  | {
+      readonly commandId: string;
+      readonly command: QueueCommand;
+      readonly scope?: "workflow";
+    }
   | (QueueLaneRequest & { readonly command: "lanes" });
 
 export interface SelfUpdateHold {
@@ -80,6 +84,11 @@ function instant(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value) && value > 0;
 }
 
+function savedScope(value: unknown): "workflow" | undefined {
+  if (value === undefined || value === "workflow") return value;
+  throw new Error("invalid-queue-commands");
+}
+
 function savedDrain(value: unknown): QueueDrain | undefined {
   if (value === undefined) return undefined;
   const drain = record(value);
@@ -89,7 +98,12 @@ function savedDrain(value: unknown): QueueDrain | undefined {
     !(drainedAt === null || instant(drainedAt))
   )
     throw new Error("invalid-queue-commands");
-  return { startedAt: drain["startedAt"], drainedAt };
+  const scope = savedScope(drain["scope"]);
+  return {
+    startedAt: drain["startedAt"],
+    drainedAt,
+    ...(scope === undefined ? {} : { scope }),
+  };
 }
 
 function savedLaneControl(
@@ -117,18 +131,17 @@ function savedLaneControl(
 
 function savedControl(entry: unknown): QueueControlRecord {
   const control = record(entry);
-  const commandId = control?.["commandId"];
-  const command = control?.["command"];
-  if (
-    control === undefined ||
-    typeof commandId !== "string" ||
-    commandId.length === 0
-  )
+  if (control === undefined) throw new Error("invalid-queue-commands");
+  const { commandId, command } = control;
+  if (typeof commandId !== "string" || commandId.length === 0)
     throw new Error("invalid-queue-commands");
   if (command === "lanes") return savedLaneControl(control, commandId);
   if (command !== "resume" && command !== "drain")
     throw new Error("invalid-queue-commands");
-  return { command, commandId };
+  const scope = savedScope(control["scope"]);
+  if (command === "resume" && scope !== undefined)
+    throw new Error("invalid-queue-commands");
+  return { command, commandId, ...(scope === undefined ? {} : { scope }) };
 }
 
 function savedControls(value: unknown): QueueControlRecord[] {

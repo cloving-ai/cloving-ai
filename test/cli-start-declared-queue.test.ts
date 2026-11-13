@@ -233,7 +233,11 @@ await test("CLV-359 a declared queue without ticket commands or an interval sett
       CLOVING_NEXT_COMMAND: undefined,
     },
     inspect: () => {
-      const queue = record(statusOf(fixture)["queue"]);
+      const status = statusOf(fixture);
+      assert.equal(status["queue"], undefined);
+      const queues = status["queues"];
+      assert.ok(Array.isArray(queues));
+      const queue = record(queues[0]);
       assert.equal(queue?.["state"], "off");
       assert.equal(record(queue["off"])?.["reason"], "no ticket command");
     },

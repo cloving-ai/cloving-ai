@@ -8,6 +8,7 @@ export const queueFailureLimit = 3;
 export interface QueueDrain {
   readonly startedAt: number;
   readonly drainedAt: number | null;
+  readonly scope?: "workflow";
 }
 
 export const ticketIdentifier = /^[A-Za-z0-9._:-]{1,64}$/;
@@ -66,6 +67,7 @@ export interface QueuePort {
   readonly change: (request: {
     readonly command: QueueCommand;
     readonly commandId: string;
+    readonly scope?: "workflow";
   }) => Promise<QueueChange>;
 }
 
@@ -95,13 +97,7 @@ export function queueStateFields(control: QueueControl, busy: number): Fields {
       control.error === undefined ? (control.nextCheckAt ?? null) : null,
     stop: reason === undefined ? null : { reason },
     failedRunIds: [...control.failedRunIds],
-    drain:
-      control.drain === undefined
-        ? null
-        : {
-            startedAt: control.drain.startedAt,
-            drainedAt: control.drain.drainedAt,
-          },
+    drain: control.drain === undefined ? null : { ...control.drain },
     hold: control.hold ?? null,
     holds: [...(control.holds ?? [])],
     holdsCutAt: control.holdsCutAt ?? null,
