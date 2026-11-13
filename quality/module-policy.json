@@ -328,6 +328,7 @@
     "src/cli/thread-pool.ts": "cli",
     "src/cli/toolchain.ts": "cli",
     "src/cli/usage-harnesses.ts": "pure",
+    "src/cli/usage-queue.ts": "pure",
     "src/cli/usage-render.ts": "cli",
     "src/cli/usage.ts": "cli",
     "src/cli/validate.ts": "cli",
