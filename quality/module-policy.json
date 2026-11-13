@@ -1345,6 +1345,7 @@
     "test/doctor-guard.test.ts": "test",
     "test/doctor-local.test.ts": "test",
     "test/doctor-no-workflow.test.ts": "test",
+    "test/doctor-queue-feed.test.ts": "test",
     "test/doctor-report.test.ts": "test",
     "test/doctor-requirements.test.ts": "test",
     "test/doctor-retention.test.ts": "test",

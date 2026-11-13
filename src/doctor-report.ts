@@ -23,6 +23,7 @@ export const doctorCodes = [
   "check-command",
   "merge-mode",
   "queue-interval",
+  "queue-feed",
   "private-texts",
   "turn-environment",
   "commit-signatures",
@@ -74,6 +75,7 @@ export function doctorFixes(
       "Set checks.beforeMerge to an executable list: ${EDITOR:-vi} .cloving/config.json",
     "merge-mode": `Set the merge mode to direct or queue: ${client} config set merge.mode direct`,
     "queue-interval": `Set an interval from 10 to 3600: CLOVING_QUEUE_SECONDS=30 ${client} doctor`,
+    "queue-feed": "Add a feed function to the queue declaration",
     "private-texts": `Set a nonblank private text: CLOVING_PRIVATE_TEXTS='["TEXT TO KEEP PRIVATE"]' ${client} doctor`,
     "turn-environment": `Give a turn a variable that the project needs: ${client} config set turns.environment '["NAME"]' --private`,
     "commit-signatures": `Let turns commit with no signature: ${client} config set turns.commitSignatures off --private. Or give turns the SSH agent: add SSH_AUTH_SOCK to turns.environment.`,
@@ -93,8 +95,7 @@ export function doctorExitCode(checks: readonly DoctorCheck[]): number {
     : 0;
 }
 
-export interface DoctorWorkflow {
-  readonly queue?: WorkflowDeclaration["queue"];
+export interface DoctorWorkflow extends Pick<WorkflowDeclaration, "queue"> {
   readonly scope: "project" | "user";
   readonly workflowId: string;
   readonly capabilities: readonly string[];
