@@ -146,10 +146,10 @@ export async function queueFeed(
       await save();
     }
     const status = await readFeed(settings, progress.commandId);
+    if (status === "refused") return finish();
     if (typeof status === "string") {
       await finish();
-      if (status !== "refused") throw new Error(status);
-      return;
+      throw new Error(status);
     }
     if (status === undefined) return;
     await admitResult(settings, {
