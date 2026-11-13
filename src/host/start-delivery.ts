@@ -6,7 +6,7 @@ import {
   stoppedDecision,
 } from "./decision-resume.ts";
 
-export type WorkflowFunction = (input: unknown) => Promise<unknown>;
+export type WorkflowFunction = (...input: unknown[]) => Promise<unknown>;
 
 export interface RunIntent {
   readonly gateId?: string;
@@ -27,6 +27,7 @@ export type RunOutcome =
 type OperationRun = Pick<TaggedRun, "receipt" | "operationId" | "status">;
 
 export interface StartParts {
+  readonly isFeed?: (runId: string) => Promise<boolean>;
   readonly runs: () => Promise<readonly OperationRun[]>;
   readonly input: (runId: string) => Promise<string | undefined>;
   readonly document: (digest: string) => Promise<string | undefined>;
@@ -83,7 +84,8 @@ async function delivered(
   if (workflow === undefined || input === undefined)
     throw new Error(`start-not-available: ${intent.runId}`);
   const argument: unknown = JSON.parse(input);
-  const started = await start(workflow, [argument], {
+  const argumentsList = (await parts.isFeed?.(intent.runId)) ? [] : [argument];
+  const started = await start(workflow, argumentsList, {
     attributes: {
       [runTag]: intent.runId,
       [operationTag]: intent.operationId,

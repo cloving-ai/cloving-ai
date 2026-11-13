@@ -1,3 +1,4 @@
+import { queueFeedHandler } from "./queue-feed.ts";
 import type { Reply, ServiceRequest } from "../protocol.ts";
 import { continueHandler } from "./continue-handler.ts";
 import { decision, questions } from "./decision-handler.ts";
@@ -8,7 +9,8 @@ import { queueCommand, queueRead, queueLanes } from "./queue-handlers.ts";
 import { failed, type ServiceContext } from "./replies.ts";
 import { renameRun } from "./rename-handler.ts";
 import { restartOperation } from "./restart-handler.ts";
-import { runCommand, status } from "./run-handlers.ts";
+import { status } from "./run-handlers.ts";
+import { runCommand } from "./run-control.ts";
 import { spendRead } from "./queue-spend.ts";
 import { steerRun } from "./steer-handler.ts";
 import { scheduleHandler } from "./schedule-run.ts";
@@ -24,6 +26,7 @@ export function dispatcher(
 ) => Promise<Reply | undefined> {
   const lock = admissionLock();
   const run = submissionHandler(context, lock);
+  const feed = queueFeedHandler(context, lock);
   const continued = continueHandler(context, lock);
   const schedule = scheduleHandler(context, lock);
   const operations = new Map<
@@ -34,6 +37,7 @@ export function dispatcher(
     ) => Promise<Reply | undefined>
   >([
     ["run", (request) => run(request.parameters)],
+    ["queue-feed", (request) => feed(request.parameters)],
     ["schedule", (request) => schedule(request.parameters)],
     ["queue", (request) => queueRead(context, request.parameters)],
     ["spend", () => spendRead(context)],

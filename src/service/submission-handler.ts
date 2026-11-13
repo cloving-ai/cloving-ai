@@ -221,7 +221,9 @@ async function admit(
   );
   if (limited !== undefined) return limited;
   const { input } = resolution;
-  if (Buffer.byteLength(input) > context.documentBytes)
+  const documentBytes =
+    context.documentBytes + (admission.source === "feed" ? 5 * 65_536 : 0);
+  if (Buffer.byteLength(input) > documentBytes)
     return unresolved(context, { kind: "failure", commandId });
   const held = await spendRefusal(context, admission);
   if (held !== undefined) return held;

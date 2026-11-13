@@ -130,7 +130,12 @@ export function checkSubmission(
   };
 }
 
-function validFeedPick(value: unknown): boolean {
+export interface FeedPick {
+  readonly id: string;
+  readonly text: string;
+}
+
+export function validFeedPick(value: unknown): value is FeedPick {
   const ticket = record(value);
   return (
     ticket !== undefined &&

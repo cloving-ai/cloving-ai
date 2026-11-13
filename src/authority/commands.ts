@@ -112,6 +112,7 @@ const shapes: Readonly<Record<string, Shape>> = {
   "complete-run": {
     required: ["expectedRevision"],
     optional: [
+      "result",
       "outcome",
       "outcomeReason",
       "promotionId",

@@ -1,3 +1,4 @@
+import { checkedFeedResult, internalFeedPrefix } from "../queue-feed.ts";
 import { isTicketStatus } from "../ticket-status.ts";
 import { isPromotionId } from "../workflow-contracts.ts";
 import { getRun } from "workflow/api";
@@ -59,7 +60,9 @@ export async function taggedRuns(pageSize = 200): Promise<TaggedRun[]> {
 
 export async function workflowOutcome(
   receipt: string,
+  workflowId?: string,
 ): Promise<WorkflowOutcome | undefined> {
+  if (workflowId?.startsWith(internalFeedPrefix)) return feedOutcome(receipt);
   const value: unknown = await getRun(receipt).returnValue;
   const kind: unknown = Reflect.get(Object(value), "kind");
   if (typeof kind !== "string") return undefined;
@@ -76,6 +79,14 @@ export async function workflowOutcome(
     ...(issueUpdate === "failed" ? { issueUpdate } : {}),
     ...(isTicketStatus(ticketStatus) ? { ticketStatus } : {}),
   };
+}
+
+export async function feedOutcome(receipt: string): Promise<WorkflowOutcome> {
+  const value: unknown = await getRun(receipt).returnValue;
+  const result = checkedFeedResult(value);
+  return result === undefined
+    ? { kind: "invalid-feed-result" }
+    : { kind: "feed", result: JSON.stringify(result) };
 }
 
 export async function cancelled(receipt: string): Promise<string> {

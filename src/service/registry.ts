@@ -1,3 +1,4 @@
+import { internalFeedPrefix } from "../queue-feed.ts";
 import type {
   CommandWaits,
   WorkflowStage,
@@ -98,6 +99,25 @@ function availableVersions(workflow: Registered): readonly Registered[] {
   return [workflow, { ...workflow, manifest, pin: workflowPin(manifest) }];
 }
 
+function feedVersions(workflow: Registered): readonly Registered[] {
+  const { feed } = workflow;
+  if (feed === undefined) return [];
+  return availableVersions(
+    registered({
+      workflowId: internalFeedPrefix + workflow.workflowId,
+      manifest: feed.manifest,
+      availability: workflow.availability,
+      effectLimit: feed.effectLimit,
+      submission: { maximumBytes: 2, fields: {} },
+      resolver: {
+        id: "queue-feed",
+        version: "1",
+        resolve: () => Promise.resolve({ kind: "resolved", input: null }),
+      },
+    }),
+  );
+}
+
 export interface RegistryOptions {
   readonly retainedWorkflows?: readonly WorkflowRegistration[];
   readonly workflowBundles?: WorkflowBundleStore;
@@ -144,7 +164,10 @@ export function workflowRegistry(
   const available = [
     ...current,
     ...(options.retainedWorkflows ?? []).map(registered),
-  ].flatMap(availableVersions);
+  ].flatMap((workflow) => [
+    ...availableVersions(workflow),
+    ...feedVersions(workflow),
+  ]);
   const byPin = (pin: string): Registered | undefined =>
     available.find((workflow) => workflow.pin === pin);
   const bundle = async (pinned: ExecutionManifest) => {

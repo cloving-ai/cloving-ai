@@ -113,6 +113,20 @@ export function QueueSkipped(props: {
   });
 }
 
+export function QueueFeed(props: { readonly queue: Fields }): Shown {
+  const feed = record(props.queue["feed"]);
+  if (feed === undefined) return null;
+  const skipped = feed["skipped"];
+  const time = new Date(String(feed["at"])).toLocaleTimeString([], {
+    hour: "numeric",
+    minute: "2-digit",
+  });
+  return element("p", {
+    class: "queue-feed",
+    children: `last feed ${time}: ${String(feed["picks"])} picks, ${String(Array.isArray(skipped) ? skipped.length : 0)} skipped`,
+  });
+}
+
 export function QueueSources(props: { readonly queue: Fields }): Shown {
   const settings = record(props.queue["settings"]);
   return [
@@ -214,6 +228,7 @@ export function QueueCard(props: {
             children: `next check ${new Date(next).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`,
           }),
       component(QueueSources, { queue }),
+      component(QueueFeed, { queue }),
       component(QueueSkipped, { queue, words: props.words }),
       controls === undefined
         ? null
@@ -229,6 +244,7 @@ export const queueCardFunctions = [
   QueueSwitch,
   QueueSkipped,
   QueueSources,
+  QueueFeed,
   QueueLanes,
   queueCardState,
   queueCardReason,

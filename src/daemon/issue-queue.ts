@@ -1,3 +1,5 @@
+import { admission } from "./queue-submission.ts";
+import { queueFeed } from "./queue-feed.ts";
 import type { QueueSource } from "../queue-settings.ts";
 import {
   queueStatus,
@@ -5,11 +7,9 @@ import {
   trackedRuns,
   spendNotice,
 } from "./queue-status.ts";
-import { randomUUID } from "node:crypto";
-import { rm, writeFile } from "node:fs/promises";
+import { rm } from "node:fs/promises";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
-import { send } from "../cli/client.ts";
 import { record, type Fields } from "../protocol.ts";
 import { runIdentity } from "../service/submission-handler.ts";
 import { queueFailureLimit, type QueuePort } from "../queue-state.ts";
@@ -32,7 +32,9 @@ import {
   type QueueRuntime,
 } from "./queue-control.ts";
 
-interface QueueSettings {
+export interface QueueSettings {
+  readonly feed?: boolean;
+  readonly runEnded?: () => Promise<void>;
   readonly directory: string;
   readonly runtimeDirectory: string;
   readonly queueDirectory?: string;
@@ -126,79 +128,11 @@ async function completed(
       ),
   );
   for (const ending of endings)
-    if (!limited(pending)) await retired(pending, ending);
+    if (!limited(pending)) {
+      await retired(pending, ending);
+      await settings.runEnded?.();
+    }
   return pendingRuns;
-}
-
-async function submit(
-  settings: QueueSettings,
-  pending: QueueJournal,
-): Promise<void> {
-  const commandId = pending.retryCommandId ?? randomUUID();
-  pending.commands.add(commandId);
-  await pending.save();
-  const reply = await send(settings.runtimeDirectory, {
-    operation: "run",
-    parameters: {
-      workflowId: settings.workflowId,
-      source: "ticket",
-      submission: { ticket: "next" },
-      commandId,
-    },
-  });
-  pending.retryCommandId = undefined;
-  if (reply.kind === "result") return;
-  if (
-    [
-      "resolver-timeout",
-      "next-ticket-not-available",
-      "ticket-not-available",
-    ].includes(reply.error.code)
-  ) {
-    pending.retryCommandId = commandId;
-    process.stderr.write(
-      `Queue ${reply.error.code}: command ${commandId}; will retry\n`,
-    );
-    return;
-  }
-  if (
-    ![
-      "no-ready-ticket",
-      "workflow-active",
-      "ticket-active",
-      "ticket-dependency-open",
-      "queue-spend-limit",
-      "queue-repository-full",
-    ].includes(reply.error.code)
-  )
-    throw new Error(reply.error.code);
-  pending.commands.delete(commandId);
-  await pending.save();
-}
-
-async function admission(
-  settings: QueueSettings,
-  attempt: {
-    readonly pending: QueueJournal;
-    readonly holding: () => Promise<boolean>;
-    readonly signal: AbortSignal;
-  },
-): Promise<void> {
-  const file = join(
-    settings.queueDirectory ?? settings.directory,
-    "queue-submission",
-  );
-  await writeFile(file, "", { mode: 0o600 });
-  try {
-    if (
-      !(await attempt.holding()) &&
-      !attempt.signal.aborted &&
-      attempt.pending.drain === undefined
-    )
-      await submit(settings, attempt.pending);
-  } finally {
-    await rm(file, { force: true });
-  }
 }
 
 async function drained(
@@ -256,6 +190,7 @@ async function cycle(
     readonly pending: QueueJournal;
     readonly room: RoomGate;
     readonly runtime: QueueRuntime;
+    readonly feed?: Awaited<ReturnType<typeof queueFeed>>;
   },
 ): Promise<void> {
   const { signal, pending, room } = run;
@@ -284,6 +219,15 @@ async function cycle(
     );
     if (stopped()) return;
     try {
+      if (run.feed !== undefined) {
+        await run.feed.next({
+          pending,
+          available: async () =>
+            !stopped() && (await admissible(settings, checks)),
+          release: room.release,
+        });
+        continue;
+      }
       if (!(await admissible(settings, checks))) continue;
       if (stopped()) return;
       await admission(settings, { pending, holding, signal });
@@ -323,6 +267,40 @@ async function loadedQueue(settings: QueueSettings, runtime: QueueRuntime) {
   return { pending, holds };
 }
 
+async function runningQueue(
+  settings: QueueSettings,
+  parts: Awaited<ReturnType<typeof loadedQueue>> & {
+    readonly runtime: QueueRuntime;
+  },
+) {
+  const { pending, holds, runtime } = parts;
+  const feed =
+    settings.feed === true
+      ? await queueFeed(settings, (status) => {
+          runtime.feed = status;
+        })
+      : undefined;
+  return Promise.all([
+    cycle(
+      { ...settings, ...(feed === undefined ? {} : { runEnded: feed.reset }) },
+      {
+        signal: runtime.stopping.signal,
+        runtime,
+        pending,
+        room: queueRoom(settings, { runtime, holds }),
+        ...(feed === undefined ? {} : { feed }),
+      },
+    ).finally(holds.close),
+    readyRefreshes(settings.readyCommand, {
+      signal: runtime.stopping.signal,
+      intervalMilliseconds: settings.intervalMilliseconds,
+      listed: (ready) => {
+        runtime.ready = ready;
+      },
+    }),
+  ]);
+}
+
 export function issueQueue(settings: QueueSettings): {
   readonly stop: () => Promise<void>;
   readonly port: QueuePort;
@@ -343,23 +321,7 @@ export function issueQueue(settings: QueueSettings): {
   };
   const loaded = loadedQueue(settings, runtime);
   const running = loaded
-    .then(({ pending, holds }) =>
-      Promise.all([
-        cycle(settings, {
-          signal: runtime.stopping.signal,
-          runtime,
-          pending,
-          room: queueRoom(settings, { runtime, holds }),
-        }).finally(holds.close),
-        readyRefreshes(settings.readyCommand, {
-          signal: runtime.stopping.signal,
-          intervalMilliseconds: settings.intervalMilliseconds,
-          listed: (ready) => {
-            runtime.ready = ready;
-          },
-        }),
-      ]),
-    )
+    .then((parts) => runningQueue(settings, { ...parts, runtime }))
     .catch((error: unknown) => queueStopped(runtime, error));
   return {
     stop: async () => {

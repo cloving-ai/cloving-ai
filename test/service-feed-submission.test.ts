@@ -1,36 +1,8 @@
+import { feedWorkflow } from "./service-feed-fixture.ts";
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { declaredResolver } from "../src/daemon/ticket-registration.ts";
-import type { WorkflowRegistration } from "../src/service/registry.ts";
 import { queryDatabase } from "./authority-store-fixture.ts";
 import { call, field, text, withHarness } from "./service-fixture.ts";
-
-function feedWorkflow(
-  registration: WorkflowRegistration,
-): WorkflowRegistration {
-  const submission = {
-    maximumBytes: 4096,
-    fields: { ticket: { type: "ticket" as const } },
-  };
-  return {
-    ...registration,
-    queue: true,
-    admission: 2,
-    submission,
-    feed: {
-      functionName: "triageFeed",
-      effectLimit: 3,
-      manifest: {
-        ...registration.manifest,
-        workflowId: "workflow//./workflows/develop//triageFeed",
-      },
-    },
-    resolver: declaredResolver(
-      { repository: "/repository", command: undefined },
-      submission,
-    ),
-  };
-}
 
 const pick = { id: "800", text: "# Queue task\n\nKeep the text exactly.  " };
 
@@ -45,6 +17,29 @@ function request(commandId: string, ticket: unknown = pick) {
     },
   };
 }
+
+await test("CLV-362 feed work preserves maximum UTF-8 text after JSON escaping", () =>
+  withHarness(async (harness) => {
+    const service = await harness.start({
+      workflows: [feedWorkflow(harness.registration)],
+    });
+    const ticket = { id: "800", text: "\u0000".repeat(65_536) };
+    const reply = await call(harness, request("escaped-feed", ticket));
+    assert.equal(reply["kind"], "run-admitted", JSON.stringify(reply));
+    await service.close();
+    const documents = queryDatabase(
+      harness.stateDirectory,
+      "SELECT digest, body FROM documents",
+    );
+    const input = documents.find(
+      (document) =>
+        field(document, "digest") ===
+        field(reply["binding"], "executionInputDigest"),
+    );
+    assert.deepEqual(field(JSON.parse(text(input, "body")), "input"), {
+      ticket,
+    });
+  }));
 
 await test("CLV-362 a feed pick admits the exact declared work input without a ticket command", () =>
   withHarness(async (harness) => {

@@ -121,7 +121,8 @@ async function hosted(
   const loop = worldLoop({
     ...ports,
     runs: taggedRuns,
-    outcome: workflowOutcome,
+    outcome: async (receipt, runId) =>
+      workflowOutcome(receipt, await ports.workflow.id(runId)),
     intervalMilliseconds: loopMilliseconds,
   });
   const stopping = new AbortController();

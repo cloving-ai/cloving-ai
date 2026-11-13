@@ -137,3 +137,17 @@ await test("CLV-361 queue intervals use hours or seconds when minutes do not fit
   );
   assert.match(floor({ state: "off" }), /state off in the queues setting/);
 });
+
+await test("CLV-362 the queue card shows the last feed time, counts and skipped reasons", () => {
+  const html = floor({
+    feed: {
+      at: "2026-11-03T09:40:00.000Z",
+      picks: 2,
+      skipped: [{ id: "801", reason: "needs a title" }],
+    },
+    skipped: [{ ticketId: "801", reason: "needs a title" }],
+  });
+  assert.match(html, /last feed .*: 2 picks, 1 skipped/);
+  assert.match(html, /#801: needs a title/);
+  assert.doesNotMatch(floor(), /last feed/);
+});

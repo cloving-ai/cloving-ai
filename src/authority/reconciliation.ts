@@ -11,6 +11,8 @@ import {
 } from "./transitions.ts";
 
 export interface WorldRun {
+  readonly result?: string;
+  readonly resultBody?: string;
   readonly runId: string;
   readonly receipt: string;
   readonly status: string;
@@ -190,6 +192,9 @@ function moved(
     runId: run.runId,
     expectedRevision: run.revision,
     ...(kind === "complete-run" ? completionOutcome(world) : {}),
+    ...(kind === "complete-run" && world.result !== undefined
+      ? { result: world.result }
+      : {}),
   };
 }
 
