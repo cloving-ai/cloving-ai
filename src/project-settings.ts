@@ -7,6 +7,7 @@ import type { TurnProfiles } from "./turn-profile.ts";
 import type { TokenPrices } from "./token-prices.ts";
 import { queueFileLayers, queuesDigest } from "./queue-settings.ts";
 import { encodedSettingValue, type SettingValue } from "./setting-value.ts";
+import { harnessDefaults, nativeHarness } from "./harness-defaults.ts";
 
 export type { SettingValue } from "./setting-value.ts";
 
@@ -161,16 +162,15 @@ export function configurationValues(
 
 function harnessCommandMapping(
   name: unknown,
+  turn?: unknown,
 ): Readonly<Record<string, string>> {
-  if (name === "pi") return { "harness.command": "CLOVING_PI_COMMAND" };
-  if (name === "opencode")
-    return { "harness.command": "CLOVING_OPENCODE_COMMAND" };
-  if (name === "grok") return { "harness.command": "CLOVING_GROK_COMMAND" };
-  if (name === "codex") return { "harness.command": "CLOVING_CODEX_COMMAND" };
-  if (name === "gemini") return { "harness.command": "CLOVING_GEMINI_COMMAND" };
-  if (name === undefined || name === "claude")
-    return { "harness.command": "CLOVING_CLAUDE_COMMAND" };
-  return {};
+  if (
+    name !== undefined &&
+    (typeof name !== "string" || !nativeHarness(name, turn))
+  )
+    return {};
+  const variable = harnessDefaults(name).variable;
+  return variable === undefined ? {} : { "harness.command": variable };
 }
 
 export interface HiddenFileValue {
@@ -239,8 +239,9 @@ export const harnessCommandVariables: readonly string[] = harnessNames.flatMap(
 
 export function workerSettingVariables(
   worker: unknown,
+  turn?: unknown,
 ): Readonly<Record<string, string>> {
-  return { ...settingVariables, ...harnessCommandMapping(worker) };
+  return { ...settingVariables, ...harnessCommandMapping(worker, turn) };
 }
 
 export function withoutFileVariables(
@@ -287,7 +288,7 @@ export function resolveSettings(
   const sources: Record<string, SettingSource> = { ...queues.sources };
   const mapped = {
     ...settingVariables,
-    ...harnessCommandMapping(values["harness.name"]),
+    ...harnessCommandMapping(values["harness.name"], values["harness.turn"]),
     profiles: "CLOVING_PROFILES",
     ...Object.fromEntries(environmentOnly.map((name) => [name, name])),
   };
@@ -337,7 +338,10 @@ export function settingDigests(
 ): Readonly<Record<string, string>> {
   const fields = {
     ...resolved,
-    variables: workerSettingVariables(resolved.values["harness.name"]),
+    variables: workerSettingVariables(
+      resolved.values["harness.name"],
+      resolved.values["harness.turn"],
+    ),
   };
   return Object.fromEntries(
     settingFields().map((field) => {

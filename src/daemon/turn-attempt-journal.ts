@@ -59,10 +59,11 @@ function resumedAfter(
 
 export async function prepareAttempt(attempts: Attempts) {
   const selected = attemptCommand(attempts, attempts.ends.length + 1);
-  const failure =
-    attempts.start.worker === "pi"
-      ? piSessionCommandFailure(selected.command)
-      : undefined;
+  const nativePi =
+    attempts.start.worker === "pi" && attempts.start.output !== "text";
+  const failure = nativePi
+    ? piSessionCommandFailure(selected.command)
+    : undefined;
   if (failure !== undefined) {
     attempts.failure = failure;
     return undefined;
@@ -76,12 +77,10 @@ export async function prepareAttempt(attempts: Attempts) {
     planned.attempt === 1
       ? attempts.start.folder
       : join(attempts.start.folder, `attempt-${String(planned.attempt)}`);
-  if (attempts.start.worker === "pi")
-    await mkdir(folder, { recursive: true, mode: 0o700 });
-  const piSession =
-    attempts.start.worker === "pi"
-      ? await createPiSession({ folder, directory: attempts.start.directory })
-      : undefined;
+  if (nativePi) await mkdir(folder, { recursive: true, mode: 0o700 });
+  const piSession = nativePi
+    ? await createPiSession({ folder, directory: attempts.start.directory })
+    : undefined;
   if (typeof piSession === "string") {
     attempts.failure = piSession;
     return undefined;

@@ -69,7 +69,8 @@ export function configurationEntries(input: {
   const name =
     input.environment["CLOVING_WORKER"] ?? privateFile["harness.name"];
   const harness =
-    typeof name === "string" && !nativeHarness(name)
+    typeof name === "string" &&
+    !nativeHarness(name, privateFile["harness.turn"])
       ? undefined
       : harnessDefaults(name);
   const environment: Record<string, DisplayValue> = Object.fromEntries(
