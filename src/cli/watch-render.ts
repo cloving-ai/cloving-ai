@@ -259,6 +259,7 @@ export interface WatchModel {
   readonly schedules?: ShownSchedules;
   readonly loops?: readonly WatchLoop[];
   readonly queue?: Fields;
+  readonly queues?: readonly Fields[];
   readonly workflowRefusals?: readonly WorkflowRefusal[];
   readonly cardForms?: readonly CardForm[];
   readonly completed?: readonly WatchTile[];
@@ -335,6 +336,12 @@ export function waitingDetail(run: WatchRun, now: string): string {
   return `A decision waits for you${waited}. Examine the work, then approve or deny.`;
 }
 
+export function localOfferSuffix(promotionId: unknown): string {
+  if (typeof promotionId !== "string") return "";
+  if (!promotionId.startsWith("local-")) return "";
+  return " This local run is complete. Run `cloving init --factory` to add review, a plan, and regular maintenance.";
+}
+
 export function completedDetail(run: WatchRun): string {
   const [first] = run.events;
   const last = run.events.at(-1);
@@ -357,7 +364,7 @@ export function completedDetail(run: WatchRun): string {
       : "";
   const promotion =
     run.promotionId === undefined ? "" : ` Promotion: ${run.promotionId}.`;
-  return `${verdicts[run.decision] ?? ""}The run completed${time} · cost ${cost}.${promotion}${ticket}${update}`;
+  return `${verdicts[run.decision] ?? ""}The run completed${time} · cost ${cost}.${promotion}${ticket}${update}${localOfferSuffix(run.promotionId)}`;
 }
 
 export function phaseTime(phase: WatchPhase, now: string): string {

@@ -256,6 +256,7 @@ function stepOrder(first: WatchCard, second: WatchCard): number {
 interface BoardInputs {
   readonly schedules?: ShownSchedules;
   readonly queue?: Fields;
+  readonly queues?: readonly Fields[];
   readonly workflows: readonly string[];
   readonly workflowStages?: WorkflowStages;
   readonly updatedAt: string;
@@ -312,7 +313,11 @@ function lineEndOf(
       : schedules.find((entry) => entry.workflowId === workflowId);
   return {
     ...(schedule === undefined ? {} : { schedule }),
-    ...readyOf(inputs.queue, workflowId),
+    ...readyOf(
+      inputs.queues?.find((queue) => queue["workflowId"] === workflowId) ??
+        inputs.queue,
+      workflowId,
+    ),
   };
 }
 

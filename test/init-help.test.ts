@@ -9,7 +9,11 @@ await test("CLV-209 init help documents selection without requiring a repository
     assert.equal(result.status, 0, result.stderr);
     assert.match(result.stdout, /cloving init.*--harness/);
     assert.match(result.stdout, /shell:<name>/);
-    assert.match(cli(["--help"]).stdout, /^ {2}init\s+Start the setup agent/m);
+    assert.match(
+      cli(["--help"]).stdout,
+      /^ {2}init\s+Try one local task or start the setup agent/m,
+    );
+    assert.match(result.stdout, /--local \| --factory/);
     for (const [argumentsList, code] of [
       [["init", "--harness"], "missing-value"],
       [["init", "extra"], "unexpected-argument"],

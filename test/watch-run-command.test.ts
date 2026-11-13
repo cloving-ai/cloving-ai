@@ -155,7 +155,7 @@ await test("CLV-335 the README describes the run controls of the watch page, the
     /When the page shows a new revision of the run, the next click gets a new command ID/,
     /`The run changed\. Look again and try again\.`/,
     /`actions\/pause`, `actions\/resume` and `actions\/drop` use the write rules/,
-    /`CLOVING_WATCH_ACTIONS=off` removes the form control, the queue control, the loop controls, the run controls and their endpoints/,
+    /`CLOVING_WATCH_ACTIONS=off` removes the form control, the queue switches and lane buttons, the loop controls, the run controls and their endpoints/,
   ])
     assert.match(readme, part);
 });

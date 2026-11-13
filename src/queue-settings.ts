@@ -1,7 +1,16 @@
 import { record } from "./protocol.ts";
+import type {
+  QueuesSetting,
+  SettingValue,
+  WorkflowQueueSetting,
+} from "./setting-value.ts";
 import type { QueueDeclaration } from "./workflow-declaration.ts";
 
+export type { QueuesSetting, WorkflowQueueSetting } from "./setting-value.ts";
+
 export type QueueSource =
+  | "queues setting (project file)"
+  | "queues setting (private file)"
   | "queues setting"
   | "queue setting"
   | "environment"
@@ -19,15 +28,6 @@ export interface QueueValues {
   readonly workingLanes: SourcedValue;
 }
 
-export interface WorkflowQueueSetting {
-  readonly state?: "on" | "off";
-  readonly everySeconds?: number;
-  readonly lanes?: number;
-  readonly workingLanes?: number;
-}
-
-export type QueuesSetting = Readonly<Record<string, WorkflowQueueSetting>>;
-
 export interface GeneralQueueValues {
   readonly everySeconds?: SourcedValue;
   readonly lanes?: SourcedValue;
@@ -37,6 +37,8 @@ export interface GeneralQueueValues {
 export const defaultQueueSeconds = 120;
 
 const queueSources: readonly QueueSource[] = [
+  "queues setting (project file)",
+  "queues setting (private file)",
   "queues setting",
   "queue setting",
   "environment",
@@ -76,14 +78,26 @@ export function declaredQueueValues(declaration: {
 interface QueueValuesInput {
   readonly declared: QueueDeclaration;
   readonly setting?: WorkflowQueueSetting | undefined;
+  readonly settingSource?: QueueSource | undefined;
+  readonly settingSources?:
+    Readonly<Partial<Record<keyof QueueValues, QueueSource>>> | undefined;
   readonly general: GeneralQueueValues;
+}
+
+function settingValueSource(
+  given: QueueValuesInput,
+  field: keyof QueueValues,
+): QueueSource {
+  return (
+    given.settingSources?.[field] ?? given.settingSource ?? "queues setting"
+  );
 }
 
 export function queueIntervalValue(given: QueueValuesInput): SourcedValue {
   const { declared, setting, general } = given;
   return sourced(
     [
-      from(setting?.everySeconds, "queues setting"),
+      from(setting?.everySeconds, settingValueSource(given, "everySeconds")),
       general.everySeconds,
       from(declared.everySeconds, "declaration"),
     ],
@@ -95,14 +109,17 @@ export function queueValues(given: QueueValuesInput): QueueValues {
   const { declared, setting, general } = given;
   const lanes = sourced(
     [
-      from(setting?.lanes, "queues setting"),
+      from(setting?.lanes, settingValueSource(given, "lanes")),
       general.lanes,
       from(declared.lanes, "declaration"),
     ],
     1,
   );
   const workingLanes = sourced(
-    [from(setting?.workingLanes, "queues setting"), general.workingLanes],
+    [
+      from(setting?.workingLanes, settingValueSource(given, "workingLanes")),
+      general.workingLanes,
+    ],
     lanes.value,
   );
   if (workingLanes.value > lanes.value)
@@ -178,4 +195,80 @@ export function parseQueuesSetting(text: string | undefined): QueuesSetting {
   }
   if (!isQueuesSetting(value)) throw new Error("invalid-setting: queues");
   return value;
+}
+
+function parsedQueues(value: unknown): QueuesSetting | undefined {
+  try {
+    return parseQueuesSetting(typeof value === "string" ? value : undefined);
+  } catch {
+    return undefined;
+  }
+}
+
+export function queuesDigest(
+  value: SettingValue | undefined,
+  digest: (text: string) => string,
+): string {
+  const settings = parsedQueues(value);
+  if (settings === undefined) return `${digest(JSON.stringify(value))}:`;
+  const rows = Object.entries(settings).sort(([first], [second]) =>
+    first < second ? -1 : Number(first > second),
+  );
+  const part = (names: readonly (keyof WorkflowQueueSetting)[]) =>
+    digest(
+      JSON.stringify(
+        rows.flatMap(([workflowId, setting]) => {
+          const values = names.map((name) => setting[name] ?? null);
+          return values.every((value) => value === null)
+            ? []
+            : [[workflowId, ...values]];
+        }),
+      ),
+    );
+  return `${part(["state", "everySeconds"])}:${part(["lanes", "workingLanes"])}`;
+}
+
+export function queueFileLayers(
+  project: QueuesSetting | undefined,
+  privateFile: QueuesSetting | undefined,
+): {
+  readonly values: QueuesSetting | undefined;
+  readonly sources: Readonly<Record<string, "project" | "private">>;
+} {
+  const values: Record<string, WorkflowQueueSetting> = {};
+  const sources: Record<string, "project" | "private"> = {};
+  if (project === undefined && privateFile === undefined)
+    return { values: undefined, sources };
+  for (const [source, layer] of [
+    ["project", project],
+    ["private", privateFile],
+  ] as const) {
+    for (const [workflowId, setting] of Object.entries(layer ?? {})) {
+      values[workflowId] = { ...values[workflowId], ...setting };
+      for (const field of Object.keys(setting))
+        sources[`queues.${workflowId}.${field}`] = source;
+    }
+  }
+  return { values, sources };
+}
+
+export function queueValueSources(
+  sources: Readonly<Record<string, string>>,
+  workflowId: string,
+): Readonly<Record<keyof QueueValues, QueueSource>> {
+  const source = (field: keyof QueueValues): QueueSource => {
+    const origin =
+      sources["queues"] === "environment"
+        ? "environment"
+        : (sources[`queues.${workflowId}.${field}`] ?? sources["queues"]);
+    if (origin === "private") return "queues setting (private file)";
+    if (origin === "project") return "queues setting (project file)";
+    if (origin === "environment") return "environment";
+    return "queues setting";
+  };
+  return {
+    everySeconds: source("everySeconds"),
+    lanes: source("lanes"),
+    workingLanes: source("workingLanes"),
+  };
 }

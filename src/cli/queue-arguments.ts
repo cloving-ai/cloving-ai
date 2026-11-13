@@ -3,7 +3,9 @@ import type { ServiceRequest } from "../protocol.ts";
 
 export interface QueueInvocation {
   readonly kind: "queue";
-  readonly action: "show" | "resume" | "drain";
+  readonly action: "show" | "resume" | "drain" | "lanes";
+  readonly lanes?: number;
+  readonly expectedLanes?: number;
   readonly commandId: string | null;
   readonly json: boolean;
   readonly workflowId?: string;
@@ -52,11 +54,69 @@ export function queueInvocation(request: {
   if (target === undefined) return "invalid-option-value";
   if (action === undefined)
     return { kind: "queue", action: "show", commandId: null, json, ...target };
-  if (action !== "resume" && action !== "drain") return "invalid-queue-action";
-  if (rest.length > 0) return "unexpected-argument";
+  return queueMutation({
+    action,
+    rest,
+    target,
+    json,
+    options: request.options,
+  });
+}
+
+function queueLaneCount(
+  rest: readonly string[],
+  workflowId?: string,
+): number | undefined {
+  const value = rest[0] ?? "";
+  if (
+    rest.length !== 1 ||
+    !/^\d+$/.test(value) ||
+    Number(value) < 1 ||
+    Number(value) > 16 ||
+    workflowId === undefined
+  )
+    return undefined;
+  return Number(value);
+}
+
+function isQueueAction(action: string): action is "resume" | "drain" | "lanes" {
+  return action === "resume" || action === "drain" || action === "lanes";
+}
+
+function queueMutation(request: {
+  readonly action: string;
+  readonly rest: readonly string[];
+  readonly target: { readonly workflowId?: string };
+  readonly json: boolean;
+  readonly options: Parameters<typeof givenCommandId>[0];
+}): QueueInvocation | string {
+  const { action, rest, target, json } = request;
+  if (!isQueueAction(action)) return "invalid-queue-action";
+  const lanes =
+    action === "lanes" ? queueLaneCount(rest, target.workflowId) : undefined;
+  if (action === "lanes" && lanes === undefined) return "invalid-option-value";
+  if (action !== "lanes" && rest.length > 0) return "unexpected-argument";
   const commandId = givenCommandId(request.options);
   if (commandId === undefined) return "invalid-option-value";
-  return { kind: "queue", action, commandId, json, ...target };
+  return {
+    kind: "queue",
+    action,
+    commandId,
+    json,
+    ...target,
+    ...(lanes === undefined ? {} : { lanes }),
+  };
+}
+
+function queueParameters(invocation: QueueInvocation, commandId: string) {
+  if (invocation.action === "show") return {};
+  if (invocation.action === "lanes")
+    return {
+      commandId,
+      lanes: invocation.lanes,
+      expectedLanes: invocation.expectedLanes,
+    };
+  return { command: invocation.action, commandId };
 }
 
 export function queueServiceRequest(
@@ -64,11 +124,14 @@ export function queueServiceRequest(
   commandId: string,
 ): ServiceRequest {
   return {
-    operation: invocation.action === "show" ? "queue" : "queue-command",
+    operation: {
+      show: "queue",
+      resume: "queue-command",
+      drain: "queue-command",
+      lanes: "queue-lanes",
+    }[invocation.action],
     parameters: {
-      ...(invocation.action === "show"
-        ? {}
-        : { command: invocation.action, commandId }),
+      ...queueParameters(invocation, commandId),
       ...(invocation.workflowId === undefined
         ? {}
         : { workflowId: invocation.workflowId }),

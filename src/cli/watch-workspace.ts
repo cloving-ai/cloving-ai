@@ -59,7 +59,13 @@ function repositoryOf(part: WorkspacePart): WatchRepository {
 
 export function workspaceModel(parts: readonly WorkspacePart[]): WatchModel {
   const today = workspaceToday(parts.flatMap(({ model }) => model.today ?? []));
+  const queues = parts.flatMap(({ name, model }) =>
+    (model.queues ?? (model.queue === undefined ? [] : [model.queue])).map(
+      (queue) => ({ ...queue, repository: name }),
+    ),
+  );
   return {
+    ...(queues.length === 0 ? {} : { queues }),
     repositories: parts.map(repositoryOf),
     updatedAt: parts.reduce(
       (latest, { model }) =>

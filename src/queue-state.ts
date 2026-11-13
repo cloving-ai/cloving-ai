@@ -22,6 +22,7 @@ export type ReadyList =
   | { readonly kind: "failed"; readonly detail: string };
 
 export interface QueueControl {
+  readonly nextCheckAt?: string | undefined;
   readonly failedRunIds: readonly string[];
   readonly drain: QueueDrain | undefined;
   readonly error: string | undefined;
@@ -49,7 +50,18 @@ export type QueueChange =
   | { readonly kind: "changed" | "replayed" | "conflicting-command" }
   | { readonly kind: "unavailable"; readonly detail: string };
 
+export interface QueueLaneRequest {
+  readonly lanes: number;
+  readonly expectedLanes: number;
+  readonly commandId: string;
+}
+
+export type QueueLaneChange = QueueChange | { readonly kind: "stale" };
+
 export interface QueuePort {
+  readonly changeLanes?: (
+    request: QueueLaneRequest,
+  ) => Promise<QueueLaneChange>;
   readonly control: () => QueueControl | undefined;
   readonly change: (request: {
     readonly command: QueueCommand;
@@ -79,6 +91,8 @@ export function queueStateFields(control: QueueControl, busy: number): Fields {
   const reason = stopReason(control);
   return {
     state: stateName(control, busy),
+    nextCheckAt:
+      control.error === undefined ? (control.nextCheckAt ?? null) : null,
     stop: reason === undefined ? null : { reason },
     failedRunIds: [...control.failedRunIds],
     drain:

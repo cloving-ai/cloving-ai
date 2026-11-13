@@ -3,6 +3,8 @@ import {
   queueOffDetail,
   type QueueChange,
   type QueueCommand,
+  type QueueLaneRequest,
+  type QueueLaneChange,
   type QueuePort,
   type ReadyList,
 } from "../queue-state.ts";
@@ -10,6 +12,7 @@ import { queueControlLimit, type QueueJournal } from "./queue-journal.ts";
 import type { QueueValues, SourcedValue } from "../queue-settings.ts";
 
 export interface QueueRuntime {
+  nextCheckAt?: string;
   pending: QueueJournal | undefined;
   error: string | undefined;
   ready?: ReadyList | undefined;
@@ -20,6 +23,7 @@ export interface QueueRuntime {
     readonly periods: () => readonly HoldPeriod[];
     readonly cutAt: () => number | null;
   };
+  readonly writeLanes?: (lanes: number) => Promise<void>;
   readonly stopping: AbortController;
 }
 
@@ -79,14 +83,17 @@ function settingsOf(runtime: QueueRuntime): {
 } {
   const limits = runtime.limits?.();
   const { interval } = runtime;
-  if (limits?.sources === undefined || interval === undefined) return {};
+  if (limits === undefined || interval === undefined) return {};
   return {
     settings: {
       everySeconds: interval,
-      lanes: { value: limits.lanes, source: limits.sources.lanes },
+      lanes: {
+        value: limits.lanes,
+        source: limits.sources?.lanes ?? "default",
+      },
       workingLanes: {
         value: limits.workingLanes,
-        source: limits.sources.workingLanes,
+        source: limits.sources?.workingLanes ?? "default",
       },
     },
   };
@@ -150,6 +157,44 @@ async function changed(
   }
 }
 
+function laneReplay(
+  pending: QueueJournal,
+  request: QueueLaneRequest,
+): QueueLaneChange | undefined {
+  const prior = pending.controls.find(
+    (entry) => entry.commandId === request.commandId,
+  );
+  if (prior === undefined) return undefined;
+  return {
+    kind:
+      prior.command === "lanes" && prior.lanes === request.lanes
+        ? "replayed"
+        : "conflicting-command",
+  };
+}
+
+async function changedLanes(
+  runtime: QueueRuntime,
+  request: QueueLaneRequest,
+): Promise<QueueLaneChange> {
+  const { pending, writeLanes } = runtime;
+  if (pending === undefined || writeLanes === undefined) return unavailable;
+  if (runtime.error !== undefined) return stoppedChange(runtime.error);
+  const prior = laneReplay(pending, request);
+  if (prior !== undefined) return prior;
+  if (runtime.limits?.().lanes !== request.expectedLanes)
+    return { kind: "stale" };
+  await writeLanes(request.lanes);
+  pending.controls.push({ command: "lanes", ...request });
+  pending.controls.splice(0, pending.controls.length - queueControlLimit);
+  try {
+    await pending.save();
+    return { kind: "changed" };
+  } catch (failure) {
+    return stoppedChange(queueStopped(runtime, failure));
+  }
+}
+
 export function queueControlPort(runtime: QueueRuntime): QueuePort {
   let changing: Promise<unknown> = Promise.resolve();
   return {
@@ -157,6 +202,7 @@ export function queueControlPort(runtime: QueueRuntime): QueuePort {
       const { pending, error, ready, hold, limits, holds } = runtime;
       if (pending === undefined && error === undefined) return undefined;
       return {
+        nextCheckAt: runtime.nextCheckAt,
         failedRunIds: [...(pending?.failures ?? [])],
         drain: pending?.drain,
         error,
@@ -168,6 +214,11 @@ export function queueControlPort(runtime: QueueRuntime): QueuePort {
           ? {}
           : { holds: holds.periods(), holdsCutAt: holds.cutAt() }),
       };
+    },
+    changeLanes: (request) => {
+      const next = changing.then(() => changedLanes(runtime, request));
+      changing = next.catch(() => undefined);
+      return next;
     },
     change: (request) => {
       const next = changing.then(() => changed(runtime, request));

@@ -12,6 +12,7 @@ import {
   queueFailureLimit,
   type QueueCommand,
   type QueueDrain,
+  type QueueLaneRequest,
 } from "../queue-state.ts";
 
 export async function queueDirectory(
@@ -43,10 +44,9 @@ export async function queueDirectory(
 
 export const queueControlLimit = 32;
 
-export interface QueueControlRecord {
-  readonly commandId: string;
-  readonly command: QueueCommand;
-}
+export type QueueControlRecord =
+  | { readonly commandId: string; readonly command: QueueCommand }
+  | (QueueLaneRequest & { readonly command: "lanes" });
 
 export interface SelfUpdateHold {
   readonly mark: string;
@@ -92,22 +92,50 @@ function savedDrain(value: unknown): QueueDrain | undefined {
   return { startedAt: drain["startedAt"], drainedAt };
 }
 
+function savedLaneControl(
+  control: Readonly<Record<string, unknown>>,
+  commandId: string,
+): QueueControlRecord {
+  const lanes = control["lanes"];
+  const expectedLanes = control["expectedLanes"];
+  if (
+    !Number.isSafeInteger(lanes) ||
+    Number(lanes) < 1 ||
+    Number(lanes) > 16 ||
+    !Number.isSafeInteger(expectedLanes) ||
+    Number(expectedLanes) < 1 ||
+    Number(expectedLanes) > 16
+  )
+    throw new Error("invalid-queue-commands");
+  return {
+    command: "lanes",
+    commandId,
+    lanes: Number(lanes),
+    expectedLanes: Number(expectedLanes),
+  };
+}
+
+function savedControl(entry: unknown): QueueControlRecord {
+  const control = record(entry);
+  const commandId = control?.["commandId"];
+  const command = control?.["command"];
+  if (
+    control === undefined ||
+    typeof commandId !== "string" ||
+    commandId.length === 0
+  )
+    throw new Error("invalid-queue-commands");
+  if (command === "lanes") return savedLaneControl(control, commandId);
+  if (command !== "resume" && command !== "drain")
+    throw new Error("invalid-queue-commands");
+  return { command, commandId };
+}
+
 function savedControls(value: unknown): QueueControlRecord[] {
   if (value === undefined) return [];
   if (!Array.isArray(value) || value.length > queueControlLimit)
     throw new Error("invalid-queue-commands");
-  return value.map((entry: unknown) => {
-    const control = record(entry);
-    const commandId = control?.["commandId"];
-    const command = control?.["command"];
-    if (
-      typeof commandId !== "string" ||
-      commandId.length === 0 ||
-      (command !== "resume" && command !== "drain")
-    )
-      throw new Error("invalid-queue-commands");
-    return { commandId, command };
-  });
+  return value.map(savedControl);
 }
 
 function identifiers(value: unknown): string[] {

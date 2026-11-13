@@ -151,7 +151,7 @@ await test("CLV-244 queue status identifies its workflow and current lanes", () 
     }
   }));
 
-await test("CLV-360 status keeps disabled queues beside enabled queues in workflow order", () =>
+await test("CLV-360 status keeps disabled queues beside unconnected queues in workflow order", () =>
   withHarness(async (harness) => {
     const disabled = queueOffPort("a-disabled");
     await harness.start({
@@ -174,9 +174,10 @@ await test("CLV-360 status keeps disabled queues beside enabled queues in workfl
       ]),
       [
         ["a-disabled", "off"],
-        ["develop", undefined],
+        ["develop", "off"],
       ],
     );
+    assert.equal(field(field(queues[1], "off"), "reason"), "no ticket command");
     assert.deepEqual(status["queue"], queues[0]);
     assert.deepEqual(field(queues[0], "off"), {
       workflowId: "a-disabled",

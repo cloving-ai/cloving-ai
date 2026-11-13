@@ -11,6 +11,7 @@ import { noCopy } from "./watch-sample.ts";
 import { contrast, palette, rgb } from "./watch-style-fixture.ts";
 
 const queue = {
+  workflowId: "develop-issue",
   busy: 0,
   lanes: 3,
   skipped: [
@@ -107,13 +108,13 @@ function hoverToken(selector: string): string {
   return token;
 }
 
-await test("watch design: the header shows the queue in one line and a closed disclosure lists the skipped tickets in plain words", () => {
+await test("CLV-361 the floor queue card has a closed disclosure with skipped tickets in plain words", () => {
   const html = page(
     boardModel([], { queue, workflows: ["develop-issue"] }),
-    "workflow=develop-issue",
+    "",
   );
   const header = part(html, { open: "<header", close: "</header>" });
-  assert.match(header, /0 of 3 lanes busy/);
+  assert.doesNotMatch(header, /lanes busy|queue-waiting/);
   const waiting = part(html, {
     open: '<details class="queue-waiting"',
     close: "</details>",
@@ -129,7 +130,7 @@ await test("watch design: the header shows the queue in one line and a closed di
     assert.ok(waiting.includes(`<li>${line}</li>`), line);
   assert.doesNotMatch(html, /ticket-dependency-open|ticket-active/);
   assert.doesNotMatch(html, /Skipped ticket/);
-  assert.ok(html.indexOf("queue-waiting") < html.indexOf('class="workspace"'));
+  assert.ok(html.indexOf("queue-waiting") > html.indexOf('class="line-end"'));
 });
 
 await test("watch design: a queue without skipped tickets shows no disclosure", () => {
@@ -140,19 +141,19 @@ await test("watch design: a queue without skipped tickets shows no disclosure", 
     }),
     "workflow=develop-issue",
   );
-  assert.match(
+  assert.doesNotMatch(
     part(html, { open: "<header", close: "</header>" }),
-    /1 of 3 lanes busy/,
+    /lanes busy/,
   );
   assert.doesNotMatch(html, /queue-waiting/);
 });
 
-await test("watch design: the run page shows the same queue line, and the skipped tickets only on the floor and the boards", () => {
+await test("CLV-361 the run page has no global queue line or skipped tickets", () => {
   const html = page(
     boardModel([], { queue, workflows: ["develop-issue"] }),
     "workflow=develop-issue&run=run-missing",
   );
-  assert.match(html, /0 of 3 lanes busy/);
+  assert.doesNotMatch(html, /lanes busy/);
   assert.doesNotMatch(html, /queue-waiting|ticket-dependency-open/);
 });
 
@@ -165,7 +166,6 @@ await test("watch design: one header holds the status and phone controls", () =>
   for (const text of [
     "cloving",
     "updated",
-    "0 of 3 lanes busy",
     "Connect a phone",
     "iPhone (ios) connected",
     "Remove",

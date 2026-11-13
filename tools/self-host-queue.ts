@@ -8,6 +8,7 @@ import {
   declaredQueueValues,
   parseQueuesSetting,
   queueValues,
+  queueValueSources,
   type GeneralQueueValues,
   type QueueSource,
   type QueueValues,
@@ -16,11 +17,12 @@ import {
 } from "../src/queue-settings.ts";
 import {
   declaresQueue,
-  type QueueDeclaration,
+  type DeclaredWorkflow,
 } from "../src/workflow-declaration.ts";
 import type { SettingSource } from "../src/project-settings.ts";
 
 type Environment = Readonly<Record<string, string | undefined>>;
+type QueueWorkflow = Pick<DeclaredWorkflow, "workflowId" | "queue">;
 
 export type QueuePlan =
   | { readonly kind: "none" }
@@ -241,11 +243,7 @@ function ticketCommands(
   );
 }
 
-function plannedValues(given: {
-  readonly declared: QueueDeclaration;
-  readonly setting: WorkflowQueueSetting | undefined;
-  readonly general: GeneralQueueValues;
-}): QueueValues {
+function plannedValues(given: Parameters<typeof queueValues>[0]): QueueValues {
   try {
     return queueValues(given);
   } catch {
@@ -254,10 +252,7 @@ function plannedValues(given: {
 }
 
 interface QueueConfigurationInput {
-  readonly declarations: readonly {
-    readonly workflowId: string;
-    readonly queue?: boolean | QueueDeclaration;
-  }[];
+  readonly declarations: readonly QueueWorkflow[];
   readonly sources: Readonly<Record<string, SettingSource>>;
 }
 
@@ -273,6 +268,7 @@ function queueConfiguration(
   if (declared === undefined) return undefined;
   return {
     declared,
+    settingSources: queueValueSources(given.sources, declared.workflowId),
     setting: Object.hasOwn(settings, declared.workflowId)
       ? settings[declared.workflowId]
       : undefined,
@@ -290,6 +286,7 @@ function configuredPlan(
     values: plannedValues({
       declared: declaredQueueValues(declared),
       setting,
+      settingSources: configuration.settingSources,
       general,
     }),
   };

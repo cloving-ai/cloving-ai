@@ -39,6 +39,7 @@ interface QueueSettings {
   readonly intervalMilliseconds: number;
   readonly intervalSource?: QueueSource;
   readonly limits?: () => QueueLimits;
+  readonly writeLanes?: (lanes: number) => Promise<void>;
   readonly resetQueue?: boolean;
   readonly resumeQueue?: boolean;
   readonly readyCommand?: readonly string[];
@@ -256,6 +257,7 @@ async function cycle(
     readonly signal: AbortSignal;
     readonly pending: QueueJournal;
     readonly room: RoomGate;
+    readonly runtime: QueueRuntime;
   },
 ): Promise<void> {
   const { signal, pending, room } = run;
@@ -276,6 +278,9 @@ async function cycle(
   const stopped = (): boolean => signal.aborted;
   const checks = { pending, stop, notice, update, room };
   while (!stopped()) {
+    run.runtime.nextCheckAt = new Date(
+      Date.now() + settings.intervalMilliseconds,
+    ).toISOString();
     await delay(settings.intervalMilliseconds, undefined, { signal }).catch(
       () => undefined,
     );
@@ -330,14 +335,13 @@ export function issueQueue(settings: QueueSettings): {
     error: undefined,
     stopping: new AbortController(),
     limits: () => limitsOf(settings),
-    ...(settings.intervalSource === undefined
+    ...(settings.writeLanes === undefined
       ? {}
-      : {
-          interval: {
-            value: settings.intervalMilliseconds / 1000,
-            source: settings.intervalSource,
-          },
-        }),
+      : { writeLanes: settings.writeLanes }),
+    interval: {
+      value: settings.intervalMilliseconds / 1000,
+      source: settings.intervalSource ?? "default",
+    },
   };
   const loaded = loadedQueue(settings, runtime);
   const running = loaded
@@ -345,6 +349,7 @@ export function issueQueue(settings: QueueSettings): {
       Promise.all([
         cycle(settings, {
           signal: runtime.stopping.signal,
+          runtime,
           pending,
           room: queueRoom(settings, { runtime, holds }),
         }).finally(holds.close),

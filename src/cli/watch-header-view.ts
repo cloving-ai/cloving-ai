@@ -1,5 +1,4 @@
 import { queueSpendLines } from "./usage-render.ts";
-import { record } from "../protocol.ts";
 import { restartPendingText } from "./restart-render.ts";
 import { PhonePanel, type PhoneControls } from "./watch-phone-view.ts";
 import { component, element, type Shown } from "./watch-element.ts";
@@ -7,7 +6,6 @@ import { needsOf } from "./watch-needs-view.ts";
 import { clockTime, type WatchModel } from "./watch-render.ts";
 import { watchHash } from "./watch-navigation.ts";
 import {
-  countText,
   ThemeMenu,
   ThemeNotice,
   type ThemeControls,
@@ -15,17 +13,10 @@ import {
   wordText,
 } from "./watch-theme-view.ts";
 
-export interface QueueControls {
-  readonly busy: boolean;
-  readonly message: string;
-  readonly onCommand: (command: "drain" | "resume") => void;
-}
-
 export interface HeaderProps {
   readonly model: WatchModel | null;
   readonly stale: boolean;
   readonly phone?: PhoneControls | undefined;
-  readonly queue?: QueueControls | undefined;
   readonly theme?: ThemeControls | undefined;
   readonly now?: string;
 }
@@ -40,49 +31,6 @@ export const clove = {
     "M47.30322,32.03711c-0.34033-3.34277-3.13086-5.86328-6.49072-5.86328H26.67334c-0.27637,0-0.5,0.22363-0.5,0.5V40.8125c0,3.59766,2.92676,6.52441,6.52442,6.52441c3.36035,0,6.15088-2.52148,6.49121-5.86426c0.12207-1.20117,1.08301-2.16211,2.28418-2.28418c1.7334-0.17578,3.29492-1.01758,4.396-2.36816S47.47949,33.7705,47.30322,32.03711z M35.56543,35.56543c-0.09766,0.09766-0.22559,0.14648-0.35352,0.14648s-0.25586-0.04883-0.35352-0.14648l-5.85791-5.8584c-0.19531-0.19531-0.19531-0.51172,0-0.70703s0.51172-0.19531,0.70703,0l5.85791,5.8584C35.76074,35.05371,35.76074,35.37011,35.56543,35.56543z",
   ],
 };
-
-export function queueLanes(model: WatchModel): string | null {
-  const queue = model.queue;
-  if (queue === undefined) return null;
-  const state = typeof queue["state"] === "string" ? `${queue["state"]}, ` : "";
-  const hold = record(queue["hold"])?.["text"];
-  const held = typeof hold === "string" ? `. ${hold}` : "";
-  return `Queue: ${state}${String(queue["busy"])} of ${String(queue["lanes"])} lanes busy${held}`;
-}
-
-export function skippedText(value: unknown): string {
-  const ticket = record(value) ?? {};
-  const name = `#${String(ticket["ticketId"])}`;
-  const dependencies = ticket["dependencies"];
-  if (
-    ticket["reason"] === "ticket-dependency-open" &&
-    Array.isArray(dependencies)
-  )
-    return `${name} waits for ${dependencies.map((item) => `#${String(item)}`).join(", ")}`;
-  if (ticket["reason"] === "ticket-active") return `${name} is in work`;
-  return `${name}: ${String(ticket["reason"])}`;
-}
-
-export function Queue(props: {
-  readonly model: WatchModel;
-  readonly words?: WatchWords | undefined;
-}): Shown {
-  const skipped = props.model.queue?.["skipped"];
-  if (!Array.isArray(skipped) || skipped.length === 0) return null;
-  return element("details", {
-    class: "queue-waiting",
-    children: [
-      element("summary", {
-        children: `${countText(props.words, { key: "ticket.unit", count: skipped.length, noun: "ticket" })} skipped`,
-      }),
-      element("ul", {
-        children: skipped.map((value) =>
-          element("li", { children: skippedText(value) }),
-        ),
-      }),
-    ],
-  });
-}
 
 export function Brand(): Shown {
   return element("strong", {
@@ -130,7 +78,6 @@ export function HeaderStatus(props: HeaderProps): Shown {
         children: "The watch tool does not answer.",
       })
     : element("span", { children: updated });
-  const lanes = model === null ? null : queueLanes(model);
   return element("div", {
     class: "header-status",
     children: [
@@ -139,9 +86,6 @@ export function HeaderStatus(props: HeaderProps): Shown {
       ...queueSpendLines(model?.queue?.["spend"]).map((line) =>
         element("span", { class: "queue-spend", children: line }),
       ),
-      lanes === null
-        ? null
-        : element("span", { class: "queue-lanes", children: lanes }),
       model?.restart === undefined
         ? null
         : element("span", {
@@ -152,41 +96,13 @@ export function HeaderStatus(props: HeaderProps): Shown {
   });
 }
 
-export function QueueControl(props: {
-  readonly model: WatchModel | null;
-  readonly queue: QueueControls;
-}): Shown {
-  const { queue } = props;
-  const state = props.model?.queue?.["state"];
-  if (typeof state !== "string" || state === "off") return null;
-  const command = state === "running" ? "drain" : "resume";
-  return [
-    element("button", {
-      type: "button",
-      class: "queue-control",
-      ...(queue.busy ? { disabled: true } : {}),
-      onClick: () => {
-        queue.onCommand(command);
-      },
-      children: command === "drain" ? "Drain queue" : "Resume queue",
-    }),
-    queue.message === ""
-      ? null
-      : element("span", { class: "queue-message", children: queue.message }),
-  ];
-}
-
 export function HeaderActions(props: HeaderProps): Shown {
-  const { phone, queue, theme } = props;
-  if (phone === undefined && queue === undefined && theme === undefined)
-    return null;
+  const { phone, theme } = props;
+  if (phone === undefined && theme === undefined) return null;
   return element("div", {
     class: "header-actions",
     children: [
       theme === undefined ? null : component(ThemeMenu, { theme }),
-      queue === undefined
-        ? null
-        : component(QueueControl, { model: props.model, queue }),
       phone === undefined
         ? null
         : component(PhonePanel, {

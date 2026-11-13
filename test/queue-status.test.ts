@@ -8,6 +8,7 @@ import { Page } from "../src/cli/watch-view.ts";
 import { call, withHarness } from "./service-fixture.ts";
 import { rendered } from "./watch-dom.ts";
 import { played } from "./watch-browser.ts";
+import { floorModel } from "./watch-floor-fixture.ts";
 import { at, noCopy, sampleModel } from "./watch-sample.ts";
 import {
   watchData,
@@ -17,6 +18,7 @@ import {
 
 const queue = {
   workflowId: "develop",
+  state: "running",
   lanes: 4,
   busy: 1,
   skipped: [
@@ -33,6 +35,14 @@ await test("CLV-184 service status and CLI show busy lanes and skipped tickets",
   withHarness(async (harness) => {
     const { workflow } = await writeDeclaredWorkflow(harness.projectDirectory);
     const service = await harness.start({
+      queue: {
+        control: () => ({
+          failedRunIds: [],
+          drain: undefined,
+          error: undefined,
+        }),
+        change: () => Promise.resolve({ kind: "changed" }),
+      },
       workflows: [
         {
           ...harness.registration,
@@ -66,9 +76,16 @@ await test("CLV-184 service status and CLI show busy lanes and skipped tickets",
     assert.deepEqual(status["queue"], {
       ...queue,
       busyRunIds: [admitted["runId"]],
+      nextCheckAt: null,
+      stop: null,
+      failedRunIds: [],
+      drain: null,
+      hold: null,
+      holds: [],
+      holdsCutAt: null,
     });
     const text = statusText(status);
-    assert.match(text, /Queue: 1 of 4 lanes busy/);
+    assert.match(text, /Queue: running, 1 of 4 lanes busy/);
     assert.match(text, /900.*ticket-active/);
     assert.match(text, /901.*ticket-dependency-open.*899/);
     await service.close();
@@ -90,34 +107,49 @@ await test("CLV-184 watch data and page retain queue lanes and skip reasons", as
   );
   const html = rendered(
     component(Page, {
-      model: { ...sampleModel([]), queue },
+      model: { ...floorModel([], { workflows: [queue.workflowId] }), queue },
       selected: "",
       now: at("21:34:41"),
       stale: false,
       copying: noCopy,
     }),
   );
-  assert.match(html, /Queue: 1 of 4 lanes busy/);
+  assert.match(html, /class="line-queue queue-running"/);
+  assert.match(html, /1 of 4 lanes busy/);
   assert.match(html, /#900 is in work/);
   assert.match(html, /#901 waits for #899/);
 });
 
-for (const hash of ["", `#workflow=${queue.workflowId}`])
-  await test(`CLV-184 embedded watch script shows queue lanes and skip reasons at ${hash}`, () => {
-    const model = { ...sampleModel([]), queue };
-    const result = played(
-      model,
-      `
+function queuePage(hash: string): string {
+  const model = {
+    ...floorModel([], { workflows: [queue.workflowId] }),
+    queue,
+  };
+  const result = played(
+    model,
+    `
 location.hash = ${JSON.stringify(hash)};
 replies.push(JSON.parse(process.env.WATCH_MODEL));
 await load();
 console.log(JSON.stringify({ html: app.inner }));
 `,
-    );
-    assert.match(String(result["html"]), /Queue: 1 of 4 lanes busy/);
-    assert.match(String(result["html"]), /#900 is in work/);
-    assert.match(String(result["html"]), /#901 waits for #899/);
-  });
+  );
+  return String(result["html"]);
+}
+
+await test("CLV-361 the embedded watch script shows queue lanes and skipped tickets on the floor", () => {
+  const html = queuePage("");
+  assert.match(html, /class="line-queue queue-running"/);
+  assert.match(html, /1 of 4 lanes busy/);
+  assert.match(html, /#900 is in work/);
+  assert.match(html, /#901 waits for #899/);
+});
+
+await test("CLV-361 the embedded workflow board has no global queue view", () => {
+  const html = queuePage(`#workflow=${queue.workflowId}`);
+  assert.match(html, /class="board"/);
+  assert.doesNotMatch(html, /line-queue|lanes busy|queue-waiting/);
+});
 
 for (const spentUsd of [17.1, 21.1, null])
   await test(`CLV-241 status and both watch renders show queue spend ${String(spentUsd)}`, () => {

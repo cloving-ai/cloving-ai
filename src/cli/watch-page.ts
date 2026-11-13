@@ -1,3 +1,4 @@
+import { queueCardFunctions } from "./watch-queue-card-view.ts";
 import {
   calendarText,
   dayText,
@@ -79,6 +80,7 @@ import {
 } from "./watch-theme-view.ts";
 import {
   Floor,
+  FloorHead,
   Legend,
   Line,
   LineEnd,
@@ -95,7 +97,6 @@ import { needsFunctions } from "./watch-needs-view.ts";
 import { decisionFunctions } from "./watch-decision-view.ts";
 import {
   DayChart,
-  LaneLine,
   RepositoryTable,
   Today,
   TodayNumber,
@@ -129,6 +130,7 @@ import {
 import {
   clockTime,
   completedDetail,
+  localOfferSuffix,
   counted,
   elapsed,
   pageTitle,
@@ -160,11 +162,7 @@ import {
   HeaderActions,
   HeaderCounts,
   HeaderStatus,
-  QueueControl,
-  Queue,
-  queueLanes,
   RefusedWorkflows,
-  skippedText,
   Version,
 } from "./watch-header-view.ts";
 import { restartPendingText } from "./restart-render.ts";
@@ -184,6 +182,7 @@ const functions = [
   LoopActions,
   LoopLast,
   LoopCell,
+  ...queueCardFunctions,
   record,
   commandText,
   Commands,
@@ -198,14 +197,10 @@ const functions = [
   labelWord,
   ThemeMenu,
   ThemeNotice,
-  queueLanes,
-  skippedText,
-  Queue,
   Brand,
   HeaderCounts,
   HeaderStatus,
   restartPendingText,
-  QueueControl,
   HeaderActions,
   Version,
   cardReply,
@@ -259,6 +254,7 @@ const functions = [
   Lines,
   RepositoryLines,
   Floor,
+  FloorHead,
   Demo,
   Tile,
   Shelf,
@@ -271,7 +267,6 @@ const functions = [
   DayChart,
   WorkflowTable,
   RepositoryTable,
-  LaneLine,
   Today,
   counted,
   elapsed,
@@ -281,6 +276,7 @@ const functions = [
   runTone,
   runName,
   waitingDetail,
+  localOfferSuffix,
   completedDetail,
   phaseTime,
   selectedRun,

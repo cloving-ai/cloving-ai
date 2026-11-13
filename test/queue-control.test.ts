@@ -95,6 +95,24 @@ await test("CLV-273 the queue journal refuses an invalid drain or queue command 
       { controls: "resume" },
       { controls: [{ commandId: "", command: "resume" }] },
       { controls: [{ commandId: "one", command: "pause" }] },
+      ...[
+        { lanes: 0 },
+        { lanes: 17 },
+        { lanes: 1.5 },
+        { expectedLanes: 0 },
+        { expectedLanes: 17 },
+        { expectedLanes: 1.5 },
+      ].map((invalid) => ({
+        controls: [
+          {
+            commandId: "one",
+            command: "lanes",
+            lanes: 2,
+            expectedLanes: 2,
+            ...invalid,
+          },
+        ],
+      })),
       {
         controls: Array.from({ length: 33 }, (_, index) => ({
           commandId: `resume-${String(index)}`,
@@ -138,6 +156,7 @@ await test("CLV-273 a queue that stopped on an error shows the reason and refuse
     stopping: new AbortController(),
   });
   assert.deepEqual(port.control(), {
+    nextCheckAt: undefined,
     failedRunIds: [],
     drain: undefined,
     error: "invalid-queue-commands",
@@ -233,4 +252,43 @@ await test("CLV-273 a queue command that the journal cannot save stops the queue
     assert.ok(control !== undefined);
     assert.match(String(control.error), /^ENOENT/);
     assert.equal(queueStateFields(control, 0)["state"], "stopped");
+  }));
+
+await test("CLV-361 lane commands replay from the saved journal and conflict with a different target or queue command", () =>
+  withDirectory(async (directory) => {
+    let lanes = 2;
+    const open = async () =>
+      queueControlPort({
+        pending: await queueJournal(directory),
+        error: undefined,
+        stopping: new AbortController(),
+        limits: () => ({ lanes, workingLanes: lanes }),
+        writeLanes: (next) => {
+          lanes = next;
+          return Promise.resolve();
+        },
+      });
+    const request = { lanes: 3, expectedLanes: 2, commandId: "lanes" };
+    const first = await open();
+    assert.deepEqual(await first.changeLanes?.(request), { kind: "changed" });
+    const restarted = await open();
+    assert.deepEqual(await restarted.changeLanes?.(request), {
+      kind: "replayed",
+    });
+    assert.deepEqual(await restarted.changeLanes?.({ ...request, lanes: 4 }), {
+      kind: "conflicting-command",
+    });
+    assert.deepEqual(
+      await restarted.change({ command: "drain", commandId: "lanes" }),
+      { kind: "conflicting-command" },
+    );
+    await restarted.change({ command: "drain", commandId: "drain" });
+    assert.deepEqual(
+      await restarted.changeLanes?.({ ...request, commandId: "drain" }),
+      { kind: "conflicting-command" },
+    );
+    assert.deepEqual(
+      await restarted.changeLanes?.({ ...request, commandId: "stale" }),
+      { kind: "stale" },
+    );
   }));
