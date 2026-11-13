@@ -75,7 +75,11 @@ await test("CLV-306 the queue admits no new run while a restart is pending", asy
         }),
       },
       async ({ directory }) => {
-        await delay(200);
+        await eventually(() =>
+          lines.includes("Queue holding for pending restart\n")
+            ? true
+            : undefined,
+        );
         assert.equal(scene.admissions, 0);
         await rm(join(directory, "pending-restart-one"));
         await eventually(() => (scene.admissions > 0 ? true : undefined));

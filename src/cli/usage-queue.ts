@@ -8,8 +8,10 @@ lanes writes 1 to 16 lanes to the private queues setting and applies it now. Few
 A stopped queue shows the reason and the failed runs in a row.
 resume sets the failure count to 0 and ends a stop or a drain. The next queue check can start a run.
 drain starts no new queue run. The runs in work continue to their end.
-When no lane is busy, the queue records the drain time, writes "Queue drained" one time and shows drained.
-A drained queue is a safe point for a restart. A drain stays in place after a restart.
+Without --workflow, drain waits for a repository gap across all workflows, turns and pending queue submissions.
+With --workflow, drain waits only for the selected queue. Other queues can continue. A repository restart still requires a repository gap.
+At that boundary, the queue records the drain time, writes "Queue drained" one time and shows drained.
+A drain and its scope stay in place after a restart.
 The queue keeps the newest 32 command IDs. A repeated kept ID does not apply the command again.
-The reply shows the current state. A different command with a kept ID is refused.
+The reply shows the current state. A different command or drain scope with a kept ID is refused.
 `;

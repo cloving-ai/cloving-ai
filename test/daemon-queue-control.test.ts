@@ -3,6 +3,38 @@ import { test } from "node:test";
 import { queuePrelude, queueWorkflow } from "./daemon-queue-fixture.ts";
 import { withConsumer } from "./world-host-fixture.ts";
 
+await test("CLV-373 a legacy drain waits for a retained unrelated run after the journal moves to queue storage", () =>
+  withConsumer(queueWorkflow, async (consumer) => {
+    const result = await consumer.run(`${queuePrelude}
+settings.declarations.push({ ...settings.declarations[0], workflowId: "review-corpus", queue: false });
+let daemon = await launched({ queueMilliseconds: undefined });
+try {
+  const reply = await submitted("unrelated-retained", { workflowId: "review-corpus", submission: { ticket: "CLV-901" } });
+  assert.equal(reply.kind, "run-admitted", JSON.stringify(reply));
+  await until(() => existsSync("input-CLV-901"));
+} finally { await daemon.close(); }
+writeFileSync("queue-commands.json", JSON.stringify({ commands: [], failures: [], drain: { startedAt: 1, drainedAt: null }, controls: [{ command: "drain", commandId: "legacy-drain" }] }));
+daemon = await launched();
+try {
+  const first = (await asked("status")).queue.nextCheckAt;
+  await until(async () => (await asked("status")).queue.nextCheckAt !== first);
+  const status = await asked("status");
+  assert.equal(status.queue.state, "draining");
+  assert.equal(status.queue.drain.drainedAt, null);
+  assert.equal(status.queue.busy, 0);
+  assert.equal(status.runs.filter(run => run.state === "running").length, 1);
+  assert.equal(existsSync("queue-commands.json"), false);
+  const replay = await asked("queue-command", { command: "drain", commandId: "legacy-drain" });
+  assert.equal(replay.replayed, true);
+  writeFileSync("outcome-CLV-901", "handoff_requested");
+  await until(async () => (await asked("status")).queue.state === "drained");
+  assert.equal((await runs()).length, 1);
+} finally { await daemon.close(); }
+process.exit(0);
+`);
+    assert.equal(result.status, 0, result.stderr);
+  }));
+
 const control = `${queuePrelude}
 const saved = () => JSON.parse(readFileSync("queues/develop/queue-commands.json", "utf8"));
 const queue = async () => (await asked("queue")).queue;
@@ -66,7 +98,12 @@ try {
   assert.equal(drained.state, "drained");
   assert.equal(drained.busy, 0);
   assert.equal(drained.drain.drainedAt, saved().drain.drainedAt);
-  assert.deepEqual((await asked("status")).queue, drained);
+  const currentQueue = await until(async () => {
+    const status = (await asked("status")).queue;
+    return status.nextCheckAt > drained.nextCheckAt ? status : undefined;
+  });
+  assert.equal(new Date(currentQueue.nextCheckAt).toISOString(), currentQueue.nextCheckAt);
+  assert.deepEqual(currentQueue, { ...drained, nextCheckAt: currentQueue.nextCheckAt });
   assert.equal(existsSync("input-CLV-901"), false);
   assert.equal((await runs()).length, 1);
   const resumed = await command("resume", "resume-two");

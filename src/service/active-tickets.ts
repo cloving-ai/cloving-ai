@@ -164,14 +164,13 @@ export async function queueOverview(context: ServiceContext): Promise<Fields> {
     workflows.map((workflow) => workflowOverview(context, workflow)),
   );
   const queues = overviews.map((overview) => overview["queue"]);
-  if (queues.length === 0) {
-    const off = context.queue?.control()?.off;
-    return off === undefined ? { queues } : { queues, queueOff: { ...off } };
-  }
+  const queue = overviews.find(
+    (overview) => overview["legacyQueue"] !== undefined,
+  )?.["legacyQueue"];
   const off = context.queue?.control()?.off;
   return {
     queues,
-    queue: queues[0],
+    ...(queue === undefined ? {} : { queue }),
     ...(off === undefined ? {} : { queueOff: { ...off } }),
   };
 }
@@ -193,16 +192,36 @@ async function workflowOverview(
     ...(workflow.resolver.skippedTickets?.() ?? []),
   ];
   const control = queuePort(context, workflow.workflowId)?.control();
+  const queue = {
+    workflowId: workflow.workflowId,
+    ...(await queueSpend(context)),
+    lanes: laneCount(workflow.admission ?? 0),
+    busy: active.length,
+    busyRunIds: runs.map((run) => run.runId),
+    skipped,
+    ...(control === undefined
+      ? {}
+      : {
+          ...queueStateFields(control, active.length),
+          ...readyFields(
+            control.ready,
+            skipped.flatMap((ticket) =>
+              typeof ticket["ticketId"] === "string"
+                ? [ticket["ticketId"]]
+                : [],
+            ),
+          ),
+        }),
+  };
   return {
-    queue: {
-      workflowId: workflow.workflowId,
-      ...(await queueSpend(context)),
-      lanes: laneCount(workflow.admission ?? 0),
-      busy: active.length,
-      busyRunIds: runs.map((run) => run.runId),
-      skipped,
-      ...(control === undefined
+    legacyQueue:
+      workflow.admission !== undefined || control?.off !== undefined
+        ? queue
+        : undefined,
+    queue:
+      control === undefined
         ? {
+            ...queue,
             state: "off",
             nextCheckAt: null,
             off: {
@@ -210,18 +229,7 @@ async function workflowOverview(
               reason: "no ticket command",
             },
           }
-        : {
-            ...queueStateFields(control, active.length),
-            ...readyFields(
-              control.ready,
-              skipped.flatMap((ticket) =>
-                typeof ticket["ticketId"] === "string"
-                  ? [ticket["ticketId"]]
-                  : [],
-              ),
-            ),
-          }),
-    },
+        : queue,
   };
 }
 

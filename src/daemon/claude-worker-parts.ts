@@ -33,7 +33,7 @@ export const claudeLimits = {
 
 export interface Active {
   readonly worker: string;
-  readonly intent: Pick<ProtectedIntent, "runId" | "operationId">;
+  readonly intent: Pick<ProtectedIntent, "runId" | "operationId" | "target">;
   readonly turn: Promise<RetriedTurn>;
   readonly concluded: Promise<void>;
   readonly stopping: {

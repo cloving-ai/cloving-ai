@@ -208,15 +208,13 @@ async function drained(
   const { drain } = pending;
   if (drain === undefined || drain.drainedAt !== null) return;
   if (
-    settings.queueDirectory === undefined &&
+    drain.scope !== "workflow" &&
     !atGap(await workInProgress(daemonWorkReads(settings)))
   )
     return;
-  if (
-    settings.queueDirectory !== undefined &&
-    (await queueStatus(settings)).busy > 0
-  )
+  if (drain.scope === "workflow" && (await queueStatus(settings)).busy > 0)
     return;
+  if (pending.drain !== drain) return;
   pending.drain = { ...drain, drainedAt: Date.now() };
   await pending.save();
   process.stderr.write("Queue drained\n");

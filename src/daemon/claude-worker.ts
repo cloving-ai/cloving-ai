@@ -1,5 +1,5 @@
 import { turnHarness } from "../harness-defaults.ts";
-import { piOperationRefusal } from "./pi-session.ts";
+import { piOperationRecord, piOperationRefusal } from "./pi-session.ts";
 import type {
   AdapterOutcome,
   Delivery,
@@ -12,9 +12,8 @@ import {
   holdKeptTurn,
   markedTurn,
   recoverableTurn,
+  rejectedAttach,
 } from "./claude-attach.ts";
-import { stoppedLaunch } from "./detached-process.ts";
-import { releasedLaunch } from "./detached-turn.ts";
 import { recordedLaunch, type TurnLaunch } from "../turn-launch.ts";
 import {
   located,
@@ -71,12 +70,15 @@ export interface CloseOptions {
 
 const worker = "claude";
 
-function reconciled(
+async function reconciled(
   parts: Parts,
   call: { readonly intent: DeliveryIntent; readonly signal: AbortSignal },
 ): Promise<AdapterOutcome> {
   const { intent } = call;
-  const { key } = located(parts.settings.journal, intent.operationId);
+  const { key, folder } = located(parts.settings.journal, intent.operationId);
+  const started = await piOperationRecord(folder, parts.active.get(key));
+  const conflict = piOperationRefusal(started, { intent, key });
+  if (conflict !== undefined) return conflict;
   const pending = parts.reconciling.get(key);
   if (pending !== undefined) return pending;
   const reconciliation = reconcileOperation(parts, call).finally(() => {
@@ -103,8 +105,6 @@ async function reconcileOperation(
   if (parts.active.has(key)) return { kind: "accepted", receipt: key, worker };
   const started = await read(folder, "started.json");
   if (started === undefined) return { kind: "absent" };
-  const conflict = piOperationRefusal(started, { intent, key });
-  if (conflict !== undefined) return conflict;
   const launch = await recordedLaunchOf(parts, { folder, started, result });
   return launchedOrResumed(parts, {
     intent,
@@ -158,24 +158,6 @@ async function recordedLaunchOf(
   );
 }
 
-async function rejectedAttach(
-  parts: Parts,
-  rejection: {
-    readonly request: Located;
-    readonly plan: string;
-    readonly launch: TurnLaunch | undefined;
-  },
-): Promise<AdapterOutcome> {
-  if (rejection.launch !== undefined) {
-    await stoppedLaunch(
-      rejection.launch,
-      parts.settings.stopMilliseconds ?? claudeLimits.stopMilliseconds,
-    );
-    await releasedLaunch(rejection.launch);
-  }
-  return interruptedReply(rejection.request, rejection.plan);
-}
-
 async function resumed(
   parts: Parts,
   request: Located & {
@@ -197,7 +179,12 @@ async function resumed(
     : attachPlan(settings, { folder, started, intent, launch }));
   if (aborted()) return failure("claude-start-aborted");
   if (typeof plan === "string")
-    return rejectedAttach(parts, { request, plan, launch });
+    return rejectedAttach({
+      request,
+      plan,
+      launch,
+      stopMilliseconds: parts.settings.stopMilliseconds,
+    });
   const prompt = await parts.settings.document(intent.payload);
   if (aborted()) return failure("claude-start-aborted");
   if (prompt === undefined)
@@ -279,6 +266,9 @@ async function stopped(
   intent: DeliveryIntent,
 ): Promise<AdapterOutcome> {
   const { key, folder } = located(parts.settings.journal, intent.operationId);
+  const ownership = await piOperationRecord(folder, parts.active.get(key));
+  const conflict = piOperationRefusal(ownership, { intent, key });
+  if (conflict !== undefined) return conflict;
   const active = parts.active.get(key);
   if (active !== undefined) {
     delete active.stopping.stoppedBy;
@@ -325,11 +315,14 @@ async function steered(
   return { delivery: "now", operationId: active.intent.operationId };
 }
 
-function stoppingOperation(
+async function stoppingOperation(
   parts: Parts,
   intent: DeliveryIntent,
 ): Promise<AdapterOutcome> {
-  const { key } = located(parts.settings.journal, intent.operationId);
+  const { key, folder } = located(parts.settings.journal, intent.operationId);
+  const started = await piOperationRecord(folder, parts.active.get(key));
+  const conflict = piOperationRefusal(started, { intent, key });
+  if (conflict !== undefined) return conflict;
   const pending = parts.reconciling.get(key);
   const stop = () => stopped(parts, intent);
   const stopping = pending === undefined ? stop() : pending.then(stop, stop);
