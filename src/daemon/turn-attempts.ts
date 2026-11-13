@@ -153,7 +153,10 @@ function selectedCommand(
   ) {
     const model = attempts.ends[attempt - 2]?.result?.model;
     return {
-      command: model == null ? original : replaceCommandModel(original, model),
+      command:
+        start.worker === "pi" || model == null
+          ? original
+          : replaceCommandModel(original, model),
       fallback: undefined,
     };
   }

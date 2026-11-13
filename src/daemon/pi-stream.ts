@@ -17,7 +17,7 @@ import {
   type PiAccounting,
   type PiResponseUsage,
 } from "../pi-usage.ts";
-import { sumUsage, type WorkerUsage } from "../worker-usage.ts";
+import { sumUsage, usageOf, type WorkerUsage } from "../worker-usage.ts";
 import { piActivity } from "./pi-activity.ts";
 
 interface State {
@@ -272,6 +272,7 @@ function parsed(line: string, state: State): readonly string[] {
 }
 
 export function piStream(ownedSession?: {
+  readonly historicalResponses?: readonly string[];
   readonly id: string;
   readonly cwd: string;
   readonly timestamp: string;
@@ -289,7 +290,7 @@ export function piStream(ownedSession?: {
     outcomeError: undefined,
     message: undefined,
     responses: [],
-    responseIds: new Set(),
+    responseIds: new Set(ownedSession?.historicalResponses),
     startIds: new Set(),
     tools: new Set(),
     nested: [],
@@ -306,10 +307,12 @@ export function piStream(ownedSession?: {
     },
     result: (exitCode: number | null): string => {
       const error = failure(state, exitCode);
+      const complete =
+        state.settled && !state.openAssistant && state.failure === undefined;
       const accounting: PiAccounting = {
         scope: "primary-model",
         responses: state.responses,
-        auxiliaryWork: state.auxiliaryWork,
+        auxiliaryWork: state.auxiliaryWork || !complete,
         nestedUsage: state.nested.length === 0 ? null : sumUsage(state.nested),
       };
       return JSON.stringify({
@@ -319,9 +322,9 @@ export function piStream(ownedSession?: {
         session_id: state.sessionId,
         model: piPricingModel({ ...accounting, auxiliaryWork: false }),
         pricingModel: piPricingModel(accounting),
-        total_cost_usd: piBilledCost(accounting),
+        total_cost_usd: complete ? piBilledCost(accounting) : null,
         piAccounting: accounting,
-        usage: piTotalUsage(accounting),
+        usage: complete ? piTotalUsage(accounting) : usageOf(null),
         num_turns: state.responses.length,
       });
     },

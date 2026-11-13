@@ -1,8 +1,12 @@
-import type { HarnessSettings, turnHarness } from "../harness-defaults.ts";
 import type {
-  AdapterOutcome,
-  ProtectedIntent,
+  Delivery,
+  DeliveryIntent,
 } from "../broker/actor/delivery-intents.ts";
+import type { SteerAnswer, SteerRequest } from "./turn-steering.ts";
+import { record } from "../protocol.ts";
+import type { WorkerReconciliation } from "./worker-reconciliation.ts";
+import type { HarnessSettings, turnHarness } from "../harness-defaults.ts";
+import type { ProtectedIntent } from "../broker/actor/delivery-intents.ts";
 import type { TurnSettings } from "../project-settings.ts";
 import type { TurnRecovery } from "../turn-recovery.ts";
 import type { Located, WorkerReport } from "./operation-journal.ts";
@@ -31,7 +35,29 @@ export const claudeLimits = {
   stopMilliseconds: 15_000,
 };
 
+export function nativePiOperation(
+  started: unknown,
+  active: Active | undefined,
+): boolean {
+  if (active === undefined) return record(started)?.["piSession"] !== undefined;
+  return active.worker === "pi" && active.output !== "text";
+}
+
+export function resumableActive(
+  active: Pick<Active, "worker" | "output">,
+): boolean {
+  return (
+    ["claude", "codex"].includes(active.worker) ||
+    (active.worker === "pi" && active.output !== "text")
+  );
+}
+
+export interface CloseOptions {
+  readonly turns?: "keep" | "stop";
+}
+
 export interface Active {
+  readonly output?: "text";
   readonly worker: string;
   readonly intent: Pick<ProtectedIntent, "runId" | "operationId" | "target">;
   readonly turn: Promise<RetriedTurn>;
@@ -44,7 +70,7 @@ export interface Active {
 }
 
 export interface Parts {
-  readonly reconciling: Map<string, Promise<AdapterOutcome>>;
+  readonly reconciling: WorkerReconciliation;
   readonly settings: ClaudeWorkerSettings;
   readonly active: Map<string, Active>;
   readonly stopping: AbortController;
@@ -58,4 +84,13 @@ export interface Started extends Located {
   readonly tree: WorkTree;
   readonly turnSettings: TurnSettings;
   readonly noteIds: readonly string[];
+}
+
+export interface ClaudeWorker extends Delivery {
+  readonly hold: (intent: DeliveryIntent) => Promise<boolean>;
+  readonly recover: (intent: DeliveryIntent) => Promise<void>;
+  readonly harness: (operationId: string) => Promise<string | undefined>;
+  readonly stop: NonNullable<Delivery["stop"]>;
+  readonly steer: (request: SteerRequest) => Promise<SteerAnswer>;
+  readonly close: (options?: CloseOptions) => Promise<void>;
 }

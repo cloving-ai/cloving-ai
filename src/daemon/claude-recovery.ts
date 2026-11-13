@@ -14,6 +14,8 @@ import type { WorkTree } from "./work-tree.ts";
 import { turnHarness } from "../harness-defaults.ts";
 import { selectedProfile, type WorkerProfiles } from "./worker-profile.ts";
 import { recordedProcessDirectory } from "./worktree-processes.ts";
+import { piResumeSession } from "./pi-resume.ts";
+import type { PiSession } from "./pi-session.ts";
 import { resumeWorktree } from "./resume-worktree.ts";
 import type {
   AdapterOutcome,
@@ -25,6 +27,7 @@ export interface TurnResume {
   readonly startedAt: string;
   readonly turnStartCommit: string | null;
   readonly sessionId: string;
+  readonly piSession?: PiSession;
   readonly ends: readonly TurnEnd[];
   readonly steerNotes: readonly string[];
 }
@@ -133,6 +136,8 @@ export async function resumePlan(
   const { folder, started, intent, signal } = request;
   const tree = recordedTree(started);
   if (tree === undefined) return "claude-turn-interrupted";
+  const piSession = await piResumeSession(request);
+  if (typeof piSession === "string") return piSession;
   const locked = await resumeWorktree({
     ...settings,
     directory: tree.path,
@@ -145,16 +150,33 @@ export async function resumePlan(
   const profile = await selectedProfile(settings, intent);
   if (typeof profile === "string") return "claude-turn-interrupted";
   const harness = turnHarness(settings, profile);
-  if (
-    recordedField(started, "harness") !== harness.worker ||
-    resumedCommand({
-      worker: harness.worker,
-      command: harness.command,
-      sessionId: resume.sessionId,
-    }) === undefined
-  )
+  const refusal = resumeFailure(harness, {
+    started,
+    sessionId: resume.sessionId,
+  });
+  if (refusal !== undefined) return refusal;
+  return {
+    resume: { ...resume, ...(piSession === undefined ? {} : { piSession }) },
+    tree,
+    profile,
+    harness,
+  };
+}
+
+function resumeFailure(
+  harness: ReturnType<typeof turnHarness>,
+  request: { readonly started: unknown; readonly sessionId: string },
+): string | undefined {
+  if (recordedField(request.started, "harness") !== harness.worker)
     return "claude-turn-interrupted";
-  return { resume, tree, profile, harness };
+  if (harness.worker === "pi")
+    return harness.output === "text"
+      ? "pi-native-resume-unsupported"
+      : undefined;
+  return resumedCommand({ ...harness, sessionId: request.sessionId }) ===
+    undefined
+    ? "claude-turn-interrupted"
+    : undefined;
 }
 
 export function priorEnd(record: unknown): TurnEnd {
@@ -175,6 +197,14 @@ export function priorEnd(record: unknown): TurnEnd {
       model: typeof model === "string" ? model : null,
       text: "",
       failed: true,
+      ...(field("harness") === "pi"
+        ? {
+            pricingModel:
+              typeof field("pricingModel") === "string"
+                ? String(field("pricingModel"))
+                : null,
+          }
+        : {}),
       costUsd: recordedSessionCost(record),
       turns: typeof field("turns") === "number" ? Number(field("turns")) : null,
       usage: usageOf(field("usage")),
