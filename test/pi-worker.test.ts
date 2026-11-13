@@ -5,6 +5,8 @@ import { test } from "node:test";
 import { startTurn, succeeded } from "../src/daemon/claude-turn.ts";
 import {
   intent,
+  field,
+  record,
   journalKey,
   resultOf,
   until,
@@ -29,7 +31,13 @@ await test("CLV-364 native Pi runs its JSON command in the turn worktree", () =>
     assert.deepEqual(observed["arguments"], [
       "--mode",
       "json",
-      "--no-session",
+      "--session",
+      String(
+        field(
+          field(record(scene, "operation-1/started.json"), "piSession"),
+          "path",
+        ),
+      ),
       "--",
       "prompt of sha256:prompt",
     ]);
@@ -206,6 +214,13 @@ await test("CLV-364 a Pi profile uses its private command, model and allowed env
       "high",
       "--model",
       "operator/model",
+      "--session",
+      String(
+        field(
+          field(record(scene, "operation-1/started.json"), "piSession"),
+          "path",
+        ),
+      ),
       "--",
       "prompt of sha256:prompt",
     ]);

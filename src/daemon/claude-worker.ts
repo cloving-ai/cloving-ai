@@ -1,4 +1,5 @@
 import { turnHarness } from "../harness-defaults.ts";
+import { piOperationRefusal } from "./pi-session.ts";
 import type {
   AdapterOutcome,
   Delivery,
@@ -102,6 +103,8 @@ async function reconcileOperation(
   if (parts.active.has(key)) return { kind: "accepted", receipt: key, worker };
   const started = await read(folder, "started.json");
   if (started === undefined) return { kind: "absent" };
+  const conflict = piOperationRefusal(started, { intent, key });
+  if (conflict !== undefined) return conflict;
   const launch = await recordedLaunchOf(parts, { folder, started, result });
   return launchedOrResumed(parts, {
     intent,

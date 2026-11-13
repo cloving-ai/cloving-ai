@@ -106,7 +106,13 @@ async function launched(
     steered,
     start: {
       ...start,
-      command: launchCommand(attempts, launch),
+      ...(entry.piSession === undefined ? {} : { piSession: entry.piSession }),
+      command: [
+        ...launchCommand(attempts, launch),
+        ...(entry.piSession === undefined
+          ? []
+          : ["--session", entry.piSession.path]),
+      ],
       folder,
       ...(entry.attempt === 1
         ? {}
