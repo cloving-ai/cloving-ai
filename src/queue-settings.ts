@@ -75,6 +75,20 @@ export function declaredQueueValues(declaration: {
   return typeof declaration.queue === "object" ? declaration.queue : {};
 }
 
+export function queuePollingConfigured(given: {
+  readonly declared: {
+    readonly queue?: boolean | QueueDeclaration | undefined;
+  };
+  readonly setting?: WorkflowQueueSetting | undefined;
+  readonly general: GeneralQueueValues;
+}): boolean {
+  return (
+    typeof given.declared.queue === "object" ||
+    given.setting !== undefined ||
+    given.general.everySeconds !== undefined
+  );
+}
+
 interface QueueValuesInput {
   readonly declared: QueueDeclaration;
   readonly setting?: WorkflowQueueSetting | undefined;
@@ -225,7 +239,12 @@ export function queuesDigest(
         }),
       ),
     );
-  return `${part(["state", "everySeconds"])}:${part(["lanes", "workingLanes"])}`;
+  const activation = rows.map(([workflowId, setting]) => [
+    workflowId,
+    setting.state ?? null,
+    setting.everySeconds ?? null,
+  ]);
+  return `${digest(JSON.stringify(activation))}:${part(["lanes", "workingLanes"])}`;
 }
 
 export function queueFileLayers(

@@ -111,11 +111,31 @@ process.exit(0);
     assert.equal(result.status, 0, result.stderr);
   }));
 
+await test("CLV-373 a reload that changes the queue activation mode needs a restart", () =>
+  withConsumer(workflow, async (consumer) => {
+    const result =
+      await consumer.run(`${bundlePrelude}${workflowBundleLoader()}${reloadPrelude}
+const queued = { workflowId: "review-queue", functionName: "review", effectLimit: 1, capabilities: ["claude", "github"], input: { maximumBytes: 1000, fields: { ticket: { type: "ticket" } } } };
+const manifests = { ...settings.manifests, review: settings.manifests.developTicket };
+for (const [before, after] of [[true, {}], [{}, true]]) {
+  const daemon = await launched({ bundleDigest: "0".repeat(64), queueMilliseconds: undefined, declarations: [{ ...queued, queue: before }], manifests, workflows: { ...settings.workflows, review: workflows.develop }, reloadCommand, loadBundle: loadWorkflowBundle });
+  try {
+    prepared({ bundleDigest, manifests, declarations: [{ ...queued, queue: after }] });
+    const reloaded = await asked("reload");
+    assert.equal(reloaded.code, "reload-needs-restart", JSON.stringify(reloaded));
+    assert.equal((await asked("status")).bundleDigest, "0".repeat(64));
+  } finally { await daemon.close(); }
+}
+process.exit(0);
+`);
+    assert.equal(result.status, 0, result.stderr);
+  }));
+
 await test("CLV-359 a reload that changes the declared queue interval needs a restart and a declared lane change reloads", () =>
   withConsumer(workflow, async (consumer) => {
     const result =
       await consumer.run(`${bundlePrelude}${workflowBundleLoader()}${reloadPrelude}
-const queued = { workflowId: "review-queue", functionName: "review", effectLimit: 1, capabilities: ["claude", "github"], input: { maximumBytes: 1000, fields: { ticket: { type: "ticket" } } }, queue: true };
+const queued = { workflowId: "review-queue", functionName: "review", effectLimit: 1, capabilities: ["claude", "github"], input: { maximumBytes: 1000, fields: { ticket: { type: "ticket" } } }, queue: {} };
 const manifests = { ...settings.manifests, review: settings.manifests.developTicket };
 const daemon = await launched({ bundleDigest: "0".repeat(64), queueMilliseconds: undefined, declarations: [queued], manifests, workflows: { ...settings.workflows, review: workflows.develop }, reloadCommand, loadBundle: loadWorkflowBundle });
 try {
