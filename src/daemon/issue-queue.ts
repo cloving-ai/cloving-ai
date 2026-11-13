@@ -214,6 +214,7 @@ async function drained(
     return;
   if (drain.scope === "workflow" && (await queueStatus(settings)).busy > 0)
     return;
+  if (pending.drain !== drain) return;
   pending.drain = { ...drain, drainedAt: Date.now() };
   await pending.save();
   process.stderr.write("Queue drained\n");
