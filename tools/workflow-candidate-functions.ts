@@ -93,6 +93,12 @@ function calledFunction(
   },
 ): void {
   const { checker } = input.symbols;
+  const signature = checker.getResolvedSignature(node)?.declaration;
+  if (
+    signature !== undefined &&
+    input.sources.includes(signature.getSourceFile())
+  )
+    input.visit(signature);
   const symbol = resolvedSymbol(
     checker,
     checker.getSymbolAtLocation(node.expression),
@@ -107,9 +113,6 @@ function calledFunction(
   )
     input.effects.push({ capability: "workflow", method: helper });
   for (const declaration of symbol.declarations ?? [])
-    if (
-      input.sources.includes(declaration.getSourceFile()) &&
-      ts.isFunctionDeclaration(declaration)
-    )
+    if (input.sources.includes(declaration.getSourceFile()))
       input.visit(declaration);
 }

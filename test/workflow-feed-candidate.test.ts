@@ -181,3 +181,52 @@ await test("CLV-362 a feed can call the pure ticket status helper", () => {
   );
   assert.deepEqual(check(text), []);
 });
+
+await test("CLV-362 a feed refuses workflow controls through an arrow helper", () => {
+  const text = source("await pause(); return { picks: [], skipped: [] };")
+    .replace(
+      "{ protectedEffect, runCommand, handoff }",
+      "{ protectedEffect, runCommand, handoff, sleep }",
+    )
+    .concat("\nconst pause = async () => { await sleep({ seconds: 1 }); };");
+  assert.deepEqual(check(text), ["feed-method-not-read-only"]);
+});
+
+await test("CLV-362 a feed refuses workflow controls through a function expression helper", () => {
+  const text = source("await pause(); return { picks: [], skipped: [] };")
+    .replace(
+      "{ protectedEffect, runCommand, handoff }",
+      "{ protectedEffect, runCommand, handoff, sleep }",
+    )
+    .concat(
+      "\nconst pause = async function () { await sleep({ seconds: 1 }); };",
+    );
+  assert.deepEqual(check(text), ["feed-method-not-read-only"]);
+});
+
+await test("CLV-362 a feed refuses workflow controls through object property helpers", () => {
+  for (const helper of [
+    "async () => { await sleep({ seconds: 1 }); }",
+    "async function () { await sleep({ seconds: 1 }); }",
+  ]) {
+    const text = source(
+      "await controls.pause(); return { picks: [], skipped: [] };",
+    )
+      .replace(
+        "{ protectedEffect, runCommand, handoff }",
+        "{ protectedEffect, runCommand, handoff, sleep }",
+      )
+      .concat(`\nconst controls = { pause: ${helper} };`);
+    assert.deepEqual(check(text), ["feed-method-not-read-only"]);
+  }
+});
+
+await test("CLV-362 a feed refuses workflow controls through indexed helpers", () => {
+  const text = source("await pauses[0](); return { picks: [], skipped: [] };")
+    .replace(
+      "{ protectedEffect, runCommand, handoff }",
+      "{ protectedEffect, runCommand, handoff, sleep }",
+    )
+    .concat("\nconst pauses = [async () => { await sleep({ seconds: 1 }); }];");
+  assert.deepEqual(check(text), ["feed-method-not-read-only"]);
+});
