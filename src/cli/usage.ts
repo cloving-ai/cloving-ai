@@ -334,7 +334,7 @@ Commands:
   status     List the runs or show one run.
   mcp        Serve the Cloving tools over stdio.
   schedule   List, pause and resume workflow schedules.
-  queue      Show, resume and drain the queue.
+  queue      Show queues, change their lanes and drain or resume them.
   report     Report loop facts and seven-day baselines.
   questions  List the pending decisions.
   answer     Answer one design question.
