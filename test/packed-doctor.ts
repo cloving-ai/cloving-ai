@@ -20,7 +20,7 @@ export function packedDoctor(root: string): Promise<void> {
     const report = fields(JSON.parse(result.stdout));
     assert.equal(report["version"], 1);
     const checks = items(report["checks"]).map(fields);
-    assert.equal(checks.length, 25);
+    assert.equal(checks.length, 26);
     assert.ok(
       checks
         .filter((check) => check["required"])

@@ -12,7 +12,11 @@ import {
 } from "../doctor-report.ts";
 import { privateSettingsPath, projectSettings } from "./project-settings.ts";
 import { githubObservations } from "./doctor-github.ts";
-import { doctorWorkflows, workflowObservation } from "./doctor-workflows.ts";
+import {
+  doctorWorkflows,
+  queueFeedObservation,
+  workflowObservation,
+} from "./doctor-workflows.ts";
 import { runtimeObservation, serviceObservation } from "./doctor-runtime.ts";
 import type { ProbeRunner } from "./probe-command.ts";
 import type { TurnProfiles } from "../turn-profile.ts";
@@ -159,6 +163,7 @@ async function repositoryObservations(
     environment,
   });
   observations["no-workflow"] = workflowObservation(workflowContext);
+  observations["queue-feed"] = queueFeedObservation(workflowContext);
   const required = requiredDoctorCodes(
     workflowContext.workflows,
     environment["CLOVING_QUEUES"],
