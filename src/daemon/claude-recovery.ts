@@ -1,4 +1,6 @@
 import { usageOf, priceOf, resumeReasonField } from "../worker-usage.ts";
+import { piAccountingOf } from "../pi-usage.ts";
+import { recordedLaunch } from "../turn-launch.ts";
 import type { TurnEnd } from "./claude-turn.ts";
 import {
   located,
@@ -14,6 +16,8 @@ import type { WorkTree } from "./work-tree.ts";
 import { turnHarness } from "../harness-defaults.ts";
 import { selectedProfile, type WorkerProfiles } from "./worker-profile.ts";
 import { recordedProcessDirectory } from "./worktree-processes.ts";
+import { piResumeSession } from "./pi-resume.ts";
+import type { PiSession } from "./pi-session.ts";
 import { resumeWorktree } from "./resume-worktree.ts";
 import type {
   AdapterOutcome,
@@ -25,6 +29,7 @@ export interface TurnResume {
   readonly startedAt: string;
   readonly turnStartCommit: string | null;
   readonly sessionId: string;
+  readonly piSession?: PiSession;
   readonly ends: readonly TurnEnd[];
   readonly steerNotes: readonly string[];
 }
@@ -101,6 +106,24 @@ export function processAlive(processId: unknown): boolean {
   }
 }
 
+export function stopRecoveryPlan(request: {
+  readonly started: unknown;
+  readonly key: string;
+}): "reconcile" | AdapterOutcome | undefined {
+  const { started, key } = request;
+  const harness = recordedField(started, "harness");
+  if (
+    !resumableHarness(harness) &&
+    recordedLaunch(recordedField(started, "launch")) === undefined
+  )
+    return harness === "pi"
+      ? { kind: "unknown", evidence: `pi-prior-result-uncertain:${key}` }
+      : "reconcile";
+  return processAlive(recordedField(started, "processId"))
+    ? { kind: "unknown", evidence: `claude-turn:${key}` }
+    : undefined;
+}
+
 export async function uncertainProcess(started: unknown): Promise<boolean> {
   const processId = recordedField(started, "processId");
   if (typeof processId !== "number" || !processAlive(processId)) return false;
@@ -133,6 +156,8 @@ export async function resumePlan(
   const { folder, started, intent, signal } = request;
   const tree = recordedTree(started);
   if (tree === undefined) return "claude-turn-interrupted";
+  const piSession = await piResumeSession(request);
+  if (typeof piSession === "string") return piSession;
   const locked = await resumeWorktree({
     ...settings,
     directory: tree.path,
@@ -145,16 +170,33 @@ export async function resumePlan(
   const profile = await selectedProfile(settings, intent);
   if (typeof profile === "string") return "claude-turn-interrupted";
   const harness = turnHarness(settings, profile);
-  if (
-    recordedField(started, "harness") !== harness.worker ||
-    resumedCommand({
-      worker: harness.worker,
-      command: harness.command,
-      sessionId: resume.sessionId,
-    }) === undefined
-  )
+  const refusal = resumeFailure(harness, {
+    started,
+    sessionId: resume.sessionId,
+  });
+  if (refusal !== undefined) return refusal;
+  return {
+    resume: { ...resume, ...(piSession === undefined ? {} : { piSession }) },
+    tree,
+    profile,
+    harness,
+  };
+}
+
+function resumeFailure(
+  harness: ReturnType<typeof turnHarness>,
+  request: { readonly started: unknown; readonly sessionId: string },
+): string | undefined {
+  if (recordedField(request.started, "harness") !== harness.worker)
     return "claude-turn-interrupted";
-  return { resume, tree, profile, harness };
+  if (harness.worker === "pi")
+    return harness.output === "text"
+      ? "pi-native-resume-unsupported"
+      : undefined;
+  return resumedCommand({ ...harness, sessionId: request.sessionId }) ===
+    undefined
+    ? "claude-turn-interrupted"
+    : undefined;
 }
 
 export function priorEnd(record: unknown): TurnEnd {
@@ -162,6 +204,7 @@ export function priorEnd(record: unknown): TurnEnd {
   const sessionId = field("sessionId");
   const model = field("model");
   const retryKind = field("retryKind");
+  const piAccounting = piAccountingOf(field("piAccounting"));
   return {
     ...(retryKind === "capacity" ||
     retryKind === "network" ||
@@ -175,6 +218,15 @@ export function priorEnd(record: unknown): TurnEnd {
       model: typeof model === "string" ? model : null,
       text: "",
       failed: true,
+      ...(field("harness") === "pi"
+        ? {
+            ...(piAccounting === undefined ? {} : { piAccounting }),
+            pricingModel:
+              typeof field("pricingModel") === "string"
+                ? String(field("pricingModel"))
+                : null,
+          }
+        : {}),
       costUsd: recordedSessionCost(record),
       turns: typeof field("turns") === "number" ? Number(field("turns")) : null,
       usage: usageOf(field("usage")),

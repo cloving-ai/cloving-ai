@@ -7,6 +7,7 @@ import { attemptNumber, recordedLaunch } from "../turn-launch.ts";
 import { readRecord } from "./operation-journal.ts";
 
 export interface PiSession {
+  readonly historicalResponses?: readonly string[];
   readonly path: string;
   readonly id: string;
   readonly cwd: string;
@@ -83,8 +84,8 @@ function sameSession(
 ): boolean {
   const fields = record(second);
   if (fields === undefined) return false;
-  return ["path", "id", "cwd", "timestamp"].every(
-    (name) => first[name] === fields[name],
+  return ["path", "id", "cwd", "timestamp", "historicalResponses"].every(
+    (name) => JSON.stringify(first[name]) === JSON.stringify(fields[name]),
   );
 }
 
@@ -95,6 +96,11 @@ function validSession(session: Readonly<Record<string, unknown>>): boolean {
   const timestamp = session["timestamp"];
   return (
     texts &&
+    (session["historicalResponses"] === undefined ||
+      (Array.isArray(session["historicalResponses"]) &&
+        session["historicalResponses"].every(
+          (value: unknown) => typeof value === "string",
+        ))) &&
     typeof timestamp === "string" &&
     Number.isFinite(Date.parse(timestamp))
   );
@@ -245,7 +251,11 @@ export async function ownedPiSession(
   if (typeof value === "string") return value;
   const failure = headerFailure(value, session);
   if (failure !== undefined) return failure;
+  const historicalResponses = session["historicalResponses"];
   return {
+    ...(Array.isArray(historicalResponses)
+      ? { historicalResponses: historicalResponses.map(String) }
+      : {}),
     path,
     id: String(session["id"]),
     cwd: String(session["cwd"]),
