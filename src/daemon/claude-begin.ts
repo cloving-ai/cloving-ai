@@ -89,6 +89,7 @@ export async function begun(
     },
   );
   parts.active.set(key, {
+    ...(harness.output === undefined ? {} : { output: harness.output }),
     worker: harness.worker,
     intent,
     turn,

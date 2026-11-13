@@ -42,7 +42,11 @@ export async function initCommand(context: {
     const entry =
       context.harness === undefined
         ? await promptHarness({ ...context, repository: context.repository })
-        : await selectedHarness(context.harness, context);
+        : await selectedHarness(context.harness, {
+            ...context,
+            current: projectSettings(context.environment, context.repository)
+              .harness,
+          });
     const turn =
       path === "local" ? await localTurn(entry, context.askTurn) : undefined;
     await changeConfigFile(

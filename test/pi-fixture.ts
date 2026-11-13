@@ -39,23 +39,32 @@ export function piEvents(message = piMessage()): readonly unknown[] {
   ];
 }
 
-export function fakePi(
-  scene: Pick<Scene, "directory">,
-  options: {
-    readonly events?: readonly unknown[];
-    readonly output?: string;
-    readonly exitCode?: number;
-    readonly gate?: string;
-    readonly afterGateEvents?: readonly unknown[];
-    readonly chunkBytes?: number;
-  } = {},
-): string {
-  const path = join(scene.directory, "pi");
-  const output =
+interface FakePiOptions {
+  readonly events?: readonly unknown[];
+  readonly output?: string;
+  readonly resumeEvents?: readonly unknown[];
+  readonly resumeGate?: string;
+  readonly exitCode?: number;
+  readonly gate?: string;
+  readonly afterGateEvents?: readonly unknown[];
+  readonly chunkBytes?: number;
+}
+
+function fixtureOutput(options: FakePiOptions): string {
+  return (
     options.output ??
     (options.events ?? piEvents())
       .map((event) => JSON.stringify(event) + "\n")
-      .join("");
+      .join("")
+  );
+}
+
+export function fakePi(
+  scene: Pick<Scene, "directory">,
+  options: FakePiOptions = {},
+): string {
+  const path = join(scene.directory, "pi");
+  const output = fixtureOutput(options);
   writeFileSync(
     path,
     `#!${process.execPath}
@@ -84,13 +93,22 @@ const session = selected < 0 ? undefined : JSON.parse(readFileSync(parts[selecte
 appendFileSync(${JSON.stringify(join(scene.directory, "pi-prompts.jsonl"))}, JSON.stringify({ prompt, processId: process.pid, session }) + "\\n");
 appendFileSync(${JSON.stringify(join(scene.directory, "turns.log"))}, JSON.stringify({ prompt, processId: process.pid, parentId: process.ppid, arguments: parts, files: [], directory: process.cwd(), environment: process.env }) + "\\n");
 writeFileSync(${JSON.stringify(join(scene.directory, "observed.json"))}, JSON.stringify({ arguments: parts, stdin, prompt, directory: process.cwd(), environment: process.env, configuration: process.env.GH_CONFIG_DIR === undefined ? [] : readdirSync(process.env.GH_CONFIG_DIR) }));
-const translated = ${JSON.stringify(output)}.split("\\n").map((line) => session && line.startsWith('{"type":"session",') ? JSON.stringify(session) : line).join("\\n");
+const invocation = readFileSync(${JSON.stringify(join(scene.directory, "pi-prompts.jsonl"))}, "utf8").trim().split("\\n").length;
+const resuming = invocation > 1 && ${JSON.stringify(options.resumeEvents !== undefined)};
+const output = resuming ? ${JSON.stringify((options.resumeEvents ?? []).map((event) => JSON.stringify(event) + "\n").join(""))} : ${JSON.stringify(output)};
+if (session && ${JSON.stringify(options.resumeEvents !== undefined)}) {
+  for (const [index, line] of output.trim().split("\\n").entries()) {
+    const event = JSON.parse(line);
+    if (event.type === "message_end") appendFileSync(parts[selected + 1], JSON.stringify({type:"message", id: invocation + "-" + index, parentId:null, timestamp:new Date().toISOString(), message:event.message}) + "\\n");
+  }
+}
+const translated = output.split("\\n").map((line) => session && line.startsWith('{"type":"session",') ? JSON.stringify(session) : line).join("\\n");
 const bytes = Buffer.from(translated);
 const size = ${String(options.chunkBytes ?? 4096)};
 for (let offset = 0; offset < bytes.length; offset += size) {
   if (!process.stdout.write(bytes.subarray(offset, offset + size))) await new Promise((resolve) => process.stdout.once("drain", resolve));
 }
-const gate = ${JSON.stringify(options.gate ?? "")};
+const gate = resuming ? ${JSON.stringify(options.resumeGate ?? "")} : ${JSON.stringify(options.gate ?? "")};
 if (gate) while (!existsSync(gate)) await delay(10);
 process.stdout.write(${JSON.stringify((options.afterGateEvents ?? []).map((event) => JSON.stringify(event) + "\n").join(""))});
 process.exitCode = ${String(options.exitCode ?? 0)};

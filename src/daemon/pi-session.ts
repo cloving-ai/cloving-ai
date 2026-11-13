@@ -3,9 +3,11 @@ import { constants } from "node:fs";
 import { mkdir, open, realpath, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { record } from "../protocol.ts";
+import { attemptNumber, recordedLaunch } from "../turn-launch.ts";
 import { readRecord } from "./operation-journal.ts";
 
 export interface PiSession {
+  readonly historicalResponses?: readonly string[];
   readonly path: string;
   readonly id: string;
   readonly cwd: string;
@@ -82,8 +84,8 @@ function sameSession(
 ): boolean {
   const fields = record(second);
   if (fields === undefined) return false;
-  return ["path", "id", "cwd", "timestamp"].every(
-    (name) => first[name] === fields[name],
+  return ["path", "id", "cwd", "timestamp", "historicalResponses"].every(
+    (name) => JSON.stringify(first[name]) === JSON.stringify(fields[name]),
   );
 }
 
@@ -94,6 +96,11 @@ function validSession(session: Readonly<Record<string, unknown>>): boolean {
   const timestamp = session["timestamp"];
   return (
     texts &&
+    (session["historicalResponses"] === undefined ||
+      (Array.isArray(session["historicalResponses"]) &&
+        session["historicalResponses"].every(
+          (value: unknown) => typeof value === "string",
+        ))) &&
     typeof timestamp === "string" &&
     Number.isFinite(Date.parse(timestamp))
   );
@@ -184,6 +191,49 @@ export async function piOperationRecord(
     : { harness: active.worker, ...active.intent };
 }
 
+export async function piAttemptRefusal(
+  folder: string,
+  started: unknown,
+): Promise<string | undefined> {
+  const fields = record(started);
+  if (fields?.["harness"] !== "pi" || fields["phase"] !== "running")
+    return undefined;
+  const attempt = attemptNumber(started);
+  if (attempt === undefined) return "pi-attempt-ownership-conflict";
+  const value = await readRecord(
+    folder,
+    `attempt-${String(attempt)}.json`,
+  ).catch(() => null);
+  if (value === undefined) return "pi-attempt-state-missing";
+  const entry = record(value);
+  if (entry === undefined) return "pi-attempt-state-invalid";
+  return piAttemptEvidenceFailure(fields, entry);
+}
+
+function piAttemptEvidenceFailure(
+  started: Readonly<Record<string, unknown>>,
+  entry: Readonly<Record<string, unknown>>,
+): string | undefined {
+  const keys = [
+    "attempt",
+    "harness",
+    "operationId",
+    "target",
+    "worktree",
+    "processId",
+    "startCommit",
+    "turnStartCommit",
+  ];
+  if (keys.some((name) => started[name] !== entry[name]))
+    return "pi-attempt-ownership-conflict";
+  const launch = recordedLaunch(started["launch"]);
+  if (launch === undefined) return "pi-prior-result-uncertain";
+  return JSON.stringify(launch) ===
+    JSON.stringify(recordedLaunch(entry["launch"]))
+    ? undefined
+    : "pi-attempt-ownership-conflict";
+}
+
 export async function ownedPiSession(
   request: SessionRequest,
 ): Promise<string | PiSession> {
@@ -201,7 +251,11 @@ export async function ownedPiSession(
   if (typeof value === "string") return value;
   const failure = headerFailure(value, session);
   if (failure !== undefined) return failure;
+  const historicalResponses = session["historicalResponses"];
   return {
+    ...(Array.isArray(historicalResponses)
+      ? { historicalResponses: historicalResponses.map(String) }
+      : {}),
     path,
     id: String(session["id"]),
     cwd: String(session["cwd"]),

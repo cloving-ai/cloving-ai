@@ -1,20 +1,24 @@
+import { WorkerReconciliation } from "./worker-reconciliation.ts";
+import { consumePiShutdown, piResumeState } from "./pi-resume.ts";
 import { turnHarness } from "../harness-defaults.ts";
-import { piOperationRecord, piOperationRefusal } from "./pi-session.ts";
+import {
+  piAttemptRefusal,
+  piOperationRecord,
+  piOperationRefusal,
+} from "./pi-session.ts";
 import type {
   AdapterOutcome,
-  Delivery,
   DeliveryIntent,
 } from "../broker/actor/delivery-intents.ts";
 import { begun } from "./claude-begin.ts";
 import {
-  attachableLaunch,
   attachPlan,
   holdKeptTurn,
-  markedTurn,
+  recordedTurnLaunch,
   recoverableTurn,
   rejectedAttach,
 } from "./claude-attach.ts";
-import { recordedLaunch, type TurnLaunch } from "../turn-launch.ts";
+import type { TurnLaunch } from "../turn-launch.ts";
 import {
   located,
   readRecord as read,
@@ -28,11 +32,10 @@ import { firstTurn, treeFailure, workTree } from "./work-tree.ts";
 import {
   recordedHarness,
   interruptedReply,
-  processAlive,
+  stopRecoveryPlan,
   uncertainProcess,
   resumePlan,
   recordedField,
-  resumableHarness,
   recoverTurn,
   turnIntent,
 } from "./claude-recovery.ts";
@@ -45,28 +48,20 @@ import {
 } from "./turn-steering.ts";
 import {
   claudeLimits,
+  resumableActive,
+  nativePiOperation,
   type Active,
   type ClaudeWorkerSettings,
   type Parts,
+  type ClaudeWorker,
 } from "./claude-worker-parts.ts";
 
 export {
+  type ClaudeWorker,
   claudeLimits,
   type ClaudeWorkerSettings,
+  type CloseOptions,
 } from "./claude-worker-parts.ts";
-
-export interface ClaudeWorker extends Delivery {
-  readonly hold: (intent: DeliveryIntent) => Promise<boolean>;
-  readonly recover: (intent: DeliveryIntent) => Promise<void>;
-  readonly harness: (operationId: string) => Promise<string | undefined>;
-  readonly stop: NonNullable<Delivery["stop"]>;
-  readonly steer: (request: SteerRequest) => Promise<SteerAnswer>;
-  readonly close: (options?: CloseOptions) => Promise<void>;
-}
-
-export interface CloseOptions {
-  readonly turns?: "keep" | "stop";
-}
 
 const worker = "claude";
 
@@ -79,14 +74,10 @@ async function reconciled(
   const started = await piOperationRecord(folder, parts.active.get(key));
   const conflict = piOperationRefusal(started, { intent, key });
   if (conflict !== undefined) return conflict;
-  const pending = parts.reconciling.get(key);
-  if (pending !== undefined) return pending;
-  const reconciliation = reconcileOperation(parts, call).finally(() => {
-    if (parts.reconciling.get(key) === reconciliation)
-      parts.reconciling.delete(key);
+  return parts.reconciling.run(key, {
+    signal: call.signal,
+    perform: (signal) => reconcileOperation(parts, { intent, signal }),
   });
-  parts.reconciling.set(key, reconciliation);
-  return reconciliation;
 }
 
 async function reconcileOperation(
@@ -105,7 +96,19 @@ async function reconcileOperation(
   if (parts.active.has(key)) return { kind: "accepted", receipt: key, worker };
   const started = await read(folder, "started.json");
   if (started === undefined) return { kind: "absent" };
-  const launch = await recordedLaunchOf(parts, { folder, started, result });
+  const conflict = await piAttemptRefusal(folder, started);
+  if (conflict !== undefined)
+    return { kind: "unknown", evidence: `${conflict}:${key}` };
+  if ((await read(folder, "stop-request.json")) !== undefined)
+    return stopped(parts, intent);
+  const resumeState = piResumeState(started, result);
+  if (resumeState === "resume")
+    return resumed(parts, { intent, key, folder, started, signal });
+  const launch = await recordedTurnLaunch(parts.settings, {
+    folder,
+    started,
+    result: resumeState === "attach" ? undefined : result,
+  });
   return launchedOrResumed(parts, {
     intent,
     key,
@@ -129,6 +132,14 @@ async function launchedOrResumed(
   if (launch === "stopped")
     return interruptedReply(rest, "claude-turn-interrupted");
   if (
+    (launch === "gone" || launch === undefined) &&
+    recordedField(rest.started, "harness") === "pi"
+  )
+    return {
+      kind: "unknown",
+      evidence: `pi-prior-result-uncertain:${rest.key}`,
+    };
+  if (
     launch === "unknown" ||
     (launch === undefined && (await uncertainProcess(rest.started)))
   )
@@ -137,25 +148,6 @@ async function launchedOrResumed(
     ...rest,
     ...(launch === undefined || launch === "gone" ? {} : { launch }),
   });
-}
-
-async function recordedLaunchOf(
-  parts: Parts,
-  journal: {
-    readonly folder: string;
-    readonly started: unknown;
-    readonly result: unknown;
-  },
-): Promise<TurnLaunch | "gone" | "stopped" | "unknown" | undefined> {
-  if (journal.result !== undefined) return undefined;
-  return (
-    (await attachableLaunch(journal.folder, journal.started)) ??
-    markedTurn(journal.folder, {
-      started: journal.started,
-      stopMilliseconds:
-        parts.settings.stopMilliseconds ?? claudeLimits.stopMilliseconds,
-    })
-  );
 }
 
 async function resumed(
@@ -194,6 +186,7 @@ async function resumed(
     way: launch === undefined ? "resumed" : "connected",
   });
   const noted = await parts.notes.recorded({ ...intent, prompt, started });
+  await consumePiShutdown(folder, plan);
   await begun(parts, {
     key,
     folder,
@@ -282,13 +275,10 @@ async function stopped(
     return replied({ receipt: key, worker }, result);
   const started = await read(folder, "started.json");
   if (started === undefined) return { kind: "absent" };
-  if (
-    !resumableHarness(recordedField(started, "harness")) &&
-    recordedLaunch(recordedField(started, "launch")) === undefined
-  )
+  const plan = stopRecoveryPlan({ started, key });
+  if (plan === "reconcile")
     return reconcileOperation(parts, { intent, signal: parts.stopping.signal });
-  if (processAlive(recordedField(started, "processId")))
-    return { kind: "unknown", evidence: `claude-turn:${key}` };
+  if (plan !== undefined) return plan;
   if (!turnIntent(intent)) return failure("unsupported-effect");
   const recorded: Recorded = {
     outcome: "stopped",
@@ -323,14 +313,23 @@ async function stoppingOperation(
   const started = await piOperationRecord(folder, parts.active.get(key));
   const conflict = piOperationRefusal(started, { intent, key });
   if (conflict !== undefined) return conflict;
-  const pending = parts.reconciling.get(key);
-  const stop = () => stopped(parts, intent);
-  const stopping = pending === undefined ? stop() : pending.then(stop, stop);
-  const settled = stopping.finally(() => {
-    if (parts.reconciling.get(key) === settled) parts.reconciling.delete(key);
+  const nativePi = nativePiOperation(started, parts.active.get(key));
+  return parts.reconciling.stop(key, {
+    cancelPending:
+      nativePi &&
+      piResumeState(started, await read(folder, "result.json")) === "resume",
+    ...(nativePi
+      ? {
+          record: () =>
+            written(folder, {
+              name: "stop-request.json",
+              value: { operationId: intent.operationId, target: intent.target },
+              permissions: "private",
+            }),
+        }
+      : {}),
+    perform: () => stopped(parts, intent),
   });
-  parts.reconciling.set(key, settled);
-  return settled;
 }
 
 export function claudeWorker(settings: ClaudeWorkerSettings): ClaudeWorker {
@@ -340,7 +339,7 @@ export function claudeWorker(settings: ClaudeWorkerSettings): ClaudeWorker {
   const parts: Parts = {
     settings,
     active: new Map(),
-    reconciling: new Map(),
+    reconciling: new WorkerReconciliation(),
     stopping: new AbortController(),
     release: new AbortController(),
     notes: noteDesk(settings),
@@ -381,7 +380,7 @@ export function claudeWorker(settings: ClaudeWorkerSettings): ClaudeWorker {
       parts.stopping.abort();
       await Promise.all(
         [...parts.active.values()].map((active) => {
-          if (resumableHarness(active.worker) && !active.stopping.requested)
+          if (resumableActive(active) && !active.stopping.requested)
             active.stopping.stoppedBy = "daemon-shutdown";
           return halted(parts, active);
         }),
