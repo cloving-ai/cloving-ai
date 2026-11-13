@@ -76,7 +76,8 @@ export async function prepareAttempt(attempts: Attempts) {
     planned.attempt === 1
       ? attempts.start.folder
       : join(attempts.start.folder, `attempt-${String(planned.attempt)}`);
-  await mkdir(folder, { recursive: true, mode: 0o700 });
+  if (attempts.start.worker === "pi")
+    await mkdir(folder, { recursive: true, mode: 0o700 });
   const piSession =
     attempts.start.worker === "pi"
       ? await createPiSession({ folder, directory: attempts.start.directory })
@@ -98,6 +99,7 @@ export async function prepareAttempt(attempts: Attempts) {
       processId: null,
     },
   });
+  await mkdir(folder, { recursive: true, mode: 0o700 });
   return { entry, selected, folder };
 }
 
