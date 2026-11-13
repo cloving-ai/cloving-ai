@@ -79,7 +79,7 @@ await test("CLV-207 the effective harness command uses the service search path",
     await assert.doesNotReject(access(marker));
   }));
 
-await test("CLV-359 a declared queue with no interval setting passes queue-interval and names the source of the interval", () =>
+await test("CLV-373 the doctor requires a legacy interval and names the source for explicit queue configurations", () =>
   withDoctor(async (scene) => {
     const folder = join(scene.repository, ".cloving/workflows");
     const interval = async (environment: NodeJS.ProcessEnv) => {
@@ -92,6 +92,11 @@ await test("CLV-359 a declared queue with no interval setting passes queue-inter
       "300 seconds from the declaration",
     ]);
     await writeQueueWorkflow(folder);
+    assert.deepEqual(await interval({ CLOVING_QUEUE_SECONDS: undefined }), [
+      "fail",
+      "queue.everySeconds must be a whole number from 10 to 3600",
+    ]);
+    await writeQueueWorkflow(folder, { queue: {} });
     assert.deepEqual(await interval({ CLOVING_QUEUE_SECONDS: undefined }), [
       "ok",
       "120 seconds from the default",

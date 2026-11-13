@@ -9,9 +9,11 @@ import {
   statusOf,
 } from "./cli-start-declared-queue-fixture.ts";
 
-await test("CLV-359 boolean and empty object queues start with defaults and no interval setting", async () => {
+await test("CLV-373 explicit queue objects and per-workflow settings start with defaults and no interval setting", async () => {
   for (const queue of [true, {}]) {
     const { fixture, environment } = await queueScene({ queue });
+    if (queue === true)
+      await privateSettings(fixture, { queues: { develop: {} } });
     const output = await startOutput(fixture, {
       environment,
       inspect: () => {
@@ -56,7 +58,7 @@ await test("CLV-359 removing private queue limits reloads the start environment 
       const reply = record(JSON.parse(reload.stdout));
       assert.deepEqual(
         [reply?.["reloadedFields"], reply?.["restartFields"]],
-        [["queues"], []],
+        [["queues"], ["queues"]],
       );
       assert.deepEqual(record(statusOf(fixture)["queue"])?.["settings"], {
         everySeconds: { value: 120, source: "default" },

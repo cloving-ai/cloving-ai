@@ -19,7 +19,8 @@ import {
   commitSignaturesSetting,
   turnVariablesSetting,
 } from "../src/turn-environment.ts";
-import { listedSetting, queueStartup, spendScope } from "./self-host-queue.ts";
+import { listedSetting, spendScope } from "./self-host-queue.ts";
+import { queueStartup } from "./self-host-queue-startup.ts";
 import {
   configurationDigests,
   configuredTurnSettings,
