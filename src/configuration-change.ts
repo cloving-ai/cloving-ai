@@ -32,8 +32,8 @@ export function selectedHarnessConfiguration(
   const harness = previous.harness;
   const same =
     harness?.name === selection.name &&
-    harness.kind === selection.kind &&
-    harness.path === selection.path;
+    (harness.kind === undefined || harness.kind === selection.kind) &&
+    (harness.path === undefined || harness.path === selection.path);
   const next = {
     version: 1,
     ...previous,
