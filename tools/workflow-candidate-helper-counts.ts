@@ -16,16 +16,26 @@ import {
 
 const zero: Totals = { knownCallCount: 0, knownUnitTotal: 0 };
 
-export function helperEffectTotals(input: {
+interface HelperCountsInput {
   readonly symbols: CandidateSymbols;
   readonly sources: readonly ts.SourceFile[];
-}): {
+  readonly root?: ts.FunctionDeclaration;
+}
+
+interface HelperCounts {
   readonly totals?: Totals;
   readonly unsupportedForms: readonly string[];
-} {
+}
+
+export function helperEffectTotals(
+  input: HelperCountsInput & { readonly root: ts.FunctionDeclaration },
+): HelperCounts & { readonly totals: Totals };
+export function helperEffectTotals(input: HelperCountsInput): HelperCounts;
+export function helperEffectTotals(input: HelperCountsInput): HelperCounts {
   const { symbols, sources } = input;
   const unsupportedForms: string[] = [];
-  if (sources.length === 1) return { unsupportedForms };
+  if (sources.length === 1 && input.root === undefined)
+    return { unsupportedForms };
   const active = new Set<ts.FunctionDeclaration>();
   const totals = new Map<ts.FunctionDeclaration, Totals>();
   const functions = localFunctions(sources);
@@ -54,7 +64,10 @@ export function helperEffectTotals(input: {
     return result;
   }
   const effectful = effectfulFunctions({ functions, functionAt, symbols });
-  if ([...effectful].every((entry) => entry.getSourceFile() === symbols.source))
+  if (
+    input.root === undefined &&
+    [...effectful].every((entry) => entry.getSourceFile() === symbols.source)
+  )
     return { unsupportedForms };
   for (const source of sources)
     inspectHelperReferences(source, {
@@ -64,12 +77,19 @@ export function helperEffectTotals(input: {
       unsupportedForms,
     });
   for (const declaration of effectful) count(declaration);
-  const workflow = [...functions].find(
+  const workflow = input.root ?? rootWorkflow(functions, symbols.source);
+  return { totals: workflow ? count(workflow) : zero, unsupportedForms };
+}
+
+function rootWorkflow(
+  functions: ReadonlySet<ts.FunctionDeclaration>,
+  source: ts.SourceFile,
+): ts.FunctionDeclaration | undefined {
+  return [...functions].find(
     (entry) =>
-      entry.getSourceFile() === symbols.source &&
+      entry.getSourceFile() === source &&
       (ts.getCombinedModifierFlags(entry) & ts.ModifierFlags.Export) !== 0,
   );
-  return { totals: workflow ? count(workflow) : zero, unsupportedForms };
 }
 
 function localFunctions(sources: readonly ts.SourceFile[]) {

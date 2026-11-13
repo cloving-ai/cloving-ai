@@ -10,12 +10,18 @@ export function workflowShape(source: ts.SourceFile): boolean {
   );
   const candidate = exported[0];
   if (
-    exported.length !== 1 ||
+    exported.length < 1 ||
+    exported.length > 2 ||
     !candidate ||
     !ts.isFunctionDeclaration(candidate)
   )
     return false;
-  if (!workflowFunction(candidate)) return false;
+  if (
+    !exported.every(
+      (entry) => ts.isFunctionDeclaration(entry) && workflowFunction(entry),
+    )
+  )
+    return false;
   const directives: ts.Node[] = [];
   function visit(node: ts.Node): void {
     if (ts.isStringLiteral(node) && node.text === "use workflow")
@@ -23,10 +29,15 @@ export function workflowShape(source: ts.SourceFile): boolean {
     ts.forEachChild(node, visit);
   }
   visit(source);
-  return directives.length === 1;
+  return directives.length === exported.length;
 }
 
-function workflowFunction(candidate: ts.FunctionDeclaration): boolean {
+export function workflowFunction(
+  candidate: ts.FunctionDeclaration,
+): candidate is ts.FunctionDeclaration & {
+  readonly name: ts.Identifier;
+  readonly body: ts.Block;
+} {
   if (!candidate.name || !candidate.body || candidate.asteriskToken)
     return false;
   const modifiers = ts.getModifiers(candidate) ?? [];

@@ -21,6 +21,7 @@ import { literalField } from "./workflow-candidate-fields.ts";
 import { sourceEffectNodes } from "./workflow-source-effects.ts";
 import { candidateEffectTotals } from "./workflow-candidate-counts.ts";
 import { helperEffectTotals } from "./workflow-candidate-helper-counts.ts";
+import { candidateFunctions } from "./workflow-candidate-functions.ts";
 import type {
   CandidateAnalysis,
   CandidateEffect,
@@ -215,6 +216,7 @@ function analyzeProgram(
         symbols: { ...symbols, source },
         sources,
       }),
+      workflows: candidateFunctions({ symbols, sources, modules }),
     }),
     installedExports: exportSnapshot(modules, checker),
   };
@@ -257,9 +259,11 @@ function combineFacts(input: {
   readonly localSources: readonly string[];
   readonly facts: readonly CandidateAnalysis[];
   readonly expanded: ReturnType<typeof helperEffectTotals>;
+  readonly workflows: CandidateAnalysis["workflows"];
 }): CandidateAnalysis {
   const { localSources, facts } = input;
   return {
+    ...(input.workflows === undefined ? {} : { workflows: input.workflows }),
     localSources,
     ...(facts.some((entry) => entry.commandWaits !== undefined)
       ? { commandWaits: facts.flatMap((entry) => entry.commandWaits ?? []) }

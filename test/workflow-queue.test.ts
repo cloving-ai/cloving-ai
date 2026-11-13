@@ -69,6 +69,34 @@ await test("CLV-359 queue accepts an object with an optional interval and lane c
     );
 });
 
+await test("CLV-362 a queue names a feed with an independent effect limit", () => {
+  for (const queue of [
+    { feed: "triageFeed" },
+    { lanes: 2, feed: "triageFeed", feedEffectLimit: 20 },
+    { feed: "_feed2", feedEffectLimit: 1 },
+    { feed: "feed", feedEffectLimit: 1000 },
+  ])
+    assert.ok(
+      isWorkflowDeclaration({ ...workflow, queue }),
+      JSON.stringify(queue),
+    );
+  for (const queue of [
+    { feed: "" },
+    { feed: "bad-name" },
+    { feed: null },
+    { feed: 12 },
+    { feed: "feed", feedEffectLimit: 0 },
+    { feed: "feed", feedEffectLimit: 1001 },
+    { feed: "feed", feedEffectLimit: 1.5 },
+    { feedEffectLimit: 2 },
+  ])
+    assert.equal(
+      isWorkflowDeclaration({ ...workflow, queue }),
+      false,
+      JSON.stringify(queue),
+    );
+});
+
 for (const queue of [
   { everySeconds: 9 },
   { everySeconds: 3601 },
