@@ -31,6 +31,7 @@ interface State {
   message: Fields | undefined;
   readonly responses: PiResponseUsage[];
   readonly responseIds: Set<string>;
+  readonly startIds: Set<string>;
   readonly tools: Set<string>;
   readonly nested: WorkerUsage[];
   readonly nestedIds: Set<string>;
@@ -85,7 +86,9 @@ function replayed(event: Fields, state: State): boolean {
   )
     return false;
   const identity = responseIdentity(message);
-  return identity !== undefined && state.responseIds.has(identity);
+  if (identity === undefined) return false;
+  if (state.responseIds.has(identity)) return true;
+  return event["type"] === "message_start" && state.startIds.has(identity);
 }
 
 function responseAnchor(message: Fields): string | undefined {
@@ -214,10 +217,12 @@ function activityFailure(event: Fields, state: State): string | undefined {
 function messageStarted(event: Fields, state: State): readonly string[] {
   const message = record(event["message"]);
   if (message?.["role"] !== "assistant") return [];
-  if (replayed(event, state)) {
-    if (!state.openAssistant) state.openIdentity = responseAnchor(message);
-    return [];
-  }
+  const replay = replayed(event, state);
+  if (replay && !state.openAssistant)
+    state.openIdentity = responseAnchor(message);
+  if (replay) return [];
+  const identity = responseIdentity(message);
+  if (identity !== undefined) state.startIds.add(identity);
   state.openAssistant = true;
   state.openIdentity = responseAnchor(message);
   return state.activity.start(message);
@@ -320,6 +325,7 @@ export function piStream() {
     message: undefined,
     responses: [],
     responseIds: new Set(),
+    startIds: new Set(),
     tools: new Set(),
     nested: [],
     nestedIds: new Set(),

@@ -23,13 +23,13 @@ import { read } from "./turn-transcript-fixture.ts";
 
 await test("CLV-365 Pi reconnects the same process once and accepts its replay without another prompt or cost", () =>
   withScene(async (scene) => {
-    const events = piEvents();
+    const events = piEvents(piMessage({ responseId: undefined }));
     const harness = gatedHarness(scene, {
       worker: "pi",
       name: "pi-replay",
       output: {
-        head: events.slice(0, -1),
-        tail: [events[0], ...events.slice(2)],
+        head: events,
+        tail: [events[0], ...events.slice(2, 4)],
       },
     });
     try {
@@ -133,6 +133,42 @@ await test("CLV-365 a stale Pi completion cannot replace newer settled work", ()
   assert.equal(result["is_error"], false);
   assert.equal(result["result"], "New work");
   assert.equal(result["num_turns"], 2);
+});
+
+await test("CLV-365 Pi preserves settlement when a pending start and known completion replay without response IDs", () => {
+  const message = piMessage({ responseId: undefined });
+  const stream = piStream();
+  const events = [...piEvents(message), ...piEvents(message).slice(2, 4)];
+  const lines = events.flatMap((event) => stream.line(JSON.stringify(event)));
+  const result = resultOf(stream.result(0));
+  assert.equal(result["is_error"], false);
+  assert.equal(result["result"], piReport);
+  assert.equal(result["num_turns"], 1);
+  assert.deepEqual(result["usage"], {
+    input_tokens: 100,
+    cache_read_input_tokens: 40,
+    cache_creation_input_tokens: 0,
+    output_tokens: 20,
+  });
+  assert.equal(
+    read(lines.join("\n")).filter((entry) => entry.kind === "assistant").length,
+    1,
+  );
+});
+
+await test("CLV-365 Pi recognizes a replayed provider response when its original start was absent", () => {
+  const events = piEvents();
+  const stream = piStream();
+  for (const event of [
+    ...events.slice(0, 2),
+    ...events.slice(3),
+    ...events.slice(2, 4),
+  ])
+    stream.line(JSON.stringify(event));
+  const result = resultOf(stream.result(0));
+  assert.equal(result["is_error"], false);
+  assert.equal(result["result"], piReport);
+  assert.equal(result["num_turns"], 1);
 });
 
 await test("CLV-365 Pi session history before agent_start adds neither text nor invocation usage", () => {
