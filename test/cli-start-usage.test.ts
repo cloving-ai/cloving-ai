@@ -27,7 +27,19 @@ await test("CLV-228 queue guidance requires a declared queue workflow", () => {
       line.startsWith("Each workflow declares its own queue with"),
     );
   assert.ok(queue);
-  assert.match(queue, /No interval setting is necessary/);
+  assert.match(
+    queue,
+    /`"queue": true` preserves the legacy activation rule: without `queue.everySeconds` or `CLOVING_QUEUE_SECONDS`, it stays inactive/,
+  );
+  assert.match(
+    queue,
+    /To select the new polling defaults explicitly, use a queue object.*or add that workflow to the `queues` setting/,
+  );
+  assert.match(
+    queue,
+    /Those choices use 120 seconds and 1 lane when no source gives a value/,
+  );
+  assert.doesNotMatch(queue, /No interval setting is necessary/);
   assert.match(queue, /no workflow declares a queue, no queue starts/);
   assert.doesNotMatch(queue, /bundled|develop-issue/);
 });
