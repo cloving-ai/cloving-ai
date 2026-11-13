@@ -25,13 +25,11 @@ export const commandUsage: Readonly<Record<string, string>> = {
 Serves cloving_status, cloving_questions and cloving_events as read tools over stdio.
 Serves cloving_run, cloving_answer, cloving_approve, cloving_deny, cloving_pause,
 cloving_resume, cloving_drop, cloving_continue, cloving_dismiss, cloving_steer and cloving_rename to submit runs, decisions,
-notes and names. Each of these tools
-needs a commandId. After a lost reply, send the same commandId again.
+notes and names. Each of these tools needs a commandId. After a lost reply, send the same commandId again.
 The server binds to one repository at startup. It needs an existing Cloving service.
 With --workspace, one server serves each repository of the running workspace.
 It adds the read tool cloving_repositories, which lists the repositories, and
-a repository argument with the workspace names to each tool. A tool that
-changes state needs the repository argument when the workspace lists more than
+a repository argument with the workspace names to each tool. A tool that changes state needs the repository argument when the workspace lists more than
 one repository. A read tool with no repository argument reads each repository.
 Standard output contains only JSON-RPC messages. Diagnostics use standard error.
 --channel tells a connected Claude Code session when a run needs you: a pending
