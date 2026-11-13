@@ -1,6 +1,8 @@
+import type { FeedStatus } from "./queue-feed.ts";
 import type { HoldPeriod, QueueHold, QueueLimits } from "../queue-room.ts";
 import {
   queueOffDetail,
+  feedFields,
   type QueueChange,
   type QueueCommand,
   type QueueLaneRequest,
@@ -12,6 +14,7 @@ import { queueControlLimit, type QueueJournal } from "./queue-journal.ts";
 import type { QueueValues, SourcedValue } from "../queue-settings.ts";
 
 export interface QueueRuntime {
+  feed?: FeedStatus;
   nextCheckAt?: string;
   pending: QueueJournal | undefined;
   error: string | undefined;
@@ -215,6 +218,7 @@ export function queueControlPort(runtime: QueueRuntime): QueuePort {
         failedRunIds: [...(pending?.failures ?? [])],
         drain: pending?.drain,
         error,
+        ...feedFields(runtime),
         ...(ready === undefined ? {} : { ready }),
         ...(hold === undefined ? {} : { hold }),
         ...(limits === undefined ? {} : { lanes: limits().lanes }),

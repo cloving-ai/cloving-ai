@@ -131,6 +131,42 @@ process.exit(0);
     assert.equal(result.status, 0, result.stderr);
   }));
 
+for (const source of ["commands", "feed"]) {
+  await test(`CLV-362 changing a queue from ${source} needs a restart and keeps the current source`, () =>
+    withConsumer(
+      `${workflow}
+export async function triageFeed() {
+  "use workflow";
+  return { picks: [], skipped: [] };
+}
+`,
+      async (consumer) => {
+        const result = await consumer.run(
+          `${bundlePrelude}${workflowBundleLoader()}${reloadPrelude}
+const feedDefinition = Object.values(compiled.workflows).flatMap(Object.values).find(row => row.workflowId.endsWith("//triageFeed"));
+writeFileSync("feed.workflow.json", JSON.stringify({ schemaVersion: 1, name: "triageFeed", workflowId: feedDefinition.workflowId, steps: [], capabilities: ["claude", "github"], resources: [], artifacts: "artifacts" }));
+const manifests = { ...settings.manifests, triageFeed: directory + "/feed.workflow.json" };
+const queued = { ...projectWorkflow, functionName: "develop" };
+const queues = [{}, { feed: "triageFeed", feedEffectLimit: 1 }];
+const [before, after] = process.env.QUEUE_SOURCE === "feed" ? [...queues].reverse() : queues;
+let loads = 0;
+const daemon = await launched({ bundleDigest: "0".repeat(64), queueMilliseconds: undefined, declarations: [{ ...queued, queue: before }], manifests, workflows: { ...settings.workflows, triageFeed: workflows.triageFeed }, reloadCommand, loadBundle: async () => { loads += 1; return await loadWorkflowBundle(directory + "/workflow-bundles/" + bundleDigest); } });
+try {
+  prepared({ bundleDigest, manifests, declarations: [{ ...queued, queue: after }] });
+  const reloaded = await asked("reload");
+  assert.equal(reloaded.code, "reload-needs-restart", JSON.stringify(reloaded));
+  assert.equal(loads, 0);
+  assert.equal((await asked("status")).bundleDigest, "0".repeat(64));
+} finally { await daemon.close(); }
+process.exit(0);
+`,
+          { QUEUE_SOURCE: source },
+        );
+        assert.equal(result.status, 0, result.stderr);
+      },
+    ));
+}
+
 await test("CLV-359 a reload that changes the declared queue interval needs a restart and a declared lane change reloads", () =>
   withConsumer(workflow, async (consumer) => {
     const result =

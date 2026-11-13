@@ -215,7 +215,9 @@ export function declaredResolver(
       : { skippedTickets: tickets.skippedTickets }),
     resolve: async (request) => {
       const resolution =
-        tickets !== undefined && Object.hasOwn(request.submission, "ticket")
+        request.source !== "feed" &&
+        tickets !== undefined &&
+        Object.hasOwn(request.submission, "ticket")
           ? await tickets.resolve(request)
           : undefined;
       if (resolution?.kind === "rejected") return resolution;

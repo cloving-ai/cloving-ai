@@ -2,6 +2,8 @@ import type { QueueValues } from "./queue-settings.ts";
 import { isAfter, isInstant } from "./authority/instants.ts";
 import { record, type Fields } from "./protocol.ts";
 import type { HoldPeriod, QueueHold } from "./queue-room.ts";
+import { ticketIdentifier } from "./submission.ts";
+export { ticketIdentifier } from "./submission.ts";
 
 export const queueFailureLimit = 3;
 
@@ -10,8 +12,6 @@ export interface QueueDrain {
   readonly drainedAt: number | null;
   readonly scope?: "workflow";
 }
-
-export const ticketIdentifier = /^[A-Za-z0-9._:-]{1,64}$/;
 
 export interface ReadyTicket {
   readonly id: string;
@@ -23,6 +23,14 @@ export type ReadyList =
   | { readonly kind: "failed"; readonly detail: string };
 
 export interface QueueControl {
+  readonly feed?: {
+    readonly at: string;
+    readonly picks: number;
+    readonly skipped: readonly {
+      readonly id: string;
+      readonly reason: string;
+    }[];
+  };
   readonly nextCheckAt?: string | undefined;
   readonly failedRunIds: readonly string[];
   readonly drain: QueueDrain | undefined;
@@ -89,9 +97,21 @@ function stateName(control: QueueControl, busy: number): string {
   return "running";
 }
 
+export function feedSkipped(control: QueueControl | undefined): Fields[] {
+  return (control?.feed?.skipped ?? []).map(({ id, reason }) => ({
+    ticketId: id,
+    reason,
+  }));
+}
+
+export function feedFields(control: Pick<QueueControl, "feed">): Fields {
+  return control.feed === undefined ? {} : { feed: control.feed };
+}
+
 export function queueStateFields(control: QueueControl, busy: number): Fields {
   const reason = stopReason(control);
   return {
+    ...feedFields(control),
     state: stateName(control, busy),
     nextCheckAt:
       control.error === undefined ? (control.nextCheckAt ?? null) : null,

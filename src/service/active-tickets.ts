@@ -1,5 +1,5 @@
 import { record, type Fields, type Reply } from "../protocol.ts";
-import { queueStateFields, readyFields } from "../queue-state.ts";
+import { queueStateFields, readyFields, feedSkipped } from "../queue-state.ts";
 import { maximumQueueLanes } from "../queue-room.ts";
 import { failed } from "./replies.ts";
 import { queueRun, queueSpend } from "./queue-spend.ts";
@@ -184,14 +184,15 @@ async function workflowOverview(
   const activeTicketIds = active.flatMap((input) =>
     typeof input["ticketId"] === "string" ? [input["ticketId"]] : [],
   );
+  const control = queuePort(context, workflow.workflowId)?.control();
   const skipped = [
     ...activeTicketIds.map((ticketId) => ({
       ticketId,
       reason: "ticket-active",
     })),
     ...(workflow.resolver.skippedTickets?.() ?? []),
+    ...feedSkipped(control),
   ];
-  const control = queuePort(context, workflow.workflowId)?.control();
   const queue = {
     workflowId: workflow.workflowId,
     ...(await queueSpend(context)),

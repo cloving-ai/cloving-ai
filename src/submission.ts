@@ -1,5 +1,7 @@
 import { record, type Fields } from "./protocol.ts";
 
+export const ticketIdentifier = /^[A-Za-z0-9._:-]{1,64}$/;
+
 export type SubmissionField =
   | { readonly type: "string"; readonly optional?: boolean }
   | { readonly type: "boolean"; readonly optional?: boolean }
@@ -84,16 +86,26 @@ function validValue(rule: SubmissionField, value: unknown): boolean {
 }
 
 export function normalizedRequest(
-  workflowId: string,
-  submission: Fields,
+  request: SubmissionRequest & { readonly submission: Fields },
 ): string {
-  return JSON.stringify({ submission: sorted(submission), workflowId });
+  const { workflowId, submission, source } = request;
+  const ticket = source === "feed" ? record(submission["ticket"]) : undefined;
+  return JSON.stringify({
+    ...(source === "feed" ? { source } : {}),
+    submission: sorted(
+      ticket === undefined
+        ? submission
+        : { ...submission, ticket: sorted(ticket) },
+    ),
+    workflowId,
+  });
 }
 
 export function checkSubmission(
   contract: SubmissionContract,
   request: SubmissionRequest,
 ): SubmissionCheck {
+  if (request.source === "feed") return feedSubmission(request);
   if (request.source === "prompt" && !Object.hasOwn(contract.fields, "prompt"))
     return rejected(
       "unsupported-prompt",
@@ -113,7 +125,40 @@ export function checkSubmission(
     return rejected("invalid-submission", `Field ${field} is not valid.`);
   return {
     kind: "valid",
-    normalized: normalizedRequest(request.workflowId, submission),
+    normalized: normalizedRequest({ ...request, submission }),
+    submission,
+  };
+}
+
+export interface FeedPick {
+  readonly id: string;
+  readonly text: string;
+}
+
+export function validFeedPick(value: unknown): value is FeedPick {
+  const ticket = record(value);
+  return (
+    ticket !== undefined &&
+    Object.keys(ticket).length === 2 &&
+    typeof ticket["id"] === "string" &&
+    ticketIdentifier.test(ticket["id"]) &&
+    ticket["id"] !== "next" &&
+    typeof ticket["text"] === "string" &&
+    new TextEncoder().encode(ticket["text"]).length <= 65_536
+  );
+}
+
+function feedSubmission(request: SubmissionRequest): SubmissionCheck {
+  const submission = record(request.submission);
+  if (
+    submission === undefined ||
+    Object.keys(submission).length !== 1 ||
+    !validFeedPick(submission["ticket"])
+  )
+    return rejected("invalid-feed-result", "The feed pick is not valid.");
+  return {
+    kind: "valid",
+    normalized: normalizedRequest({ ...request, submission }),
     submission,
   };
 }
