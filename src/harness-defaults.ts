@@ -51,8 +51,17 @@ export const defaultGrokCommand = [
 
 export const defaultPiCommand = ["pi", "--mode", "json"];
 
+export const defaultOmpCommand = ["omp", "--mode", "json", "--auto-approve"];
+
 export type NativeHarness =
-  "claude" | "codex" | "gemini" | "grok" | "opencode" | "cursor-agent" | "pi";
+  | "claude"
+  | "codex"
+  | "gemini"
+  | "grok"
+  | "opencode"
+  | "cursor-agent"
+  | "pi"
+  | "omp";
 
 const defaultCommands = {
   claude: defaultCommand,
@@ -61,6 +70,7 @@ const defaultCommands = {
   grok: defaultGrokCommand,
   opencode: defaultOpencodeCommand,
   pi: defaultPiCommand,
+  omp: defaultOmpCommand,
   "cursor-agent": defaultCursorCommand,
 };
 
@@ -133,6 +143,7 @@ export function harnessDefaults(value: unknown): {
     grok: "CLOVING_GROK_COMMAND",
     opencode: "CLOVING_OPENCODE_COMMAND",
     pi: "CLOVING_PI_COMMAND",
+    omp: "CLOVING_OMP_COMMAND",
     "cursor-agent": undefined,
   }[name];
   return {
@@ -208,12 +219,16 @@ export function turnHarness(
   };
 }
 
+export function piSessionHarness(name: unknown): boolean {
+  return name === "pi" || name === "omp";
+}
+
 export function nativeHarness(
   name: string,
   turn?: unknown,
 ): name is NativeHarness {
   return (
     Object.hasOwn(defaultCommands, name) &&
-    !(name === "pi" && turn !== undefined)
+    !(piSessionHarness(name) && turn !== undefined)
   );
 }

@@ -1,3 +1,4 @@
+import { piSessionHarness } from "../harness-defaults.ts";
 import { piStream } from "./pi-stream.ts";
 import type { PiSession } from "./pi-session.ts";
 import { codexStream } from "./codex-stream.ts";
@@ -30,7 +31,8 @@ function harnessAdapter(
     const translated = opencodeStream();
     return { ...translated, error: translated.stderr };
   }
-  if (worker === "pi") return piStream(piSession);
+  if (piSessionHarness(worker))
+    return piStream(piSession, worker === "omp" ? "omp" : "pi");
   if (worker === "codex") return codexStream();
   if (worker === "cursor-agent") return cursorStream();
   if (worker === "gemini") return geminiStream();

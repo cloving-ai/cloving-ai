@@ -43,6 +43,11 @@ export const knownHarnesses: readonly KnownHarness[] = [
     versionOption: "--version",
     versionPattern: String.raw`^1\.5\.2$`,
   },
+  {
+    name: "omp",
+    versionOption: "--version",
+    versionPattern: String.raw`^omp/18\.\d+\.\d+$`,
+  },
   { name: "amp", versionOption: "--version", versionPattern: fallbackVersion },
 ];
 

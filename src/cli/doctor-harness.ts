@@ -13,6 +13,7 @@ import type { DoctorObservation } from "../doctor-report.ts";
 import {
   harnessDefaults,
   nativeHarness,
+  piSessionHarness,
   turnHarness,
   type HarnessSettings,
   type NativeHarness,
@@ -161,7 +162,7 @@ function launcherVersionArguments(
       ? ["--", script, "--version"]
       : [];
   }
-  return launch.worker === "pi" ||
+  return piSessionHarness(launch.worker) ||
     !nativeHarness(launch.worker) ||
     arguments_.length === 0 ||
     [launch.worker, "claude", "codex"].includes(program)
@@ -247,8 +248,8 @@ function probeName(
   selected: { readonly worker: string; readonly output?: "text" },
   fallback: string,
 ): string {
-  if (selected.worker !== "pi") return fallback;
-  return selected.output === "text" ? "" : "pi";
+  if (!piSessionHarness(selected.worker)) return fallback;
+  return selected.output === "text" ? "" : selected.worker;
 }
 
 function workerCommands(
