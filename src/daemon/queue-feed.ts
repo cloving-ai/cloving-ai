@@ -146,7 +146,11 @@ export async function queueFeed(
       await save();
     }
     const status = await readFeed(settings, progress.commandId);
-    if (status === "refused") return finish();
+    if (typeof status === "string") {
+      await finish();
+      if (status !== "refused") throw new Error(status);
+      return;
+    }
     if (status === undefined) return;
     await admitResult(settings, {
       progress,
@@ -185,9 +189,12 @@ async function readFeed(settings: Settings, commandId: string) {
     operation: "queue-feed",
     parameters: { action: "status", runId: runIdentity(commandId) },
   });
-  if (status.kind === "error") throw new Error(status.error.code);
+  if (status.kind === "error") {
+    if (status.error.code === "invalid-feed-result") return status.error.code;
+    throw new Error(status.error.code);
+  }
   if (["failed", "cancelled"].includes(String(status.result["state"])))
-    throw new Error("queue-feed-failed");
+    return "queue-feed-failed";
   return status.result["state"] === "completed" ? status.result : undefined;
 }
 

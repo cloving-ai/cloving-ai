@@ -1765,6 +1765,7 @@
     "test/queue-feed-admission.test.ts": "test",
     "test/queue-feed-fixture.ts": "test",
     "test/queue-feed-journal.test.ts": "test",
+    "test/queue-feed-recovery.test.ts": "test",
     "test/queue-feed-result.test.ts": "test",
     "test/queue-feed-wait.test.ts": "test",
     "test/queue-holds.test.ts": "test",

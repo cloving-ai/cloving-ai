@@ -204,6 +204,7 @@ function queueFacts(declarations: readonly DeclaredWorkflow[]) {
           declaration.workflowId,
           declaredQueueValues(declaration).everySeconds ??
             (declaration.queue === true ? null : defaultQueueSeconds),
+          declaredQueueValues(declaration).feed !== undefined,
         ] as const,
     )
     .sort(([left], [right]) => (left < right ? -1 : Number(left > right)));
