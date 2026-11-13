@@ -43,6 +43,7 @@ export interface Resolver {
 }
 
 export interface WorkflowRegistration {
+  readonly feed?: FeedRegistration;
   readonly queue?: boolean;
   readonly workflowId: string;
   readonly manifest: ExecutionManifest;
@@ -57,6 +58,12 @@ export interface WorkflowRegistration {
   readonly commands?: readonly string[];
   readonly commandWaits?: CommandWaits;
   readonly admission?: "when-idle" | number;
+}
+
+export interface FeedRegistration {
+  readonly functionName: string;
+  readonly effectLimit: number;
+  readonly manifest: ExecutionManifest;
 }
 
 export interface Registered extends WorkflowRegistration {
