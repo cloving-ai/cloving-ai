@@ -35,6 +35,7 @@ import {
   attemptNumber,
   keptLaunch,
   plannedLaunch,
+  recordedLaunch,
   type PlannedLaunch,
   type TurnLaunch,
 } from "../turn-launch.ts";
@@ -51,9 +52,43 @@ export async function attachableLaunch(
   const attempt = attemptNumber(started);
   if (attempt === undefined) return undefined;
   const entry = await readRecord(folder, `attempt-${String(attempt)}.json`);
-  const launch = keptLaunch({ started, entry });
+  const launch =
+    keptLaunch({ started, entry }) ?? settledPiLaunch({ started, entry });
   if (launch === undefined) return undefined;
   return (await launchState(launch)) === "gone" ? "gone" : launch;
+}
+
+export async function recordedTurnLaunch(
+  settings: { readonly stopMilliseconds?: number },
+  journal: {
+    readonly folder: string;
+    readonly started: unknown;
+    readonly result: unknown;
+  },
+): Promise<TurnLaunch | "gone" | "stopped" | "unknown" | undefined> {
+  if (journal.result !== undefined) return undefined;
+  return (
+    (await attachableLaunch(journal.folder, journal.started)) ??
+    markedTurn(journal.folder, {
+      started: journal.started,
+      stopMilliseconds:
+        settings.stopMilliseconds ?? claudeLimits.stopMilliseconds,
+    })
+  );
+}
+
+function settledPiLaunch(turn: {
+  readonly started: unknown;
+  readonly entry: unknown;
+}): TurnLaunch | undefined {
+  const started = record(turn.started);
+  if (
+    started?.["harness"] !== "pi" ||
+    started["phase"] !== "running" ||
+    typeof record(turn.entry)?.["endedAt"] !== "string"
+  )
+    return undefined;
+  return recordedLaunch(started["launch"]);
 }
 
 async function connectedRecords(
@@ -100,7 +135,12 @@ async function markerSearch(
   started: unknown,
 ): Promise<MarkerSearch | undefined> {
   const attempt = attemptNumber(started);
-  if (attempt === undefined || recordedField(started, "phase") !== "starting")
+  const phase = recordedField(started, "phase");
+  const nativePi = recordedField(started, "harness") === "pi";
+  if (
+    attempt === undefined ||
+    (phase !== "starting" && !(nativePi && phase === "running"))
+  )
     return undefined;
   const place =
     attempt === 1 ? folder : join(folder, `attempt-${String(attempt)}`);
@@ -220,7 +260,10 @@ export async function keptTurn(
   const started = await readRecord(folder, "started.json");
   const tree = recordedTree(started);
   if (tree === undefined) return undefined;
-  const launch = await attachableLaunch(folder, started);
+  const launch =
+    recordedField(started, "harness") === "pi"
+      ? recordedLaunch(recordedField(started, "launch"))
+      : await attachableLaunch(folder, started);
   if (launch === undefined || launch === "gone") return undefined;
   return { directory: tree.path, runId: intent.runId, launch };
 }
