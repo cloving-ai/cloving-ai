@@ -28,6 +28,7 @@ export type Resolution =
     };
 
 export interface ResolutionRequest {
+  readonly source?: "feed";
   readonly workflowId: string;
   readonly submission: Readonly<Record<string, unknown>>;
   readonly commandId: string;

@@ -9,6 +9,8 @@ export {
   type AdmissionLock,
 } from "./admission-lock.ts";
 import { createHash } from "node:crypto";
+import { workflowSubmission } from "./submission-check.ts";
+import { issueIdentity } from "../issue-identity.ts";
 import { handoffChain, type HandoffChain } from "../authority/handoff-chain.ts";
 import { executionCapabilities } from "../execution-pin.ts";
 import { setTimeout as delay } from "node:timers/promises";
@@ -21,7 +23,6 @@ import { documentDigest } from "../broker/decision-restore.ts";
 import { record, type Fields, type Reply } from "../protocol.ts";
 import {
   checkResolution,
-  checkSubmission,
   hasTicketField,
   normalizedRequest,
   type CheckedResolution,
@@ -81,13 +82,17 @@ export function conflict(commandId: string): Reply {
 
 function replayed(
   existing: CommandRecord,
-  request: { readonly workflowId: string; readonly submission: unknown },
+  request: {
+    readonly workflowId: string;
+    readonly submission: unknown;
+    readonly source: unknown;
+  },
 ): Reply {
   const submission = record(request.submission);
   const same =
     existing.command.kind === "admit-run" &&
     submission !== undefined &&
-    documentDigest(normalizedRequest(request.workflowId, submission)) ===
+    documentDigest(normalizedRequest({ ...request, submission })) ===
       existing.command.submission;
   return same
     ? admitted(existing, { workflowId: request.workflowId, replayed: true })
@@ -139,6 +144,7 @@ function usable(context: ServiceContext, workflowId: string): Usable {
 }
 
 interface Admission {
+  readonly source?: "feed";
   readonly chain: HandoffChain;
   readonly workflow: Registered;
   readonly workflowId: string;
@@ -159,6 +165,7 @@ async function resolved(
   const limit = new AbortController();
   const timer = new AbortController();
   const request = {
+    ...(admission.source === undefined ? {} : { source: admission.source }),
     workflowId,
     submission,
     commandId,
@@ -273,10 +280,18 @@ function admissionRefusal(
 ): Reply | undefined {
   const { commandId, submission, resolverTickets } = request;
   const tickets = hasTicketField(workflow.submission);
+  const ticketId = record(submission["ticket"])?.["id"] ?? submission["ticket"];
+  const identity = issueIdentity(record(submission["ticket"])?.["text"]);
   if (
     tickets &&
-    typeof submission["ticket"] === "string" &&
-    resolverTickets.some((input) => input["ticketId"] === submission["ticket"])
+    typeof ticketId === "string" &&
+    resolverTickets.some(
+      (input) =>
+        input["ticketId"] === ticketId ||
+        (identity !== null &&
+          JSON.stringify(issueIdentity(input["ticket"])) ===
+            JSON.stringify(identity)),
+    )
   )
     return failed("ticket-active", {
       commandId,
@@ -317,6 +332,7 @@ export async function submitted(
   if (existing !== undefined)
     return replayed(existing, {
       workflowId,
+      source: parameters["source"],
       submission: parameters["submission"],
     });
   const chain = handoffChain(
@@ -333,18 +349,12 @@ export async function submitted(
     });
   const found = usable(context, workflowId);
   if (found.kind === "unusable") return found.reply;
-  const contract = found.workflow.submission;
-  const check = checkSubmission(
-    {
-      ...contract,
-      maximumBytes: Math.min(contract.maximumBytes, context.documentBytes),
-    },
-    {
-      workflowId,
-      submission: parameters["submission"],
-      source: parameters["source"],
-    },
-  );
+  const check = workflowSubmission(found.workflow, {
+    workflowId,
+    submission: parameters["submission"],
+    source: parameters["source"],
+    documentBytes: context.documentBytes,
+  });
   if (check.kind === "rejected")
     return failed(check.code, { commandId, detail: check.detail });
   const tickets = await submissionTickets(context, found.workflow);
@@ -356,6 +366,7 @@ export async function submitted(
   });
   if (refusal !== undefined) return refusal;
   return admit(context, {
+    ...(parameters["source"] === "feed" ? { source: "feed" as const } : {}),
     chain,
     workflow: found.workflow,
     workflowId,

@@ -2,6 +2,8 @@ import type { QueueValues } from "./queue-settings.ts";
 import { isAfter, isInstant } from "./authority/instants.ts";
 import { record, type Fields } from "./protocol.ts";
 import type { HoldPeriod, QueueHold } from "./queue-room.ts";
+import { ticketIdentifier } from "./submission.ts";
+export { ticketIdentifier } from "./submission.ts";
 
 export const queueFailureLimit = 3;
 
@@ -10,8 +12,6 @@ export interface QueueDrain {
   readonly drainedAt: number | null;
   readonly scope?: "workflow";
 }
-
-export const ticketIdentifier = /^[A-Za-z0-9._:-]{1,64}$/;
 
 export interface ReadyTicket {
   readonly id: string;
