@@ -45,10 +45,31 @@ export interface WorkflowDeclaration {
 export interface QueueDeclaration {
   readonly everySeconds?: number;
   readonly lanes?: number;
+  readonly feed?: string;
+  readonly feedEffectLimit?: number;
 }
 
 export interface DeclaredWorkflow extends WorkflowDeclaration {
   readonly functionName: string;
+}
+
+export function queueFeed(
+  declaration: Pick<WorkflowDeclaration, "queue">,
+): string | undefined {
+  const { queue } = declaration;
+  return typeof queue === "object" ? queue.feed : undefined;
+}
+
+export function feedMethodReadOnly(effect: {
+  readonly capability: string | null;
+  readonly method: string | null;
+}): boolean {
+  if (effect.capability === "command")
+    return effect.method?.startsWith("run:") === true;
+  return (
+    effect.capability === "github" &&
+    ["issues", "review-threads"].includes(effect.method ?? "")
+  );
 }
 
 export type WorkflowQueueCode =
@@ -56,12 +77,18 @@ export type WorkflowQueueCode =
 
 export function isQueueDeclaration(value: unknown): value is QueueDeclaration {
   const queue = record(value);
-  if (!keys(queue, ["everySeconds", "lanes"])) return false;
+  if (!keys(queue, ["everySeconds", "lanes", "feed", "feedEffectLimit"]))
+    return false;
   return (
     (!Object.hasOwn(queue, "everySeconds") ||
       integer(queue["everySeconds"], { minimum: 10, maximum: 3600 })) &&
     (!Object.hasOwn(queue, "lanes") ||
-      integer(queue["lanes"], { minimum: 1, maximum: 16 }))
+      integer(queue["lanes"], { minimum: 1, maximum: 16 })) &&
+    (!Object.hasOwn(queue, "feed") ||
+      matches(queue["feed"], /^[A-Za-z_$][A-Za-z0-9_$]{0,63}$/)) &&
+    (!Object.hasOwn(queue, "feedEffectLimit") ||
+      (typeof queue["feed"] === "string" &&
+        integer(queue["feedEffectLimit"], { minimum: 1, maximum: 1000 })))
   );
 }
 

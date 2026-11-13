@@ -3,6 +3,7 @@ import { basename, extname, join } from "node:path";
 import type { WorkflowManifest } from "@workflow/builders";
 import {
   isWorkflowDeclaration,
+  queueFeed,
   type DeclaredWorkflow,
 } from "../src/workflow-declaration.ts";
 
@@ -85,7 +86,18 @@ export function workflowManifests(
   return Object.fromEntries(
     Object.entries(compiled.workflows ?? {}).flatMap(([file, entries]) => {
       const functions = Object.values(entries);
-      if (functions.length > 1)
+      const declaration = declarations.find((declared) =>
+        functions.some((entry) =>
+          entry.workflowId.endsWith(`//${declared.functionName}`),
+        ),
+      );
+      const feed = queueFeed(declaration ?? {});
+      if (
+        functions.length > 1 &&
+        (functions.length !== 2 ||
+          feed === undefined ||
+          !functions.some((entry) => entry.workflowId.endsWith(`//${feed}`)))
+      )
         throw new Error(`${file} must contain only one workflow function.`);
       return functions.map((entry) => {
         const workflowId = entry.workflowId;
@@ -97,12 +109,12 @@ export function workflowManifests(
           functionName,
           {
             schemaVersion: 1 as const,
-            name: basename(file, extname(file)),
+            name:
+              basename(file, extname(file)) +
+              (functionName === feed ? ".feed" : ""),
             workflowId,
             steps,
-            capabilities: declarations.find(
-              (declaration) => declaration.functionName === functionName,
-            )?.capabilities ?? ["claude", "github"],
+            capabilities: declaration?.capabilities ?? ["claude", "github"],
             resources: [],
             artifacts: "artifacts",
           },
