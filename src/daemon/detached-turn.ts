@@ -202,6 +202,7 @@ function followed(start: FollowStart, parts: Followed) {
     timers.forEach(clearTimeout);
     if (state === "released") {
       transcript.close();
+      await reader.result();
       throw new Error("turn-released");
     }
     try {

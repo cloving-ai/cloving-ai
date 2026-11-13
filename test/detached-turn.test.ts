@@ -10,7 +10,10 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { setTimeout as delay } from "node:timers/promises";
+import {
+  setImmediate as nextTurn,
+  setTimeout as delay,
+} from "node:timers/promises";
 import { attachedTurn, detachedTurn } from "../src/daemon/detached-turn.ts";
 import { launchState } from "../src/daemon/detached-process.ts";
 import { recordedLaunch, type TurnLaunch } from "../src/turn-launch.ts";
@@ -19,6 +22,7 @@ import {
   processIdentity,
 } from "../src/daemon/process-identity.ts";
 import { until } from "./claude-worker-fixture.ts";
+import { readRecord, writeRecord } from "../src/daemon/operation-journal.ts";
 
 const holding = `process.stdout.write(JSON.stringify({ type: "system", session_id: "session-7" }) + "\\n"); process.on("SIGTERM", () => require("node:fs").writeFileSync(process.argv[1], "")); setInterval(() => {}, 1000);`;
 
@@ -227,3 +231,66 @@ await test("CLV-337 an attached turn keeps its stop request while the identity o
     assert.equal(processExists(launch.processId), false);
     await turn.ended;
   }));
+
+await test(
+  "CLV-347 release waits for pending session journal writes before another reader can take over",
+  { timeout: 10_000 },
+  () =>
+    withFolder(async (folder) => {
+      const turn = started(folder, holding);
+      const launch = await launchOf(turn);
+      const release = new AbortController();
+      const entered = Promise.withResolvers<undefined>();
+      const writing = Promise.withResolvers<undefined>();
+      const state = { ending: "pending" };
+      const kept = attachedTurn(
+        {
+          command: ["fake"],
+          release: release.signal,
+          progress: async (snapshot) => {
+            entered.resolve(undefined);
+            await writing.promise;
+            await writeRecord(folder, {
+              name: "attempt-1.json",
+              value: snapshot,
+              permissions: "private",
+            });
+          },
+        },
+        launch,
+      );
+      const ended = kept.ended.then(
+        () => {
+          state.ending = "completed";
+        },
+        () => {
+          state.ending = "released";
+        },
+      );
+      try {
+        await entered.promise;
+        release.abort();
+        assert.equal(await kept.exited, "released");
+        await nextTurn();
+        assert.equal(
+          state.ending,
+          "pending",
+          "The released turn ended before its progress journal settled.",
+        );
+        writing.resolve(undefined);
+        await assert.rejects(kept.ended, /turn-released/);
+        await ended;
+        assert.deepEqual(await readRecord(folder, "attempt-1.json"), {
+          sessionId: "session-7",
+        });
+        assert.equal(processExists(launch.processId), true);
+        assert.equal(existsSync(launch.configuration), true);
+      } finally {
+        writing.resolve(undefined);
+        release.abort();
+        await ended;
+        await killed(launch.processId);
+        await turn.ended;
+      }
+    }),
+);
