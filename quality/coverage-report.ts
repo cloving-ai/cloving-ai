@@ -91,10 +91,10 @@ export async function readScriptCoverage(
 async function scriptCoverage(
   directory: string,
   expected: ReadonlySet<string>,
-): Promise<Map<string, Profiler.ScriptCoverage[]>> {
+): Promise<Map<string, Map<string, CoverageProfile>>> {
   const entries = await readdir(directory, { withFileTypes: true });
   if (entries.length === 0) throw new Error("missing-raw-coverage");
-  const scripts = new Map<string, Profiler.ScriptCoverage[]>();
+  const scripts = new Map<string, Map<string, CoverageProfile>>();
   for (const entry of entries) {
     if (!entry.isFile() || !entry.name.endsWith(".json"))
       throw new Error("invalid-raw-coverage-entry");
@@ -104,12 +104,35 @@ async function scriptCoverage(
         coverage.url.startsWith("file:") &&
         expected.has(fileURLToPath(coverage.url)),
     )) {
-      const recordings = scripts.get(coverage.url) ?? [];
-      recordings.push(coverage);
-      scripts.set(coverage.url, recordings);
+      const profiles =
+        scripts.get(coverage.url) ?? new Map<string, CoverageProfile>();
+      const profile = JSON.stringify(coverage.functions);
+      profiles.set(profile, {
+        coverage,
+        occurrences: (profiles.get(profile)?.occurrences ?? 0) + 1,
+      });
+      scripts.set(coverage.url, profiles);
     }
   }
   return scripts;
+}
+
+interface CoverageProfile {
+  readonly coverage: Profiler.ScriptCoverage;
+  readonly occurrences: number;
+}
+
+function multiplyHits(
+  converted: istanbul.CoverageMapData,
+  occurrences: number,
+): void {
+  for (const file of Object.values(converted)) {
+    for (const field of ["s", "f"] as const)
+      for (const [id, count] of Object.entries(file[field]))
+        file[field][id] = count * occurrences;
+    for (const [id, counts] of Object.entries(file.b))
+      file.b[id] = counts.map((count) => count * occurrences);
+  }
 }
 
 async function executedSource(file: string): Promise<string> {
@@ -139,25 +162,20 @@ export async function collectCoverage(
     await Promise.all(files.map((file) => realpath(file))),
   );
   const map = istanbul.createCoverageMap({});
-  for (const [url, recordings] of await scriptCoverage(directory, expected)) {
+  for (const [url, profiles] of await scriptCoverage(directory, expected)) {
     const file = fileURLToPath(url);
     const code = await executedSource(file);
-    const conversions = new Map<string, istanbul.CoverageMapData>();
-    for (const coverage of recordings) {
-      const profile = JSON.stringify(coverage.functions);
-      let converted = conversions.get(profile);
-      if (!converted) {
-        const ast = parse(code, {
-          ecmaVersion: "latest",
-          sourceType: [".cts", ".cjs"].includes(extname(file))
-            ? "script"
-            : "module",
-          locations: true,
-        });
-        converted = await convert({ code, coverage, ast });
-        conversions.set(profile, converted);
-      }
-      map.merge(structuredClone(converted));
+    for (const { coverage, occurrences } of profiles.values()) {
+      const ast = parse(code, {
+        ecmaVersion: "latest",
+        sourceType: [".cts", ".cjs"].includes(extname(file))
+          ? "script"
+          : "module",
+        locations: true,
+      });
+      const converted = await convert({ code, coverage, ast });
+      multiplyHits(converted, occurrences);
+      map.merge(converted);
     }
   }
   return map

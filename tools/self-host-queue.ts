@@ -7,6 +7,7 @@ import {
 import {
   declaredQueueValues,
   parseQueuesSetting,
+  queuePollingConfigured,
   queueValues,
   queueValueSources,
   type GeneralQueueValues,
@@ -297,7 +298,8 @@ export function queuePlan(
   given: QueueConfigurationInput,
 ): QueuePlan {
   const configuration = queueConfiguration(environment, given);
-  if (configuration === undefined) return noQueue;
+  if (configuration === undefined || !queuePollingConfigured(configuration))
+    return noQueue;
   const { declared, setting } = configuration;
   if (setting?.state === "off")
     return { kind: "off", workflowId: declared.workflowId };
@@ -347,26 +349,6 @@ export function queueWorkflowLimits(
         }),
       ]),
   );
-}
-
-export function queueStartup(
-  environment: Environment,
-  given: QueueConfigurationInput,
-) {
-  const plan = queuePlan(environment, given);
-  const limits = queueLimits(environment, plan);
-  return {
-    queueMilliseconds: queueMilliseconds(plan),
-    ...(plan.kind === "off" ? { queueState: "off" as const } : {}),
-    ...(plan.kind === "on"
-      ? { queueIntervalSource: plan.values.everySeconds.source }
-      : {}),
-    queueLimits: limits,
-    queueLanes: limits.lanes,
-    queueConfigurations: queueConfigurations(environment, given),
-    queueDailySpendLimitUsd: queueSpendLimit(environment, plan),
-    readyCommand: readyTicketCommand(environment, plan),
-  };
 }
 
 export function reloadedQueueLimits(

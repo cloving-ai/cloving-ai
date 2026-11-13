@@ -241,7 +241,7 @@ await test("CLV-359 a declared queue without ticket commands or an interval sett
   assert.match(output, /Cloving runs/);
 });
 
-await test("CLV-359 a reload applies the queues lanes with no restart and names a state change as a restart field", async () => {
+await test("CLV-373 a reload applies queue lanes and reports a restart for a new entry or state", async () => {
   const { fixture, environment } = await queueScene({
     queue: { everySeconds: 300 },
   });
@@ -267,7 +267,7 @@ await test("CLV-359 a reload applies the queues lanes with no restart and names 
       const applied = record(JSON.parse(reload.stdout));
       assert.deepEqual(
         [applied?.["reloadedFields"], applied?.["restartFields"]],
-        [["queues"], []],
+        [["queues"], ["queues"]],
       );
       const queue = record(statusOf(fixture)["queue"]);
       assert.equal(queue?.["lanes"], 3);
