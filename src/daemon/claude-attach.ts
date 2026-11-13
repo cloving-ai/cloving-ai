@@ -30,6 +30,7 @@ import {
 } from "../turn-launch.ts";
 import type { TurnAttach } from "./turn-attempts.ts";
 import { selectedProfile, type WorkerProfiles } from "./worker-profile.ts";
+import { ownedPiSession } from "./pi-session.ts";
 
 export async function attachableLaunch(
   folder: string,
@@ -164,6 +165,16 @@ export async function attachPlan(
   const harness = turnHarness(settings, profile);
   if (recordedField(started, "harness") !== harness.worker)
     return "claude-turn-interrupted";
+  if (harness.worker === "pi") {
+    const piSession = await ownedPiSession({
+      started,
+      entry: attach.entry,
+      folder,
+      operationId: intent.operationId,
+    });
+    if (typeof piSession === "string") return piSession;
+    return { attach, tree, profile, harness: { ...harness, piSession } };
+  }
   return { attach, tree, profile, harness };
 }
 

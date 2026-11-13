@@ -9,6 +9,7 @@ import {
   type TurnProgress,
 } from "./claude-turn.ts";
 import type { TurnLaunch } from "../turn-launch.ts";
+import { createPiSession, piSessionCommandFailure } from "./pi-session.ts";
 import {
   attemptCommand,
   attemptUsage,
@@ -58,15 +59,36 @@ function resumedAfter(
 
 export async function prepareAttempt(attempts: Attempts) {
   const selected = attemptCommand(attempts, attempts.ends.length + 1);
+  const failure =
+    attempts.start.worker === "pi"
+      ? piSessionCommandFailure(selected.command)
+      : undefined;
+  if (failure !== undefined) {
+    attempts.failure = failure;
+    return undefined;
+  }
   if (selected.budgetUsd === 0) {
     attempts.failure = "claude-turn-budget-exhausted";
     return undefined;
   }
-  const entry = attemptEntry(attempts, selected);
+  const planned = attemptEntry(attempts, selected);
   const folder =
-    entry.attempt === 1
+    planned.attempt === 1
       ? attempts.start.folder
-      : join(attempts.start.folder, `attempt-${String(entry.attempt)}`);
+      : join(attempts.start.folder, `attempt-${String(planned.attempt)}`);
+  await mkdir(folder, { recursive: true, mode: 0o700 });
+  const piSession =
+    attempts.start.worker === "pi"
+      ? await createPiSession({ folder, directory: attempts.start.directory })
+      : undefined;
+  if (typeof piSession === "string") {
+    attempts.failure = piSession;
+    return undefined;
+  }
+  const entry = {
+    ...planned,
+    ...(piSession === undefined ? {} : { piSession }),
+  };
   await written(attempts.start.folder, {
     name: "started.json",
     value: {
@@ -76,7 +98,6 @@ export async function prepareAttempt(attempts: Attempts) {
       processId: null,
     },
   });
-  await mkdir(folder, { recursive: true, mode: 0o700 });
   return { entry, selected, folder };
 }
 

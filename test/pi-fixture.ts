@@ -59,7 +59,7 @@ export function fakePi(
   writeFileSync(
     path,
     `#!${process.execPath}
-import { existsSync, readdirSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { setTimeout as delay } from "node:timers/promises";
 import { pathToFileURL } from "node:url";
 let stdin = "";
@@ -79,8 +79,13 @@ for (const handler of handlers) {
   if (result?.action === "transform") prompt = result.text;
   if (result?.action === "handled") throw new Error("Pi input was handled without a model response");
 }
+const selected = parts.indexOf("--session");
+const session = selected < 0 ? undefined : JSON.parse(readFileSync(parts[selected + 1], "utf8").split("\\n")[0]);
+appendFileSync(${JSON.stringify(join(scene.directory, "pi-prompts.jsonl"))}, JSON.stringify({ prompt, processId: process.pid, session }) + "\\n");
+appendFileSync(${JSON.stringify(join(scene.directory, "turns.log"))}, JSON.stringify({ prompt, processId: process.pid, parentId: process.ppid, arguments: parts, files: [], directory: process.cwd(), environment: process.env }) + "\\n");
 writeFileSync(${JSON.stringify(join(scene.directory, "observed.json"))}, JSON.stringify({ arguments: parts, stdin, prompt, directory: process.cwd(), environment: process.env, configuration: process.env.GH_CONFIG_DIR === undefined ? [] : readdirSync(process.env.GH_CONFIG_DIR) }));
-const bytes = Buffer.from(${JSON.stringify(output)});
+const translated = ${JSON.stringify(output)}.split("\\n").map((line) => session && line.startsWith('{"type":"session",') ? JSON.stringify(session) : line).join("\\n");
+const bytes = Buffer.from(translated);
 const size = ${String(options.chunkBytes ?? 4096)};
 for (let offset = 0; offset < bytes.length; offset += size) {
   if (!process.stdout.write(bytes.subarray(offset, offset + size))) await new Promise((resolve) => process.stdout.once("drain", resolve));

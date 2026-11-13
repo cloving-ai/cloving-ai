@@ -90,7 +90,10 @@ const facts: readonly (readonly [string, RegExp])[] = [
     /JSON list .*Requires CLOVING_QUEUE_SECONDS.*queue starts.*one queue interval after each run ends.*no added argument.*JSON list of the ready tickets.*Queue checks do not wait.*id.*readyAt UTC time.*watch page.*not in work.*dependency.*oldest wait.*no default/,
   ],
   ["CLOVING_CLAUDE_COMMAND", /JSON list/],
-  ["CLOVING_PI_COMMAND", /JSON list.*Pi v1\.5\.2.*pi --mode json --no-session/],
+  [
+    "CLOVING_PI_COMMAND",
+    /JSON list.*Pi v1\.5\.2.*default is pi --mode json\. .*private session/,
+  ],
   [
     "CLOVING_GROK_COMMAND",
     /JSON list.*streaming-messages-json.*--always-approve.*-p/,

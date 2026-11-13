@@ -49,7 +49,7 @@ export const defaultGrokCommand = [
   "-p",
 ];
 
-export const defaultPiCommand = ["pi", "--mode", "json", "--no-session"];
+export const defaultPiCommand = ["pi", "--mode", "json"];
 
 export type NativeHarness =
   "claude" | "codex" | "gemini" | "grok" | "opencode" | "cursor-agent" | "pi";
