@@ -27,6 +27,7 @@ import {
 } from "./watch-steer-view.ts";
 import { priceText } from "./usage-render.ts";
 import { MenuShell, menuPicked } from "./watch-token-menu-view.ts";
+import { turnNow } from "./watch-turn.ts";
 
 interface HeadControls {
   readonly steering?: SteerControls | undefined;
@@ -238,7 +239,7 @@ export function workingDetail(turn: WatchTurn, now: string): Shown {
     turn.activeAt === null
       ? ""
       : ` · last output ${elapsed(turn.activeAt, now)} ago`;
-  const last = turn.activity.at(-1)?.text ?? "The worker starts.";
+  const last = turnNow(turn, now);
   const worker =
     turn.harness === undefined ? "The worker" : `The ${turn.harness} worker`;
   return [

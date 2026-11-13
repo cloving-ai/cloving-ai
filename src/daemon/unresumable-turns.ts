@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { operationScope } from "../operation-identity.ts";
 import { readRecord } from "./operation-journal.ts";
 import { attachableLaunch } from "./claude-attach.ts";
+import { turnWait } from "../turn-launch.ts";
 import {
   readResume,
   recordedField,
@@ -19,6 +20,7 @@ async function resumable(folder: string, started: unknown): Promise<boolean> {
   const launch = await attachableLaunch(folder, started);
   if (launch !== undefined && launch !== "gone") return true;
   if (!resumableHarness(recordedField(started, "harness"))) return false;
+  if (turnWait(started) !== undefined) return true;
   return (await readResume(folder, started)) !== undefined;
 }
 

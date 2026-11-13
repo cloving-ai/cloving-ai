@@ -49,10 +49,19 @@ export interface TurnAttach {
   readonly launch: TurnLaunch;
 }
 
+export interface WaitResume {
+  readonly startedAt: string;
+  readonly turnStartCommit: string | null;
+  readonly ends: readonly TurnEnd[];
+  readonly steerNotes: readonly string[];
+  readonly endsAt: number;
+}
+
 export interface RetryOptions extends RetrySettings {
   readonly runId: string;
   readonly resume?: TurnResume;
   readonly attach?: TurnAttach;
+  readonly waiting?: WaitResume;
   readonly stopping?: AbortController;
   readonly stopMilliseconds?: number;
   readonly metadata: Readonly<Record<string, unknown>>;
@@ -304,5 +313,7 @@ export function kindOf(attempts: Attempts, end: TurnEnd) {
   if (output === "text" || !["claude", "codex"].includes(worker ?? "claude"))
     return null;
   if (worker !== "codex") return end.retryKind ?? retryKind(end.result);
-  return capacityRefusal(end.result) ? "capacity" : null;
+  return end.retryKind === "capacity" || capacityRefusal(end.result)
+    ? "capacity"
+    : null;
 }

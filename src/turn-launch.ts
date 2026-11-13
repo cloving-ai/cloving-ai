@@ -136,3 +136,44 @@ export function connectableTurn(turn: {
     typeof record(turn.entry)?.["startedAt"] === "string"
   );
 }
+
+export interface TurnWait {
+  readonly attempt: number;
+  readonly waitingAt: string;
+  readonly waitMilliseconds: number;
+}
+
+const instant = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/;
+
+export function turnWait(started: unknown): TurnWait | undefined {
+  const fields = record(started);
+  if (fields?.["phase"] !== "waiting") return undefined;
+  const attempt = attemptNumber(started);
+  const waitMilliseconds = fields["waitMilliseconds"];
+  if (
+    typeof waitMilliseconds !== "number" ||
+    !Number.isSafeInteger(waitMilliseconds) ||
+    waitMilliseconds < 0
+  )
+    return undefined;
+  const waitingAt = fields["waitingAt"];
+  if (attempt === undefined) return undefined;
+  if (typeof waitingAt !== "string" || !instant.test(waitingAt))
+    return undefined;
+  return { attempt, waitingAt, waitMilliseconds };
+}
+
+export interface WaitingTurn extends TurnWait {
+  readonly operationId: string;
+  readonly waitEndsAt: string;
+}
+
+export function openWait(turn: {
+  readonly started: unknown;
+  readonly result: unknown;
+}): TurnWait | undefined {
+  const { result } = turn;
+  if (result === undefined || result === null) return turnWait(turn.started);
+  if (record(result)?.["stoppedBy"] !== "daemon-shutdown") return undefined;
+  return turnWait(turn.started);
+}

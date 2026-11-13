@@ -115,6 +115,24 @@ export async function markedTurn(
   return found.launch;
 }
 
+export async function recordedLaunchOf(
+  journal: {
+    readonly folder: string;
+    readonly started: unknown;
+    readonly result: unknown;
+  },
+  stopMilliseconds: number,
+): Promise<TurnLaunch | "gone" | "stopped" | "unknown" | undefined> {
+  if (journal.result !== undefined) return undefined;
+  return (
+    (await attachableLaunch(journal.folder, journal.started)) ??
+    markedTurn(journal.folder, {
+      started: journal.started,
+      stopMilliseconds,
+    })
+  );
+}
+
 async function readAttach(
   folder: string,
   request: { readonly started: unknown; readonly launch: TurnLaunch },
@@ -159,12 +177,21 @@ export async function attachPlan(
   const attach = await readAttach(folder, { started, launch });
   if (tree === undefined || attach === undefined)
     return "claude-turn-interrupted";
-  const profile = await selectedProfile(settings, intent);
+  const selected = await recordedProfile(settings, { started, intent });
+  if (typeof selected === "string") return selected;
+  return { attach, tree, ...selected };
+}
+
+export async function recordedProfile(
+  settings: WorkerProfiles,
+  request: { readonly started: unknown; readonly intent: ProtectedIntent },
+) {
+  const profile = await selectedProfile(settings, request.intent);
   if (typeof profile === "string") return "claude-turn-interrupted";
   const harness = turnHarness(settings, profile);
-  if (recordedField(started, "harness") !== harness.worker)
+  if (recordedField(request.started, "harness") !== harness.worker)
     return "claude-turn-interrupted";
-  return { attach, tree, profile, harness };
+  return { profile, harness };
 }
 
 export interface KeptTurn {

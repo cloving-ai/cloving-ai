@@ -190,7 +190,7 @@ export async function waited(
   attempts: Attempts,
   milliseconds: number,
 ): Promise<void> {
-  const { start, options, stopping, ends } = attempts;
+  const { start, ends } = attempts;
   await written(start.folder, {
     name: "started.json",
     value: {
@@ -204,6 +204,14 @@ export async function waited(
       waitingAt: new Date().toISOString(),
     },
   });
+  await rested(attempts, milliseconds);
+}
+
+export async function rested(
+  attempts: Attempts,
+  milliseconds: number,
+): Promise<void> {
+  const { options, stopping } = attempts;
   const wait =
     options.retryDelay ??
     ((duration, signal) => delay(duration, undefined, { signal }));

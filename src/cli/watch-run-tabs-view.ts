@@ -8,7 +8,7 @@ import {
   type RunTab,
   type TranscriptControls,
 } from "./watch-transcript-view.ts";
-import { Events, PullRequest, Review } from "./watch-turn.ts";
+import { Events, PullRequest, Review, turnWaitText } from "./watch-turn.ts";
 import { attemptText, priceText } from "./usage-render.ts";
 import type { WorkerUsage } from "../worker-usage.ts";
 
@@ -91,6 +91,7 @@ export function TurnFacts(props: {
 }): Shown {
   const { turn, now } = props;
   const cost = priceText(turn.costUsd, turn.estimatedCostUsd);
+  const wait = turnWaitText(turn, now);
   const head = [
     `Turn ${String(props.position)}`,
     turn.outcome,
@@ -112,6 +113,9 @@ export function TurnFacts(props: {
       (turn.attempts ?? []).map((attempt) =>
         element("p", { class: "turn-attempt", children: attemptText(attempt) }),
       ),
+      wait === null
+        ? null
+        : element("p", { class: "turn-wait", children: wait }),
     ],
   });
 }

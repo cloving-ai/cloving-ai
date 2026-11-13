@@ -6,15 +6,18 @@ import type {
 } from "../broker/actor/delivery-intents.ts";
 import { begun } from "./claude-begin.ts";
 import {
-  attachableLaunch,
   attachPlan,
   holdKeptTurn,
-  markedTurn,
+  recordedLaunchOf,
   recoverableTurn,
 } from "./claude-attach.ts";
+import { keptWait, waitPlan } from "./claude-wait.ts";
 import { stoppedLaunch } from "./detached-process.ts";
 import { releasedLaunch } from "./detached-turn.ts";
-import { recordedLaunch, type TurnLaunch } from "../turn-launch.ts";
+import { recordedLaunch } from "../turn-launch.ts";
+import type { TurnLaunch, TurnWait } from "../turn-launch.ts";
+import type { RecoveryWay } from "../turn-recovery.ts";
+import type { ProtectedIntent } from "../broker/actor/delivery-intents.ts";
 import {
   located,
   readRecord as read,
@@ -74,8 +77,7 @@ function reconciled(
   parts: Parts,
   call: { readonly intent: DeliveryIntent; readonly signal: AbortSignal },
 ): Promise<AdapterOutcome> {
-  const { intent } = call;
-  const { key } = located(parts.settings.journal, intent.operationId);
+  const { key } = located(parts.settings.journal, call.intent.operationId);
   const pending = parts.reconciling.get(key);
   if (pending !== undefined) return pending;
   const reconciliation = reconcileOperation(parts, call).finally(() => {
@@ -102,7 +104,11 @@ async function reconcileOperation(
   if (parts.active.has(key)) return { kind: "accepted", receipt: key, worker };
   const started = await read(folder, "started.json");
   if (started === undefined) return { kind: "absent" };
-  const launch = await recordedLaunchOf(parts, { folder, started, result });
+  const launch = await recordedLaunchOf(
+    { folder, started, result },
+    parts.settings.stopMilliseconds ?? claudeLimits.stopMilliseconds,
+  );
+  const wait = keptWait({ started, result });
   return launchedOrResumed(parts, {
     intent,
     key,
@@ -110,6 +116,7 @@ async function reconcileOperation(
     started,
     signal,
     launch,
+    ...(wait === undefined ? {} : { wait }),
   });
 }
 
@@ -120,6 +127,7 @@ async function launchedOrResumed(
     readonly started: unknown;
     readonly signal: AbortSignal;
     readonly launch: TurnLaunch | "gone" | "stopped" | "unknown" | undefined;
+    readonly wait?: TurnWait;
   },
 ): Promise<AdapterOutcome> {
   const { launch, ...rest } = request;
@@ -134,25 +142,6 @@ async function launchedOrResumed(
     ...rest,
     ...(launch === undefined || launch === "gone" ? {} : { launch }),
   });
-}
-
-async function recordedLaunchOf(
-  parts: Parts,
-  journal: {
-    readonly folder: string;
-    readonly started: unknown;
-    readonly result: unknown;
-  },
-): Promise<TurnLaunch | "gone" | "stopped" | "unknown" | undefined> {
-  if (journal.result !== undefined) return undefined;
-  return (
-    (await attachableLaunch(journal.folder, journal.started)) ??
-    markedTurn(journal.folder, {
-      started: journal.started,
-      stopMilliseconds:
-        parts.settings.stopMilliseconds ?? claudeLimits.stopMilliseconds,
-    })
-  );
 }
 
 async function rejectedAttach(
@@ -180,6 +169,7 @@ async function resumed(
     readonly started: unknown;
     readonly signal: AbortSignal;
     readonly launch?: TurnLaunch;
+    readonly wait?: TurnWait;
   },
 ): Promise<AdapterOutcome> {
   const { intent, started, key, folder, signal, launch } = request;
@@ -189,9 +179,7 @@ async function resumed(
   if (aborted()) return failure("claude-start-aborted");
   const current = parts.settings.turnSettings();
   const settings = { ...parts.settings, ...current };
-  const plan = await (launch === undefined
-    ? resumePlan(settings, { folder, started, intent, signal })
-    : attachPlan(settings, { folder, started, intent, launch }));
+  const plan = await recoveryPlan(settings, { ...request, intent });
   if (aborted()) return failure("claude-start-aborted");
   if (typeof plan === "string")
     return rejectedAttach(parts, { request, plan, launch });
@@ -199,21 +187,38 @@ async function resumed(
   if (aborted()) return failure("claude-start-aborted");
   if (prompt === undefined)
     return interruptedReply(request, "claude-turn-interrupted");
-  parts.settings.recovered?.({
-    runId: intent.runId,
-    way: launch === undefined ? "resumed" : "connected",
-  });
-  const noted = await parts.notes.recorded({ ...intent, prompt, started });
+  let way: RecoveryWay = "resumed";
+  if ("attach" in plan) way = "connected";
+  else if ("wait" in plan) way = "waiting";
+  parts.settings.recovered?.({ runId: intent.runId, way });
   await begun(parts, {
     key,
     folder,
     intent,
     ...plan,
     signal,
-    ...noted,
+    ...(await parts.notes.recorded({ ...intent, prompt, started })),
     turnSettings: current,
   });
   return { kind: "accepted", receipt: key, worker };
+}
+
+function recoveryPlan(
+  settings: Parameters<typeof resumePlan>[0],
+  request: {
+    readonly folder: string;
+    readonly started: unknown;
+    readonly intent: ProtectedIntent;
+    readonly signal: AbortSignal;
+    readonly launch?: TurnLaunch;
+    readonly wait?: TurnWait;
+  },
+) {
+  const { launch } = request;
+  if (launch !== undefined) return attachPlan(settings, { ...request, launch });
+  const { wait } = request;
+  if (wait !== undefined) return waitPlan(settings, { ...request, wait });
+  return resumePlan(settings, request);
 }
 
 function failure(reason: string): AdapterOutcome {

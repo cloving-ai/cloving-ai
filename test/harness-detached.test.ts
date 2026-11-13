@@ -290,8 +290,9 @@ await test("CLV-349 the README Restart section lists each kind of turn that keep
     );
   assert.match(
     section.replaceAll("\n", " "),
-    /A turn of a text harness \(a harness with `turn` and no stream output\) and a turn that waits for a retry still stop at a restart\./,
+    /A turn of a text harness \(a harness with `turn` and no stream output\) still stops at a restart\./,
   );
+  assert.match(section, /A turn that waits for a retry keeps its wait/);
 });
 
 await test("CLV-349 a later attempt in the pipe start appends its transcript after a blank line", async () => {

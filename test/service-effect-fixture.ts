@@ -39,6 +39,7 @@ export async function effectScene(
     readonly lostReplies?: number;
     readonly effects?: Partial<EffectSettings>;
     readonly effectLeases?: ServiceOptions["effectLeases"];
+    readonly turnWaits?: ServiceOptions["turnWaits"];
     readonly reconcile?: Delivery["reconcile"];
     readonly limits?: ServiceLimits;
     readonly capabilities?: readonly string[];
@@ -77,6 +78,7 @@ export async function effectScene(
       ? {}
       : { effectLeases: setup.effectLeases }),
     ...(setup.limits === undefined ? {} : { limits: setup.limits }),
+    ...(setup.turnWaits === undefined ? {} : { turnWaits: setup.turnWaits }),
   };
   const service = await harness.start(options);
   const runId = await startedRun(harness, {
