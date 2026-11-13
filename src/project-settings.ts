@@ -231,7 +231,15 @@ export function startSettingLines(settings: {
   ];
 }
 
-const harnessNames = ["claude", "codex", "gemini", "grok", "opencode", "pi"];
+const harnessNames = [
+  "claude",
+  "codex",
+  "gemini",
+  "grok",
+  "opencode",
+  "pi",
+  "omp",
+];
 
 export const harnessCommandVariables: readonly string[] = harnessNames.flatMap(
   (name) => Object.values(harnessCommandMapping(name)),

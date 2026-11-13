@@ -1573,6 +1573,7 @@
     "test/notify-schedules.test.ts": "test",
     "test/notify-scheduling.test.ts": "test",
     "test/notify-shutdown.test.ts": "test",
+    "test/omp-harness.test.ts": "test",
     "test/opencode-fixture.ts": "test",
     "test/opencode-settings.test.ts": "test",
     "test/opencode-worker.test.ts": "test",

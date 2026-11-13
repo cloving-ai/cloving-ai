@@ -9,6 +9,7 @@ import {
   type TurnProgress,
 } from "./claude-turn.ts";
 import type { TurnLaunch } from "../turn-launch.ts";
+import { piSessionHarness } from "../harness-defaults.ts";
 import { createPiSession, piSessionCommandFailure } from "./pi-session.ts";
 import {
   attemptCommand,
@@ -60,7 +61,7 @@ function resumedAfter(
 export async function prepareAttempt(attempts: Attempts) {
   const selected = attemptCommand(attempts, attempts.ends.length + 1);
   const nativePi =
-    attempts.start.worker === "pi" && attempts.start.output !== "text";
+    piSessionHarness(attempts.start.worker) && attempts.start.output !== "text";
   const failure = nativePi
     ? piSessionCommandFailure(selected.command)
     : undefined;

@@ -1,4 +1,4 @@
-import { turnHarness } from "../harness-defaults.ts";
+import { piSessionHarness, turnHarness } from "../harness-defaults.ts";
 import {
   piAttemptRefusal,
   piOperationRecord,
@@ -140,7 +140,7 @@ async function launchedOrResumed(
     return interruptedReply(rest, "claude-turn-interrupted");
   if (
     (launch === "gone" || launch === undefined) &&
-    recordedField(rest.started, "harness") === "pi"
+    piSessionHarness(recordedField(rest.started, "harness"))
   )
     return {
       kind: "unknown",

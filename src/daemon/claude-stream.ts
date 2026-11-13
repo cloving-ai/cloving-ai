@@ -1,3 +1,4 @@
+import { piSessionHarness } from "../harness-defaults.ts";
 import { piAccountingOf, type PiAccounting } from "../pi-usage.ts";
 import type { ReviewVerdict } from "../review-subject.ts";
 import type { TicketStatus } from "../ticket-status.ts";
@@ -110,7 +111,7 @@ function piFields(
   value: object,
   worker: Worker | undefined,
 ): Pick<StreamResult, "piAccounting" | "pricingModel"> {
-  if (worker !== "pi") return {};
+  if (!piSessionHarness(worker)) return {};
   const piAccounting = piAccountingOf(Reflect.get(value, "piAccounting"));
   return piAccounting === undefined
     ? {}

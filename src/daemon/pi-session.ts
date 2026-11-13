@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { constants } from "node:fs";
 import { mkdir, open, realpath, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import { piSessionHarness } from "../harness-defaults.ts";
 import { record } from "../protocol.ts";
 import { attemptNumber, recordedLaunch } from "../turn-launch.ts";
 import { readRecord } from "./operation-journal.ts";
@@ -25,6 +26,7 @@ export function piSessionCommandFailure(
     "--session-id",
     "--session-dir",
     "--fork",
+    "--restore",
     "--no-session",
     "--",
   ];
@@ -158,7 +160,7 @@ export function piOperationRefusal(
   },
 ): { readonly kind: "unknown"; readonly evidence: string } | undefined {
   const fields = record(started) ?? {};
-  if (fields["harness"] !== "pi") return undefined;
+  if (!piSessionHarness(fields["harness"])) return undefined;
   const { intent, key } = request;
   if (
     fields["operationId"] === intent.operationId &&
@@ -190,7 +192,11 @@ export async function piAttemptRefusal(
   started: unknown,
 ): Promise<string | undefined> {
   const fields = record(started);
-  if (fields?.["harness"] !== "pi" || fields["phase"] !== "running")
+  if (
+    fields === undefined ||
+    !piSessionHarness(fields["harness"]) ||
+    fields["phase"] !== "running"
+  )
     return undefined;
   const attempt = attemptNumber(started);
   if (attempt === undefined) return "pi-attempt-ownership-conflict";

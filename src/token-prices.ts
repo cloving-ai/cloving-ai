@@ -165,7 +165,7 @@ function singleCostUsd(
   const output = counts.output_tokens;
   if (
     price === undefined ||
-    (["cursor-agent", "pi"].includes(worker) &&
+    (["cursor-agent", "pi", "omp"].includes(worker) &&
       counts.cache_creation_input_tokens !== 0) ||
     counts.input_tokens === null ||
     cached === null ||

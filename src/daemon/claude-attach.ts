@@ -1,4 +1,4 @@
-import { turnHarness } from "../harness-defaults.ts";
+import { piSessionHarness, turnHarness } from "../harness-defaults.ts";
 import { resumeReasonField } from "../worker-usage.ts";
 import { record } from "../protocol.ts";
 import type {
@@ -83,7 +83,8 @@ function settledPiLaunch(turn: {
 }): TurnLaunch | undefined {
   const started = record(turn.started);
   if (
-    started?.["harness"] !== "pi" ||
+    started === undefined ||
+    !piSessionHarness(started["harness"]) ||
     started["phase"] !== "running" ||
     typeof record(turn.entry)?.["endedAt"] !== "string"
   )
@@ -136,7 +137,7 @@ async function markerSearch(
 ): Promise<MarkerSearch | undefined> {
   const attempt = attemptNumber(started);
   const phase = recordedField(started, "phase");
-  const nativePi = recordedField(started, "harness") === "pi";
+  const nativePi = piSessionHarness(recordedField(started, "harness"));
   if (
     attempt === undefined ||
     (phase !== "starting" && !(nativePi && phase === "running"))
@@ -217,9 +218,10 @@ export async function attachPlan(
   const harness = turnHarness(settings, profile);
   if (recordedField(started, "harness") !== harness.worker)
     return "claude-turn-interrupted";
-  if (harness.worker === "pi" && harness.output === "text")
+  if (piSessionHarness(harness.worker) && harness.output === "text")
     return "claude-turn-interrupted";
-  if (harness.worker !== "pi") return { attach, tree, profile, harness };
+  if (!piSessionHarness(harness.worker))
+    return { attach, tree, profile, harness };
   const piSession = await ownedPiSession({
     started,
     entry: attach.entry,
@@ -260,10 +262,9 @@ export async function keptTurn(
   const started = await readRecord(folder, "started.json");
   const tree = recordedTree(started);
   if (tree === undefined) return undefined;
-  const launch =
-    recordedField(started, "harness") === "pi"
-      ? recordedLaunch(recordedField(started, "launch"))
-      : await attachableLaunch(folder, started);
+  const launch = piSessionHarness(recordedField(started, "harness"))
+    ? recordedLaunch(recordedField(started, "launch"))
+    : await attachableLaunch(folder, started);
   if (launch === undefined || launch === "gone") return undefined;
   return { directory: tree.path, runId: intent.runId, launch };
 }

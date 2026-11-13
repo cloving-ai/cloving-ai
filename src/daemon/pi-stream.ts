@@ -20,7 +20,10 @@ import {
 import { sumUsage, type WorkerUsage } from "../worker-usage.ts";
 import { piActivity } from "./pi-activity.ts";
 
+export type PiProtocol = "pi" | "omp";
+
 interface State {
+  readonly protocol: PiProtocol;
   readonly activity: ReturnType<typeof piActivity>;
   sessionId: string | null;
   sessionHeader: string | null;
@@ -149,6 +152,21 @@ function settled(event: Fields, state: State): void {
   state.aborted ||= event["aborted"];
 }
 
+function ompEnded(event: Fields, state: State): void {
+  if (typeof event["isTerminal"] !== "boolean") {
+    state.failure ??= "omp malformed agent_end record";
+    return;
+  }
+  if (event["isTerminal"]) state.settled = true;
+}
+
+function settlement(event: Fields, state: State): void {
+  if (state.protocol === "pi" && event["type"] === "agent_settled")
+    settled(event, state);
+  if (state.protocol === "omp" && event["type"] === "agent_end")
+    ompEnded(event, state);
+}
+
 function received(event: Fields, state: State): readonly string[] {
   if (state.failure !== undefined) return [];
   if (event["type"] === "session") return session(event, state);
@@ -192,7 +210,8 @@ function messageStarted(event: Fields, state: State): readonly string[] {
 function activity(event: Fields, state: State): readonly string[] {
   switch (event["type"]) {
     case "agent_settled":
-      settled(event, state);
+    case "agent_end":
+      settlement(event, state);
       break;
     case "message_start":
       return messageStarted(event, state);
@@ -240,9 +259,13 @@ function toolActivity(event: Fields, state: State): readonly string[] {
 
 function failure(state: State, exitCode: number | null): string | undefined {
   if (state.failure !== undefined) return state.failure;
-  if (exitCode !== 0) return `Pi exited with code ${String(exitCode)}`;
-  if (state.sessionId === null) return "Pi ended without a session record";
-  if (!state.settled) return "Pi ended without agent_settled";
+  const name = state.protocol === "pi" ? "Pi" : "omp";
+  if (exitCode !== 0) return `${name} exited with code ${String(exitCode)}`;
+  if (state.sessionId === null) return `${name} ended without a session record`;
+  if (!state.settled)
+    return state.protocol === "pi"
+      ? "Pi ended without agent_settled"
+      : "omp ended without a terminal agent_end";
   if (state.aborted) return "Pi session aborted";
   if (state.openAssistant) return "Pi incomplete assistant record";
   return state.outcomeError ?? assistantFailure(state.message);
@@ -271,12 +294,16 @@ function parsed(line: string, state: State): readonly string[] {
   }
 }
 
-export function piStream(ownedSession?: {
-  readonly id: string;
-  readonly cwd: string;
-  readonly timestamp: string;
-}) {
+export function piStream(
+  ownedSession?: {
+    readonly id: string;
+    readonly cwd: string;
+    readonly timestamp: string;
+  },
+  protocol: PiProtocol = "pi",
+) {
   const state: State = {
+    protocol,
     activity: piActivity(),
     sessionId: null,
     sessionHeader: piSessionHeader(ownedSession),
