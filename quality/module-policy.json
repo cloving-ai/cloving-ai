@@ -1621,6 +1621,7 @@
     "test/phone-relay-server-fixture.ts": "test",
     "test/phone-relay.test.ts": "test",
     "test/phone-state.test.ts": "test",
+    "test/pi-attempt-recovery.test.ts": "test",
     "test/pi-doctor.test.ts": "test",
     "test/pi-fixture.ts": "test",
     "test/pi-input-extension.test.ts": "test",
