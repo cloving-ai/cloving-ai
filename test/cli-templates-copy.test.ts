@@ -15,6 +15,7 @@ import {
   filesBelow,
   repository,
   templateFiles,
+  listed,
   templates,
 } from "./cli-templates-fixture.ts";
 
@@ -214,7 +215,7 @@ async function assertCopiedNextTicket(
   assert.equal(next.stdout, "2\n");
 }
 
-await test("CLV-301 templates copy installs the ticket scripts and prints the settings that use them", () =>
+await test("CLV-363 templates copy retains the scripts without next or ready command settings", () =>
   withFiles(
     {
       ...repository,
@@ -224,16 +225,6 @@ await test("CLV-301 templates copy installs the ticket scripts and prints the se
     async (root) => {
       const project = join(root, "it's");
       const folder = join(project, ".cloving/workflows");
-      const settings = [
-        {
-          setting: "tickets.nextCommand",
-          command: ["node", join(folder, "dev2/next-ticket.mts")],
-        },
-        {
-          setting: "tickets.readyCommand",
-          command: ["node", join(folder, "dev2/ready-tickets.mts")],
-        },
-      ];
       const copied = templates(root, [
         ...["copy", "develop", "--id", "dev2", "--repository", project],
       ]);
@@ -243,24 +234,15 @@ await test("CLV-301 templates copy installs the ticket scripts and prints the se
           .split("\n")
           .filter((line) => line.startsWith("  cloving config set "))
           .map(shellWords),
-        settings.map(({ setting, command }) => [
-          ...["cloving", "config", "set", setting],
-          ...[JSON.stringify(command), "--private"],
-        ]),
+        [],
       );
       const printed = templates(root, [
         ...["copy", "develop", "--id", "dev3", "--repository", project],
         "--json",
       ]);
       assert.equal(printed.status, 0, printed.stderr);
-      assert.deepEqual(
-        record(JSON.parse(printed.stdout))?.["settings"],
-        settings.map(({ setting, command }) => ({
-          setting,
-          command: command.map((part) => part.replace("/dev2/", "/dev3/")),
-        })),
-      );
-      await assertCopiedNextTicket(root, String(settings[0]?.command[1]));
+      assert.deepEqual(record(JSON.parse(printed.stdout))?.["settings"], []);
+      await assertCopiedNextTicket(root, join(folder, "dev2/next-ticket.mts"));
     },
   ));
 
@@ -290,3 +272,96 @@ await test("CLV-316 templates copy writes the time zone of the operator into a c
       input: {},
     });
   }));
+
+await test("CLV-363 a copied feed avoids an exported function name and updates its test references", () =>
+  withFiles(
+    {
+      ...repository,
+      "repo/.cloving/workflows/reserved.ts":
+        'export async function siteDevelopFeed() { "use workflow"; return {}; }',
+    },
+    async (root) => {
+      const result = templates(root, [
+        "copy",
+        "develop",
+        "--id",
+        "site-develop",
+      ]);
+      assert.equal(result.status, 0, result.stderr);
+      const folder = join(root, "repo/.cloving/workflows");
+      const declaration = record(
+        JSON.parse(
+          await readFile(join(folder, "site-develop.declaration.json"), "utf8"),
+        ),
+      );
+      const queue = record(record(declaration?.["workflow"])?.["queue"]);
+      assert.equal(queue?.["feed"], "siteDevelopFeedWorkflow");
+      assert.match(
+        await readFile(join(folder, "site-develop.ts"), "utf8"),
+        /export async function siteDevelopFeedWorkflow\(/,
+      );
+      assert.match(
+        await readFile(join(folder, "site-develop/feed-tests.ts"), "utf8"),
+        /import \{ siteDevelopFeedWorkflow \} from "\.\.\/site-develop.ts"/,
+      );
+    },
+  ));
+
+await test("CLV-363 a maximum-length workflow ID keeps its copied feed within the declaration bound", () =>
+  withFiles(
+    {
+      ...repository,
+      "repo/.cloving/workflows/reserved.ts": `export async function ${"a".repeat(60)}Feed() { "use workflow"; return {}; }
+export async function ${"a".repeat(56)}Workflow() { "use workflow"; return {}; }`,
+    },
+    async (root) => {
+      const id = "a".repeat(64);
+      const copied = templates(root, ["copy", "develop", "--id", id]);
+      assert.equal(copied.status, 0, copied.stderr);
+      const declaration = record(
+        JSON.parse(
+          await readFile(
+            join(root, `repo/.cloving/workflows/${id}.declaration.json`),
+            "utf8",
+          ),
+        ),
+      );
+      const feed = record(record(declaration?.["workflow"])?.["queue"])?.[
+        "feed"
+      ];
+      assert.equal(typeof feed, "string");
+      assert.ok(typeof feed === "string" && feed.length <= 64);
+      assert.equal(
+        listed(root).find((item) => item["workflowId"] === id)?.["admitted"],
+        true,
+      );
+    },
+  ));
+
+await test("CLV-363 the default template ID also renames a feed whose name is already taken", () =>
+  withFiles(
+    {
+      ...repository,
+      "repo/.cloving/workflows/reserved.ts":
+        'export async function developFeed() { "use workflow"; return {}; }',
+    },
+    async (root) => {
+      const copied = templates(root, ["copy", "develop"]);
+      assert.equal(copied.status, 0, copied.stderr);
+      const folder = join(root, "repo/.cloving/workflows");
+      assert.match(
+        await readFile(join(folder, "develop.ts"), "utf8"),
+        /export async function developFeedWorkflow\(/,
+      );
+      assert.match(
+        await readFile(join(folder, "develop/feed-tests.ts"), "utf8"),
+        /import \{ developFeedWorkflow \} from "\.\.\/develop.ts"/,
+      );
+      assert.equal(
+        listed(root).find((item) => item["workflowId"] === "develop")?.[
+          "admitted"
+        ],
+        true,
+      );
+    },
+  ));

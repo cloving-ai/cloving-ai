@@ -18,6 +18,7 @@ import {
 } from "../src/queue-settings.ts";
 import {
   declaresQueue,
+  queueFeed,
   type DeclaredWorkflow,
 } from "../src/workflow-declaration.ts";
 import type { SettingSource } from "../src/project-settings.ts";
@@ -303,7 +304,11 @@ export function queuePlan(
   const { declared, setting } = configuration;
   if (setting?.state === "off")
     return { kind: "off", workflowId: declared.workflowId };
-  if (!ticketCommands(environment, setting)) return noQueue;
+  if (
+    queueFeed(declared) === undefined &&
+    !ticketCommands(environment, setting)
+  )
+    return noQueue;
   return configuredPlan(configuration);
 }
 

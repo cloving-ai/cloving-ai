@@ -1,3 +1,4 @@
+import "./develop/feed-selection.test.ts";
 import { flowTests } from "./develop/flow-tests.ts";
 import { refusalTests } from "./develop/refusal-tests.ts";
 import { recoveryTests } from "./develop/recovery-tests.ts";
@@ -9,6 +10,7 @@ import { demoTests } from "./develop/demo-tests.ts";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { fakeStepBridge } from "cloving/workflows/testing";
+import { feedTests } from "./develop/feed-tests.ts";
 import { developTurn } from "./develop/turn.ts";
 import { reviewPartial } from "./develop/partial.ts";
 import { queuePartial } from "./develop/queue-partial.ts";
@@ -328,3 +330,5 @@ await test("CLV-221 the last allowed fix turn preserves a broker refusal", async
   assert.equal(bridge.requests.length, 1);
   assert.equal(bridge.spent, 0);
 });
+
+for (const scenario of feedTests) await test(scenario.name, scenario.run);

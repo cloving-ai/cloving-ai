@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 import { developFiles } from "./develop-template-flow-fixture.ts";
-
 export interface DevelopSelection {
   readonly input: string;
   readonly select: string;
@@ -14,7 +13,6 @@ export interface DevelopSelection {
 }
 
 const prefix = "repo/.cloving/workflows/";
-
 export const automatic = {
   input: "ticket",
   select: "queue",
@@ -98,6 +96,21 @@ export async function configuredDevelopFiles(
   files[prefix + "develop.declaration.json"] = declaration(selected);
   if (selected.demo === "record")
     for (const change of demoEdits) edit(files, change);
+  if (selected.select !== "queue") {
+    const source = files[prefix + "develop.ts"];
+    if (source === undefined) throw new Error("Missing develop source");
+    files[prefix + "develop.ts"] = source
+      .slice(0, source.indexOf("export async function developFeed"))
+      .replace(
+        /import \{[^}]+\} from "(?:cloving\/workflows\/steps\/protected-effect|\.\/develop\/feed-(?:selection|results)\.ts)";\n/g,
+        "",
+      );
+    for (const from of [
+      'import { feedTests } from "./develop/feed-tests.ts";\n',
+      "for (const scenario of feedTests) await test(scenario.name, scenario.run);\n",
+    ])
+      edit(files, { file: "develop.test.ts", from, to: "" });
+  }
   scenarioFiles(files, selected);
   return files;
 }
@@ -354,6 +367,7 @@ function declaration(selected: DevelopSelection): string {
     "close-pr",
   ];
   if (selected.accept === "greptile") github.push("wait-review");
+  github.push(...queueMethods(selected));
   return JSON.stringify({
     workflow: {
       workflowId: "develop",
@@ -363,7 +377,7 @@ function declaration(selected: DevelopSelection): string {
       ),
       ...verification.workflow,
       ...(selected.select === "queue"
-        ? { queue: { everySeconds: 120, lanes: 1 } }
+        ? { queue: { everySeconds: 120, lanes: 1, feed: "developFeed" } }
         : {}),
       input: {
         maximumBytes: 65536,
@@ -378,4 +392,8 @@ function declaration(selected: DevelopSelection): string {
       ...verification.methods,
     },
   });
+}
+
+function queueMethods(selected: DevelopSelection): string[] {
+  return selected.select === "queue" ? ["issues", "issue-states"] : [];
 }

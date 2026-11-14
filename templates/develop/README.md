@@ -37,13 +37,25 @@ follows the selected point IDs, so it tests each configuration. Package tests ap
 its requirements, and test thirteen complete configurations through the folder
 loader and the installed package, covering every option.
 
-`develop/next-ticket.mts` and `develop/ready-tickets.mts` are reference scripts
-for `tickets.nextCommand` and `tickets.readyCommand`. The workflow does not
-import them. Both use `develop/ticket-queue.mts`, which reads the open issues with
-the `cloving: ready` label through `gh`. An issue is ready only when every issue
-in its `Needs #<number>` lines under `## Dependencies` is closed. The `scripts`
-list of `template.json` names both scripts, and `cloving templates copy` prints
-the settings that use them.
+`developFeed` reads up to 100 open issues with the `cloving: ready` label through
+journaled GitHub effects. It reads blocker states with `issue-states` in batches
+of at most 50 numbers. `develop/feed-selection.ts` contains the pure `blockersOf`
+and `selected` functions. Selection uses the oldest issue first, then its number.
+An open or missing blocker gives `waits for #<number>`. The service checks active
+tickets before admission and gives `in work`. Each pick has the README ticket
+text form, with the repository from the issue URL. The feed returns up to 20
+picks and 50 skipped items per pass. It skips text above 65,536 UTF-8 bytes
+with `ticket too large`. It defers picks with `feed result too large` to keep
+the complete JSON result within 256 KiB.
+
+The queue declares `{ "everySeconds": 120, "lanes": 1, "feed": "developFeed" }`.
+It needs no `tickets.nextCommand` or `tickets.readyCommand`. Manual `--ticket`
+runs still need `tickets.command`.
+
+`develop/next-ticket.mts` and `develop/ready-tickets.mts` stay for one release.
+The feed replaces these scripts. Both scripts still use `develop/ticket-queue.mts`
+and the same dependency sentence rules. `template.json` no longer sets their
+machine settings.
 
 `develop/turn.ts` implements the development turn for either a resolved
 `ticket` or a task `prompt`. It calls the public protected effect helper and

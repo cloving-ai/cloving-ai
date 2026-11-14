@@ -230,3 +230,15 @@ await test("CLV-362 a feed refuses workflow controls through indexed helpers", (
     .concat("\nconst pauses = [async () => { await sleep({ seconds: 1 }); }];");
   assert.deepEqual(check(text), ["feed-method-not-read-only"]);
 });
+
+await test("CLV-363 issue-states is admitted as a read-only feed method", () => {
+  assert.deepEqual(
+    check(source(`return ${effect("issue-states")};`), {
+      declaration: {
+        ...declaration,
+        methods: { ...declaration.methods, github: ["issue-states"] },
+      },
+    }),
+    [],
+  );
+});

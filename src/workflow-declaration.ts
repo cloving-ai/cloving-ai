@@ -68,7 +68,7 @@ export function feedMethodReadOnly(effect: {
     return effect.method?.startsWith("run:") === true;
   return (
     effect.capability === "github" &&
-    ["issues", "review-threads"].includes(effect.method ?? "")
+    ["issues", "issue-states", "review-threads"].includes(effect.method ?? "")
   );
 }
 
