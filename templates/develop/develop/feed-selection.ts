@@ -91,11 +91,7 @@ export function selected(
   const { states, active } = context;
   const known = new Map(states.map((item) => [item.number, item.state]));
   const result: Selection = { picks: [], skipped: [] };
-  const ordered = ready.toSorted(
-    (left, right) =>
-      left.createdAt.localeCompare(right.createdAt) ||
-      left.number - right.number,
-  );
+  const ordered = orderedIssues(ready);
   for (const issue of ordered) {
     const id = String(issue.number);
     const blockers = blockersOf(issue.body);
@@ -122,14 +118,25 @@ export function selected(
   );
 }
 
+function orderedIssues(ready: readonly ReadyIssue[]): readonly ReadyIssue[] {
+  return ready.toSorted(
+    (left, right) =>
+      left.createdAt.localeCompare(right.createdAt) ||
+      left.number - right.number,
+  );
+}
+
 export function blockerNumbersOf(
   ready: readonly ReadyIssue[],
+  maximumNumbers: number,
 ): readonly number[] {
-  return Array.from(
-    new Set(
-      ready
-        .filter((issue) => blockersOf(issue.body).every(Number.isSafeInteger))
-        .flatMap((issue) => blockersOf(issue.body)),
-    ),
-  );
+  const numbers = new Set<number>();
+  for (const issue of orderedIssues(ready)) {
+    const blockers = blockersOf(issue.body);
+    if (!blockers.every(Number.isSafeInteger)) continue;
+    const needed = blockers.filter((number) => !numbers.has(number));
+    if (numbers.size + needed.length > maximumNumbers) continue;
+    for (const number of needed) numbers.add(number);
+  }
+  return Array.from(numbers);
 }

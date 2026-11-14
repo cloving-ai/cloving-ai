@@ -41,6 +41,9 @@ loader and the installed package, covering every option.
 journaled GitHub effects. It reads blocker states with `issue-states` in batches
 of at most 50 numbers. `develop/feed-selection.ts` contains the pure `blockersOf`
 and `selected` functions. Selection uses the oldest issue first, then its number.
+Blocker reads share the 87-effect budget with issue pages. In that order, a
+blocker list that cannot fit the remaining budget is skipped so other tickets
+can proceed. Its first unresolved blocker gives `waits for #<number>`.
 An open or missing blocker gives `waits for #<number>`. The service checks active
 tickets before admission and gives `in work`. Each pick has the README ticket
 text form, with the repository from the issue URL. The feed returns up to 20

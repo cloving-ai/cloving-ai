@@ -179,3 +179,102 @@ feedPageTests.push({
   name: "CLV-363 one hundred escaped bodies fit within the unchanged feed effect budget",
   run: feedEncodedPages,
 });
+
+function closedStates(numbers: readonly number[]) {
+  return {
+    kind: "completed" as const,
+    operationId: "states",
+    receipt: null,
+    result: JSON.stringify(
+      numbers.map((number) => ({ number, state: "closed" })),
+    ),
+  };
+}
+
+async function feedBlockerBudget() {
+  const numbers = Array.from({ length: 4400 }, (_, index) => index + 1);
+  const heavy = issue(
+    738,
+    `## Dependencies\nNeeds ${numbers.map((number) => `#${String(number)}`).join(", ")}.`,
+  );
+  assert.ok(new TextEncoder().encode(heavy.body).length < 65536);
+  for (const pageCount of [1, 50]) {
+    const pages = Array.from({ length: pageCount }, (_, index) =>
+      page(
+        index === pageCount - 1
+          ? [heavy, issue(740, "## Dependencies\nNeeds #734."), issue(742)]
+          : [],
+        index === pageCount - 1 ? null : index + 1,
+      ),
+    );
+    using bridge = fakeStepBridge({
+      effectLimit: 87,
+      effects: {
+        "github issues": pages,
+        "github issue-states": Array.from({ length: 88 }, () =>
+          closedStates([734]),
+        ),
+      },
+    });
+    const result = await developFeed();
+    assert.deepEqual(
+      result.picks.map((pick) => pick.id),
+      ["740", "742"],
+    );
+    assert.deepEqual(result.skipped, [{ id: "738", reason: "waits for #1" }]);
+    assert.equal(bridge.spent, pageCount + 1);
+    assert.deepEqual(
+      bridge.requests.slice(pageCount).map((request) => {
+        assert.equal(request[0], "effect");
+        assert.equal(request[1].method, "issue-states");
+        return JSON.parse(request[1].payload) as unknown;
+      }),
+      [{ numbers: [734] }],
+    );
+  }
+}
+
+async function feedExactBlockerBudget() {
+  for (const pageCount of [1, 50]) {
+    const numbers = Array.from(
+      { length: (87 - pageCount) * 50 },
+      (_, index) => index + 1,
+    );
+    const heavy = issue(
+      738,
+      `## Dependencies\nNeeds ${numbers.map((number) => `#${String(number)}`).join(", ")}.`,
+    );
+    const pages = Array.from({ length: pageCount }, (_, index) =>
+      page(
+        index === pageCount - 1 ? [heavy, issue(740)] : [],
+        index === pageCount - 1 ? null : index + 1,
+      ),
+    );
+    const batches = Array.from({ length: 87 - pageCount }, (_, index) =>
+      closedStates(numbers.slice(index * 50, (index + 1) * 50)),
+    );
+    using bridge = fakeStepBridge({
+      effectLimit: 87,
+      effects: { "github issues": pages, "github issue-states": batches },
+    });
+    const result = await developFeed();
+    assert.deepEqual(
+      result.picks.map((pick) => pick.id),
+      ["738", "740"],
+    );
+    assert.deepEqual(result.skipped, []);
+    assert.equal(bridge.spent, 87);
+    assert.equal(bridge.requests.length, 87);
+  }
+}
+
+feedPageTests.push(
+  {
+    name: "CLV-363 an over-budget blocker list skips only its ticket after issue pagination",
+    run: feedBlockerBudget,
+  },
+  {
+    name: "CLV-363 blocker reads can use exactly the remaining feed effect budget",
+    run: feedExactBlockerBudget,
+  },
+);

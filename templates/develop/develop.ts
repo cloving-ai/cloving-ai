@@ -53,6 +53,7 @@ export async function developFeed() {
   "use workflow";
   let ready: readonly ReadyIssue[] = [];
   let cursor: number | null = 0;
+  let remainingReads = 87;
   for (let round = 1; cursor !== null; round++) {
     const result = await protectedEffect({
       scope: { phase: "feed", operation: "ready-issues", round },
@@ -62,6 +63,7 @@ export async function developFeed() {
       units: 1,
       payload: issuePayload(cursor),
     });
+    remainingReads -= 1;
     const page = readyIssuePageOf(completedFeedText(result));
     ready = mergedReady(ready, page.issues);
     cursor = continuedCursor(cursor, {
@@ -69,7 +71,7 @@ export async function developFeed() {
       count: ready.length,
     });
   }
-  const numbers = blockerNumbersOf(ready);
+  const numbers = blockerNumbersOf(ready, Math.max(0, remainingReads) * 50);
   let states: readonly BlockerState[] = [];
   for (let offset = 0; offset < numbers.length; offset += 50) {
     const result = await protectedEffect({

@@ -5,7 +5,7 @@ import {
 } from "./feed-results.ts";
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { blockersOf, selected } from "./feed-selection.ts";
+import { blockerNumbersOf, blockersOf, selected } from "./feed-selection.ts";
 
 function issue(
   number: number,
@@ -209,5 +209,25 @@ await test("CLV-363 encoded issue bodies preserve UTF-8 and a leading byte order
       active: [],
     }).skipped,
     [{ id: "738", reason: "ticket too large" }],
+  );
+});
+
+await test("CLV-363 blocker reads prioritize oldest tickets and omit lists that exceed the remaining budget", () => {
+  const ready = [
+    issue(740, { body: "## Dependencies\nNeeds #4." }),
+    issue(739, { body: "## Dependencies\nNeeds #1 and #2." }),
+    issue(738, { body: "## Dependencies\nNeeds #1, #2 and #3." }),
+  ];
+  assert.deepEqual(blockerNumbersOf(ready, 2), [1, 2]);
+  assert.deepEqual(blockerNumbersOf(ready, 0), []);
+  assert.deepEqual(
+    blockerNumbersOf(
+      [
+        issue(739, { body: "## Dependencies\nNeeds #1 and #2." }),
+        issue(738, { body: "## Dependencies\nNeeds #1." }),
+      ],
+      2,
+    ),
+    [1, 2],
   );
 });
