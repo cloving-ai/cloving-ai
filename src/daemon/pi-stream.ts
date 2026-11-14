@@ -36,6 +36,7 @@ interface State {
   readonly responseIds: Set<string>;
   readonly startIds: Set<string>;
   readonly tools: Set<string>;
+  readonly historicalTools: Set<string>;
   readonly nested: WorkerUsage[];
   readonly nestedIds: Set<string>;
   auxiliaryWork: boolean;
@@ -55,8 +56,16 @@ function messageText(message: State["message"]): string {
     .join("\n");
 }
 
+function historicalToolEvent(event: Fields, state: State): boolean {
+  const message = record(event["message"]);
+  return state.historicalTools.has(
+    text(event["toolCallId"] ?? message?.["toolCallId"]),
+  );
+}
+
 function replayed(event: Fields, state: State): boolean {
   const message = record(event["message"]);
+  if (historicalToolEvent(event, state)) return true;
   if (
     !["message_start", "message_end"].includes(String(event["type"])) ||
     message?.["role"] !== "assistant"
@@ -95,6 +104,7 @@ function assistant(message: Fields, state: State): readonly string[] {
 
 function toolResult(event: Fields, state: State): readonly string[] {
   const id = text(event["toolCallId"]);
+  if (state.historicalTools.has(id)) return [];
   const result = record(event["result"]) ?? event;
   if (result["nestedCalls"] !== undefined) state.auxiliaryWork = true;
   if (result["usage"] !== undefined && !state.nestedIds.has(id)) {
@@ -214,6 +224,7 @@ function activity(event: Fields, state: State): readonly string[] {
 function toolActivity(event: Fields, state: State): readonly string[] {
   switch (event["type"]) {
     case "tool_execution_start":
+      if (state.historicalTools.has(text(event["toolCallId"]))) return [];
       return [
         JSON.stringify({
           type: "assistant",
@@ -272,13 +283,16 @@ function parsed(line: string, state: State): readonly string[] {
   }
 }
 
-export function piStream(ownedSession?: {
+interface PiStreamSession {
   readonly historicalResponses?: readonly string[];
+  readonly historicalTools?: readonly string[];
   readonly id: string;
   readonly cwd: string;
   readonly timestamp: string;
-}) {
-  const state: State = {
+}
+
+function initialState(ownedSession: PiStreamSession | undefined): State {
+  return {
     activity: piActivity(),
     sessionId: null,
     sessionHeader: piSessionHeader(ownedSession),
@@ -293,11 +307,16 @@ export function piStream(ownedSession?: {
     responses: [],
     responseIds: new Set(ownedSession?.historicalResponses),
     startIds: new Set(),
-    tools: new Set(),
+    tools: new Set(ownedSession?.historicalTools),
+    historicalTools: new Set(ownedSession?.historicalTools),
     nested: [],
     nestedIds: new Set(),
     auxiliaryWork: false,
   };
+}
+
+export function piStream(ownedSession?: PiStreamSession) {
+  const state = initialState(ownedSession);
   return {
     line: (line: string) =>
       parsed(line.endsWith("\r") ? line.slice(0, -1) : line, state),

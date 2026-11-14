@@ -22,6 +22,7 @@ export type SteerAnswer =
 
 export interface Steering {
   child?: { readonly turn: RunningTurn; sessionId: string | null };
+  delivery: Promise<void>;
   pending?: { readonly sessionId: string; readonly notes: SteerNote[] };
   readonly accepted: SteerNote[];
   readonly delivered: SteerNote[];
@@ -31,7 +32,12 @@ export interface Steering {
 export function steeringOf(
   resume: { readonly steerNotes: readonly string[] } | undefined,
 ): Steering {
-  return { accepted: [], delivered: [], earlier: resume?.steerNotes ?? [] };
+  return {
+    accepted: [],
+    delivered: [],
+    earlier: resume?.steerNotes ?? [],
+    delivery: Promise.resolve(),
+  };
 }
 
 export function queued(reason: string): {

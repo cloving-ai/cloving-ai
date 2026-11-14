@@ -16,6 +16,8 @@ import type { WorkTree } from "./work-tree.ts";
 import { turnHarness } from "../harness-defaults.ts";
 import { selectedProfile, type WorkerProfiles } from "./worker-profile.ts";
 import { recordedProcessDirectory } from "./worktree-processes.ts";
+import { piRpcCommand } from "./pi-session.ts";
+import { reservedPiRpcNotes } from "./pi-rpc-channel.ts";
 import { piResumeSession } from "./pi-resume.ts";
 import type { PiSession } from "./pi-session.ts";
 import { resumeWorktree } from "./resume-worktree.ts";
@@ -190,7 +192,8 @@ function resumeFailure(
   if (recordedField(request.started, "harness") !== harness.worker)
     return "claude-turn-interrupted";
   if (harness.worker === "pi")
-    return harness.output === "text"
+    return harness.output === "text" ||
+      piRpcCommand(harness.command) === undefined
       ? "pi-native-resume-unsupported"
       : undefined;
   return resumedCommand({ ...harness, sessionId: request.sessionId }) ===
@@ -300,7 +303,12 @@ export async function readResume(
     ends: records.map(priorEnd),
     startedAt: header.startedAt,
     turnStartCommit: header.turnStartCommit,
-    steerNotes: recordedTexts(started, "steerNotes"),
+    steerNotes: [
+      ...new Set([
+        ...recordedTexts(started, "steerNotes"),
+        ...(await reservedPiRpcNotes(started)),
+      ]),
+    ],
   };
 }
 

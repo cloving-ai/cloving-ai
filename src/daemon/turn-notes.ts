@@ -1,3 +1,4 @@
+import { reservedPiRpcNotes } from "./pi-rpc-channel.ts";
 import { recordedField, recordedTexts } from "./claude-recovery.ts";
 import { located, readRecord } from "./operation-journal.ts";
 
@@ -52,7 +53,10 @@ export async function receivedNotes(
   for (const operationId of operationIds) {
     const { folder } = located(journal, operationId);
     const started = await readRecord(folder, "started.json");
-    const noteIds = agentStarted(started) ? recordedNotes(started) : [];
+    const noteIds = [
+      ...(agentStarted(started) ? recordedNotes(started) : []),
+      ...(await reservedPiRpcNotes(started)),
+    ];
     for (const noteId of noteIds) received[noteId] = operationId;
   }
   return received;

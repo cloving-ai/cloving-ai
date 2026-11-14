@@ -1,3 +1,4 @@
+import { reservedPiRpcNotes } from "./pi-rpc-channel.ts";
 import { turnHarness } from "../harness-defaults.ts";
 import { resumeReasonField } from "../worker-usage.ts";
 import { record } from "../protocol.ts";
@@ -187,7 +188,12 @@ async function readAttach(
     startedAt,
     turnStartCommit: typeof head === "string" ? head : null,
     ends: records.slice(0, -1).map(priorEnd),
-    steerNotes: recordedTexts(started, "steerNotes"),
+    steerNotes: [
+      ...new Set([
+        ...recordedTexts(started, "steerNotes"),
+        ...(await reservedPiRpcNotes(started)),
+      ]),
+    ],
     entry: {
       ...record(entry),
       attempt,
