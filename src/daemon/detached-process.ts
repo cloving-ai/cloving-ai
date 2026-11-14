@@ -12,6 +12,11 @@ import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { record } from "../protocol.ts";
 import {
+  piRpcLauncherModule,
+  preparePiRpc,
+  type PiRpcStart,
+} from "./pi-rpc-launcher.ts";
+import {
   recordedLaunch,
   type PlannedLaunch,
   type TurnLaunch,
@@ -50,6 +55,7 @@ export interface LaunchedProcess extends DetachedProcess {
 }
 
 export interface LauncherStart {
+  readonly piRpc?: PiRpcStart;
   readonly executable: string;
   readonly arguments: readonly string[];
   readonly environment: NodeJS.ProcessEnv;
@@ -76,22 +82,24 @@ export const intervals = { output: 100, process: 250, identity: 16 } as const;
 const launcher = [
   'const{spawn,execFileSync}=require("node:child_process");',
   'const{fstatSync,renameSync,writeFileSync}=require("node:fs");',
-  "const[exit,marker,coverage,limitText,command,...rest]=process.argv.slice(1);",
+  "const[exit,marker,coverage,limitText,rpcModule,rpcText,command,...rest]=process.argv.slice(1);",
   "const startedAt=Date.now();let processStart;",
   'try{processStart=execFileSync("ps",["-o","lstart=",String(process.pid)],{encoding:"utf8",timeout:5000,env:{...process.env,LC_ALL:"C"}}).trim().split(/\\s+/).join(" ");}catch{}',
   "const limits=JSON.parse(limitText);",
-  'for(const name of["SIGTERM","SIGINT","SIGHUP"])process.on(name,()=>undefined);',
+  'let rpcStopped=false;let rpcStop=()=>undefined;const closing=(phase)=>{try{return rpcStop(phase);}catch{return "pi-rpc-control-failed";}};for(const name of["SIGTERM","SIGINT","SIGHUP"])process.on(name,()=>{rpcStopped=true;closing("stop");});',
   "const env={...process.env};",
   'if(coverage!=="")env.NODE_V8_COVERAGE=coverage;',
   "let ended=false;",
   "const ending=(fields)=>{if(ended)return false;ended=true;",
   'writeFileSync(exit+".tmp",JSON.stringify({...fields,processId:process.pid,processStart,marker,startedAt,endedAt:new Date().toISOString()})+"\\n",{mode:0o600});',
   'renameSync(exit+".tmp",exit);return true;};',
-  'const stopped=(reason)=>{let first=true;try{first=ending({exitCode:null,signal:"SIGKILL",reason});}finally{if(first)process.kill(-process.pid,"SIGKILL");}};',
-  'const child=spawn(command,rest,{stdio:"inherit",env});',
+  'const stopped=(reason)=>{closing("stop");let first=true;try{first=ending({exitCode:null,signal:"SIGKILL",reason});}finally{if(first)process.kill(-process.pid,"SIGKILL");}};',
+  "const rpc=JSON.parse(rpcText);",
+  'const child=spawn(command,rest,{stdio:rpc===null?"inherit":["pipe","pipe","inherit"],env});',
+  'if(rpc!==null)import(rpcModule).then(({attachPiRpc})=>{if(rpcStopped){stopped("pi-rpc-stopped-before-input");return;}rpcStop=attachPiRpc(child,{start:rpc,owner:{processId:process.pid,processStart,marker},stop:stopped});}).catch(()=>{stopped("pi-rpc-control-failed");});',
   'child.on("error",()=>undefined);',
   "const limited=limits.milliseconds!==undefined||limits.outputBytes!==undefined;",
-  'child.on("close",(exitCode,signal)=>{ending({exitCode,signal});if(limited)try{process.kill(-process.pid,"SIGKILL");}catch{}process.exit(0);});',
+  'child.on("close",(exitCode,signal)=>{const reason=closing("exit");ending({exitCode,signal,...(reason===undefined?{}:{reason,exitCode:null})});if(limited)try{process.kill(-process.pid,"SIGKILL");}catch{}process.exit(0);});',
   "if(limits.milliseconds!==undefined)setTimeout(()=>{stopped(limits.reason);},limits.milliseconds);",
   "const over=(descriptor,bytes)=>fstatSync(descriptor).size>bytes;",
   "if(limits.outputBytes!==undefined)setInterval(()=>{",
@@ -159,6 +167,7 @@ function spawnedLauncher(start: LauncherStart): ChildProcess {
   const { NODE_V8_COVERAGE: coverage = "", ...environment } = start.environment;
   const { path, launch } = start.marker;
   try {
+    if (start.piRpc !== undefined) preparePiRpc(start.piRpc, launch.marker);
     rmSync(launch.exit, { force: true });
     writeFileSync(`${path}.staged`, JSON.stringify(launch), { mode: 0o600 });
     renameSync(`${path}.staged`, path);
@@ -171,6 +180,8 @@ function spawnedLauncher(start: LauncherStart): ChildProcess {
         launch.marker,
         coverage,
         JSON.stringify(start.limits ?? {}),
+        piRpcLauncherModule,
+        JSON.stringify(start.piRpc ?? null),
         start.executable,
         ...start.arguments,
       ],
