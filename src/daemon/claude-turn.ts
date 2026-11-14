@@ -221,13 +221,17 @@ function launchedTurn(start: TurnStart): StartedTurn | undefined {
     parts: turnParts,
     standardInput,
     inputExtension,
+    rpc,
   } = turnCommand(start);
   const configuration = mkdtempSync(join(start.folder, "gh-config-"));
   const environment = turnEnvironment(configuration, start);
   const parts = shellCommand(start, { configuration, parts: turnParts });
   try {
     const program = runnerProgram(start.runner, parts);
-    if (!commandFound(program, { ...start, path: environment["PATH"] })) {
+    if (
+      rpc !== true &&
+      !commandFound(program, { ...start, path: environment["PATH"] })
+    ) {
       rmSync(configuration, { recursive: true, force: true });
       return undefined;
     }
@@ -248,6 +252,15 @@ function launchedTurn(start: TurnStart): StartedTurn | undefined {
       environment: launch.environment,
       standardInput,
       configuration,
+      ...(rpc !== true || start.piSession === undefined
+        ? {}
+        : {
+            piRpc: {
+              folder: join(start.folder, "pi-rpc"),
+              session: start.piSession,
+              prompt: start.prompt,
+            },
+          }),
       ...(launch.place === undefined ? {} : { runnerPlace: launch.place }),
     });
   } catch (error) {

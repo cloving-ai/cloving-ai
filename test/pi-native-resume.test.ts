@@ -3,79 +3,25 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
 import {
-  alive,
   field,
   intent,
   record,
   resultOf,
   until,
   withScene,
-  type Scene,
 } from "./claude-worker-fixture.ts";
 import { consumePiShutdown, piResumeSession } from "../src/daemon/pi-resume.ts";
 import { dirname } from "node:path";
 import { operationFile } from "./harness-detached-fixture.ts";
-import { fakePi, piEvents, piMessage } from "./pi-fixture.ts";
+import { piEvents, piMessage } from "./pi-fixture.ts";
+
+import {
+  stoppedPi,
+  prompts,
+  historicalTool as tool,
+} from "./pi-native-resume-fixture.ts";
 
 const nextMessage = piMessage({ responseId: "new-response", timestamp: 2 });
-
-async function stoppedPi(
-  scene: Scene,
-  options: {
-    readonly events?: readonly unknown[];
-    readonly resumeEvents?: readonly unknown[];
-    readonly resumeGate?: string;
-    readonly model?: string;
-  } = {},
-) {
-  const gate = join(scene.directory, "release");
-  const settings = {
-    profiles: {
-      native: { harness: "pi", model: options.model ?? "operator/alias" },
-    },
-    tokenPrices: {
-      "test-provider/test-model": { input: 2, cachedInput: 0.5, output: 8 },
-    },
-    harness: {
-      name: "pi",
-      path: fakePi(scene, {
-        gate,
-        resumeEvents: piEvents(nextMessage),
-        ...options,
-      }),
-    },
-  };
-  const signal = new AbortController().signal;
-  const first = scene.worker("unused", settings);
-  const call =
-    options.model === undefined
-      ? intent()
-      : intent({ method: "run-turn:native" });
-  await first.deliver(call, signal);
-  await until(() => existsSync(join(scene.directory, "observed.json")));
-  const started = record(scene, "operation-1/started.json");
-  const session = field(started, "piSession");
-  const processId = Number(field(field(started, "launch"), "processId"));
-  const output = String(field(field(started, "launch"), "output"));
-  await until(() => readFileSync(output, "utf8").includes('"message_end"'));
-  await first.close();
-  assert.equal(alive(processId), false);
-  assert.equal(scene.reports.length, 0);
-  return {
-    signal,
-    session,
-    settings,
-    call,
-    next: scene.worker("unused", settings),
-  };
-}
-
-function prompts(scene: Scene) {
-  return readFileSync(join(scene.directory, "pi-prompts.jsonl"), "utf8")
-    .trim()
-    .split("\n")
-    .map((line) => resultOf(line));
-}
 
 await test("CLV-365 a confirmed Pi shutdown resumes the owned session once with invocation accounting", () =>
   withScene(async (scene) => {
@@ -379,4 +325,76 @@ await test("CLV-365 a native Pi resume decision survives a crash before the repl
     await until(() => scene.reports.length === 1);
     assert.equal(scene.reports[0]?.outcome, "completed");
     assert.equal(prompts(scene).length, 2);
+  }));
+
+await test("CLV-365 an unqualified Pi command override refuses native resume before a replacement", () =>
+  withScene(async (scene) => {
+    const { settings, signal } = await stoppedPi(scene);
+    const next = scene.worker("unused", {
+      ...settings,
+      harness: {
+        ...settings.harness,
+        command: [
+          settings.harness.path,
+          "--mode",
+          "json",
+          "--extension",
+          "unqualified",
+        ],
+      },
+    });
+    const reply = await next.reconcile(intent(), signal);
+    assert.equal(reply.kind, "failed");
+    assert.equal(field(reply, "reason"), "pi-native-resume-unsupported");
+    assert.equal(prompts(scene).length, 1);
+  }));
+
+await test("CLV-365 uncertain RPC input evidence refuses native resume before another prompt", () =>
+  withScene(async (scene) => {
+    const { signal, next } = await stoppedPi(scene);
+    const launch = field(record(scene, "operation-1/started.json"), "launch");
+    writeFileSync(
+      join(String(field(launch, "piRpc")), "receipts", "initial.json"),
+      "{}",
+    );
+    const reply = await next.reconcile(intent(), signal);
+    assert.equal(reply.kind, "failed");
+    assert.equal(field(reply, "reason"), "pi-prior-result-uncertain");
+    assert.equal(prompts(scene).length, 1);
+  }));
+
+await test("CLV-365 native Pi resume excludes historical tool text and nested usage", () =>
+  withScene(async (scene) => {
+    const events = [
+      ...piEvents().slice(0, -1),
+      { type: "message_end", message: tool },
+      ...piEvents().slice(-1),
+    ];
+    const replay = [
+      ...piEvents(nextMessage).slice(0, 2),
+      { type: "message_end", message: tool },
+      ...piEvents(nextMessage).slice(2),
+      { type: "message_end", message: tool },
+    ];
+    const { signal, next } = await stoppedPi(scene, {
+      events,
+      resumeEvents: replay,
+    });
+    assert.equal((await next.reconcile(intent(), signal)).kind, "accepted");
+    await until(() => scene.reports.length === 1);
+    assert.equal(scene.reports[0]?.outcome, "completed");
+    const result = resultOf(scene.reports[0].result);
+    assert.equal(
+      field(field(result["piAccounting"], "nestedUsage"), "input_tokens"),
+      100,
+    );
+    assert.equal(
+      field(field(result["attempts"], "1"), "estimatedCostUsd"),
+      0.00038,
+    );
+    const transcript = readFileSync(
+      operationFile(scene, { operationId: "operation-1", name: "turn.jsonl" }),
+      "utf8",
+    );
+    assert.equal(transcript.split("Old tool output").length - 1, 1);
   }));

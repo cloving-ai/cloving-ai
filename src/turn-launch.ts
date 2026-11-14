@@ -1,6 +1,7 @@
 import { record } from "./protocol.ts";
 
 export interface TurnLaunch {
+  readonly piRpc?: string;
   readonly processId: number;
   readonly processStart: string;
   readonly marker: string;
@@ -87,6 +88,8 @@ export function plannedLaunch(value: unknown): PlannedLaunch | undefined {
   if (!texts.every((text) => typeof text === "string")) return undefined;
   const transcript = recordedTranscript(fields["transcript"]);
   const runner = recordedRunner(fields["runner"]);
+  const piRpc = fields["piRpc"];
+  if (piRpc !== undefined && typeof piRpc !== "string") return undefined;
   if (transcript === undefined || runner === undefined) return undefined;
   return {
     marker: String(marker),
@@ -96,6 +99,7 @@ export function plannedLaunch(value: unknown): PlannedLaunch | undefined {
     configuration: String(configuration),
     ...transcript,
     ...runner,
+    ...(typeof piRpc === "string" ? { piRpc } : {}),
   };
 }
 

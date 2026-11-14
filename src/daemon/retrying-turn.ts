@@ -1,3 +1,4 @@
+import { steerPi } from "./pi-turn-steering.ts";
 import {
   type RunningTurn,
   type TurnEnd,
@@ -36,7 +37,7 @@ import {
 export type { RetrySettings } from "./turn-attempts.ts";
 
 export interface RetriedTurn extends RunningTurn {
-  readonly steer: (note: SteerNote) => SteerOutcome;
+  readonly steer: (note: SteerNote) => SteerOutcome | Promise<SteerOutcome>;
 }
 
 const waits = { capacity: [60_000, 180_000], network: [600_000, 2_400_000] };
@@ -197,6 +198,7 @@ async function finished(
   let turn: RunningTurn | undefined = first;
   while (turn !== undefined) {
     const end = await turn.ended;
+    await attempts.steering.delivery;
     delete attempts.steering.child;
     ends.push(end);
     await recordedEnd(attempts, { processId: turn.processId, end });
@@ -354,13 +356,16 @@ export async function startRetriedTurn(
   return {
     processId: turn.processId,
     ended: finished(attempts, turn),
-    steer: (note) =>
-      resumable(start)
+    steer: (note) => {
+      if (start.worker === "pi" && start.output !== "text")
+        return steerPi(attempts, note);
+      return resumable(start)
         ? steer(attempts.steering, {
             note,
             grace: attempts.grace.milliseconds,
           })
-        : queued("harness-cannot-resume"),
+        : queued("harness-cannot-resume");
+    },
     stop: (graceMilliseconds) => {
       attempts.grace.milliseconds = graceMilliseconds;
       attempts.stopping.abort();

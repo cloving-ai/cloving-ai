@@ -2,11 +2,39 @@ import { closeSync, openSync } from "node:fs";
 import { join } from "node:path";
 import { PassThrough } from "node:stream";
 import { attachPiRpc, preparePiRpc } from "../src/daemon/pi-rpc-launcher.ts";
-import { rpcNoteRequest, rpcWrite } from "../src/daemon/pi-rpc-channel.ts";
+import {
+  rpcNoteRequest,
+  rpcWrite,
+  type PiRpcOwner,
+} from "../src/daemon/pi-rpc-channel.ts";
 import { resultOf, type Scene } from "./claude-worker-fixture.ts";
+import {
+  processIdentity,
+  type RecordedProcess,
+} from "../src/daemon/process-identity.ts";
 
-export function rpcUnit(scene: Scene) {
-  const folder = join(scene.directory, "unit-rpc");
+export async function rpcProcessUnit(scene: Scene) {
+  const identity = await processIdentity(process.pid);
+  if (identity === undefined) throw new Error("unit process identity missing");
+  return rpcUnit(scene, {
+    processId: process.pid,
+    processStart: identity.start,
+    marker: identity.command.split(" ")[0] ?? "",
+  });
+}
+
+function queueInput(owner: PiRpcOwner, sequence: number) {
+  const input = rpcNoteRequest(owner, {
+    noteId: `unit-${String(sequence)}`,
+    text: "note",
+    sequence,
+  });
+  rpcWrite(join(owner.piRpc, "requests", `${input.id}.json`), input);
+  return input;
+}
+
+export function rpcUnit(scene: Scene, identity?: RecordedProcess) {
+  const folder = join(scene.directory, "pi-rpc");
   const start = {
     folder,
     prompt: "initial prompt",
@@ -22,6 +50,7 @@ export function rpcUnit(scene: Scene) {
     processId: 1,
     processStart: "unit start",
     marker: "unit owner",
+    ...identity,
   };
   preparePiRpc(start, owner.marker);
   const child = { stdin: new PassThrough(), stdout: new PassThrough() };
@@ -38,6 +67,7 @@ export function rpcUnit(scene: Scene) {
   });
   return {
     folder,
+    owner,
     child,
     commands,
     stopped,
@@ -49,15 +79,7 @@ export function rpcUnit(scene: Scene) {
         JSON.stringify(stateResponse(start.session, fields)) + "\n",
       );
     },
-    queue: (sequence: number) => {
-      const input = rpcNoteRequest(owner, {
-        noteId: `unit-${String(sequence)}`,
-        text: "note",
-        sequence,
-      });
-      rpcWrite(join(folder, "requests", `${input.id}.json`), input);
-      return input;
-    },
+    queue: (sequence: number) => queueInput(owner, sequence),
     close,
     dispose: () => {
       close("stop");

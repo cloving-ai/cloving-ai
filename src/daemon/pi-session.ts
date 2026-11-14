@@ -1,3 +1,4 @@
+import { piRpcOwnershipFailure } from "./pi-rpc-channel.ts";
 import { randomUUID } from "node:crypto";
 import { constants } from "node:fs";
 import { mkdir, open, realpath, writeFile } from "node:fs/promises";
@@ -8,6 +9,7 @@ import { readRecord } from "./operation-journal.ts";
 
 export interface PiSession {
   readonly historicalResponses?: readonly string[];
+  readonly historicalTools?: readonly string[];
   readonly path: string;
   readonly id: string;
   readonly cwd: string;
@@ -32,6 +34,32 @@ export function piSessionCommandFailure(
   return command.some((part) => selectors.includes(part.split("=")[0] ?? ""))
     ? "pi-session-command-unsupported"
     : undefined;
+}
+
+export function piRpcCommand(
+  command: readonly string[],
+): readonly string[] | undefined {
+  const values = new Set([
+    "--mode",
+    "--model",
+    "-m",
+    "--provider",
+    "--thinking",
+    "--session",
+  ]);
+  const parts = [...command];
+  let modes = 0;
+  for (let index = 1; index < parts.length; index += 2) {
+    const flag = parts[index] ?? "";
+    const value = parts[index + 1];
+    if (!values.has(flag) || value === undefined || value.startsWith("-"))
+      return undefined;
+    if (flag !== "--mode") continue;
+    if (!["json", "rpc"].includes(value)) return undefined;
+    modes += 1;
+    parts[index + 1] = "rpc";
+  }
+  return modes === 1 ? parts : undefined;
 }
 
 export async function createPiSession(place: {
@@ -84,7 +112,14 @@ function sameSession(
 ): boolean {
   const fields = record(second);
   if (fields === undefined) return false;
-  return ["path", "id", "cwd", "timestamp", "historicalResponses"].every(
+  return [
+    "path",
+    "id",
+    "cwd",
+    "timestamp",
+    "historicalResponses",
+    "historicalTools",
+  ].every(
     (name) => JSON.stringify(first[name]) === JSON.stringify(fields[name]),
   );
 }
@@ -96,11 +131,14 @@ function validSession(session: Readonly<Record<string, unknown>>): boolean {
   const timestamp = session["timestamp"];
   return (
     texts &&
-    (session["historicalResponses"] === undefined ||
-      (Array.isArray(session["historicalResponses"]) &&
-        session["historicalResponses"].every(
-          (value: unknown) => typeof value === "string",
-        ))) &&
+    ["historicalResponses", "historicalTools"].every((key) => {
+      const values = session[key];
+      return (
+        values === undefined ||
+        (Array.isArray(values) &&
+          values.every((value: unknown) => typeof value === "string"))
+      );
+    }) &&
     typeof timestamp === "string" &&
     Number.isFinite(Date.parse(timestamp))
   );
@@ -228,6 +266,8 @@ function piAttemptEvidenceFailure(
     return "pi-attempt-ownership-conflict";
   const launch = recordedLaunch(started["launch"]);
   if (launch === undefined) return "pi-prior-result-uncertain";
+  const rpcFailure = piRpcOwnershipFailure(launch, entry["piSession"]);
+  if (rpcFailure !== undefined) return rpcFailure;
   return JSON.stringify(launch) ===
     JSON.stringify(recordedLaunch(entry["launch"]))
     ? undefined
@@ -252,9 +292,13 @@ export async function ownedPiSession(
   const failure = headerFailure(value, session);
   if (failure !== undefined) return failure;
   const historicalResponses = session["historicalResponses"];
+  const historicalTools = session["historicalTools"];
   return {
     ...(Array.isArray(historicalResponses)
       ? { historicalResponses: historicalResponses.map(String) }
+      : {}),
+    ...(Array.isArray(historicalTools)
+      ? { historicalTools: historicalTools.map(String) }
       : {}),
     path,
     id: String(session["id"]),

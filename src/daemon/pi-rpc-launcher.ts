@@ -65,6 +65,9 @@ function ownerState(state: RpcState, phase: string): void {
     ...state.owner,
     protocol: "pi-1.5.2",
     state: phase,
+    ...(state.settled || state.closed
+      ? { sealedInputs: [...state.inputs.keys()] }
+      : {}),
   });
 }
 
@@ -239,6 +242,7 @@ function received(state: RpcState, line: string): void {
   if (event["type"] === "agent_settled") {
     state.settled = true;
     state.settledAt = Date.now();
+    ownerState(state, "settled");
   }
   finishIdle(state);
 }
