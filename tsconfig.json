@@ -24,6 +24,11 @@
     "verbatimModuleSyntax": true,
     "erasableSyntaxOnly": true,
     "types": ["node"],
+    "paths": {
+      "cloving/workflows": ["./src/workflows.ts"],
+      "cloving/workflows/testing": ["./src/testing.ts"],
+      "cloving/workflows/steps/*": ["./src/steps/*.ts"]
+    },
     "rootDir": ".",
     "outDir": "dist"
   },

@@ -7,11 +7,15 @@ export interface ListedIssue {
   readonly body: string;
   readonly createdAt: string;
   readonly labels: readonly string[];
+  readonly bodyOmitted?: "result-too-large" | "body-limit";
+  readonly bodyEncoding?: "base64";
 }
 
 interface IssueQuery {
   readonly search: string;
   readonly limit: number;
+  readonly cursor: number | undefined;
+  readonly maximumBodyBytes: number | undefined;
 }
 
 const pageSize = 100;
@@ -59,10 +63,42 @@ function wholeLimit(value: unknown): number {
   return value;
 }
 
+function cursorOf(payload: Operation["payload"]): number | undefined {
+  if (!Object.hasOwn(payload, "cursor")) return undefined;
+  const cursor = payload["cursor"];
+  if (
+    typeof cursor !== "number" ||
+    !Number.isSafeInteger(cursor) ||
+    cursor < 0 ||
+    cursor > 999
+  )
+    refused();
+  return cursor;
+}
+
+function bodyLimitOf(payload: Operation["payload"]): number | undefined {
+  if (!Object.hasOwn(payload, "maximumBodyBytes")) return undefined;
+  const value = payload["maximumBodyBytes"];
+  if (
+    typeof value !== "number" ||
+    !Number.isSafeInteger(value) ||
+    value < 1 ||
+    value > 262144
+  )
+    refused();
+  return value;
+}
+
 function issueQuery(payload: Operation["payload"]): IssueQuery {
   const { labels, state, limit } = payload;
-  if (Object.keys(payload).toSorted().join(",") !== "labels,limit,state")
+  const keys = Object.keys(payload).toSorted().join(",");
+  if (
+    keys !== "labels,limit,state" &&
+    keys !== "cursor,labels,limit,state" &&
+    keys !== "cursor,labels,limit,maximumBodyBytes,state"
+  )
     refused();
+  const start = cursorOf(payload);
   if (!Array.isArray(labels) || labels.length > 5) refused();
   if (typeof state !== "string" || !states.has(state)) refused();
   const filter = labels.map((label: unknown) =>
@@ -72,19 +108,18 @@ function issueQuery(payload: Operation["payload"]): IssueQuery {
     search: [
       `state=${state}`,
       ...(filter.length === 0 ? [] : [`labels=${filter.join(",")}`]),
-      `sort=created&direction=desc&per_page=${String(pageSize)}`,
+      `sort=created&direction=desc&per_page=${String(start === undefined ? pageSize : 10)}`,
     ].join("&"),
     limit: wholeLimit(limit),
+    cursor: start,
+    maximumBodyBytes: bodyLimitOf(payload),
   };
 }
 
-async function issuePage(
+async function pageRows(
   operation: Operation,
   request: { readonly search: string; readonly page: number },
-): Promise<{
-  readonly issues: readonly ListedIssue[];
-  readonly full: boolean;
-}> {
+): Promise<readonly unknown[]> {
   const rows: unknown = JSON.parse(
     await operation.calls.gh([
       "api",
@@ -92,6 +127,14 @@ async function issuePage(
     ]),
   );
   if (!Array.isArray(rows)) throw new Error("github-call-failed");
+  return rows.map((row: unknown) => row);
+}
+
+async function issuePage(
+  operation: Operation,
+  request: { readonly search: string; readonly page: number },
+) {
+  const rows = await pageRows(operation, request);
   return {
     issues: rows
       .filter((row: unknown) => field(row, "pull_request") === undefined)
@@ -100,10 +143,10 @@ async function issuePage(
   };
 }
 
-export async function listIssues(
-  operation: Operation,
-): Promise<readonly ListedIssue[]> {
-  const { search, limit } = issueQuery(operation.payload);
+export async function listIssues(operation: Operation) {
+  const query = issueQuery(operation.payload);
+  if (query.cursor !== undefined) return cursorPage(operation, query);
+  const { search, limit } = query;
   const found = new Map<number, ListedIssue>();
   for (let page = 1; found.size < limit; page++) {
     if (page > pageLimit) throw new Error("issues-limit");
@@ -112,4 +155,89 @@ export async function listIssues(
     if (!read.full) break;
   }
   return [...found.values()].slice(0, limit);
+}
+
+interface CursorPage {
+  readonly issues: ListedIssue[];
+  readonly cursor: number | null;
+}
+
+function pageBytes(page: CursorPage): number {
+  return Buffer.byteLength(JSON.stringify(page));
+}
+
+function boundedIssue(issue: ListedIssue): ListedIssue {
+  if (pageBytes({ issues: [issue], cursor: 1000 }) <= 262144) return issue;
+  const omitted = {
+    ...issue,
+    body: "",
+    bodyOmitted: "result-too-large" as const,
+  };
+  if (pageBytes({ issues: [omitted], cursor: 1000 }) > 262144)
+    throw new Error("result-too-large");
+  return omitted;
+}
+
+function encodedIssue(
+  issue: ListedIssue,
+  maximumBodyBytes: number | undefined,
+): ListedIssue {
+  if (
+    maximumBodyBytes !== undefined &&
+    Buffer.byteLength(issue.body) > maximumBodyBytes
+  )
+    return boundedIssue({ ...issue, body: "", bodyOmitted: "body-limit" });
+  const bytes = Buffer.from(issue.body);
+  if (bytes.toString("utf8") !== issue.body)
+    throw new Error("github-call-failed");
+  const encoded = {
+    ...issue,
+    body: bytes.toString("base64"),
+    bodyEncoding: "base64" as const,
+  };
+  const smaller =
+    pageBytes({ issues: [encoded], cursor: 1000 }) <
+    pageBytes({ issues: [issue], cursor: 1000 })
+      ? encoded
+      : issue;
+  return boundedIssue(smaller);
+}
+
+async function cursorPage(
+  operation: Operation,
+  query: IssueQuery,
+): Promise<CursorPage> {
+  let cursor = query.cursor ?? 0;
+  const issues: ListedIssue[] = [];
+  while (cursor < 1000) {
+    const page = Math.floor(cursor / 10) + 1;
+    const rows = await pageRows(operation, { search: query.search, page });
+    const index = appendRows(rows, { issues, start: cursor % 10, query });
+    cursor = (page - 1) * 10 + index;
+    if (index >= rows.length && rows.length < 10)
+      return { issues, cursor: null };
+    if (index < rows.length || issues.length >= query.limit)
+      return { issues, cursor };
+  }
+  return { issues, cursor };
+}
+
+function appendRows(
+  rows: readonly unknown[],
+  context: {
+    readonly issues: ListedIssue[];
+    readonly start: number;
+    readonly query: IssueQuery;
+  },
+): number {
+  const { issues, start, query } = context;
+  let index = start;
+  for (; index < rows.length && issues.length < query.limit; index++) {
+    const row = rows[index];
+    if (field(row, "pull_request") !== undefined) continue;
+    const issue = encodedIssue(listedIssue(row), query.maximumBodyBytes);
+    if (pageBytes({ issues: [...issues, issue], cursor: 1000 }) > 262144) break;
+    issues.push(issue);
+  }
+  return index;
 }

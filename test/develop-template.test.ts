@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { test } from "node:test";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import ts from "typescript";
+import { checkTests } from "../quality/test-execution.ts";
 import { completeConfigurations } from "./develop-template-options-fixture.ts";
 import { withFiles } from "./quality/files-fixture.ts";
 import {
@@ -147,14 +148,15 @@ await test("CLV-221 defaults to queue selection, Greptile and checked automatic 
     "greptile-review",
     "check-command",
     "ticket-command",
-    "next-command",
     "queue-interval",
   ])
     assert.ok(needs.has(code), `Missing default prerequisite: ${code}`);
   const options = document.points.flatMap((point) => point.options);
   assert.ok(
     options.some((option) =>
-      option.change.includes('"queue": { "everySeconds": 120, "lanes": 1 }'),
+      option.change.includes(
+        '{ "everySeconds": 120, "lanes": 1, "feed": "developFeed" }',
+      ),
     ),
   );
   assert.ok(
@@ -244,4 +246,32 @@ await test("CLV-221 requires ticket input and a pull request for queued partial 
       ),
       failure,
     );
+});
+
+await test("CLV-363 develop uses its feed and needs no next or ready command", async () => {
+  const document = await developManifest();
+  assert.deepEqual(document.scripts, []);
+  const select = document.points.find((point) => point.id === "select")
+    ?.options[0];
+  assert.ok(select);
+  assert.match(select.change, /"feed": "developFeed"/);
+  assert.ok(
+    document.points.every((point) =>
+      point.options.every((option) => !option.needs.includes("next-command")),
+    ),
+  );
+});
+
+await test("CLV-363 develop and feed selection tests pass with independent gate inventories", async () => {
+  const directory = resolve(import.meta.dirname, "..");
+  for (const file of [
+    "templates/develop/develop.test.ts",
+    "templates/develop/develop/feed-selection.test.ts",
+  ])
+    await assert.doesNotReject(async () => {
+      await checkTests(directory, {
+        files: [join(directory, file)],
+        timeFactor: 3,
+      });
+    }, file);
 });

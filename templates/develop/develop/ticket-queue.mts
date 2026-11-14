@@ -1,3 +1,6 @@
+import { blockersOf } from "./feed-selection.ts";
+export { blockersOf } from "./feed-selection.ts";
+
 export interface ReadyTicket {
   readonly id: string;
   readonly readyAt: string;
@@ -47,26 +50,6 @@ function issueNumber(value: unknown): number {
 function isOpen(state: unknown): boolean {
   if (state !== "open" && state !== "closed") throw unexpected();
   return state === "open";
-}
-
-export function blockersOf(body: string): readonly number[] {
-  const lines = body.split(/\r?\n/);
-  const heading = lines.findIndex((line) => /^## Dependencies\s*$/.test(line));
-  if (heading === -1) return [];
-  const below = lines.slice(heading + 1);
-  const next = below.findIndex((line) => /^#{1,2} /.test(line));
-  const text = below
-    .slice(0, next === -1 ? below.length : next)
-    .join("\n")
-    .replace(/\b(?:e\.g|i\.e)\./g, "example");
-  const needs =
-    /(?:^|[.!?]\s+|\n)\s*(?:[-*+]\s+|\d+\.\s+)?Needs\b([\s\S]*?)(?=[.!?](?:\s|$)|$)/g;
-  const numbers = [...text.matchAll(needs)].flatMap((sentence) =>
-    [...String(sentence[1]).matchAll(/#([1-9]\d*)\b/g)].map((match) =>
-      Number(match[1]),
-    ),
-  );
-  return [...new Set(numbers)];
 }
 
 function issueFrom(
