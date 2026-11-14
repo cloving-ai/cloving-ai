@@ -7,7 +7,11 @@ import {
   packCheckoutCopy,
   packedCommand,
 } from "./packed-install-fixture.ts";
-import { startPackedHost, ready, boundedExit } from "./packed-host-fixture.ts";
+import {
+  startPackedHost,
+  ready,
+  stopPackedHost,
+} from "./packed-host-fixture.ts";
 import { stopChildGroup } from "./stop-child.ts";
 import { withFiles } from "./quality/files-fixture.ts";
 import {
@@ -187,9 +191,7 @@ async function lifecycle(root: string, env: NodeJS.ProcessEnv): Promise<void> {
     await unlink(join(root, "release"));
     await failureAndDrop(root, env);
   } finally {
-    host.child.kill("SIGTERM");
-    await boundedExit(host.closed);
-    await stopChildGroup(host.child);
+    await stopPackedHost(host);
   }
 }
 
