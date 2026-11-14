@@ -5,6 +5,7 @@ import { basename, delimiter, resolve } from "node:path";
 import {
   harnessDefinition,
   harnessVersion,
+  harnessVersionReason,
   knownHarnesses,
   type KnownHarness,
 } from "../agent-harness-versions.ts";
@@ -97,7 +98,9 @@ function probeEntry(
     output.stdout,
     harnessDefinition(versionName(entry, harness)).versionPattern,
   );
-  const reason = output.reason ?? (version === null ? "no-version" : null);
+  const reason =
+    output.reason ??
+    harnessVersionReason(output.stdout, versionName(entry, harness));
   return {
     ...entry,
     version: reason === null ? version : null,

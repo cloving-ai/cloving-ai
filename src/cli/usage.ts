@@ -156,7 +156,8 @@ The dismissal is an event of the run and stays after a restart. It does not chan
 
 Records a note of 1 to 4000 characters for an active run. The next agent turn of the run gets the note.
 With --now, a Claude Code or Codex turn in work that recorded a session stops and resumes the same session
-with the note as the next message. A turn takes at most three such notes. In other cases the reply says
+with the note as the next message. A qualified native Pi turn uses its existing RPC process and requires
+both an acknowledgment and the observed note. A turn takes at most three such notes. In other cases the reply says
 queued with the reason, and the note waits for the next turn.
 `,
   rename: `Usage: cloving rename <run-id> (--title <text> [--label <text>] | --clear) [--command-id <id>] [--json]

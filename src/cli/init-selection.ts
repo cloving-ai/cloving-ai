@@ -27,7 +27,10 @@ export async function selectedHarness(
   );
   if (entries.length > 1) throw new Error("harness-ambiguous");
   const entry = entries[0];
-  if (entry === undefined) throw new Error("harness-unusable");
+  if (entry === undefined)
+    throw new Error(
+      `harness-unusable: ${discovery.entries.find((candidate) => !shell || candidate.kind === "shell")?.reason ?? "not-found"}`,
+    );
   return initEntry(entry);
 }
 

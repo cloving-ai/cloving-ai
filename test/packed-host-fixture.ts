@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { spawn, type ChildProcess } from "node:child_process";
 import { setTimeout as delay } from "node:timers/promises";
 import { testMilliseconds } from "./test-timing.ts";
+import { stopChildGroup } from "./stop-child.ts";
 
 export function startPackedHost(settings: {
   readonly root: string;
@@ -23,6 +24,18 @@ export function startPackedHost(settings: {
     child.once("close", settle),
   );
   return { child, output, closed };
+}
+
+export async function stopPackedHost(host: {
+  readonly child: ChildProcess;
+  readonly closed: Promise<number | null>;
+}): Promise<void> {
+  host.child.kill("SIGTERM");
+  try {
+    await boundedExit(host.closed);
+  } finally {
+    await stopChildGroup(host.child);
+  }
 }
 
 export async function ready(

@@ -5,10 +5,7 @@ import {
   shellBlock,
   shellProbeScript,
 } from "../agent-harness-shell.ts";
-import {
-  harnessDefinition,
-  harnessVersion,
-} from "../agent-harness-versions.ts";
+import { harnessVersionReason } from "../agent-harness-versions.ts";
 import type { DoctorObservation } from "../doctor-report.ts";
 import {
   harnessDefaults,
@@ -214,21 +211,21 @@ async function usableHarnessCommand(
     readonly worker: string;
     readonly output?: "text";
   },
-): Promise<boolean> {
+): Promise<string | null> {
   const configured = listedSetting(command) ?? [];
   const program = configured[0];
-  if (!program) return false;
+  if (!program) return "unsupported-command";
   const arguments_ = await harnessVersionArguments(configured, {
     directory: location.directory,
     environment: location.commandEnvironment,
     worker: location.worker,
   });
-  if (arguments_.length === 0) return false;
+  if (arguments_.length === 0) return "unsupported-command";
   const path = await executableProgram(program, {
     directory: location.directory,
     environment: location.commandEnvironment,
   });
-  if (path === undefined) return false;
+  if (path === undefined) return "not-found";
   const directory = await existingDirectory(location.directory);
   const output = await location.probe(path, {
     arguments: arguments_,
@@ -236,11 +233,8 @@ async function usableHarnessCommand(
     ...(directory === undefined ? {} : { directory }),
   });
   return (
-    output.reason === null &&
-    harnessVersion(
-      output.stdout,
-      harnessDefinition(probeName(location, basename(path))).versionPattern,
-    ) !== null
+    output.reason ??
+    harnessVersionReason(output.stdout, probeName(location, basename(path)))
   );
 }
 
@@ -286,7 +280,7 @@ function selectedHarness(
 async function usableShellHarness(
   selected: ReturnType<typeof turnHarness> & { readonly shell: string },
   location: HarnessCommandLocation,
-): Promise<boolean> {
+): Promise<string | null> {
   const directory = await existingDirectory(location.directory);
   const output = await location.probe(selected.shell, {
     arguments: [
@@ -300,11 +294,11 @@ async function usableShellHarness(
     ...(directory === undefined ? {} : { directory }),
   });
   return (
-    output.reason === null &&
-    harnessVersion(
+    output.reason ??
+    harnessVersionReason(
       shellBlock(output.stdout, 0) ?? "",
-      harnessDefinition(probeName(selected, selected.worker)).versionPattern,
-    ) !== null
+      probeName(selected, selected.worker),
+    )
   );
 }
 
@@ -312,13 +306,13 @@ async function selectedProbe(
   selected: ReturnType<typeof turnHarness>,
   location: HarnessCommandLocation,
 ): Promise<{
-  readonly usable: boolean;
+  readonly reason: string | null;
   readonly effective: DoctorObservation;
 }> {
   const shell = selected.shell;
   if (shell !== undefined)
     return {
-      usable: await usableShellHarness({ ...selected, shell }, location),
+      reason: await usableShellHarness({ ...selected, shell }, location),
       effective: {
         result: "ok",
         detail: `${JSON.stringify(selected.command)} through the login shell ${shell}`,
@@ -326,7 +320,7 @@ async function selectedProbe(
     };
   const command = JSON.stringify(selected.command);
   return {
-    usable: await usableHarnessCommand(command, {
+    reason: await usableHarnessCommand(command, {
       ...location,
       worker: selected.worker,
       ...(selected.output === undefined ? {} : { output: selected.output }),
@@ -358,10 +352,10 @@ async function selectedHarnessObservation(
       result: "fail",
       detail: `harness ${configured ?? "claude"}; harness-no-worker`,
     };
-  const { usable, effective } = await selectedProbe(selected, location);
+  const { reason, effective } = await selectedProbe(selected, location);
   const label = configured === undefined ? " (default)" : "";
   return {
-    result: usable && effective.result === "ok" ? "ok" : "fail",
-    detail: `harness ${selected.worker}${label}; probe ${usable ? "ok" : "failed or unsupported command"}; ${effective.detail}`,
+    result: reason === null && effective.result === "ok" ? "ok" : "fail",
+    detail: `harness ${selected.worker}${label}; probe ${reason ?? "ok"}; ${effective.detail}`,
   };
 }
