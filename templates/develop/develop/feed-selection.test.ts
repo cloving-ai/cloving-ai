@@ -1,4 +1,8 @@
-import { readyIssuesOf, blockerStatesOf } from "./feed-results.ts";
+import {
+  readyIssuesOf,
+  readyIssuePageOf,
+  blockerStatesOf,
+} from "./feed-results.ts";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { blockersOf, selected } from "./feed-selection.ts";
@@ -145,4 +149,65 @@ await test("CLV-363 feed result readers preserve valid rows and reject malformed
     assert.throws(() => blockerStatesOf(JSON.stringify(value)), {
       message: "invalid-feed-result",
     });
+});
+
+await test("CLV-363 selection skips an omitted body instead of admitting an empty ticket", () => {
+  const ready = [
+    { ...issue(738), bodyOmitted: "result-too-large" as const },
+    issue(740),
+  ];
+  const result = selected(ready, { states: [], active: [] });
+  assert.deepEqual(
+    result.picks.map((pick) => pick.id),
+    ["740"],
+  );
+  assert.deepEqual(result.skipped, [
+    { id: "738", reason: "issue result too large" },
+  ]);
+});
+
+await test("CLV-363 feed page readers reject invalid cursors and omitted body markers", () => {
+  const ready = { ...issue(740), bodyOmitted: "result-too-large" as const };
+  assert.deepEqual(
+    readyIssuePageOf(JSON.stringify({ issues: [ready], cursor: 10 })),
+    { issues: [ready], cursor: 10 },
+  );
+  for (const cursor of [undefined, 0, -1, 1.5, 1001, "1"])
+    assert.throws(
+      () => readyIssuePageOf(JSON.stringify({ issues: [], cursor })),
+      { message: "invalid-feed-result" },
+    );
+  assert.throws(
+    () => readyIssuesOf(JSON.stringify([{ ...ready, bodyOmitted: true }])),
+    { message: "invalid-feed-result" },
+  );
+});
+
+await test("CLV-363 encoded issue bodies preserve UTF-8 and a leading byte order mark", () => {
+  const body = "\uFEFF\u0000é";
+  const encoded = btoa(
+    Array.from(new TextEncoder().encode(body), (byte) =>
+      String.fromCharCode(byte),
+    ).join(""),
+  );
+  const ready = { ...issue(740), body: encoded, bodyEncoding: "base64" };
+  const page = readyIssuePageOf(
+    JSON.stringify({ issues: [ready], cursor: null }),
+  );
+  assert.equal(page.issues[0]?.body, body);
+  for (const invalid of [
+    { bodyEncoding: "hex", body: encoded },
+    { bodyEncoding: "base64", body: "YQ" },
+    { bodyEncoding: "base64", body: "/w==" },
+  ])
+    assert.throws(() =>
+      readyIssuesOf(JSON.stringify([{ ...ready, ...invalid }])),
+    );
+  assert.deepEqual(
+    selected([{ ...issue(738), bodyOmitted: "body-limit" }], {
+      states: [],
+      active: [],
+    }).skipped,
+    [{ id: "738", reason: "ticket too large" }],
+  );
 });

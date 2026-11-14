@@ -483,3 +483,5 @@ workflow also needs the common runtime and harness checks reported by doctor.
 Changing metadata does not change runtime behavior. The setup agent must apply
 the source and declaration edits, run the workflow's scenario tests, and load
 the edited configuration through folder admission before using it.
+
+The feed reads ready issues through bounded GitHub pages. It skips an omitted body with `issue result too large`. It skips an unsafe dependency number with `invalid blocker number`, without a state lookup for that ticket. Other tickets remain eligible.

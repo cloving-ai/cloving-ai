@@ -1,3 +1,4 @@
+import { feedPageTests } from "./feed-page-tests.ts";
 import assert from "node:assert/strict";
 import { fakeStepBridge } from "cloving/workflows/testing";
 import { developFeed } from "../develop.ts";
@@ -28,7 +29,7 @@ export async function feedSelectionScenario() {
             kind: "completed",
             operationId: "ready",
             receipt: null,
-            result: JSON.stringify(ready),
+            result: JSON.stringify({ issues: ready, cursor: null }),
           },
         ],
         "github issue-states": [
@@ -61,7 +62,13 @@ export async function feedSelectionScenario() {
       [
         {
           method: "issues",
-          payload: { labels: ["cloving: ready"], state: "open", limit: 100 },
+          payload: {
+            labels: ["cloving: ready"],
+            state: "open",
+            limit: 100,
+            maximumBodyBytes: 65536,
+            cursor: 0,
+          },
         },
         { method: "issue-states", payload: { numbers: [734] } },
       ],
@@ -84,7 +91,7 @@ async function feedWithoutBlockers() {
           kind: "completed",
           operationId: "ready",
           receipt: null,
-          result: "[]",
+          result: '{"issues":[],"cursor":null}',
         },
       ],
     },
@@ -114,7 +121,7 @@ async function feedBatchesBlockers() {
           kind: "completed",
           operationId: "ready",
           receipt: null,
-          result: JSON.stringify([issue]),
+          result: JSON.stringify({ issues: [issue], cursor: null }),
         },
       ],
       "github issue-states": results,
@@ -149,7 +156,7 @@ async function feedReadFailure() {
             kind: "completed",
             operationId: "ready",
             receipt: null,
-            result: JSON.stringify(ready),
+            result: JSON.stringify({ issues: ready, cursor: null }),
           },
         ],
         [`github ${method}`]: [
@@ -194,3 +201,43 @@ feedTests.push(
     run: feedReadFailure,
   },
 );
+
+async function feedInvalidBlocker() {
+  const invalid = {
+    ...ready[0],
+    body: "## Dependencies\nNeeds #12345678901234567890 and #734.",
+  };
+  using bridge = fakeStepBridge({
+    effects: {
+      "github issues": [
+        {
+          kind: "completed",
+          operationId: "ready",
+          receipt: null,
+          result: JSON.stringify({ issues: [invalid, ready[1]], cursor: null }),
+        },
+      ],
+    },
+  });
+  const result = await developFeed();
+  assert.deepEqual(
+    result.picks.map((pick) => pick.id),
+    ["740"],
+  );
+  assert.deepEqual(result.skipped, [
+    { id: "738", reason: "invalid blocker number" },
+  ]);
+  assert.ok(
+    bridge.requests.every(
+      (request) =>
+        request[0] === "effect" && request[1].method !== "issue-states",
+    ),
+  );
+}
+
+feedTests.push({
+  name: "CLV-363 an unsafe blocker skips only its ticket without a shared state request",
+  run: feedInvalidBlocker,
+});
+
+feedTests.push(...feedPageTests);

@@ -26,13 +26,16 @@ function rowsOf(text: string): readonly unknown[] {
 export function readyIssuesOf(text: string): readonly ReadyIssue[] {
   return rowsOf(text).map((row) => {
     const issue = fields(row);
-    return {
-      number: numberOf(issue["number"]),
-      url: textOf(issue["url"]),
-      title: textOf(issue["title"]),
-      body: textOf(issue["body"]),
-      createdAt: textOf(issue["createdAt"]),
-    };
+    return Object.assign(
+      {
+        number: numberOf(issue["number"]),
+        url: textOf(issue["url"]),
+        title: textOf(issue["title"]),
+        body: bodyOf(issue),
+        createdAt: textOf(issue["createdAt"]),
+      },
+      omittedBodyOf(issue["bodyOmitted"]),
+    );
   });
 }
 
@@ -44,4 +47,39 @@ export function blockerStatesOf(text: string): readonly BlockerState[] {
       throw new Error("invalid-feed-result");
     return { number: numberOf(issue["number"]), state };
   });
+}
+
+function omittedBodyOf(value: unknown): {
+  readonly bodyOmitted?: "result-too-large" | "body-limit";
+} {
+  if (value === undefined) return {};
+  if (value !== "result-too-large" && value !== "body-limit")
+    throw new Error("invalid-feed-result");
+  return { bodyOmitted: value };
+}
+
+export function readyIssuePageOf(text: string) {
+  const page = fields(JSON.parse(text));
+  const cursor = page["cursor"];
+  if (
+    cursor !== null &&
+    (typeof cursor !== "number" ||
+      !Number.isSafeInteger(cursor) ||
+      cursor < 1 ||
+      cursor > 1000)
+  )
+    throw new Error("invalid-feed-result");
+  return { issues: readyIssuesOf(JSON.stringify(page["issues"])), cursor };
+}
+
+function bodyOf(issue: Readonly<Record<string, unknown>>): string {
+  const body = textOf(issue["body"]);
+  if (issue["bodyEncoding"] === undefined) return body;
+  if (issue["bodyEncoding"] !== "base64")
+    throw new Error("invalid-feed-result");
+  const decoded = atob(body);
+  if (btoa(decoded) !== body) throw new Error("invalid-feed-result");
+  return new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(
+    Uint8Array.from(decoded, (character) => character.charCodeAt(0)),
+  );
 }

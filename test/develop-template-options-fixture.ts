@@ -102,7 +102,7 @@ export async function configuredDevelopFiles(
     files[prefix + "develop.ts"] = source
       .slice(0, source.indexOf("export async function developFeed"))
       .replace(
-        /import \{[^}]+\} from "(?:cloving\/workflows\/steps\/protected-effect|\.\/develop\/feed-(?:selection|results)\.ts)";\n/g,
+        /import \{[^}]+\} from "(?:cloving\/workflows\/steps\/protected-effect|\.\/develop\/feed-(?:selection|results|read)\.ts)";\n/g,
         "",
       );
     for (const from of [

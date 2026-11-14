@@ -41,7 +41,7 @@ async function stateOf(
   return state;
 }
 
-export async function issueStates(operation: Operation): Promise<unknown> {
+export async function issueStates(operation: Operation) {
   const numbers = numbersOf(operation.payload);
   const states = [];
   for (const number of numbers)

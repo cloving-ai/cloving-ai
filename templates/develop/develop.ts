@@ -1,9 +1,16 @@
-import { readyIssuesOf, blockerStatesOf } from "./develop/feed-results.ts";
+import {
+  issuePayload,
+  mergedReady,
+  continuedCursor,
+  completedFeedText,
+} from "./develop/feed-read.ts";
+import { readyIssuePageOf, blockerStatesOf } from "./develop/feed-results.ts";
 import { protectedEffect } from "cloving/workflows/steps/protected-effect";
 import {
-  blockersOf,
+  blockerNumbersOf,
   selected,
   type BlockerState,
+  type ReadyIssue,
 } from "./develop/feed-selection.ts";
 import type { CycleOutcome } from "cloving/workflows";
 import {
@@ -44,25 +51,25 @@ export async function develop(request: DevelopInput): Promise<CycleOutcome> {
 
 export async function developFeed() {
   "use workflow";
-  const issues = await protectedEffect({
-    scope: { phase: "feed", operation: "ready-issues", round: 1 },
-    capability: "github",
-    method: "issues",
-    target: "issues",
-    units: 1,
-    payload: JSON.stringify({
-      labels: ["cloving: ready"],
-      state: "open",
-      limit: 100,
-    }),
-  });
-  if (issues.kind !== "completed")
-    throw new Error(issues.reason ?? "github-call-failed");
-  if (issues.result === null) throw new Error("github-call-failed");
-  const ready = readyIssuesOf(issues.result);
-  const numbers = Array.from(
-    new Set(ready.flatMap((issue) => blockersOf(issue.body))),
-  );
+  let ready: readonly ReadyIssue[] = [];
+  let cursor: number | null = 0;
+  for (let round = 1; cursor !== null; round++) {
+    const result = await protectedEffect({
+      scope: { phase: "feed", operation: "ready-issues", round },
+      capability: "github",
+      method: "issues",
+      target: "issues",
+      units: 1,
+      payload: issuePayload(cursor),
+    });
+    const page = readyIssuePageOf(completedFeedText(result));
+    ready = mergedReady(ready, page.issues);
+    cursor = continuedCursor(cursor, {
+      next: page.cursor,
+      count: ready.length,
+    });
+  }
+  const numbers = blockerNumbersOf(ready);
   let states: readonly BlockerState[] = [];
   for (let offset = 0; offset < numbers.length; offset += 50) {
     const result = await protectedEffect({
@@ -73,10 +80,7 @@ export async function developFeed() {
       units: 1,
       payload: JSON.stringify({ numbers: numbers.slice(offset, offset + 50) }),
     });
-    if (result.kind !== "completed")
-      throw new Error(result.reason ?? "github-call-failed");
-    if (result.result === null) throw new Error("github-call-failed");
-    states = states.concat(blockerStatesOf(result.result));
+    states = states.concat(blockerStatesOf(completedFeedText(result)));
   }
   return selected(ready, { states, active: [] });
 }

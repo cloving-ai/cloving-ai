@@ -24,6 +24,7 @@ export interface ReadyIssue {
   readonly title: string;
   readonly body: string;
   readonly createdAt: string;
+  readonly bodyOmitted?: "result-too-large" | "body-limit";
 }
 
 export interface BlockerState {
@@ -50,6 +51,16 @@ function skip(result: Selection, item: { id: string; reason: string }): void {
 
 function addPick(result: Selection, issue: ReadyIssue): void {
   const id = String(issue.number);
+  if (issue.bodyOmitted !== undefined) {
+    skip(result, {
+      id,
+      reason:
+        issue.bodyOmitted === "body-limit"
+          ? "ticket too large"
+          : "issue result too large",
+    });
+    return;
+  }
   const text = ticketText(issue);
   if (new TextEncoder().encode(text).length > 65536) {
     skip(result, { id, reason: "ticket too large" });
@@ -87,9 +98,15 @@ export function selected(
   );
   for (const issue of ordered) {
     const id = String(issue.number);
-    const blocker = blockersOf(issue.body).find(
-      (number) => known.get(number) !== "closed",
-    );
+    const blockers = blockersOf(issue.body);
+    if (
+      blockers.some((number) => !Number.isSafeInteger(number)) &&
+      !active.includes(id)
+    ) {
+      skip(result, { id, reason: "invalid blocker number" });
+      continue;
+    }
+    const blocker = blockers.find((number) => known.get(number) !== "closed");
     const waiting =
       blocker === undefined ? undefined : `waits for #${String(blocker)}`;
     const reason = active.includes(id) ? "in work" : waiting;
@@ -102,5 +119,17 @@ export function selected(
   return bounded(
     result,
     ordered.map((issue) => String(issue.number)),
+  );
+}
+
+export function blockerNumbersOf(
+  ready: readonly ReadyIssue[],
+): readonly number[] {
+  return Array.from(
+    new Set(
+      ready
+        .filter((issue) => blockersOf(issue.body).every(Number.isSafeInteger))
+        .flatMap((issue) => blockersOf(issue.body)),
+    ),
   );
 }

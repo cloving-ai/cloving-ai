@@ -16,6 +16,8 @@ export const packedTemplateSources = [
   "templates/develop/develop/decision.ts",
   "templates/develop/develop/demo-tests.ts",
   "templates/develop/develop/demo.ts",
+  "templates/develop/develop/feed-page-tests.ts",
+  "templates/develop/develop/feed-read.ts",
   "templates/develop/develop/feed-results.ts",
   "templates/develop/develop/feed-selection.test.ts",
   "templates/develop/develop/feed-selection.ts",
