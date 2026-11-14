@@ -42,14 +42,13 @@ process.stdin.on("data", (chunk) => {
     const respond = (data) => emit({type:"response", id:request.id, command:request.type, success:true, data});
     if (request.type === "get_state") {
       respond({sessionFile:session.path, sessionId:session.id, isStreaming:active, isCompacting:${JSON.stringify(options.compacting ?? false)}, pendingMessageCount:0});
-    } else {
-      if (!(request.type === "steer" && ${JSON.stringify(options.omitSteerReply ?? false)})) respond({disposition:request.type === "prompt" ? "started" : "queued"});
-      emit({type:"message_start", message:{role:"user", content:[{type:"text",text:request.message}]}});
-      if (request.type === "prompt") {
-        active = true;
-        for (const event of events.slice(0, -1)) emit(event);
-      }
+      continue;
     }
+    if (!(request.type === "steer" && ${JSON.stringify(options.omitSteerReply ?? false)})) respond({disposition:request.type === "prompt" ? "started" : "queued"});
+    emit({type:"message_start", message:{role:"user", content:[{type:"text",text:request.message}]}});
+    if (request.type !== "prompt") continue;
+    active = true;
+    for (const event of events.slice(0, -1)) emit(event);
   }
 });
 const timer = setInterval(() => {
@@ -80,6 +79,7 @@ function rpcRequests(log: string): readonly Record<string, unknown>[] {
 export async function startRpcFixture(
   scene: Scene,
   options: {
+    readonly prompt?: string;
     readonly foreignSession?: string;
     readonly environment?: NodeJS.ProcessEnv;
     readonly omitSteerReply?: boolean;
@@ -114,7 +114,7 @@ export async function startRpcFixture(
       openSync(join(scene.directory, "error.log"), "w"),
     ],
     marker: launchMarker(scene.directory, files),
-    piRpc: { folder: piRpc, session, prompt: "one prompt" },
+    piRpc: { folder: piRpc, session, prompt: options.prompt ?? "one prompt" },
   });
   const ending = turn.ending(new AbortController().signal);
   const launch = await turn.launch;

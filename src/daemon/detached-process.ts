@@ -81,8 +81,8 @@ export const intervals = { output: 100, process: 250, identity: 16 } as const;
 
 const launcher = [
   'const{spawn,execFileSync}=require("node:child_process");',
-  'const{fstatSync,renameSync,writeFileSync}=require("node:fs");',
-  "const[exit,marker,coverage,limitText,rpcModule,rpcText,command,...rest]=process.argv.slice(1);",
+  'const{fstatSync,readFileSync,renameSync,writeFileSync}=require("node:fs");',
+  "const[exit,marker,coverage,limitText,rpcModule,rpcPath,command,...rest]=process.argv.slice(1);",
   "const startedAt=Date.now();let processStart;",
   'try{processStart=execFileSync("ps",["-o","lstart=",String(process.pid)],{encoding:"utf8",timeout:5000,env:{...process.env,LC_ALL:"C"}}).trim().split(/\\s+/).join(" ");}catch{}',
   "const limits=JSON.parse(limitText);",
@@ -94,7 +94,7 @@ const launcher = [
   'writeFileSync(exit+".tmp",JSON.stringify({...fields,processId:process.pid,processStart,marker,startedAt,endedAt:new Date().toISOString()})+"\\n",{mode:0o600});',
   'renameSync(exit+".tmp",exit);return true;};',
   'const stopped=(reason)=>{closing("stop");let first=true;try{first=ending({exitCode:null,signal:"SIGKILL",reason});}finally{if(first)process.kill(-process.pid,"SIGKILL");}};',
-  "const rpc=JSON.parse(rpcText);",
+  'const rpc=rpcPath===""?null:JSON.parse(readFileSync(rpcPath,"utf8"));',
   'const child=spawn(command,rest,{stdio:rpc===null?"inherit":["pipe","pipe","inherit"],env});',
   'if(rpc!==null)import(rpcModule).then(({attachPiRpc})=>{if(rpcStopped){stopped("pi-rpc-stopped-before-input");return;}rpcStop=attachPiRpc(child,{start:rpc,owner:{processId:process.pid,processStart,marker},stop:stopped});}).catch(()=>{stopped("pi-rpc-control-failed");});',
   'child.on("error",()=>undefined);',
@@ -167,7 +167,8 @@ function spawnedLauncher(start: LauncherStart): ChildProcess {
   const { NODE_V8_COVERAGE: coverage = "", ...environment } = start.environment;
   const { path, launch } = start.marker;
   try {
-    if (start.piRpc !== undefined) preparePiRpc(start.piRpc, launch.marker);
+    const rpcPath =
+      start.piRpc === undefined ? "" : preparePiRpc(start.piRpc, launch.marker);
     rmSync(launch.exit, { force: true });
     writeFileSync(`${path}.staged`, JSON.stringify(launch), { mode: 0o600 });
     renameSync(`${path}.staged`, path);
@@ -181,7 +182,7 @@ function spawnedLauncher(start: LauncherStart): ChildProcess {
         coverage,
         JSON.stringify(start.limits ?? {}),
         piRpcLauncherModule,
-        JSON.stringify(start.piRpc ?? null),
+        rpcPath,
         start.executable,
         ...start.arguments,
       ],

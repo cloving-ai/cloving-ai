@@ -47,15 +47,17 @@ interface RpcState {
   settledAt?: number;
 }
 
-export function preparePiRpc(start: PiRpcStart, marker: string): void {
+export function preparePiRpc(start: PiRpcStart, marker: string): string {
   mkdirSync(start.folder, { mode: 0o700 });
   mkdirSync(join(start.folder, "requests"), { mode: 0o700 });
   mkdirSync(join(start.folder, "receipts"), { mode: 0o700 });
-  rpcWrite(join(start.folder, "plan.json"), {
+  const plan = join(start.folder, "plan.json");
+  rpcWrite(plan, {
     ...start,
     marker,
     protocol: "pi-1.5.2",
   });
+  return plan;
 }
 
 function ownerState(state: RpcState, phase: string): void {

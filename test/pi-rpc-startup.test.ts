@@ -1,10 +1,49 @@
 import assert from "node:assert/strict";
-import { existsSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { test } from "node:test";
-import { withScene, until } from "./claude-worker-fixture.ts";
+import { resultOf, withScene, until } from "./claude-worker-fixture.ts";
 import { startRpcFixture } from "./pi-rpc-fixture.ts";
+
+await test("CLV-365 RPC launches a large prompt from its private plan without argv payload", () =>
+  withScene(async (scene) => {
+    const prompt = "private prompt 🐈\n".repeat(16_384);
+    const { fake, turn, owner, ending } = await startRpcFixture(scene, {
+      prompt,
+    });
+    try {
+      const plan = join(owner.piRpc, "plan.json");
+      assert.equal(turn.child.spawnargs.includes(plan), true);
+      assert.equal(
+        turn.child.spawnargs.some((argument) => argument.includes(prompt)),
+        false,
+      );
+      assert.equal(statSync(plan).mode & 0o777, 0o600);
+      assert.equal(resultOf(readFileSync(plan, "utf8"))["prompt"], prompt);
+      await until(() =>
+        fake.requests().some((request) => request["type"] === "prompt"),
+      );
+      const prompts = fake
+        .requests()
+        .filter((request) => request["type"] === "prompt");
+      assert.equal(prompts.length, 1);
+      assert.equal(prompts[0]?.["message"], prompt);
+      writeFileSync(fake.gate, "settle");
+      const end = await ending;
+      assert.ok(typeof end !== "string");
+      assert.equal(end.exitCode, 0);
+      assert.equal(end.reason, undefined);
+      assert.equal(
+        fake.requests().filter((request) => request["type"] === "prompt")
+          .length,
+        1,
+      );
+    } finally {
+      turn.signal("SIGKILL");
+      await ending;
+    }
+  }));
 
 function importBarrier(directory: string) {
   const ready = join(directory, "stop-handled");
