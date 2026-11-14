@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { test } from "node:test";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import ts from "typescript";
+import { checkTests } from "../quality/test-execution.ts";
 import { completeConfigurations } from "./develop-template-options-fixture.ts";
 import { withFiles } from "./quality/files-fixture.ts";
 import {
@@ -259,4 +260,18 @@ await test("CLV-363 develop uses its feed and needs no next or ready command", a
       point.options.every((option) => !option.needs.includes("next-command")),
     ),
   );
+});
+
+await test("CLV-363 develop and feed selection tests pass with independent gate inventories", async () => {
+  const directory = resolve(import.meta.dirname, "..");
+  for (const file of [
+    "templates/develop/develop.test.ts",
+    "templates/develop/develop/feed-selection.test.ts",
+  ])
+    await assert.doesNotReject(async () => {
+      await checkTests(directory, {
+        files: [join(directory, file)],
+        timeFactor: 3,
+      });
+    }, file);
 });
