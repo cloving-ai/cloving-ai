@@ -300,7 +300,7 @@ async function steered(
   );
   if (active === undefined) return queued("no-open-turn");
   const turn = await active.turn;
-  const outcome = turn.steer(request);
+  const outcome = await turn.steer(request);
   if (outcome.delivery === "queued") return outcome;
   return { delivery: "now", operationId: active.intent.operationId };
 }

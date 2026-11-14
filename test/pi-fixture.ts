@@ -59,6 +59,31 @@ function fixtureOutput(options: FakePiOptions): string {
   );
 }
 
+const piInputScript = `const rpc = parts[parts.indexOf("--mode") + 1] === "rpc";
+let stdin = "";
+let rpcPrompt = "";
+if (rpc) {
+  rpcPrompt = await new Promise((resolve) => {
+    let pending = "";
+    process.stdin.setEncoding("utf8");
+    process.stdin.on("data", (chunk) => {
+      const lines = (pending + chunk).split("\\n");
+      pending = lines.pop();
+      for (const line of lines) {
+        const request = JSON.parse(line);
+        const data = request.type === "get_state" ? {sessionId:session.id,sessionFile:parts[selected + 1],isStreaming:false,isCompacting:false,pendingMessageCount:0} : {disposition:request.type === "prompt" ? "started" : "queued"};
+        process.stdout.write(JSON.stringify({type:"response",id:request.id,command:request.type,success:true,data}) + "\\n");
+        if (request.type !== "prompt") continue;
+        process.stdout.write(JSON.stringify({type:"message_start",message:{role:"user",content:[{type:"text",text:request.message}]}}) + "\\n");
+        resolve(request.message);
+      }
+    });
+  });
+} else {
+  for await (const chunk of process.stdin) stdin += String(chunk);
+}
+`;
+
 export function fakePi(
   scene: Pick<Scene, "directory">,
   options: FakePiOptions = {},
@@ -71,10 +96,11 @@ export function fakePi(
 import { appendFileSync, existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { setTimeout as delay } from "node:timers/promises";
 import { pathToFileURL } from "node:url";
-let stdin = "";
-for await (const chunk of process.stdin) stdin += String(chunk);
 const parts = process.argv.slice(2);
-let prompt = stdin.trim();
+const selected = parts.indexOf("--session");
+const session = selected < 0 ? undefined : JSON.parse(readFileSync(parts[selected + 1], "utf8").split("\\n")[0]);
+${piInputScript}
+let prompt = rpc ? rpcPrompt : stdin.trim();
 const separator = parts.indexOf("--");
 if (separator >= 0) prompt += parts[separator + 1] ?? "";
 const handlers = [];
@@ -88,8 +114,6 @@ for (const handler of handlers) {
   if (result?.action === "transform") prompt = result.text;
   if (result?.action === "handled") throw new Error("Pi input was handled without a model response");
 }
-const selected = parts.indexOf("--session");
-const session = selected < 0 ? undefined : JSON.parse(readFileSync(parts[selected + 1], "utf8").split("\\n")[0]);
 appendFileSync(${JSON.stringify(join(scene.directory, "pi-prompts.jsonl"))}, JSON.stringify({ prompt, processId: process.pid, session }) + "\\n");
 appendFileSync(${JSON.stringify(join(scene.directory, "turns.log"))}, JSON.stringify({ prompt, processId: process.pid, parentId: process.ppid, arguments: parts, files: [], directory: process.cwd(), environment: process.env }) + "\\n");
 writeFileSync(${JSON.stringify(join(scene.directory, "observed.json"))}, JSON.stringify({ arguments: parts, stdin, prompt, directory: process.cwd(), environment: process.env, configuration: process.env.GH_CONFIG_DIR === undefined ? [] : readdirSync(process.env.GH_CONFIG_DIR) }));

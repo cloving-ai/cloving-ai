@@ -1,3 +1,4 @@
+import { piRpcPriorFailure } from "./pi-rpc-channel.ts";
 import { constants } from "node:fs";
 import { mkdir, open, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -60,7 +61,7 @@ async function settledPiEntry(request: {
     (await launchState(launch)) !== "ended"
   )
     return "pi-prior-result-uncertain";
-  return entry;
+  return (await piRpcPriorFailure(launch)) ?? entry;
 }
 
 export async function preparedPiSession(place: {
@@ -96,6 +97,7 @@ async function continuedPiSession(
     ...previous,
     path,
     historicalResponses: checkpoint.historicalResponses,
+    historicalTools: checkpoint.historicalTools,
   };
 }
 
@@ -125,7 +127,10 @@ async function piCheckpoint(session: PiSession) {
         ...new Set(lines.slice(1).flatMap(historicalResponse)),
       ];
       const hasConversation = lines.slice(1).some(conversationEntry);
-      return { text, historicalResponses, hasConversation };
+      const historicalTools = [
+        ...new Set(lines.slice(1).flatMap(historicalTool)),
+      ];
+      return { text, historicalResponses, historicalTools, hasConversation };
     } finally {
       await file.close();
     }
@@ -150,6 +155,16 @@ function historicalResponse(line: string): readonly string[] {
     return [];
   const identity = responseIdentity(message);
   return identity === undefined ? [] : [identity];
+}
+
+function historicalTool(line: string): readonly string[] {
+  const entry = record(JSON.parse(line));
+  const message = record(entry?.["message"]);
+  if (entry?.["type"] !== "message" || message?.["role"] !== "toolResult")
+    return [];
+  return typeof message["toolCallId"] === "string"
+    ? [message["toolCallId"]]
+    : [];
 }
 
 export async function consumePiShutdown(

@@ -9,26 +9,12 @@ import { resultOf, type Scene } from "./claude-worker-fixture.ts";
 import type { PiSession } from "../src/daemon/pi-session.ts";
 import { piEvents } from "./pi-fixture.ts";
 
-export function rpcFixture(
-  directory: string,
-  options: {
-    readonly session: PiSession;
-    readonly omitSteerReply?: boolean;
-    readonly compacting?: boolean;
-    readonly truncatedTail?: boolean;
-  },
-) {
-  const { session } = options;
-  const program = join(directory, "pi-rpc.mjs");
-  const log = join(directory, "rpc-input.jsonl");
-  const gate = join(directory, "rpc-settle");
-  const output = join(directory, "rpc-output.jsonl");
-  writeFileSync(log, "");
-  writeFileSync(
-    program,
-    `import { appendFileSync, existsSync } from "node:fs";
-const session = ${JSON.stringify(session)};
-const events = ${JSON.stringify(piEvents().slice(1))};
+const rpcScript = `import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
+const selected = process.argv.indexOf("--session");
+const recorded = selected < 0 ? undefined : JSON.parse(readFileSync(process.argv[selected + 1], "utf8").split("\\n")[0]);
+writeFileSync(fixture.processFile, JSON.stringify({processId:process.pid,parentId:process.ppid}));
+const session = recorded ? { ...recorded, path: process.argv[selected + 1] } : fixture.session;
+const events = fixture.events;
 const emit = (event) => process.stdout.write(JSON.stringify(event) + "\\n");
 let active = false;
 let pending = "";
@@ -38,13 +24,18 @@ process.stdin.on("data", (chunk) => {
   pending = lines.pop();
   for (const line of lines) {
     const request = JSON.parse(line);
-    appendFileSync(${JSON.stringify(log)}, line + "\\n");
+    appendFileSync(fixture.log, line + "\\n");
     const respond = (data) => emit({type:"response", id:request.id, command:request.type, success:true, data});
     if (request.type === "get_state") {
-      respond({sessionFile:session.path, sessionId:session.id, isStreaming:active, isCompacting:${JSON.stringify(options.compacting ?? false)}, pendingMessageCount:0});
+      const respondState = () => respond({sessionFile:session.path, sessionId:fixture.foreignSession ?? session.id, isStreaming:active, isCompacting:(fixture.compacting ?? false), pendingMessageCount:0});
+      const readyGate = (fixture.readyGate ?? "");
+      if (!readyGate || existsSync(readyGate)) respondState();
+      else {
+        const ready = setInterval(() => { if (!existsSync(readyGate)) return; clearInterval(ready); respondState(); }, 10);
+      }
       continue;
     }
-    if (!(request.type === "steer" && ${JSON.stringify(options.omitSteerReply ?? false)})) respond({disposition:request.type === "prompt" ? "started" : "queued"});
+    if (!(request.type === "steer" && (fixture.omitSteerReply ?? false))) respond({disposition:request.type === "prompt" ? "started" : "queued"});
     emit({type:"message_start", message:{role:"user", content:[{type:"text",text:request.message}]}});
     if (request.type !== "prompt") continue;
     active = true;
@@ -52,21 +43,42 @@ process.stdin.on("data", (chunk) => {
   }
 });
 const timer = setInterval(() => {
-  if (!active || !existsSync(${JSON.stringify(gate)})) return;
+  if (!active || !existsSync(fixture.gate)) return;
   clearInterval(timer);
+  if ((fixture.replay ?? false)) for (const event of events.slice(1, 3)) emit(event);
   emit(events.at(-1));
-  if (${JSON.stringify(options.truncatedTail ?? false)}) process.stdout.write('{"type":"message_end"');
+  if ((fixture.truncatedTail ?? false)) process.stdout.write('{"type":"message_end"');
 }, 10);
 process.stdin.on("end", () => { clearInterval(timer); });
-`,
-  );
-  return {
-    program,
-    log,
-    gate,
-    output,
-    requests: () => rpcRequests(log),
+`;
+
+export function rpcFixture(
+  directory: string,
+  options: {
+    readonly session?: PiSession;
+    readonly foreignSession?: string;
+    readonly readyGate?: string;
+    readonly replay?: true;
+    readonly omitSteerReply?: boolean;
+    readonly compacting?: boolean;
+    readonly truncatedTail?: boolean;
+  } = {},
+) {
+  const files = {
+    program: join(directory, "pi-rpc.mjs"),
+    log: join(directory, "rpc-input.jsonl"),
+    gate: join(directory, "rpc-settle"),
+    output: join(directory, "rpc-output.jsonl"),
+    processFile: join(directory, "rpc-process.json"),
   };
+  writeFileSync(files.log, "");
+  const fixture = { ...files, ...options, events: piEvents().slice(1) };
+  writeFileSync(
+    files.program,
+    `#!${process.execPath}\nconst fixture = ${JSON.stringify(fixture)};\n${rpcScript}`,
+    { mode: 0o700 },
+  );
+  return { ...files, requests: () => rpcRequests(files.log) };
 }
 
 function rpcRequests(log: string): readonly Record<string, unknown>[] {
@@ -81,6 +93,8 @@ export async function startRpcFixture(
   options: {
     readonly prompt?: string;
     readonly foreignSession?: string;
+    readonly readyGate?: string;
+    readonly replay?: true;
     readonly environment?: NodeJS.ProcessEnv;
     readonly omitSteerReply?: boolean;
     readonly compacting?: boolean;

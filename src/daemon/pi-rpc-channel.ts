@@ -5,11 +5,13 @@ import {
   closeSync,
   fsyncSync,
   readFileSync,
+  readdirSync,
   renameSync,
   unlinkSync,
   writeFileSync,
 } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { recordedLaunch, type TurnLaunch } from "../turn-launch.ts";
 import { record } from "../protocol.ts";
 import { processMatch, type RecordedProcess } from "./process-identity.ts";
 
@@ -20,6 +22,7 @@ export interface PiRpcNote {
 }
 
 export interface PiRpcOwner extends RecordedProcess {
+  readonly inactive?: AbortSignal;
   readonly piRpc: string;
 }
 
@@ -109,6 +112,118 @@ function notedReceipt(
     : { status: receipt["written"] === true ? "written" : "accepted" };
 }
 
+function sameRpcSession(
+  plan: Record<string, unknown> | undefined,
+  session: unknown,
+): boolean {
+  const expected = record(session);
+  const actual = record(plan?.["session"]);
+  if (expected === undefined || actual === undefined) return false;
+  return [
+    "id",
+    "path",
+    "cwd",
+    "timestamp",
+    "historicalResponses",
+    "historicalTools",
+  ].every(
+    (key) => JSON.stringify(expected[key]) === JSON.stringify(actual[key]),
+  );
+}
+
+export function piRpcOwnershipFailure(
+  launch: TurnLaunch,
+  session: unknown,
+): string | undefined {
+  if (launch.piRpc === undefined) return undefined;
+  try {
+    const owner = { ...launch, piRpc: launch.piRpc };
+    const plan = rpcRecord(join(owner.piRpc, "plan.json"));
+    if (
+      owner.piRpc !== join(dirname(launch.exit), "pi-rpc") ||
+      ownership(owner) === undefined ||
+      plan?.["protocol"] !== "pi-1.5.2" ||
+      plan["marker"] !== owner.marker ||
+      !sameRpcSession(plan, session)
+    )
+      return "pi-rpc-ownership-conflict";
+    piRpcNotes(owner);
+    readdirSync(join(owner.piRpc, "receipts"));
+    return undefined;
+  } catch {
+    return "pi-rpc-ownership-conflict";
+  }
+}
+
+export async function piRpcPriorFailure(
+  launch: TurnLaunch,
+): Promise<string | undefined> {
+  if (launch.piRpc === undefined) return undefined;
+  try {
+    const owner = { ...launch, piRpc: launch.piRpc };
+    const initial = rpcRecord(join(owner.piRpc, "receipts", "initial.json"));
+    if (
+      !Object.entries({
+        id: "initial",
+        type: "prompt",
+        marker: owner.marker,
+        observed: true,
+        acknowledged: true,
+      }).every(([key, value]) => initial?.[key] === value)
+    )
+      return "pi-prior-result-uncertain";
+    for (const note of piRpcNotes(owner)) {
+      if ((await piRpcNoteReceipt(owner, note)).status !== "observed")
+        return "pi-prior-result-uncertain";
+    }
+    return undefined;
+  } catch {
+    return "pi-prior-result-uncertain";
+  }
+}
+
+export function piRpcNotes(owner: PiRpcOwner): readonly PiRpcNote[] {
+  return readdirSync(join(owner.piRpc, "requests")).map((name) => {
+    const fields = rpcRecord(join(owner.piRpc, "requests", name)) ?? {};
+    const { noteId, message, sequence } = fields;
+    if (
+      typeof noteId !== "string" ||
+      typeof message !== "string" ||
+      typeof sequence !== "number" ||
+      !Number.isSafeInteger(sequence) ||
+      sequence < 1
+    )
+      throw new Error("pi-rpc-note-evidence-invalid");
+    const prefix = `Operator note ${noteId}:\n\n`;
+    const note = { noteId, text: message.slice(prefix.length), sequence };
+    const request = rpcNoteRequest(owner, note);
+    if (
+      !message.startsWith(prefix) ||
+      name !== `${request.id}.json` ||
+      !sameRequest(request, fields)
+    )
+      throw new Error("pi-rpc-note-evidence-invalid");
+    return note;
+  });
+}
+
+export async function reservedPiRpcNotes(
+  value: unknown,
+): Promise<readonly string[]> {
+  const fields = record(value);
+  if (fields?.["harness"] !== "pi") return [];
+  const launch = recordedLaunch(fields["launch"]);
+  if (launch?.piRpc === undefined) return [];
+  const owner = { ...launch, piRpc: launch.piRpc };
+  const notes = piRpcNotes(owner);
+  for (const note of notes) {
+    const receipt = await piRpcNoteReceipt(owner, note);
+    if (["conflict", "unavailable"].includes(receipt.status))
+      throw new Error(receipt.reason ?? "pi-rpc-note-evidence-invalid");
+  }
+  return notes.map((note) => note.noteId);
+}
+
 async function recordedNoteReceipt(
   owner: PiRpcOwner,
   note: PiRpcNote,
@@ -151,6 +266,8 @@ async function submittedNote(
   if (rpcRecord(path) !== undefined) return piRpcNoteReceipt(owner, note);
   if (state["state"] !== "running" || (await processMatch(owner)) !== "same")
     return { status: "unavailable", reason: "pi-rpc-not-running" };
+  if (owner.inactive?.aborted === true)
+    return { status: "unavailable", reason: "pi-rpc-observer-released" };
   try {
     insertRequest(path, request);
   } catch {
