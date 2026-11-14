@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
 import {
@@ -7,6 +7,8 @@ import {
   piRpcNoteReceipt,
 } from "../src/daemon/pi-rpc-channel.ts";
 import { recordedLaunch } from "../src/turn-launch.ts";
+import { located } from "../src/daemon/operation-journal.ts";
+import { noteReceiptsPlace } from "../src/daemon/turn-details.ts";
 import { rpcFixture } from "./pi-rpc-fixture.ts";
 import {
   alive,
@@ -16,6 +18,43 @@ import {
   until,
   withScene,
 } from "./claude-worker-fixture.ts";
+
+await test("CLV-365 archived native RPC note receipts follow the retained operation folder", () =>
+  withScene(async (scene) => {
+    const fake = rpcFixture(scene.directory);
+    const worker = scene.worker("unused", {
+      harness: { name: "pi", path: fake.program },
+    });
+    await worker.deliver(intent(), new AbortController().signal);
+    await until(() =>
+      fake.requests().some((entry) => entry["type"] === "prompt"),
+    );
+    assert.equal(
+      (
+        await worker.steer({
+          runId: "run-1",
+          noteId: "archived",
+          text: "Once.",
+        })
+      ).delivery,
+      "now",
+    );
+    writeFileSync(fake.gate, "settle");
+    await until(() => scene.reports.length === 1);
+    const archive = join(scene.directory, "archive", "journal");
+    mkdirSync(archive, { recursive: true });
+    renameSync(
+      located(scene.journal, "operation-1").folder,
+      located(archive, "operation-1").folder,
+    );
+    const receipts = noteReceiptsPlace({
+      directory: scene.directory,
+      retention: { days: 30, action: "archive", archiveFolder: null },
+    });
+    assert.deepEqual(await receipts.read(["operation-1"]), {
+      archived: "operation-1",
+    });
+  }));
 
 await test("CLV-365 missing or corrupt RPC requests refuse recovery with a typed reason", async () => {
   for (const state of ["missing", "corrupt"])

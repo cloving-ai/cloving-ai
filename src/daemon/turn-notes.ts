@@ -55,7 +55,7 @@ export async function receivedNotes(
     const started = await readRecord(folder, "started.json");
     const noteIds = [
       ...(agentStarted(started) ? recordedNotes(started) : []),
-      ...(await reservedPiRpcNotes(started)),
+      ...(await reservedPiRpcNotes(started, folder)),
     ];
     for (const noteId of noteIds) received[noteId] = operationId;
   }

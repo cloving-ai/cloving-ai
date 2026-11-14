@@ -191,7 +191,7 @@ async function readAttach(
     steerNotes: [
       ...new Set([
         ...recordedTexts(started, "steerNotes"),
-        ...(await reservedPiRpcNotes(started)),
+        ...(await reservedPiRpcNotes(started, folder)),
       ]),
     ],
     entry: {

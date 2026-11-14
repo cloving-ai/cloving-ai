@@ -1,11 +1,19 @@
 import assert from "node:assert/strict";
-import { mkdirSync, readdirSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
 import type { TurnLaunch } from "../src/turn-launch.ts";
 import type { Attempts } from "../src/daemon/turn-attempts.ts";
 import { steerPi } from "../src/daemon/pi-turn-steering.ts";
 import { steeringOf } from "../src/daemon/turn-steering.ts";
+import { rpcProcessUnit, acknowledgeInitial } from "./pi-rpc-unit-fixture.ts";
+import {
+  submitPiRpcNote,
+  piRpcNoteReceipt,
+  rpcWrite,
+} from "../src/daemon/pi-rpc-channel.ts";
+import { located } from "../src/daemon/operation-journal.ts";
+import { receivedNotes, noteDesk } from "../src/daemon/turn-notes.ts";
 import { rpcFixture } from "./pi-rpc-fixture.ts";
 import {
   field,
@@ -35,6 +43,102 @@ function attemptsAt(folder: string): Attempts {
 }
 
 const note = { noteId: "state-note", text: "Retain the work." };
+
+await test("CLV-365 settlement during identity lookup releases an unsent note for one later input", () =>
+  withScene(async (scene) => {
+    const unit = await rpcProcessUnit(scene);
+    try {
+      unit.ready();
+      acknowledgeInitial(unit);
+      const input = { ...note, sequence: 1 };
+      const pending = submitPiRpcNote(unit.owner, input);
+      unit.emit({ type: "agent_settled", aborted: false });
+      await pending;
+      assert.deepEqual(await piRpcNoteReceipt(unit.owner, input), {
+        status: "unavailable",
+        reason: "pi-rpc-intake-closed",
+      });
+      const folder = located(scene.journal, "operation-1").folder;
+      mkdirSync(folder, { recursive: true });
+      rpcWrite(join(folder, "started.json"), {
+        harness: "pi",
+        attempt: 1,
+        launch: {
+          ...unit.owner,
+          output: "unused",
+          offset: 0,
+          exit: "unused",
+          configuration: "unused",
+        },
+      });
+      cpSync(unit.folder, join(folder, "pi-rpc"), { recursive: true });
+      assert.deepEqual(await receivedNotes(scene.journal, ["operation-1"]), {});
+      const desk = noteDesk({
+        journal: scene.journal,
+        notes: {
+          read: () => Promise.resolve([note]),
+          operations: () => Promise.resolve(["operation-1"]),
+        },
+      });
+      assert.deepEqual(
+        (await desk.claim({ runId: "run-1", prompt: "next" })).noteIds,
+        [note.noteId],
+      );
+      assert.deepEqual(
+        (await desk.claim({ runId: "run-1", prompt: "later" })).noteIds,
+        [],
+      );
+      assert.equal(
+        unit.commands.filter((entry) => entry["type"] === "steer").length,
+        0,
+      );
+    } finally {
+      unit.dispose();
+    }
+  }));
+
+await test("CLV-365 a note sealed before launcher acceptance is never recorded as delivered", () =>
+  withScene(async (scene) => {
+    const unit = await rpcProcessUnit(scene);
+    const attempts = attemptsAt(scene.directory);
+    attempts.steering.child = {
+      sessionId: "session",
+      turn: {
+        processId: unit.owner.processId,
+        launch: Promise.resolve({
+          ...unit.owner,
+          output: "unused",
+          offset: 0,
+          exit: "unused",
+          configuration: "unused",
+        }),
+        ended: Promise.resolve({ exitCode: 0, result: undefined }),
+        stop: () => undefined,
+      },
+    };
+    try {
+      unit.child.stdin.cork();
+      unit.ready();
+      acknowledgeInitial(unit);
+      const pending = steerPi(attempts, note);
+      await until(
+        () => readdirSync(join(unit.folder, "requests")).length === 1,
+      );
+      unit.emit({ type: "agent_settled", aborted: false });
+      assert.deepEqual(await pending, {
+        delivery: "queued",
+        reason: "pi-rpc-intake-closed",
+      });
+      assert.deepEqual(attempts.steering.delivered, []);
+      assert.equal(
+        unit.commands.filter((entry) => entry["type"] === "steer").length,
+        0,
+      );
+    } finally {
+      unit.child.stdin.uncork();
+      unit.dispose();
+    }
+  }));
 
 await test("CLV-365 completed, unqualified and stopped Pi turns cannot accept a new input", () =>
   withScene(async (scene) => {

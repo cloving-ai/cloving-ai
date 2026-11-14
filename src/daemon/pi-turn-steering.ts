@@ -16,13 +16,19 @@ import {
 import type { Attempts } from "./turn-attempts.ts";
 
 async function observedNote(
-  owner: PiRpcOwner,
-  note: PiRpcNote,
+  attempts: Attempts,
+  request: { readonly owner: PiRpcOwner; readonly note: PiRpcNote },
 ): Promise<SteerOutcome> {
+  const { owner, note } = request;
   const deadline = Date.now() + 5500;
   for (;;) {
     const receipt = await piRpcNoteReceipt(owner, note);
-    if (receipt.status === "observed") return { delivery: "now" };
+    if (receipt.status === "observed") {
+      const { delivered } = attempts.steering;
+      if (!delivered.some((entry) => entry.noteId === note.noteId))
+        delivered.push({ noteId: note.noteId, text: note.text });
+      return { delivery: "now" };
+    }
     if (["uncertain", "conflict", "unavailable"].includes(receipt.status))
       return queued(receipt.reason ?? "pi-rpc-delivery-uncertain");
     if (Date.now() >= deadline) return queued("pi-rpc-delivery-uncertain");
@@ -70,11 +76,7 @@ async function delivered(
   const receipt = await submitPiRpcNote(owner, input);
   if (["unavailable", "conflict"].includes(receipt.status))
     return queued(receipt.reason ?? "pi-rpc-not-running");
-  if (
-    !attempts.steering.delivered.some((entry) => entry.noteId === note.noteId)
-  )
-    attempts.steering.delivered.push(note);
-  return observedNote(owner, input);
+  return observedNote(attempts, { owner, note: input });
 }
 
 export function steerPi(

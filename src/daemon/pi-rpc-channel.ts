@@ -11,7 +11,11 @@ import {
   writeFileSync,
 } from "node:fs";
 import { dirname, join } from "node:path";
-import { recordedLaunch, type TurnLaunch } from "../turn-launch.ts";
+import {
+  attemptNumber,
+  recordedLaunch,
+  type TurnLaunch,
+} from "../turn-launch.ts";
 import { record } from "../protocol.ts";
 import { processMatch, type RecordedProcess } from "./process-identity.ts";
 
@@ -173,8 +177,9 @@ export async function piRpcPriorFailure(
     )
       return "pi-prior-result-uncertain";
     for (const note of piRpcNotes(owner)) {
-      if ((await piRpcNoteReceipt(owner, note)).status !== "observed")
-        return "pi-prior-result-uncertain";
+      const receipt = await piRpcNoteReceipt(owner, note);
+      if (receipt.reason === "pi-rpc-intake-closed") continue;
+      if (receipt.status !== "observed") return "pi-prior-result-uncertain";
     }
     return undefined;
   } catch {
@@ -207,21 +212,47 @@ export function piRpcNotes(owner: PiRpcOwner): readonly PiRpcNote[] {
   });
 }
 
+function recordedRpcOwner(
+  value: unknown,
+  folder: string,
+): PiRpcOwner | undefined {
+  const fields = record(value);
+  if (fields?.["harness"] !== "pi") return undefined;
+  const launch = recordedLaunch(fields["launch"]);
+  if (launch?.piRpc === undefined) return undefined;
+  const attempt = attemptNumber(value);
+  if (attempt === undefined) throw new Error("pi-rpc-note-evidence-invalid");
+  const place =
+    attempt === 1 ? folder : join(folder, `attempt-${String(attempt)}`);
+  return { ...launch, piRpc: join(place, "pi-rpc") };
+}
+
 export async function reservedPiRpcNotes(
   value: unknown,
+  folder: string,
 ): Promise<readonly string[]> {
-  const fields = record(value);
-  if (fields?.["harness"] !== "pi") return [];
-  const launch = recordedLaunch(fields["launch"]);
-  if (launch?.piRpc === undefined) return [];
-  const owner = { ...launch, piRpc: launch.piRpc };
+  const owner = recordedRpcOwner(value, folder);
+  if (owner === undefined) return [];
   const notes = piRpcNotes(owner);
+  const reserved: string[] = [];
   for (const note of notes) {
     const receipt = await piRpcNoteReceipt(owner, note);
+    if (receipt.reason === "pi-rpc-intake-closed") continue;
     if (["conflict", "unavailable"].includes(receipt.status))
       throw new Error(receipt.reason ?? "pi-rpc-note-evidence-invalid");
+    reserved.push(note.noteId);
   }
-  return notes.map((note) => note.noteId);
+  return reserved;
+}
+
+function unacceptedInput(state: Record<string, unknown>, id: string): boolean {
+  const sealed = state["sealedInputs"];
+  return (
+    ["settled", "closed"].includes(String(state["state"])) &&
+    Array.isArray(sealed) &&
+    sealed.every((entry: unknown) => typeof entry === "string") &&
+    !sealed.includes(id)
+  );
 }
 
 async function recordedNoteReceipt(
@@ -238,6 +269,8 @@ async function recordedNoteReceipt(
   if (!sameRequest(request, input))
     return { status: "conflict", reason: "pi-rpc-note-conflict" };
   const receipt = notedReceipt(owner, request);
+  if (receipt.status === "pending" && unacceptedInput(state, request.id))
+    return { status: "unavailable", reason: "pi-rpc-intake-closed" };
   if (receipt.status === "observed") return receipt;
   if (state["state"] === "running" && (await processMatch(owner)) === "same")
     return receipt;

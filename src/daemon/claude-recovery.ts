@@ -306,7 +306,7 @@ export async function readResume(
     steerNotes: [
       ...new Set([
         ...recordedTexts(started, "steerNotes"),
-        ...(await reservedPiRpcNotes(started)),
+        ...(await reservedPiRpcNotes(started, folder)),
       ]),
     ],
   };
