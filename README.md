@@ -354,7 +354,7 @@ For example, a shared `.cloving/config.json` can contain:
 }
 ```
 
-The private file can contain `{"version": 1, "privateTexts": ["acme"]}`. With `CLOVING_CHECK_COMMAND='["make", "check"]'`, the environment command takes priority. `harness.command` belongs to `harness.name`: `CLOVING_CLAUDE_COMMAND` overrides it for Claude, `CLOVING_CODEX_COMMAND` for Codex and `CLOVING_OPENCODE_COMMAND` for opencode. Without a saved command, `harness.path` replaces the program in that worker's default command. `harness.kind` accepts `file` or `shell`; shell harnesses run through `SHELL -l -i -c`, with command parts passed as separate arguments. `profiles` contains the profile map directly; `CLOVING_PROFILES` still selects a separate profiles file and overrides that map.
+The private file can contain `{"version": 1, "privateTexts": ["acme"]}`. With `CLOVING_CHECK_COMMAND='["make", "check"]'`, the environment command takes priority. `harness.command` belongs to `harness.name`: `CLOVING_CLAUDE_COMMAND` overrides it for Claude, `CLOVING_CODEX_COMMAND` for Codex and `CLOVING_OPENCODE_COMMAND` for opencode and `CLOVING_PI_COMMAND` for native Pi. Without a saved command, `harness.path` replaces the program in that worker's default command. `harness.kind` accepts `file` or `shell`; shell harnesses run through `SHELL -l -i -c`, with command parts passed as separate arguments. `profiles` contains the profile map directly; `CLOVING_PROFILES` still selects a separate profiles file and overrides that map.
 
 Read and change settings with the configuration commands:
 
@@ -1238,7 +1238,87 @@ Pi turns require an un-aborted `agent_settled`, a successful final assistant mes
 
 Pi usage counts each completed primary assistant response once. The turn journal retains each response's provider, model, usage and cost provenance, with nested tool usage separate. The final report keeps a bounded `piAccounting` summary with the response count, primary-model scope, auxiliary-work flag and nested usage. Reasoning tokens are already part of output. Only Pi's explicit `totalFromProvider: true` cost is admitted as billed; catalog costs remain reported estimates. Auxiliary model work makes the complete billed cost unknown. Cloving's separate token-table estimate requires one known provider/model, complete counts, zero cache writes and no auxiliary model work. Use the `provider/model` key in `tokenPrices`. Missing counts and unknown prices remain unknown.
 
-Before a native Pi process starts, Cloving creates a private session file and records its identity with the operation, attempt and worktree. A compatible restart connects to the same owned process without another prompt. Recovery checks the saved session path and header against the owned attempt. Missing, malformed, linked or foreign session state refuses recovery with a reason. The start and attempt records must agree on process identity, output position and operation ownership. Missing, malformed or conflicting attempt evidence leaves recovery uncertain without signaling the retained process. A settled attempt with a lost final result replays its owned output and usage without another prompt. A process that disappears without an exit record leaves its prior result uncertain. Command overrides cannot supply session selectors such as `--continue`, `--resume`, `--session` or `--no-session`. Enforcing runners expose only the private session folder. A retained native process cannot be reinterpreted as a custom text turn, and a legacy text invocation cannot supply native session ownership. After a confirmed daemon shutdown, native Pi can continue from a validated private checkpoint, at most two times per logical turn. Cloving copies the recorded checkpoint into the next attempt, retains its session identity, and selects that file explicitly. Historical assistant responses do not add text or usage to the new invocation. Missing conversation history or an incomplete checkpoint refuses continuation. Interrupted accounting remains unknown, and continuation preserves the configured model selector. A drop recorded during recovery prevents a replacement prompt. Immediate steering uses the existing RPC input owner and waits for both the command acknowledgment and the observed user message. It keeps the same process, operation and attempt, retains previous work, and waits for real settlement. Durable requests reserve each note across restart and a lost daemon callback, with at most three immediate notes per logical turn. A missing reply leaves delivery uncertain and prevents a replacement invocation. A note sent before RPC readiness, or to an unsupported override, stays queued for the next eligible turn. Direct, shell, container and seatbelt runners share this lifecycle; the RPC control journal remains on the host. Drop stops the owned process group and starts no replacement. Uncertain process loss refuses recovery. Full live Pi release qualification is tracked separately in #772.
+Before a native Pi process starts, Cloving creates a private session file and records its identity with the operation, attempt and worktree. A compatible restart connects to the same owned process without another prompt. Recovery checks the saved session path and header against the owned attempt. Missing, malformed, linked or foreign session state refuses recovery with a reason. The start and attempt records must agree on process identity, output position and operation ownership. Missing, malformed or conflicting attempt evidence leaves recovery uncertain without signaling the retained process. A settled attempt with a lost final result replays its owned output and usage without another prompt. A process that disappears without an exit record leaves its prior result uncertain. Command overrides cannot supply session selectors such as `--continue`, `--resume`, `--session` or `--no-session`. Enforcing runners expose only the private session folder. A retained native process cannot be reinterpreted as a custom text turn, and a legacy text invocation cannot supply native session ownership. After a confirmed daemon shutdown, native Pi can continue from a validated private checkpoint, at most two times per logical turn. Cloving copies the recorded checkpoint into the next attempt, retains its session identity, and selects that file explicitly. Historical assistant responses do not add text or usage to the new invocation. Missing conversation history or an incomplete checkpoint refuses continuation. Interrupted accounting remains unknown, and continuation preserves the configured model selector. A drop recorded during recovery prevents a replacement prompt. Immediate steering uses the existing RPC input owner and waits for both the command acknowledgment and the observed user message. It keeps the same process, operation and attempt, retains previous work, and waits for real settlement. Durable requests reserve each note across restart and a lost daemon callback, with at most three immediate notes per logical turn. A missing reply leaves delivery uncertain and prevents a replacement invocation. A note sent before RPC readiness, or to an unsupported override, stays queued for the next eligible turn. Direct, shell, container and seatbelt runners have fake-process lifecycle contract tests; real runner limits appear in the qualification table below. The RPC control journal remains on the host. Drop stops the owned process group and starts no replacement. Uncertain process loss refuses recovery. The following table records the evidence and limits for #772.
+
+
+### Pi capability qualification
+
+Pi is an optional, separately installed harness for Cloving 1.10. Installing Cloving does not install Pi, sign in, or call a model. The default harness stays unchanged.
+
+The tested CLI is `@earendil-works/pi-coding-agent` **1.5.2**, on **macOS 27.2 arm64**, with **Node 26.9.0**. Its pinned source revision is `b4afdddf44e059c67ccf5097e5317d913521b470`. Local inspection covers help, version, authentication readiness with an empty home and RPC `get_state` with an empty home, offline mode and no prompt. It does not establish provider compatibility. No provider call is authorized or claimed by this qualification.
+
+| Capability | Fake-process contract evidence | Real local CLI evidence | Separately authorized provider evidence |
+|---|---|---|---|
+| Selection and JSON execution | Packed service selects private settings and a Pi profile; JSON fixtures cover literal and large input | Help advertises JSON and RPC modes; version is 1.5.2 | None; provider/model combinations are unqualified |
+| Settlement | Requires successful assistant output, un-aborted `agent_settled`, drained output and successful exit; `agent_end` alone is insufficient | Pinned JSON protocol inspected | None |
+| Transcript | Packed service exposes prompt and assistant output; stream tests cover thinking, tools and partial replacement | JSON message and tool event surface inspected | None |
+| Usage | Counts each primary response once; nested and auxiliary work remain separate | Pinned usage types inspected | None; counts are not provider billing proof |
+| Cost | Packed fixture keeps catalog cost separate from billed cost; absent counts/prices remain unknown | Cost provenance surface inspected | None; no measured provider charge |
+| Provider/model attribution | Packed status retains the reported `provider/model`; profile model selection is tested | Help describes provider, model and thinking arguments | None; a selector is not compatibility evidence |
+| Process stop and drop | Packed service stops the owned process and sends no replacement prompt | No real model process-stop test | None |
+| Service restart | Packed service reconnects to the same process with one initial prompt | RPC `get_state` responds without a prompt | None |
+| Explicit session resume | Native recovery fixtures validate owned checkpoints, select the session explicitly and bound continuation to two attempts | Help advertises `--session`; no real conversation resumed | None; arbitrary user session import is unsupported |
+| Immediate steering | Packed service retains one process and waits for acknowledgment and observed note; at most three immediate notes per logical turn | RPC command surface inspected; no real active turn steered | None; unqualified overrides queue the note |
+| Direct runner | Packed service lifecycle through the installed package | Help/version/state inspection runs directly | None |
+| Shell runner | Native worker fixtures retain file versus shell selection and lifecycle | No real shell model turn | None |
+| Container and seatbelt runners | Fake engine/sandbox fixtures exercise ownership, session mounts, reconnect, steer and drop | No real container engine or seatbelt Pi turn qualified | None; these combinations have contract evidence only |
+| Live questions and permissions | Unsupported; no extension dialog bridge or automatic answer | Distinct RPC extension UI protocol inspected | None; no permission capability claimed |
+| Pi Durable | Unsupported | Not inspected | None |
+
+A version string, exit code, terminal text or delivered input does not establish a runner or permission capability. Linux, x64, real container/seatbelt Pi execution and all provider/model combinations have no real CLI lifecycle qualification here. Do not infer those combinations from Cloving's general platform support.
+
+Select an already installed Pi without a model call:
+
+```sh
+pi --version
+pi --help
+pi auth check --provider anthropic --no-refresh
+cloving init --local --harness pi
+cloving doctor --json
+cloving config get harness.name --json
+```
+
+`pi auth check` reports readiness without printing credentials. Do not add `--credentials`, use `print-api-key` or `print-bearer-token`, or print the authentication file. A missing login reports `not_ready`; it does not authorize Cloving to sign in. Use Pi's own login separately when you choose to authorize it. The local init path saves settings and templates without a model turn. The factory init path starts the selected interactive agent and requires its normal login.
+
+Private settings can select the native command and profiles:
+
+```json
+{
+  "version": 1,
+  "harness": {
+    "name": "pi",
+    "command": ["pi", "--mode", "json", "--provider", "anthropic", "--model", "claude-sonnet-4-5", "--thinking", "low"]
+  },
+  "profiles": {
+    "pi": { "harness": "pi", "model": "anthropic/claude-sonnet-4-5" }
+  }
+}
+```
+
+These selectors illustrate syntax only; they are not a qualified model recommendation. A workflow selects the profile with capability `claude`, method `run-turn:pi`. `harness.kind: "file"` preserves a file path; `"shell"` preserves an alias or function. An environment override has priority:
+
+```sh
+export CLOVING_PI_COMMAND='["pi","--mode","json","--provider","anthropic","--model","claude-sonnet-4-5","--thinking","low"]'
+```
+
+`CLOVING_WORKER=pi` selects the native worker independently of the saved default. A declared `harness.turn` keeps the existing generic text harness behavior. Profiles can select Pi even when the service default is another harness. Provider credentials belong to the operator's Pi setup or permitted turn environment. No login flow or credential is supplied by Cloving.
+
+Native discovery accepts exactly **1.5.2**. `not-found` means no executable; `no-version` means a shim or unusable version output; `unsupported-version` means a recognizable but unqualified Pi release. Doctor reports the selected command's reason, and init refuses with `harness-unusable` plus that reason. Both use version probes without prompts. A supported version probe checks CLI availability, not login or protocol compatibility. Keep another installed harness available when Pi is absent. New Pi releases require fresh protocol and packed lifecycle evidence before this policy changes. The native JSON session header uses version `3`. An unsupported or malformed header records `Pi unsupported or malformed session record` and cannot settle successfully. Executable `unsupported-version` is a separate setup diagnostic; version checks do not negotiate a newer event protocol.
+
+The service accepts at most 65,536 UTF-8 bytes for each worker text. The packed case exercises a roughly 60 kB literal prompt. A larger effect payload returns `input-too-large` before Pi starts; adapter-only large-input tests do not widen this service limit.
+
+The one-shot JSON surface has no live question or permission callback. Live extension dialogs use `extension_ui_request` and a matching `extension_ui_response` on the distinct [RPC extension UI protocol](https://github.com/earendil-works/pi/blob/v1.5.2/packages/coding-agent/docs/rpc-extension-ui.md). The native RPC prompt/steer channel does not implement that dialog bridge and sends no dialog answers. A dialog-dependent extension is unsupported and can leave a turn waiting. Stop or drop it; never treat the wait or an extension timeout as permission. There is no general required-dialog declaration to refuse at admission. This explicit limit applies in both JSON and RPC modes.
+
+Use existing refusals for declared requirements: Claude-only profile permission/tool/budget fields give `profile-needs-claude`. Unqualified native resume gives `pi-native-resume-unsupported`; command-supplied session selectors give `pi-session-command-unsupported`. An unsupported immediate steer remains queued for the next eligible turn. Broader native questions, permission callbacks and runner qualification remain open under [#31](https://github.com/cloving-ai/cloving-ai/issues/31). This ticket does not complete that epic.
+
+### Pi release checklist
+
+- Use Pi **1.5.2** and record the host, Node version and CLI digest outside the repository.
+- Retain the integrated [native worker/steering evidence](https://github.com/cloving-ai/cloving-ai/blob/8ddd54e9a68bfe628e4fecabff590857911e667e/test/pi-native-rpc.test.ts), [session recovery evidence](https://github.com/cloving-ai/cloving-ai/blob/8ddd54e9a68bfe628e4fecabff590857911e667e/test/pi-native-resume.test.ts) and [runner contract evidence](https://github.com/cloving-ai/cloving-ai/blob/8ddd54e9a68bfe628e4fecabff590857911e667e/test/pi-session-runner.test.ts) at final revision `8ddd54e9a68bfe628e4fecabff590857911e667e`. The integrated baseline is `4d60486d66490dcfe85ebb28776135d38883c41b`.
+- Run `test/packed-pi.test.ts` against the final candidate. It builds a fresh tarball, installs with `npm ci --ignore-scripts --omit=dev --offline`, and exercises the real service with a fake Pi. It imports no application source into the consumer and uses no global Cloving.
+- Record the final candidate revision, manifest/lock digests, tarball digest, exact commands, results and independent review externally. Keep credentials, sessions and development evidence outside the tarball. The tarball contains no Pi executable.
+- Pass all ten checks of `npm run check:quality`, build and the committed-tree `npm run check:clean`. Keep the separately inspected real CLI help/version/protocol evidence distinct from the fake lifecycle results.
+- Record provider evidence only under a separate finite call and cost grant. With no such grant, mark provider compatibility unqualified and cost unknown. Missing credentials and interactive requirements do not authorize a provider call or dialog response.
 
 
 With `gemini`, the default command is `gemini --output-format stream-json --approval-mode yolo -p <turn text>`, with no approval prompts. `CLOVING_GEMINI_COMMAND` replaces the command and fixed arguments; Cloving appends `-p` and the turn text. Turn text of 64 KiB or more in UTF-8 goes through standard input without `-p`, to stay below operating-system argument limits; Gemini runs headless because its input is not a terminal. The [Gemini headless stream](https://geminicli.com/docs/cli/headless/) supplies the last assistant message as the report. Completion requires exit status 0, a successful result event and no event with error severity. Gemini capacity errors are not retried. Status retains each model's token counts. Input includes cached tokens; estimates price uncached input and cache reads separately at each model's configured price, then sum them. Missing counts show `Token usage not known`; a missing price for any model makes the estimate unknown. There are no built-in Gemini prices; add them through `tokenPrices` or `CLOVING_TOKEN_PRICES`. Gemini turns use an empty GitHub configuration directory and receive no GitHub token variables.
