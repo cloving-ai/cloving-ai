@@ -152,6 +152,7 @@ function settled(event: Fields, state: State): void {
 function received(event: Fields, state: State): readonly string[] {
   if (state.failure !== undefined) return [];
   if (event["type"] === "session") return session(event, state);
+  if (event["type"] === "response") return [];
   state.failure = activityFailure(event, state);
   if (state.failure !== undefined) return [];
   if (event["type"] === "agent_start") state.invocationStarted = true;
