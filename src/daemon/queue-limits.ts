@@ -18,6 +18,7 @@ import {
   declaresQueue,
   type DeclaredWorkflow,
 } from "../workflow-declaration.ts";
+import type { QueueSettingRequest } from "../queue-setting-operation.ts";
 
 export interface QueueLimitReplacement extends QueueLimits {
   readonly declarations?: readonly DeclaredWorkflow[];
@@ -26,6 +27,10 @@ export interface QueueLimitReplacement extends QueueLimits {
 export interface QueueLimitsSource {
   readonly declaredLanes?: (workflowId: string) => number | undefined;
   readonly current: (workflowId?: string) => QueueLimits;
+  readonly replaceSetting: (
+    request: QueueSettingRequest,
+    next: QueueLimits,
+  ) => void;
   readonly replace: (
     next: QueueLimitReplacement,
     queues?: Readonly<Record<string, QueueLimits>>,
@@ -138,6 +143,21 @@ export function queueLimitsSource(settings: QueueSettings): QueueLimitsSource {
         replacements === undefined
           ? Object.fromEntries(Object.keys(queues).map((id) => [id, next]))
           : { ...queues, ...replacements };
+    },
+    replaceSetting: (request, next) => {
+      if (request.scope === "workflow") {
+        queues = { ...queues, [request.workflowId ?? ""]: next };
+        return;
+      }
+      const global = next.global;
+      if (global === undefined) return;
+      current = { ...current, global };
+      queues = Object.fromEntries(
+        Object.entries(queues).map(([id, limits]) => [
+          id,
+          { ...limits, global },
+        ]),
+      );
     },
   };
 }

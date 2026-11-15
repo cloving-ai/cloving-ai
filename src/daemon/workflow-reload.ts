@@ -17,7 +17,11 @@ import {
   type WorkflowRefusal,
 } from "../workflow-refusals.ts";
 import type { DaemonSettings } from "./daemon-adapters.ts";
-import { reloadCommandOutput } from "./reload-command.ts";
+import {
+  reloadCommandOutput,
+  parsedOutput,
+  outputRefusal,
+} from "./reload-command.ts";
 import {
   ticketRegistrations,
   ticketRegistrationTable,
@@ -38,6 +42,7 @@ import {
   type TurnSettingsSource,
 } from "./settings-reload.ts";
 import { queueConfiguration, type QueueLimitsSource } from "./queue-limits.ts";
+import { queueSettingsStep } from "./queue-settings-reload.ts";
 
 interface PreparedBundle extends ReloadedSettings {
   readonly kind: "prepared";
@@ -131,29 +136,6 @@ function manifestPaths(
   );
   return paths.length === entries.length
     ? Object.fromEntries(paths)
-    : undefined;
-}
-
-function parsedOutput(
-  output: string,
-): Readonly<Record<string, unknown>> | undefined {
-  try {
-    return record(JSON.parse(output));
-  } catch {
-    return undefined;
-  }
-}
-
-function outputRefusal(
-  value: Readonly<Record<string, unknown>> | undefined,
-): Refused | undefined {
-  const error = value?.["error"];
-  if (typeof error === "string") return refused("reload-failed", error);
-  const refusal = record(value?.["refusal"]);
-  const code = refusal?.["code"];
-  const detail = refusal?.["detail"];
-  return typeof code === "string" && typeof detail === "string"
-    ? refused(code, detail)
     : undefined;
 }
 
@@ -327,6 +309,7 @@ interface ReloadState {
   readonly bundleDigest: string | undefined;
   readonly workflowRefusals: readonly WorkflowRefusal[];
   readonly settingDigests: SettingDigests;
+  readonly declarations: readonly DeclaredWorkflow[];
 }
 
 interface ReloadStep {
@@ -376,6 +359,7 @@ async function reloadOutcome(
         digests: bundle.settingDigests,
         reloadedFields: changes.reloadedFields,
       }),
+      declarations: bundle.declarations,
     },
   };
 }
@@ -387,10 +371,14 @@ export function workflowReload(
     bundleDigest: settings.bundleDigest,
     workflowRefusals: workflowRefusals(settings.workflowRefusals),
     settingDigests: settings.settingDigests ?? {},
+    declarations: settings.declarations ?? [],
   };
-  return async () => {
+  return async (scope) => {
     const previous = state.bundleDigest;
-    const step = await reloadOutcome(settings, state);
+    const step =
+      scope !== undefined
+        ? await queueSettingsStep({ ...settings, request: scope }, state)
+        : await reloadOutcome(settings, state);
     state = step.state;
     process.stdout.write(
       reloadLine(step.outcome, { previous, current: state.bundleDigest }),

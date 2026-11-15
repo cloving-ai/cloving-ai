@@ -17,6 +17,10 @@ import { call, runCli } from "./service-fixture.ts";
 import { candidateDeclaration } from "./workflow-candidate-fixtures.ts";
 import { candidatePackageRoot } from "./candidate-package-fixture.ts";
 import { checkedLiveBrowser } from "./queue-lane-browser-fixture.ts";
+import {
+  withLaneReloadProbe,
+  laneReloadDiagnostics,
+} from "./queue-lane-reload-fixture.ts";
 
 await rm(join(candidatePackageRoot, "dist/package.json"), { force: true });
 
@@ -168,29 +172,33 @@ await test("CLV-377 real in-flight harness identities survive automatic lane app
       CLOVING_QUEUE_WORKING_LANES: undefined,
       CLOVING_QUEUES: undefined,
     };
-    await fixture.start(environment);
-    const inventory = await call(fixture, {
-      operation: "status",
-      parameters: {},
+    await withLaneReloadProbe(fixture, {
+      environment,
+      body: async () => {
+        const inventory = await call(fixture, {
+          operation: "status",
+          parameters: {},
+        });
+        assert.ok(
+          Array.isArray(inventory["workflows"]) &&
+            inventory["workflows"].includes("lane-turn"),
+          JSON.stringify(inventory),
+        );
+        for (const commandId of ["one", "two"])
+          await submittedTurn(fixture, commandId);
+        await reached(async () =>
+          (await prompts(fixture)).length === 2 ? true : undefined,
+        ).catch(async (error: unknown) => {
+          throw new Error(
+            JSON.stringify(
+              await call(fixture, { operation: "status", parameters: {} }),
+            ),
+            { cause: error },
+          );
+        });
+        await appliedDuringTurns(fixture);
+      },
     });
-    assert.ok(
-      Array.isArray(inventory["workflows"]) &&
-        inventory["workflows"].includes("lane-turn"),
-      JSON.stringify(inventory),
-    );
-    for (const commandId of ["one", "two"])
-      await submittedTurn(fixture, commandId);
-    await reached(async () =>
-      (await prompts(fixture)).length === 2 ? true : undefined,
-    ).catch(async (error: unknown) => {
-      throw new Error(
-        JSON.stringify(
-          await call(fixture, { operation: "status", parameters: {} }),
-        ),
-        { cause: error },
-      );
-    });
-    await appliedDuringTurns(fixture);
   }));
 
 async function appliedDuringTurns(fixture: Scene) {
@@ -279,7 +287,11 @@ async function appliedGlobalDuringTurns(fixture: Scene) {
     },
   });
   assert.equal(held["code"], "queue-repository-full", JSON.stringify(held));
+  await writeFile(join(fixture.root, "arm-reload"), "");
   await checkedLiveBrowser(fixture);
+  const observed = await laneReloadDiagnostics(fixture);
+  assert.doesNotMatch(String(observed["reload"]), /compiler-waiting/);
+  await writeFile(join(fixture.root, "release-reload"), "");
 }
 
 async function checkedRestart(

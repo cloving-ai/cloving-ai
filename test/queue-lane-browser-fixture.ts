@@ -5,6 +5,7 @@ import { realBrowser } from "./watch-real-browser.ts";
 import { call } from "./service-fixture.ts";
 import { testMilliseconds } from "./test-timing.ts";
 import { field, type Scene } from "./self-host-fixture.ts";
+import { laneReloadDiagnostics } from "./queue-lane-reload-fixture.ts";
 
 type BrowserPage = Awaited<
   ReturnType<Awaited<ReturnType<typeof realBrowser>>["page"]>
@@ -155,6 +156,16 @@ export async function checkedLiveBrowser(fixture: Scene) {
     const daemon = await call(fixture, { operation: "status", parameters: {} });
     assert.equal(field(daemon["globalQueue"], "lanes"), 2);
     await checkedWorkflowBrowser(context, watch.address);
+  } catch (error) {
+    const saved = await laneReloadDiagnostics(fixture);
+    const daemon = await call(fixture, {
+      operation: "status",
+      parameters: {},
+    }).catch(String);
+    throw new Error(
+      JSON.stringify({ saved, daemon, watch: watch.output?.text }),
+      { cause: error },
+    );
   } finally {
     assert.equal(await watch.stop(), 0);
   }

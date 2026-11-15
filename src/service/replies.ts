@@ -87,7 +87,7 @@ export interface ServiceContext extends ServiceReads, ServiceIdentity {
   readonly authority: Authority;
   readonly registry: Registry;
   readonly workflowCatalog?: WorkflowCatalog;
-  readonly reload?: () => Promise<Reply>;
+  readonly reload?: (setting?: QueueSettingRequest) => Promise<Reply>;
   readonly gateway: Gateway;
   readonly clock: () => string;
   readonly livenessMilliseconds: number;

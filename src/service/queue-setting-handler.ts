@@ -65,7 +65,7 @@ export async function queueSetting(
   try {
     const changed = await context.queueSettings.change(
       request,
-      () => context.reload?.() ?? Promise.resolve(reloadUnavailable()),
+      () => context.reload?.(request) ?? reloadUnavailable(),
     );
     const refused = refusal(changed);
     if (refused !== undefined) return refused;
