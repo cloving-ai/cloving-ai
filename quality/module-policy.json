@@ -1351,6 +1351,7 @@
     "test/dependency-audit-script.test.ts": "test",
     "test/dependency-audit-template-fixture.ts": "test",
     "test/dependency-audit-template.test.ts": "test",
+    "test/detached-stop-fixture.ts": "test",
     "test/detached-turn.test.ts": "test",
     "test/develop-local-subject.test.ts": "test",
     "test/develop-template-demo.test.ts": "test",

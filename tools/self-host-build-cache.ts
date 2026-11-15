@@ -24,12 +24,12 @@ async function inputFiles(root: string, name: string): Promise<string[]> {
 }
 
 async function inputDigests(root: string, names: readonly string[]) {
-  return Promise.all(
-    names.map(async (name) => {
-      const bytes = await readFile(join(root, name));
-      return [name, createHash("sha256").update(bytes).digest("hex")];
-    }),
-  );
+  const digests: string[][] = [];
+  for (const name of names) {
+    const bytes = await readFile(join(root, name));
+    digests.push([name, createHash("sha256").update(bytes).digest("hex")]);
+  }
+  return digests;
 }
 
 export async function workflowBuildKey(input: {

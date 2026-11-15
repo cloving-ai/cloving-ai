@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import filesystem from "node:fs/promises";
 import {
   copyFile,
   lstat,
@@ -206,7 +207,11 @@ await appendFile(${JSON.stringify(count)}, "compiled\\n");`;
 
 await test("CLV-347 compiled workflow keys include staged sources, helper bytes, and dependency closure", () =>
   withFiles(
-    { "product/src/helper.ts": "first", "project/workflows/turn.ts": "first" },
+    {
+      "product/src/helper.ts": "first",
+      "product/dist/helper.js": "emitted first",
+      "project/workflows/turn.ts": "first",
+    },
     async (root) => {
       const input = {
         product: join(root, "product"),
@@ -220,13 +225,16 @@ await test("CLV-347 compiled workflow keys include staged sources, helper bytes,
       await writeFile(join(input.product, "src/helper.ts"), "second");
       const helper = await workflowBuildKey(input);
       assert.notEqual(helper, source);
+      await writeFile(join(input.product, "dist/helper.js"), "emitted second");
+      const emitted = await workflowBuildKey(input);
+      assert.notEqual(emitted, helper);
       assert.notEqual(
         await workflowBuildKey({ ...input, dependencies: "second" }),
-        helper,
+        emitted,
       );
       assert.notEqual(
         await workflowBuildKey({ ...input, recordedProject: "different" }),
-        helper,
+        emitted,
       );
       const staged = join(root, "staged");
       await mkdir(join(staged, "workflows"), { recursive: true });
@@ -237,9 +245,69 @@ await test("CLV-347 compiled workflow keys include staged sources, helper bytes,
           project: staged,
           recordedProject: input.project,
         }),
-        helper,
+        emitted,
       );
       await writeFile(join(input.product, "tools"), "invalid directory");
       await assert.rejects(workflowBuildKey(input), { code: "ENOTDIR" });
+    },
+  ));
+
+await test("CLV-347 compiled workflow keys bound file reads across large built checkouts", () =>
+  withFiles(
+    Object.fromEntries(
+      [
+        "product/src",
+        "product/tools",
+        "product/dist",
+        "project/workflows",
+      ].flatMap((directory) =>
+        Array.from({ length: 384 }, (_, index) => [
+          `${directory}/${String(index).padStart(3, "0")}.ts`,
+          `${directory}:${String(index)}`,
+        ]),
+      ),
+    ),
+    async (root) => {
+      const input = {
+        product: join(root, "product"),
+        project: join(root, "project"),
+        dependencies: "closure",
+      };
+      const read = filesystem.readFile;
+      const files = new Set<string>();
+      let active = 0;
+      let peak = 0;
+      Object.defineProperty(filesystem, "readFile", {
+        value: async (...arguments_: readonly unknown[]): Promise<unknown> => {
+          active += 1;
+          peak = Math.max(peak, active);
+          try {
+            const bytes: unknown = await Reflect.apply(
+              read,
+              filesystem,
+              arguments_,
+            );
+            files.add(String(arguments_[0]));
+            return bytes;
+          } finally {
+            active -= 1;
+          }
+        },
+      });
+      syncBuiltinESMExports();
+      try {
+        const keys = await Promise.all(
+          Array.from({ length: 4 }, () => workflowBuildKey(input)),
+        );
+        assert.ok(peak <= 16, `outstanding file reads: ${String(peak)}`);
+        assert.equal(files.size, 1536);
+        assert.deepEqual(
+          keys,
+          Array.from({ length: 4 }, () => keys[0]),
+        );
+      } finally {
+        filesystem.readFile = read;
+        syncBuiltinESMExports();
+      }
     },
   ));

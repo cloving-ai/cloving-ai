@@ -298,16 +298,7 @@ export async function stoppedLaunch(
   launch: ProcessLaunch,
   milliseconds: number,
 ): Promise<void> {
-  const kept = attachedProcess(launch);
-  kept.signal("SIGTERM");
-  const forced = setTimeout(() => {
-    kept.signal("SIGKILL");
-  }, milliseconds);
-  try {
-    await kept.ending(new AbortController().signal);
-  } finally {
-    clearTimeout(forced);
-  }
+  await stoppedMatch(launch, milliseconds);
 }
 
 export const markerRecord = "launch-marker.json";

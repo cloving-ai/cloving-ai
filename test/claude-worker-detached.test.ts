@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
 import { record } from "../src/protocol.ts";
+import { stopEvidence } from "./detached-stop-fixture.ts";
 import {
   alive,
   field,
@@ -133,8 +134,22 @@ await test("CLV-337 a running turn that the new worker cannot connect to stops b
     const next = scene.worker("gated-lines", { profiles: {} });
     const reply = await next.reconcile(review, signal);
     assert.equal(reply.kind, "failed");
-    assert.equal(alive(turn.processId), false);
-    assert.equal(alive(turn.parentId), false);
+    assert.equal(
+      alive(turn.processId),
+      false,
+      stopEvidence({
+        folder: folder(scene),
+        processIds: [turn.processId, turn.parentId],
+      }),
+    );
+    assert.equal(
+      alive(turn.parentId),
+      false,
+      stopEvidence({
+        folder: folder(scene),
+        processIds: [turn.processId, turn.parentId],
+      }),
+    );
   }));
 
 await test("CLV-337 a turn that ends while no worker runs ends after the start", () =>
