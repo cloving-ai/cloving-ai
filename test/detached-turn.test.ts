@@ -10,15 +10,21 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { setTimeout as delay } from "node:timers/promises";
+import {
+  setImmediate as nextTurn,
+  setTimeout as delay,
+} from "node:timers/promises";
 import { attachedTurn, detachedTurn } from "../src/daemon/detached-turn.ts";
-import { launchState } from "../src/daemon/detached-process.ts";
+import { launchState, stoppedLaunch } from "../src/daemon/detached-process.ts";
 import { recordedLaunch, type TurnLaunch } from "../src/turn-launch.ts";
 import {
   processExists,
   processIdentity,
 } from "../src/daemon/process-identity.ts";
-import { until } from "./claude-worker-fixture.ts";
+import { field, until } from "./claude-worker-fixture.ts";
+import { readRecord, writeRecord } from "../src/daemon/operation-journal.ts";
+import { rejectedAttach } from "../src/daemon/claude-attach.ts";
+import { receiptHeldLauncher } from "./detached-stop-fixture.ts";
 
 const holding = `process.stdout.write(JSON.stringify({ type: "system", session_id: "session-7" }) + "\\n"); process.on("SIGTERM", () => require("node:fs").writeFileSync(process.argv[1], "")); setInterval(() => {}, 1000);`;
 
@@ -226,4 +232,130 @@ await test("CLV-337 an attached turn keeps its stop request while the identity o
     assert.equal((await kept.ended).exitCode, null);
     assert.equal(processExists(launch.processId), false);
     await turn.ended;
+  }));
+
+await test(
+  "CLV-347 release waits for pending session journal writes before another reader can take over",
+  { timeout: 10_000 },
+  () =>
+    withFolder(async (folder) => {
+      const turn = started(folder, holding);
+      const launch = await launchOf(turn);
+      const release = new AbortController();
+      const entered = Promise.withResolvers<undefined>();
+      const writing = Promise.withResolvers<undefined>();
+      const state = { ending: "pending" };
+      const kept = attachedTurn(
+        {
+          command: ["fake"],
+          release: release.signal,
+          progress: async (snapshot) => {
+            entered.resolve(undefined);
+            await writing.promise;
+            await writeRecord(folder, {
+              name: "attempt-1.json",
+              value: snapshot,
+              permissions: "private",
+            });
+          },
+        },
+        launch,
+      );
+      const ended = kept.ended.then(
+        () => {
+          state.ending = "completed";
+        },
+        () => {
+          state.ending = "released";
+        },
+      );
+      try {
+        await entered.promise;
+        release.abort();
+        assert.equal(await kept.exited, "released");
+        await nextTurn();
+        assert.equal(
+          state.ending,
+          "pending",
+          "The released turn ended before its progress journal settled.",
+        );
+        writing.resolve(undefined);
+        await assert.rejects(kept.ended, /turn-released/);
+        await ended;
+        assert.deepEqual(await readRecord(folder, "attempt-1.json"), {
+          sessionId: "session-7",
+        });
+        assert.equal(processExists(launch.processId), true);
+        assert.equal(existsSync(launch.configuration), true);
+      } finally {
+        writing.resolve(undefined);
+        release.abort();
+        await ended;
+        await killed(launch.processId);
+        await turn.ended;
+      }
+    }),
+);
+
+await test(
+  "CLV-347 rejected attachment waits for the owned launcher to stop after its exit receipt",
+  { timeout: 10_000 },
+  () =>
+    withFolder(async (folder) => {
+      const held = await receiptHeldLauncher(folder);
+      const signalled = Promise.withResolvers<undefined>();
+      const original = Object.getOwnPropertyDescriptor(process, "kill");
+      assert.ok(original);
+      const kill = process.kill.bind(process);
+      process.kill = (processId, signal) => {
+        const result = kill(processId, signal);
+        if (processId === -held.launch.processId && signal === "SIGTERM")
+          signalled.resolve(undefined);
+        return result;
+      };
+      const state = { reply: "pending" };
+      const stopped = rejectedAttach({
+        request: { folder, key: "held-launcher" },
+        plan: "claude-turn-interrupted",
+        launch: held.launch,
+        stopMilliseconds: 1000,
+      }).then((reply) => {
+        state.reply = reply.kind;
+        return reply;
+      });
+      try {
+        await signalled.promise;
+        await nextTurn();
+        assert.equal(held.state.exit, "pending");
+        assert.equal(processExists(held.launch.processId), true);
+        assert.equal(state.reply, "pending", held.evidence());
+        assert.equal(await readRecord(folder, "result.json"), undefined);
+        assert.equal((await stopped).kind, "failed");
+        assert.equal(processExists(held.launch.processId), false);
+        assert.equal(held.state.exit, "SIGKILL");
+        assert.equal(
+          field(await readRecord(folder, "result.json"), "outcome"),
+          "failed",
+        );
+      } finally {
+        Object.defineProperty(process, "kill", original);
+        await held.close();
+        await stopped;
+      }
+    }),
+);
+
+await test("CLV-347 stopping a recorded launcher does not signal a different process with its PID", () =>
+  withFolder(async (folder) => {
+    const held = await receiptHeldLauncher(folder);
+    try {
+      await stoppedLaunch(
+        { ...held.launch, marker: "cloving-turn-other" },
+        100,
+      );
+      assert.equal(processExists(held.launch.processId), true, held.evidence());
+      assert.equal(held.state.exit, "pending");
+    } finally {
+      await held.close();
+    }
   }));

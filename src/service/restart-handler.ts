@@ -1,3 +1,4 @@
+import { restartTrace } from "./restart-trace.ts";
 import { terminal } from "../authority/transitions.ts";
 import { record, type Fields, type Reply } from "../protocol.ts";
 import {
@@ -185,7 +186,9 @@ async function pendingRestart(
       detail: `The restart cannot set ${set.key}. ${errorMessage(set.error)}`,
     });
   const mark = requestedMark(parameters, set.variables);
+  restartTrace("request-marked");
   const refusal = await port.validate?.(mark);
+  restartTrace("validation-end");
   if (refusal !== undefined)
     return failed("invalid-restart-setting", {
       commandId,
@@ -195,6 +198,7 @@ async function pendingRestart(
   const unresumable =
     at === "now" ? { unresumableRuns: await port.unresumable() } : {};
   await port.request(mark);
+  restartTrace("request-published");
   return result("restart", {
     ...identityFields(context),
     restart: {

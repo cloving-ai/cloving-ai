@@ -14,6 +14,37 @@ const mark: RestartMark = {
   resumeQueue: false,
 };
 
+await test("CLV-347 deferred validation keeps the boot environment snapshot and applies explicit restart values", async () => {
+  const fixture = settingsScene();
+  try {
+    const environment = {
+      ...fixture.environment,
+      CLOVING_QUEUE_SECONDS: "60",
+      CLOVING_QUEUE_LANES: "4",
+    };
+    const validate = restartSettings({
+      repository: fixture.repository,
+      environment,
+      fileVariables: [],
+    });
+    environment.CLOVING_QUEUE_LANES = "1";
+    assert.equal(
+      await validate({
+        ...mark,
+        variables: { CLOVING_QUEUE_WORKING_LANES: "3" },
+      }),
+      undefined,
+    );
+    const refusal = await validate({
+      ...mark,
+      variables: { CLOVING_QUEUE_LANES: "2", CLOVING_QUEUE_WORKING_LANES: "3" },
+    });
+    assert.match(String(refusal?.detail), /invalid-queue-working-lanes/);
+  } finally {
+    rmSync(fixture.root, { recursive: true, force: true });
+  }
+});
+
 await test("CLV-352 restart validation refuses an unsupported worker and names the changed harness setting", async () => {
   const fixture = settingsScene();
   try {

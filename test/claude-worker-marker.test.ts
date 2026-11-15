@@ -130,7 +130,7 @@ await test("CLV-350 a new worker stops the turn and each other process with its 
     }
   }));
 
-await test("CLV-350 a turn with a marker and no matching process is not connected", () =>
+await test("CLV-350 a turn with a marker but no session or matching process is interrupted", () =>
   withScene(async (scene) => {
     await crashedTurn(scene, "sessionless");
     assert.notEqual(

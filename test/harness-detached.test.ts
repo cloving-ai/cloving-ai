@@ -333,10 +333,13 @@ await test("CLV-349 a later attempt in the pipe start appends its transcript aft
 
 const relativeCodex = [
   "#!/bin/sh",
-  ...[
-    ...(harnessOutputs["codex"]?.head ?? []),
-    ...(harnessOutputs["codex"]?.tail ?? []),
-  ].map((line) => `printf '%s\\n' '${JSON.stringify(line)}'`),
+  ...(harnessOutputs["codex"]?.head ?? []).map(
+    (line) => `printf '%s\\n' '${JSON.stringify(line)}'`,
+  ),
+  'while [ ! -f "$CLOVING_TEST_RELEASE" ]; do /bin/sleep 0.02; done',
+  ...(harnessOutputs["codex"]?.tail ?? []).map(
+    (line) => `printf '%s\\n' '${JSON.stringify(line)}'`,
+  ),
 ].join("\n");
 
 await test("CLV-349 a stream turn finds its program in a relative or empty PATH folder from its work tree, keeps it, and ends with its result", async () => {
@@ -350,17 +353,29 @@ await test("CLV-349 a stream turn finds its program in a relative or empty PATH 
       ["tools", tree],
       ["", join(tree, "tools")],
     ] as const) {
+      const release = join(directory, "release");
+      rmSync(release, { force: true });
       const turn = startTurn({
         worker: "codex",
         command: ["relative-codex"],
         directory: folder,
         folder: directory,
         prompt: "Research",
-        environment: { PATH: `${place}${delimiter}/usr/bin${delimiter}/bin` },
+        environment: {
+          PATH: `${place}${delimiter}/usr/bin${delimiter}/bin`,
+          CLOVING_TEST_RELEASE: release,
+        },
       });
-      const ended = await turn.ended;
-      assert.equal(ended.result?.text, "Ticket status: complete", place);
-      assert.equal(typeof field(await turn.launch, "processId"), "number");
+      try {
+        assert.equal(typeof field(await turn.launch, "processId"), "number");
+        writeFileSync(release, "");
+        const ended = await turn.ended;
+        assert.equal(ended.result?.text, "Ticket status: complete", place);
+      } finally {
+        writeFileSync(release, "");
+        turn.stop(0);
+        await turn.ended;
+      }
     }
   } finally {
     rmSync(directory, { recursive: true, force: true });

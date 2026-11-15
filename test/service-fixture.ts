@@ -25,6 +25,7 @@ import { digestOf } from "./digest-fixture.ts";
 import { testMilliseconds } from "./test-timing.ts";
 
 export { digestOf };
+export { parsed } from "./cli-fixture.ts";
 
 export const testTiming: ServiceTiming = {
   ...serviceTiming,
@@ -84,12 +85,18 @@ export function fakeRegistration(resolved: unknown[]): WorkflowRegistration {
 
 export function runCli(
   argumentsList: readonly string[],
-  environment: { readonly directory: string; readonly runtime: string },
+  environment: {
+    readonly directory: string;
+    readonly runtime: string;
+    readonly entryPoint?: string;
+    readonly signal?: AbortSignal;
+    readonly observe?: (output: Omit<CliResult, "status">) => void;
+  },
 ): Promise<CliResult> {
   return new Promise((settle, reject) => {
     const child = spawn(
       process.execPath,
-      [resolve("src/cli.ts"), ...argumentsList],
+      [environment.entryPoint ?? resolve("src/cli.ts"), ...argumentsList],
       {
         cwd: environment.directory,
         env: { ...process.env, CLOVING_RUNTIME_DIR: environment.runtime },
@@ -99,15 +106,24 @@ export function runCli(
     const output = { stdout: "", stderr: "" };
     child.stdout.on("data", (data: Buffer) => {
       output.stdout += data.toString();
+      environment.observe?.({ ...output });
     });
     child.stderr.on("data", (data: Buffer) => {
       output.stderr += data.toString();
+      environment.observe?.({ ...output });
     });
-    const timer = setTimeout(() => {
+    const stop = (): void => {
       stopChild(child).catch(reject);
-    }, testMilliseconds(20_000));
+    };
+    const timer =
+      environment.signal === undefined
+        ? setTimeout(stop, testMilliseconds(20_000))
+        : undefined;
+    environment.signal?.addEventListener("abort", stop, { once: true });
+    if (environment.signal?.aborted) stop();
     child.on("close", (code) => {
       clearTimeout(timer);
+      environment.signal?.removeEventListener("abort", stop);
       settle({ status: code ?? -1, ...output });
     });
   });
@@ -370,13 +386,6 @@ export async function eventually<Value>(
     await delay(testMilliseconds(20));
   }
   throw new Error("condition-not-reached");
-}
-
-export function parsed(result: CliResult): Readonly<Record<string, unknown>> {
-  const value: unknown = JSON.parse(result.stdout);
-  if (typeof value !== "object" || value === null || Array.isArray(value))
-    throw new Error(`not-an-object: ${result.stdout}`);
-  return Object.fromEntries(Object.entries(value));
 }
 
 export function field(value: unknown, name: string): unknown {

@@ -1,3 +1,4 @@
+import { restartTrace } from "./restart-trace.ts";
 import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import {
@@ -36,6 +37,7 @@ import {
   type UpdatePlan,
 } from "./restart-update.ts";
 import { hostWorkReads } from "./self-update-host.ts";
+import { restartWakeup } from "./restart-wakeup.ts";
 
 export type CheckoutLock = (
   work: () => Promise<number | undefined>,
@@ -306,11 +308,17 @@ async function restarted(
   claimed: RestartMark,
 ): Promise<number | undefined> {
   if (stopSignalled(watch) || (await refused(watch, claimed))) return undefined;
+  restartTrace("build-precheck-end");
   if (await childrenAlive(watch, claimed)) return undefined;
+  restartTrace("children-stopped");
   if (await workStarted(watch, claimed)) return undefined;
+  restartTrace("shutdown-start");
   await watch.stop();
+  restartTrace("shutdown-end");
   if (stopSignalled(watch)) return undefined;
+  restartTrace("update-start");
   await updateNoted(watch, claimed);
+  restartTrace("update-end");
   if (stopSignalled(watch)) return undefined;
   await notesWritten(watch.directory, claimed);
   await clearedRestart(watch.directory);
@@ -337,15 +345,24 @@ async function notesWritten(
 export async function restartWatch(
   watch: RestartWatch,
 ): Promise<number | undefined> {
-  for (;;) {
-    const waited = await delay(watch.milliseconds, true, {
-      signal: watch.stopping,
-    }).catch(() => false);
-    if (!waited) return undefined;
+  const waking = restartWakeup(watch);
+  try {
+    return await restartRequests(watch, waking.wait);
+  } finally {
+    waking.close();
+  }
+}
+
+async function restartRequests(
+  watch: RestartWatch,
+  wait: () => Promise<boolean>,
+): Promise<number | undefined> {
+  while (await wait()) {
     const request = await pendingRestart(watch.directory).catch(
       () => undefined,
     );
     if (request === undefined) continue;
+    restartTrace("request-found");
     const work = await waitingWork(watch, request.mark).catch(() => null);
     if (work === null || work.length > 0) {
       await expired(watch, { request, work }).catch(() => undefined);
@@ -355,9 +372,11 @@ export async function restartWatch(
       () => undefined,
     );
     if (claimed === undefined) continue;
+    restartTrace("claimed");
     const status = await watch.exclusive(() => restarted(watch, claimed));
     if (status !== undefined) return status;
   }
+  return undefined;
 }
 
 export async function productCommit(checkout: string): Promise<string | null> {

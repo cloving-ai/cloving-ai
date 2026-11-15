@@ -1,9 +1,12 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { writeFile } from "node:fs/promises";
+import { chmod, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { test } from "node:test";
-import { workflowBundleDependencies } from "../tools/workflow-bundle-dependencies.ts";
+import {
+  workflowBundleDependencies,
+  workflowPackageRoot,
+} from "../tools/workflow-bundle-dependencies.ts";
 import { withFiles } from "./quality/files-fixture.ts";
 
 const product = '{"name":"synthetic-product","version":"1"}';
@@ -97,6 +100,78 @@ await test("CLV-153 dependency capture resolves product metadata above an instal
           product: root,
           packages: ["fixture"],
         }),
+      );
+    },
+  ));
+
+await test("CLV-347 the compiled product skips emitted package metadata whose public executable is outside that directory", () =>
+  withFiles(
+    {
+      "package.json": JSON.stringify({ bin: { cloving: "dist/src/cli.js" } }),
+      "dist/package.json": JSON.stringify({
+        bin: { cloving: "dist/src/cli.js" },
+      }),
+      "dist/src/cli.js": "",
+    },
+    async (root) => {
+      assert.equal(await workflowPackageRoot(join(root, "dist")), root);
+      assert.equal(await workflowPackageRoot(root), root);
+    },
+  ));
+
+await test("CLV-347 a source package keeps its root before its public executable is built", () =>
+  withFiles(
+    {
+      "package.json": JSON.stringify({ bin: { cloving: "dist/src/cli.js" } }),
+      "src/cli.ts": "",
+    },
+    async (root) => {
+      assert.equal(await workflowPackageRoot(root), root);
+    },
+  ));
+
+for (const [name, parent] of [
+  ["malformed", "{"],
+  ["unrelated", '{"name":"other","version":"1"}'],
+  ["not an object", "null"],
+] as const) {
+  await test(`CLV-347 a valid nearest package in dist keeps its root when the optional parent is ${name}`, () =>
+    withFiles(
+      { "package.json": parent, "dist/package.json": product },
+      async (root) => {
+        assert.equal(
+          await workflowPackageRoot(join(root, "dist")),
+          join(root, "dist"),
+        );
+      },
+    ));
+}
+
+await test("CLV-347 a valid nearest package in dist keeps its root when the optional parent cannot be read", () =>
+  withFiles(
+    { "package.json": product, "dist/package.json": product },
+    async (root) => {
+      const parent = join(root, "package.json");
+      await chmod(parent, 0);
+      try {
+        await assert.rejects(readFile(parent, "utf8"), { code: "EACCES" });
+        assert.equal(
+          await workflowPackageRoot(join(root, "dist")),
+          join(root, "dist"),
+        );
+      } finally {
+        await chmod(parent, 0o600);
+      }
+    },
+  ));
+
+await test("CLV-347 malformed selected package metadata still refuses discovery", () =>
+  withFiles(
+    { "package.json": product, "dist/package.json": "{" },
+    async (root) => {
+      await assert.rejects(
+        workflowPackageRoot(join(root, "dist")),
+        SyntaxError,
       );
     },
   ));

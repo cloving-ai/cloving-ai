@@ -1,3 +1,4 @@
+import { restartTrace } from "./restart-trace.ts";
 import { readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { restartedEnvironment, restartFiles } from "../src/restart-request.ts";
@@ -45,6 +46,7 @@ async function restartEnvironment(
 
 export async function replacedHost(host: EndedHost): Promise<number> {
   if (host.status !== 75 || process.execve === undefined) return host.status;
+  restartTrace("replacement-start");
   const environment = await restartEnvironment(host.directory);
   const [, entry = "", ...given] = process.argv;
   return process.execve(

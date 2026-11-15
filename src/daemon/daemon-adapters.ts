@@ -1,3 +1,4 @@
+import { restartTrace } from "../service/restart-trace.ts";
 import { internalFeedPrefix } from "../queue-feed.ts";
 import type { QueueConfiguration } from "./queue-limits.ts";
 import type { QueueSource } from "../queue-settings.ts";
@@ -324,7 +325,7 @@ export function daemonIdentity(
   return {
     version: clovingVersion,
     commit: settings.commit ?? null,
-    startedAt: new Date().toISOString(),
+    startedAt: tracedStart(),
     worker: selectedWorker(settings),
     ...(settings.settingSources === undefined
       ? {}
@@ -334,4 +335,10 @@ export function daemonIdentity(
 
 function internalFeed(workflowId: string | undefined): boolean {
   return workflowId?.startsWith(internalFeedPrefix) ?? false;
+}
+
+function tracedStart(): string {
+  const startedAt = new Date().toISOString();
+  restartTrace("service-identity");
+  return startedAt;
 }

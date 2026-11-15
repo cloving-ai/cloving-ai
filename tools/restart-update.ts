@@ -1,3 +1,4 @@
+import { restartTrace } from "./restart-trace.ts";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 
@@ -236,19 +237,26 @@ export function checkoutCommands(settings: {
 }): CheckoutCommands {
   const command =
     (file: "git" | "npm") =>
-    async (argumentsList: readonly string[]): Promise<string> =>
-      (
-        await promisify(execFile)(file, argumentsList, {
-          cwd: settings.checkout,
-          env: settings.environment,
-          encoding: "utf8",
-          maxBuffer: 64 * 1024 * 1024,
-          timeout: commandLimits[file],
-          ...(steadyCommands.has(`${file} ${argumentsList[0] ?? ""}`)
-            ? {}
-            : { signal: settings.stopping }),
-        })
-      ).stdout;
+    async (argumentsList: readonly string[]): Promise<string> => {
+      const phase = `checkout-${file}-${argumentsList[0] ?? "command"}`;
+      restartTrace(`${phase}-start`);
+      try {
+        return (
+          await promisify(execFile)(file, argumentsList, {
+            cwd: settings.checkout,
+            env: settings.environment,
+            encoding: "utf8",
+            maxBuffer: 64 * 1024 * 1024,
+            timeout: commandLimits[file],
+            ...(steadyCommands.has(`${file} ${argumentsList[0] ?? ""}`)
+              ? {}
+              : { signal: settings.stopping }),
+          })
+        ).stdout;
+      } finally {
+        restartTrace(`${phase}-end`);
+      }
+    };
   return {
     git: command("git"),
     npm: command("npm"),

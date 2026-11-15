@@ -1,3 +1,4 @@
+import { restartTrace } from "../service/restart-trace.ts";
 import {
   adapters,
   daemonIdentity,
@@ -273,15 +274,20 @@ function workflowOptions(
 }
 
 async function openDaemon(settings: DaemonSettings): Promise<DaemonOpening> {
+  restartTrace("registrations-start");
   const { table, admitted } = await daemonRegistrations(settings);
+  restartTrace("registrations-end");
   if (admitted.kind === "rejected") return rejectedOpening(admitted.detail);
   const given = Promise.withResolvers<HostPorts>();
+  const ports = given.promise;
   const generations = workflowGenerations({
     ...settings,
     registrations: admitted.registrations,
     table,
   });
-  const resources = adapters(settings, { given: given.promise, generations });
+  restartTrace("adapters-start");
+  const resources = adapters(settings, { given: ports, generations });
+  restartTrace("adapters-end");
   const { worker, github, runs, handoff, commands } = resources;
   await mkdir(join(settings.directory, "state"), { recursive: true });
   await mkdir(settings.runtimeDirectory, { recursive: true, mode: 0o700 });
@@ -316,18 +322,16 @@ async function openDaemon(settings: DaemonSettings): Promise<DaemonOpening> {
     return opening;
   }
   const running = { ...resources, ...controls, service: opening.service };
-  await recoverWorkers(running, given.promise);
+  restartTrace("recovery-start");
+  await recoverWorkers(running, ports);
+  const daemon = await runningDaemon(settings, { ...running, ports });
   resources.recoveries.finish();
-  return {
-    kind: "started",
-    daemon: await runningDaemon(settings, { ...running, ports: given.promise }),
-  };
+  restartTrace("recovery-end");
+  return { kind: "started", daemon };
 }
-
 type Workers = Pick<Adapters, "worker" | "github" | "commands"> & {
   readonly pool: ThreadPoolWatch;
 };
-
 async function recoverWorkers(
   resources: Workers & { readonly service: Service },
   ports: Promise<HostPorts>,
@@ -344,7 +348,6 @@ async function recoverWorkers(
     throw error;
   }
 }
-
 async function closeWorkers(
   resources: Workers,
   options: CloseOptions = {},
@@ -356,7 +359,6 @@ async function closeWorkers(
     resources.commands.close(options),
   ]);
 }
-
 async function runningDaemon(
   settings: DaemonSettings,
   resources: {
