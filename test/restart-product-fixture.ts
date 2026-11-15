@@ -35,7 +35,12 @@ export async function productCopy(root: string): Promise<string> {
       "--project",
       "tsconfig.build.json",
     ],
-    { cwd: product, timeout: 60_000, stdio: "pipe" },
+    {
+      cwd: product,
+      timeout: 60_000,
+      stdio: "pipe",
+      env: { ...process.env, NODE_V8_COVERAGE: undefined },
+    },
   );
   const git = productGit(product);
   git(["init", "-q", "-b", "main"]);
