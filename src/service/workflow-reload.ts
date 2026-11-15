@@ -1,4 +1,5 @@
 import type { Fields, Reply } from "../protocol.ts";
+import type { QueueSettingRequest } from "../queue-setting-operation.ts";
 import type { WorkflowRefusal } from "../workflow-refusals.ts";
 import type {
   Registry,
@@ -34,7 +35,9 @@ export type WorkflowReload =
       SettingChanges)
   | Extract<WorkflowBundleReload, { readonly kind: "refused" }>;
 
-export type WorkflowReloadPort = () => Promise<WorkflowReload>;
+export type WorkflowReloadPort = (
+  setting?: QueueSettingRequest,
+) => Promise<WorkflowReload>;
 
 export function workflowFields(context: {
   readonly registry: Registry;
@@ -73,16 +76,16 @@ function applied(catalog: WorkflowCatalog, reload: WorkflowReload): Reply {
 export function reloadOperation(parts: {
   readonly port: WorkflowReloadPort;
   readonly catalog: WorkflowCatalog;
-}): () => Promise<Reply> {
+}): (setting?: QueueSettingRequest) => Promise<Reply> {
   let reloading = false;
-  return async () => {
+  return async (scope) => {
     if (reloading)
       return failed("reload-in-progress", {
         detail: "A reload is in work. Wait for its reply.",
       });
     reloading = true;
     try {
-      return applied(parts.catalog, await parts.port());
+      return applied(parts.catalog, await parts.port(scope));
     } finally {
       reloading = false;
     }

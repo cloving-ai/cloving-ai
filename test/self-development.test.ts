@@ -10,7 +10,14 @@ import { entry, privateDevelop } from "./self-development-fixture.ts";
 await test("CLV-227 start admits the default develop copy from private settings as the user queue", () =>
   withoutChildren(async () => {
     const fixture = await privateDevelop();
-    const child = await fixture.start({ XDG_CONFIG_HOME: fixture.config });
+    const child = await fixture.start({
+      XDG_CONFIG_HOME: fixture.config,
+      CLOVING_GH_COMMAND: JSON.stringify([
+        process.execPath,
+        "-e",
+        'process.stdout.write("[]")',
+      ]),
+    });
     try {
       const declarations: unknown = JSON.parse(
         await readFile(
@@ -22,7 +29,11 @@ await test("CLV-227 start admits the default develop copy from private settings 
       const develop = declarations
         .map(record)
         .find((item) => item?.["workflowId"] === "develop");
-      assert.deepEqual(develop?.["queue"], { everySeconds: 120, lanes: 1 });
+      assert.deepEqual(develop?.["queue"], {
+        everySeconds: 120,
+        lanes: 1,
+        feed: "developFeed",
+      });
       const listed = cli(fixture.root, {
         args: ["list", "--json"],
         entry,

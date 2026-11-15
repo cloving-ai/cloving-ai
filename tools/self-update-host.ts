@@ -7,6 +7,7 @@ import {
   attemptNumber,
   connectableTurn,
   recordedLaunch,
+  turnWait,
 } from "../src/turn-launch.ts";
 import { heldWork, type KeepReads, type WorkReads } from "../src/work-gap.ts";
 
@@ -125,6 +126,7 @@ async function jsonIn(file: string): Promise<unknown> {
 
 async function keptTurn(folder: string): Promise<boolean> {
   const started = await jsonIn(join(folder, "started.json"));
+  if (turnWait(started) !== undefined) return true;
   const attempt = attemptNumber(started);
   if (attempt === undefined) return false;
   const entry = await jsonIn(join(folder, `attempt-${String(attempt)}.json`));

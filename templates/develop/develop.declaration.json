@@ -3,10 +3,18 @@
     "workflowId": "develop",
     "effectLimit": 87,
     "capabilities": ["claude", "github"],
-    "queue": { "everySeconds": 120, "lanes": 1 },
+    "queue": {
+      "everySeconds": 120,
+      "lanes": 1,
+      "feed": "developFeed"
+    },
     "input": {
       "maximumBytes": 65536,
-      "fields": { "ticket": { "type": "ticket" } }
+      "fields": {
+        "ticket": {
+          "type": "ticket"
+        }
+      }
     }
   },
   "methods": {
@@ -19,7 +27,9 @@
       "merge",
       "close-issue",
       "partial-issue",
-      "close-pr"
+      "close-pr",
+      "issues",
+      "issue-states"
     ]
   }
 }

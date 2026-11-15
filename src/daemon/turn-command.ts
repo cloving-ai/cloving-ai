@@ -1,6 +1,8 @@
+import { piRpcCommand } from "./pi-session.ts";
 import { piInputExtensionPath } from "./pi-input-extension.ts";
 
 export interface CommandStart {
+  readonly piSession?: { readonly path: string };
   readonly output?: string | undefined;
   readonly worker?: string | undefined;
   readonly command: readonly string[];
@@ -15,6 +17,7 @@ export function turnCommand(start: CommandStart): {
   readonly parts: readonly string[];
   readonly standardInput: string | undefined;
   readonly inputExtension?: string;
+  readonly rpc?: true;
 } {
   if (start.output === "text")
     return {
@@ -55,6 +58,10 @@ export function turnCommand(start: CommandStart): {
 }
 
 function piCommand(start: CommandStart) {
+  const rpc =
+    start.piSession === undefined ? undefined : piRpcCommand(start.command);
+  if (rpc !== undefined)
+    return { parts: rpc, standardInput: undefined, rpc: true as const };
   if (argumentPrompt(start.prompt) && !start.prompt.startsWith("@"))
     return {
       parts: [...start.command, "--", start.prompt],

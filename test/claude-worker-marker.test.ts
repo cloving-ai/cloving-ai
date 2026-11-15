@@ -141,7 +141,7 @@ await test("CLV-350 a turn with a marker but no session or matching process is i
     process.kill(-turn.parentId, "SIGKILL");
     await until(() => !alive(turn.processId) && !alive(turn.parentId));
     const noted: TurnRecovery[] = [];
-    const next = scene.worker("gated-lines", {
+    const next = scene.worker("sessionless", {
       recovered: (recovery) => noted.push(recovery),
     });
     const reply = await next.reconcile(intent(), signal);

@@ -29,6 +29,8 @@ export interface Configuration {
     readonly everySeconds?: number;
     readonly lanes?: number;
     readonly workingLanes?: number;
+    readonly globalLanes?: number;
+    readonly globalWorkingLanes?: number;
     readonly maxLoadPerCore?: number;
     readonly maxMemoryPressure?: "normal" | "warn";
     readonly dailySpendLimitUsd?: number;

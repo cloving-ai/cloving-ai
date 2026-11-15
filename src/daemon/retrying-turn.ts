@@ -1,8 +1,5 @@
-import {
-  type RunningTurn,
-  type TurnEnd,
-  type TurnStart,
-} from "./claude-turn.ts";
+import { steerPi } from "./pi-turn-steering.ts";
+import type { RunningTurn, TurnEnd, TurnStart } from "./claude-turn.ts";
 import { turnHead, retryEvidence, indexFailure } from "./retry-worktree.ts";
 import { readRecord, writeRecord } from "./operation-journal.ts";
 import { resumeWorktree } from "./resume-worktree.ts";
@@ -10,6 +7,7 @@ import { controlledTurn } from "./controlled-turn.ts";
 import { readResume, resumedCommand, resumePrompt } from "./claude-recovery.ts";
 import {
   attemptCommand,
+  recordedTurn,
   combined,
   kindOf,
   attemptSince,
@@ -17,6 +15,7 @@ import {
   type Attempts,
   type RetryOptions,
   type TurnAttach,
+  type WaitResume,
 } from "./turn-attempts.ts";
 import {
   queued,
@@ -31,12 +30,13 @@ import {
   prepareAttempt,
   attemptJournal,
   recordedEnd,
+  rested,
   waited,
 } from "./turn-attempt-journal.ts";
 export type { RetrySettings } from "./turn-attempts.ts";
 
 export interface RetriedTurn extends RunningTurn {
-  readonly steer: (note: SteerNote) => SteerOutcome;
+  readonly steer: (note: SteerNote) => SteerOutcome | Promise<SteerOutcome>;
 }
 
 const waits = { capacity: [60_000, 180_000], network: [600_000, 2_400_000] };
@@ -106,7 +106,13 @@ async function launched(
     steered,
     start: {
       ...start,
-      command: launchCommand(attempts, launch),
+      ...(entry.piSession === undefined ? {} : { piSession: entry.piSession }),
+      command: [
+        ...launchCommand(attempts, launch),
+        ...(entry.piSession === undefined
+          ? []
+          : ["--session", entry.piSession.path]),
+      ],
       folder,
       ...(entry.attempt === 1
         ? {}
@@ -185,28 +191,40 @@ async function preparedRetry(attempts: Attempts): Promise<string | TurnEnd> {
 
 async function finished(
   attempts: Attempts,
-  first: RunningTurn,
+  turn: RunningTurn,
 ): Promise<TurnEnd> {
-  const { ends } = attempts;
-  let turn: RunningTurn | undefined = first;
-  while (turn !== undefined) {
-    const end = await turn.ended;
-    delete attempts.steering.child;
-    ends.push(end);
-    await recordedEnd(attempts, { processId: turn.processId, end });
-    if (!cancelled(attempts) && attempts.steering.pending !== undefined)
-      return steeredChild(attempts);
-    if (interruptedChild(attempts, { processId: turn.processId, end }))
-      return resumedChild(attempts);
-    const milliseconds = retryWait(attempts, end);
-    if (cancelled(attempts) || milliseconds === undefined) break;
-    await waited(attempts, milliseconds);
-    if (cancelled(attempts)) return { ...combined(attempts), stopped: true };
-    const prepared = await preparedRetry(attempts);
-    if (typeof prepared !== "string") return prepared;
-    turn = await launched(attempts, prepared);
-  }
-  return attemptOutcome(attempts);
+  const end = await turn.ended;
+  await attempts.steering.delivery;
+  delete attempts.steering.child;
+  attempts.ends.push(end);
+  await recordedEnd(attempts, { processId: turn.processId, end });
+  if (!cancelled(attempts) && attempts.steering.pending !== undefined)
+    return steeredChild(attempts);
+  if (interruptedChild(attempts, { processId: turn.processId, end }))
+    return resumedChild(attempts);
+  const milliseconds = retryWait(attempts, end);
+  if (cancelled(attempts) || milliseconds === undefined)
+    return attemptOutcome(attempts);
+  await waited(attempts, milliseconds);
+  return retried(attempts);
+}
+
+async function retried(attempts: Attempts): Promise<TurnEnd> {
+  if (cancelled(attempts)) return { ...combined(attempts), stopped: true };
+  const prepared = await preparedRetry(attempts);
+  if (typeof prepared !== "string") return prepared;
+  const turn = await launched(attempts, prepared);
+  return turn === undefined
+    ? attemptOutcome(attempts)
+    : finished(attempts, turn);
+}
+
+async function continuedWait(
+  attempts: Attempts,
+  wait: WaitResume,
+): Promise<TurnEnd> {
+  await rested(attempts, Math.max(0, wait.endsAt - Date.now()));
+  return retried(attempts);
 }
 
 function interruptedChild(
@@ -308,7 +326,7 @@ async function startCommit(
   start: TurnStart,
   options: RetryOptions & { readonly stopping: AbortController },
 ): Promise<string | null> {
-  const recorded = options.attach ?? options.resume;
+  const recorded = recordedTurn(options);
   if (recorded !== undefined) return recorded.turnStartCommit;
   return turnHead({
     directory: start.directory,
@@ -321,7 +339,7 @@ export async function startRetriedTurn(
   options: RetryOptions,
 ): Promise<RetriedTurn> {
   const stopping = options.stopping ?? new AbortController();
-  const recorded = options.attach ?? options.resume;
+  const recorded = recordedTurn(options);
   const attempts: Attempts = {
     turnStartCommit: await startCommit(start, { ...options, stopping }),
     start,
@@ -332,6 +350,11 @@ export async function startRetriedTurn(
     grace: { milliseconds: options.stopMilliseconds ?? 15_000 },
     steering: steeringOf(recorded),
   };
+  if (options.waiting !== undefined)
+    return retriedTurn(attempts, {
+      processId: null,
+      ended: continuedWait(attempts, options.waiting),
+    });
   const turn =
     options.attach === undefined
       ? await launched(attempts)
@@ -345,16 +368,28 @@ export async function startRetriedTurn(
       },
       steer: () => queued("no-open-turn"),
     };
-  return {
+  return retriedTurn(attempts, {
     processId: turn.processId,
     ended: finished(attempts, turn),
-    steer: (note) =>
-      resumable(start)
+  });
+}
+
+function retriedTurn(
+  attempts: Attempts,
+  running: Pick<RunningTurn, "processId" | "ended">,
+): RetriedTurn {
+  return {
+    ...running,
+    steer: (note) => {
+      if (attempts.start.worker === "pi" && attempts.start.output !== "text")
+        return steerPi(attempts, note);
+      return resumable(attempts.start)
         ? steer(attempts.steering, {
             note,
             grace: attempts.grace.milliseconds,
           })
-        : queued("harness-cannot-resume"),
+        : queued("harness-cannot-resume");
+    },
     stop: (graceMilliseconds) => {
       attempts.grace.milliseconds = graceMilliseconds;
       attempts.stopping.abort();

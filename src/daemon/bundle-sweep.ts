@@ -103,9 +103,9 @@ export function currentBundle(settings: {
   return {
     digest: () => digest,
     exclusive,
-    reloading: (port) => () =>
+    reloading: (port) => (scope) =>
       exclusive(async () => {
-        const outcome = await port();
+        const outcome = await port(scope);
         if (outcome.kind === "reloaded") await switched(outcome.bundleDigest);
         return outcome;
       }),

@@ -58,12 +58,14 @@ await test("CLV-361 queue cards switch and adjust only their own queue, with lan
       commands.push(args);
     },
   };
-  const switches = found(shown("running", { queue }), "input");
+  const switches = found(shown("running", { queue }), "button").filter(
+    (item) => item["class"] === "queue-drain",
+  );
   assert.equal(switches.length, 2);
-  assert.equal(switches[0]?.["checked"], true);
-  assert.equal(switches[1]?.["checked"], false);
+  assert.equal(switches[0]?.["children"], "Drain");
+  assert.equal(switches[1]?.["children"], "Resume");
   switches.forEach((item) => {
-    invoke(item["onChange"]);
+    invoke(item["onClick"]);
   });
   const buttons = found(shown("running", { queue }), "button");
   buttons.slice(0, 2).forEach((item) => {
@@ -90,16 +92,23 @@ await test("CLV-361 queue cards switch and adjust only their own queue, with lan
       messages: { "develop-issue": "Refresh the page." },
     },
   });
-  assert.equal(found(busy, "input")[0]?.["disabled"], true);
-  assert.equal(found(busy, "input")[1]?.["disabled"], false);
+  const drains = found(busy, "button").filter(
+    (item) => item["class"] === "queue-drain",
+  );
+  assert.equal(drains[0]?.["disabled"], true);
+  assert.equal(drains[1]?.["disabled"], false);
   assert.match(rendered(busy), /Refresh the page\./);
   assert.equal(found(shown(), "button").length, 0);
   assert.equal(found(shown(), "input").length, 0);
+  assertHeaderHasNoQueue(shown("running", { queue }));
+});
+
+function assertHeaderHasNoQueue(value: unknown) {
   assert.doesNotMatch(
-    rendered(shown("running", { queue })).split("</header>")[0] ?? "",
+    rendered(value).split("</header>")[0] ?? "",
     /Queue|lanes busy|queue-waiting/,
   );
-});
+}
 
 await test("CLV-361 an off queue explains the missing setting or command without unusable controls", () => {
   for (const reason of [

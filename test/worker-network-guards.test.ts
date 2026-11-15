@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { setTimeout as delay } from "node:timers/promises";
 import {
   field,
   intent,
@@ -67,4 +68,34 @@ await test("CLV-229 recovery of a network wait fails the interrupted operation i
     assert.equal(field(recovered, "kind"), "failed");
     assert.equal(field(recovered, "reason"), "claude-turn-interrupted");
     assert.equal(scene.turns().length, 1);
+  }));
+
+await test("CLV-348 a network wait that the old service stopped continues in the new worker and then starts a new attempt with no session resume", () =>
+  withScene(async (scene) => {
+    const command = networkCommand(scene, ["network", "done"]);
+    let waited = 0;
+    const worker = scene.worker("unused", {
+      command,
+      retryDelay: (milliseconds, stopping) => {
+        waited = milliseconds;
+        return delay(milliseconds, undefined, { signal: stopping });
+      },
+    });
+    await worker.deliver(intent(), signal);
+    await until(() => waited > 0);
+    assert.equal(waited, 600_000);
+    await worker.close();
+    const restarted = scene.worker("unused", {
+      command,
+      retryDelay: () => Promise.resolve(),
+    });
+    const recovered = await restarted.deliver(intent(), signal);
+    assert.equal(field(recovered, "kind"), "accepted");
+    await until(() => scene.reports.length === 1);
+    assert.equal(scene.reports[0]?.outcome, "completed");
+    const [, retried] = scene.turns();
+    assert.ok(retried);
+    assert.match(retried.prompt, /the network was not available/);
+    assert.equal(retried.arguments.includes("--resume"), false);
+    assert.equal(scene.turns().length, 2);
   }));

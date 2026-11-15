@@ -25,6 +25,7 @@ import {
   type ServiceHost,
 } from "../service/service.ts";
 import { spendSettings } from "../service/replies.ts";
+import { queueSettingPorts } from "./queue-setting-writer.ts";
 import {
   workflowGenerations,
   prepareWorkflowGenerations,
@@ -48,11 +49,7 @@ import { daemonLoops } from "./daemon-loops.ts";
 import { clearedTreeClaims } from "./tree-claims.ts";
 import { authorityRuns } from "./record-sweep.ts";
 import { currentBundle, type CurrentBundle } from "./bundle-sweep.ts";
-import {
-  noteReceiptsPlace,
-  retentionExpiry,
-  turnDetailsPlace,
-} from "./turn-details.ts";
+import * as turnRecords from "./turn-details.ts";
 import { transcriptFiles } from "./transcript-files.ts";
 import { githubReader } from "./github-read.ts";
 import { defaultRetention } from "../record-retention.ts";
@@ -70,7 +67,6 @@ export interface Daemon {
   readonly socket: string;
   readonly close: (options?: CloseOptions) => Promise<void>;
 }
-
 export type DaemonOpening =
   | { readonly kind: "started"; readonly daemon: Daemon }
   | {
@@ -121,7 +117,8 @@ async function hosted(
   const loop = worldLoop({
     ...ports,
     runs: taggedRuns,
-    outcome: workflowOutcome,
+    outcome: async (receipt, runId) =>
+      workflowOutcome(receipt, await ports.workflow.id(runId)),
     intervalMilliseconds: loopMilliseconds,
   });
   const stopping = new AbortController();
@@ -216,14 +213,15 @@ function retentionReads(settings: DaemonSettings, ports: Promise<HostPorts>) {
     now: settings.retentionClock ?? Date.now,
   };
   return {
-    turnDetails: turnDetailsPlace(place),
+    turnDetails: turnRecords.turnDetailsPlace(place),
     turnTranscript: {
       read: transcriptFiles(settings.directory),
       privateTexts: settings.privateTexts ?? [],
       cache: new Map(),
     },
-    retentionExpired: retentionExpiry(place),
-    noteReceipts: noteReceiptsPlace(place),
+    retentionExpired: turnRecords.retentionExpiry(place),
+    noteReceipts: turnRecords.noteReceiptsPlace(place),
+    turnWaits: turnRecords.turnWaitsPlace(place),
     githubRead: githubReader(settings),
   };
 }
@@ -291,6 +289,7 @@ async function openDaemon(settings: DaemonSettings): Promise<DaemonOpening> {
   const opening = await startService({
     ...daemonIdentity(settings),
     ...controlPorts(controls),
+    ...queueSettingPorts(settings, controls.queueLimitSource),
     ...spendSettings(settings),
     workerHarness: worker.harness,
     turnRecovery: resources.recoveries,

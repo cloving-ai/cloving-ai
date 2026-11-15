@@ -97,7 +97,8 @@ function selectedWorker(
   name: string,
   harness: HarnessSettings["harness"],
 ): string {
-  if (nativeHarness(name)) return `native ${name}`;
+  if (nativeHarness(name, harness?.name === name ? harness.turn : undefined))
+    return `native ${name}`;
   if (harness?.name === name && harness.turn !== undefined)
     return `one-shot ${name}`;
   return "no worker; ask for harness.turn";
@@ -147,7 +148,7 @@ export async function initPromptFacts(
   );
   const [github, discovery, current, stores] = await Promise.all([
     githubFacts({ ...context, repository, environment }),
-    discoverHarnesses({ env: environment, probe: context.probe }),
+    discoverHarnesses({ env: environment, probe: context.probe, harness }),
     inventory({ ...context, repository, environment }),
     chatStores(environment["HOME"]),
   ]);

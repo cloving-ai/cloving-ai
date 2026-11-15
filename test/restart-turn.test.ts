@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { field, items } from "./self-host-fixture.ts";
+import { field } from "./self-host-fixture.ts";
 import { call } from "./service-fixture.ts";
 import {
   admittedTurn,
   assistantTexts,
+  assertTurnResult,
   finishedRun,
   lineTurn,
   restartedTurns,
@@ -57,10 +58,7 @@ await test(
         assistantTexts(await writing.watch.closed),
         writtenLines(writing.processId),
       );
-      assert.equal(field(run, "claudeCostUsd"), 0.25);
-      const workerTurns = items(field(run, "workerTurns"));
-      assert.equal(workerTurns.length, 1, JSON.stringify(workerTurns));
-      assert.equal(items(field(workerTurns[0], "attempts")).length, 1);
+      assertTurnResult(run);
       const ended = await startedTurn(fixture, runId);
       assert.deepEqual(ended.launch, writing.turn.launch);
     }),

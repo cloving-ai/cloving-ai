@@ -49,7 +49,9 @@ const clock = (at: string | number): string =>
 function ends(html: string): readonly string[] {
   return [
     ...html.matchAll(/<div class="line-end">([\s\S]*?)<\/div><\/li>/g),
-  ].map((match) => match[1] ?? "");
+  ].map((match) =>
+    (match[1] ?? "").replace('<p class="meta">No queue configured</p>', ""),
+  );
 }
 
 function rows(html: string): readonly string[] {

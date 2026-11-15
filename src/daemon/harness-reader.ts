@@ -1,4 +1,5 @@
 import { piStream } from "./pi-stream.ts";
+import type { PiSession } from "./pi-session.ts";
 import { codexStream } from "./codex-stream.ts";
 import { cursorStream } from "./cursor-stream.ts";
 import { geminiStream } from "./gemini-stream.ts";
@@ -23,12 +24,13 @@ interface HarnessAdapter {
 
 function harnessAdapter(
   worker: string | undefined,
+  piSession?: PiSession,
 ): HarnessAdapter | undefined {
   if (worker === "opencode") {
     const translated = opencodeStream();
     return { ...translated, error: translated.stderr };
   }
-  if (worker === "pi") return piStream();
+  if (worker === "pi") return piStream(piSession);
   if (worker === "codex") return codexStream();
   if (worker === "cursor-agent") return cursorStream();
   if (worker === "gemini") return geminiStream();
@@ -40,6 +42,7 @@ export function translatedHarness(worker: string | undefined): boolean {
 }
 
 export interface ReaderStart extends StreamInput {
+  readonly piSession?: PiSession;
   readonly command: readonly string[];
 }
 
@@ -66,7 +69,7 @@ export function harnessReader(
   transcript: (text: string) => void,
 ): HarnessReader {
   const stream = streamState();
-  const adapter = harnessAdapter(start.worker);
+  const adapter = harnessAdapter(start.worker, start.piSession);
   const warnings = start.worker === "grok" ? grokUsageWarnings() : undefined;
   const emitted = (lines: readonly string[]): void => {
     transcript(lines.map((line) => `${line}\n`).join(""));

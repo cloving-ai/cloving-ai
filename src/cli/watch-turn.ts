@@ -3,6 +3,7 @@ import { element, type Shown } from "./watch-element.ts";
 import {
   clockTime,
   counted,
+  elapsed,
   turnTime,
   type Copying,
   type WatchEvent,
@@ -18,6 +19,20 @@ export function turnHeading(
   return [shown.label, turn.outcome, turnTime(turn, shown.now), cost]
     .filter((part) => part !== "")
     .join(" · ");
+}
+
+export function turnWaitText(turn: WatchTurn, now: string): string | null {
+  const { wait } = turn;
+  if (wait === undefined) return null;
+  return `Waits for a retry: attempt ${String(wait.attempt + 1)} starts at ${clockTime(wait.waitEndsAt)}, ${elapsed(now, wait.waitEndsAt)} left`;
+}
+
+export function turnNow(turn: WatchTurn, now: string): string {
+  return (
+    turnWaitText(turn, now) ??
+    turn.activity.at(-1)?.text ??
+    "The worker starts."
+  );
 }
 
 export function Work(props: { readonly turn: WatchTurn }): Shown {
@@ -147,6 +162,8 @@ export function Review(props: {
 
 export const turnFunctions = [
   turnHeading,
+  turnWaitText,
+  turnNow,
   Work,
   Command,
   Events,

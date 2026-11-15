@@ -53,10 +53,6 @@ export async function privateQueue() {
     }),
   );
   await writeFile(
-    join(fixture.root, "next.mjs"),
-    'import { readFileSync } from "node:fs"; process.stdout.write(readFileSync(new URL("./ready", import.meta.url), "utf8"));',
-  );
-  await writeFile(
     join(fixture.root, "fake-board.mjs"),
     'const id = process.argv.at(-1); process.stdout.write("# Task " + id + "\\n\\nGitHub issue: acme/demo#" + id + " (open)\\n\\nDo the work.");',
   );
@@ -66,10 +62,8 @@ export async function privateQueue() {
     environment: {
       XDG_CONFIG_HOME: fixture.config,
       CLOVING_QUEUE_SECONDS: "10",
-      CLOVING_NEXT_COMMAND: JSON.stringify([
-        process.execPath,
-        join(fixture.root, "next.mjs"),
-      ]),
+      CLOVING_NEXT_COMMAND: undefined,
+      CLOVING_READY_COMMAND: undefined,
       CLOVING_GH_COMMAND: JSON.stringify([
         process.execPath,
         join(fixture.root, "fake-gh.mjs"),

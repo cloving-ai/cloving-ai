@@ -9,6 +9,8 @@ import {
   type TurnProgress,
 } from "./claude-turn.ts";
 import type { TurnLaunch } from "../turn-launch.ts";
+import { preparedPiSession } from "./pi-resume.ts";
+import { piSessionCommandFailure } from "./pi-session.ts";
 import {
   attemptCommand,
   attemptUsage,
@@ -58,15 +60,39 @@ function resumedAfter(
 
 export async function prepareAttempt(attempts: Attempts) {
   const selected = attemptCommand(attempts, attempts.ends.length + 1);
+  const nativePi =
+    attempts.start.worker === "pi" && attempts.start.output !== "text";
+  const failure = nativePi
+    ? piSessionCommandFailure(selected.command)
+    : undefined;
+  if (failure !== undefined) {
+    attempts.failure = failure;
+    return undefined;
+  }
   if (selected.budgetUsd === 0) {
     attempts.failure = "claude-turn-budget-exhausted";
     return undefined;
   }
-  const entry = attemptEntry(attempts, selected);
+  const planned = attemptEntry(attempts, selected);
   const folder =
-    entry.attempt === 1
+    planned.attempt === 1
       ? attempts.start.folder
-      : join(attempts.start.folder, `attempt-${String(entry.attempt)}`);
+      : join(attempts.start.folder, `attempt-${String(planned.attempt)}`);
+  const piSession = nativePi
+    ? await preparedPiSession({
+        folder,
+        directory: attempts.start.directory,
+        previous: attempts.options.resume?.piSession,
+      })
+    : undefined;
+  if (typeof piSession === "string") {
+    attempts.failure = piSession;
+    return undefined;
+  }
+  const entry = {
+    ...planned,
+    ...(piSession === undefined ? {} : { piSession }),
+  };
   await written(attempts.start.folder, {
     name: "started.json",
     value: {
@@ -98,6 +124,7 @@ function progressFields(
     costUsd: attemptCost([...attempts.ends, end], attempts.ends.length),
     usage: result.usage,
     turns: result.turns,
+    ...piFields(attempts.start.worker, result),
   };
 }
 
@@ -180,6 +207,7 @@ export async function recordedEnd(
       endedAt: new Date().toISOString(),
       exitCode: end.exitCode,
       capacity: capacityRefusal(end.result),
+      ...piFields(start.worker, end.result),
       sessionCostUsd: end.result?.costUsd ?? null,
       turns: end.result?.turns ?? null,
     },
@@ -190,7 +218,7 @@ export async function waited(
   attempts: Attempts,
   milliseconds: number,
 ): Promise<void> {
-  const { start, options, stopping, ends } = attempts;
+  const { start, ends } = attempts;
   await written(start.folder, {
     name: "started.json",
     value: {
@@ -204,10 +232,27 @@ export async function waited(
       waitingAt: new Date().toISOString(),
     },
   });
+  await rested(attempts, milliseconds);
+}
+
+export async function rested(
+  attempts: Attempts,
+  milliseconds: number,
+): Promise<void> {
+  const { options, stopping } = attempts;
   const wait =
     options.retryDelay ??
     ((duration, signal) => delay(duration, undefined, { signal }));
   await wait(milliseconds, stopping.signal).catch((error: unknown) => {
     if (!stopping.signal.aborted) throw error;
   });
+}
+
+function piFields(worker: string | undefined, result: TurnEnd["result"]) {
+  return worker === "pi"
+    ? {
+        pricingModel: result?.pricingModel ?? null,
+        piAccounting: result?.piAccounting,
+      }
+    : {};
 }

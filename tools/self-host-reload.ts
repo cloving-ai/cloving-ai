@@ -9,7 +9,10 @@ import {
 } from "./project-configuration.ts";
 import { preparedBundle } from "./self-host-project.ts";
 import { queueWorkflowLimits, reloadedQueueLimits } from "./self-host-queue.ts";
-import type { DeclaredWorkflow } from "../src/workflow-declaration.ts";
+import {
+  isWorkflowDeclaration,
+  type DeclaredWorkflow,
+} from "../src/workflow-declaration.ts";
 import { workflowLimits, type WorkflowLimits } from "../src/workflow-limits.ts";
 
 const settings = record(JSON.parse(String(process.argv[2]))) ?? {};
@@ -131,9 +134,36 @@ async function reloadedBundle(directory: string) {
   }
 }
 
+async function reloadedQueues() {
+  const declarations: unknown = JSON.parse(String(process.argv[4]));
+  if (
+    !Array.isArray(declarations) ||
+    !declarations.every((value: unknown): value is DeclaredWorkflow => {
+      const { functionName, ...declaration } = record(value) ?? {};
+      return (
+        isWorkflowDeclaration(declaration) && typeof functionName === "string"
+      );
+    })
+  )
+    throw new Error("The queue reload needs the running declarations.");
+  const reloaded = await reloadedSettings(required("repository")).catch(
+    settingsRefusal,
+  );
+  if ("refusal" in reloaded) return reloaded;
+  const { configuration, turnSettings, settingDigests } = reloaded;
+  return {
+    turnSettings,
+    settingDigests,
+    ...reloadedLimits(configuration, declarations),
+  };
+}
+
 const directory = required("directory");
 try {
-  const output = await reloadedBundle(directory);
+  const output =
+    process.argv[3] === "--queue-settings"
+      ? await reloadedQueues()
+      : await reloadedBundle(directory);
   process.stdout.write(JSON.stringify(output));
   if ("refusal" in output) process.exitCode = 1;
 } catch (error) {

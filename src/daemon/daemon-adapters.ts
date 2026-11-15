@@ -1,3 +1,4 @@
+import { internalFeedPrefix } from "../queue-feed.ts";
 import type { QueueConfiguration } from "./queue-limits.ts";
 import type { QueueSource } from "../queue-settings.ts";
 import { turnRecoveries, type TurnRecoveries } from "../turn-recovery.ts";
@@ -113,6 +114,7 @@ function githubOf(
 ): GithubWorker {
   const { directory, repository, checkCommand } = settings;
   return githubWorker({
+    work: async (stage) => (await given).work.stage(stage),
     document: async (digest) => (await given).document(digest),
     report: async (effect) => (await given).reportEffect(effect),
     observe: async (observation) =>
@@ -197,6 +199,8 @@ export function adapters(
   });
   const github = githubOf(settings, given);
   const runs = startDelivery({
+    isFeed: async (runId) =>
+      internalFeed(await (await given).workflow.id(runId)),
     document,
     runs: taggedRuns,
     cancel: cancelled,
@@ -326,4 +330,8 @@ export function daemonIdentity(
       ? {}
       : { settingSources: settings.settingSources }),
   };
+}
+
+function internalFeed(workflowId: string | undefined): boolean {
+  return workflowId?.startsWith(internalFeedPrefix) ?? false;
 }

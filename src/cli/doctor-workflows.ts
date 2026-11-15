@@ -7,6 +7,7 @@ import {
   absoluteWorkflowFolder,
 } from "../project-settings.ts";
 import { isCandidateDeclaration } from "../workflow-candidate.ts";
+import { declaresQueue, queueFeed } from "../workflow-declaration.ts";
 
 export function workflowObservation(context: {
   readonly workflows: readonly DoctorWorkflow[];
@@ -20,6 +21,36 @@ export function workflowObservation(context: {
     detail: found
       ? "Project or user workflow found"
       : "No project or user workflow",
+  };
+}
+
+export function queueFeedObservation(context: {
+  readonly workflows: readonly DoctorWorkflow[];
+  readonly prerequisite: string | undefined;
+}): DoctorObservation {
+  if (context.prerequisite !== undefined)
+    return { result: "skip", detail: context.prerequisite };
+  const queues = context.workflows.filter((workflow) =>
+    declaresQueue(workflow.queue),
+  );
+  const missing = [
+    ...new Set(
+      queues
+        .filter((workflow) => queueFeed(workflow) === undefined)
+        .map((workflow) => workflow.workflowId),
+    ),
+  ].sort();
+  if (missing.length > 0)
+    return {
+      result: "warn",
+      detail: `Queues without a feed: ${missing.join(", ")}`,
+    };
+  return {
+    result: "ok",
+    detail:
+      queues.length === 0
+        ? "No declared queues"
+        : "All declared queues have a feed",
   };
 }
 

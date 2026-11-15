@@ -13,6 +13,8 @@ export type QueueSource =
   | "queues setting (private file)"
   | "queues setting"
   | "queue setting"
+  | "queue setting (private file)"
+  | "queue setting (project file)"
   | "environment"
   | "declaration"
   | "default";
@@ -41,6 +43,8 @@ const queueSources: readonly QueueSource[] = [
   "queues setting (private file)",
   "queues setting",
   "queue setting",
+  "queue setting (private file)",
+  "queue setting (project file)",
   "environment",
   "declaration",
   "default",
@@ -73,6 +77,20 @@ export function declaredQueueValues(declaration: {
   readonly queue?: boolean | QueueDeclaration | undefined;
 }): QueueDeclaration {
   return typeof declaration.queue === "object" ? declaration.queue : {};
+}
+
+export function queuePollingConfigured(given: {
+  readonly declared: {
+    readonly queue?: boolean | QueueDeclaration | undefined;
+  };
+  readonly setting?: WorkflowQueueSetting | undefined;
+  readonly general: GeneralQueueValues;
+}): boolean {
+  return (
+    typeof given.declared.queue === "object" ||
+    given.setting !== undefined ||
+    given.general.everySeconds !== undefined
+  );
 }
 
 interface QueueValuesInput {
@@ -225,7 +243,12 @@ export function queuesDigest(
         }),
       ),
     );
-  return `${part(["state", "everySeconds"])}:${part(["lanes", "workingLanes"])}`;
+  const activation = rows.map(([workflowId, setting]) => [
+    workflowId,
+    setting.state ?? null,
+    setting.everySeconds ?? null,
+  ]);
+  return `${digest(JSON.stringify(activation))}:${part(["lanes", "workingLanes"])}`;
 }
 
 export function queueFileLayers(

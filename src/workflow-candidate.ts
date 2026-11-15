@@ -2,6 +2,8 @@ import { record } from "./protocol.ts";
 import {
   isWorkflowDeclaration,
   workflowQueueRefusals,
+  queueFeed,
+  feedMethodReadOnly,
   type WorkflowQueueCode,
   type WorkflowDeclaration,
 } from "./workflow-declaration.ts";
@@ -28,6 +30,7 @@ export interface CandidateEffect {
 }
 
 export interface CandidateAnalysis {
+  readonly workflows?: Readonly<Record<string, CandidateFunctionAnalysis>>;
   readonly commandWaits?: readonly (string | null)[];
   readonly localSources?: readonly string[];
   readonly imports: readonly CandidateImport[];
@@ -36,6 +39,13 @@ export interface CandidateAnalysis {
   readonly unsupportedForms: readonly string[];
   readonly knownCallCount: number;
   readonly knownUnitTotal: number;
+}
+
+export interface CandidateFunctionAnalysis {
+  readonly effects: readonly CandidateEffect[];
+  readonly knownCallCount: number;
+  readonly knownUnitTotal: number;
+  readonly unsupportedForms: readonly string[];
 }
 
 export type InstalledWorkflowExports = Readonly<
@@ -52,7 +62,9 @@ export type WorkflowCandidateCode =
   | "dynamic-effect"
   | "undeclared-effect"
   | "effect-limit"
-  | "direct-effect";
+  | "direct-effect"
+  | "queue-feed-missing"
+  | "feed-method-not-read-only";
 
 export interface WorkflowCandidateInput {
   readonly declaration: unknown;
@@ -160,6 +172,7 @@ export function checkWorkflowCandidate(
   const codes: WorkflowCandidateCode[] = [
     ...commandWaitRefusals(analysis, declaration),
     ...workflowLimitRefusals(declaration.workflow, input.limits),
+    ...feedRefusals(input, declaration),
   ];
   if (analysis.imports.some((entry) => !allowedImport(entry, analysis)))
     codes.push("forbidden-import");
@@ -189,7 +202,8 @@ export function checkWorkflowCandidate(
     )
   )
     codes.push("dynamic-effect");
-  const counts = [analysis.knownCallCount, analysis.knownUnitTotal];
+  const work = workAnalysis(analysis, declaration.workflow);
+  const counts = [work.knownCallCount, work.knownUnitTotal];
   if (counts.some((count) => !Number.isSafeInteger(count) || count < 0))
     codes.push("unsupported-source");
   else if (counts.some((count) => count > declaration.workflow.effectLimit))
@@ -197,6 +211,73 @@ export function checkWorkflowCandidate(
   if (analysis.directEffects.length > 0) codes.push("direct-effect");
   if (analysis.unsupportedForms.length > 0) codes.push("unsupported-source");
   return [...new Set(codes)].sort();
+}
+
+function workAnalysis(
+  analysis: CandidateAnalysis,
+  declaration: WorkflowDeclaration,
+): CandidateFunctionAnalysis | CandidateAnalysis {
+  const feed = queueFeed(declaration);
+  if (feed === undefined) return analysis;
+  return (
+    Object.entries(analysis.workflows ?? {}).find(
+      ([name]) => name !== feed,
+    )?.[1] ?? analysis
+  );
+}
+
+function feedEffectLimit(declaration: WorkflowDeclaration): number {
+  const queue = declaration.queue;
+  return typeof queue === "object"
+    ? (queue.feedEffectLimit ?? declaration.effectLimit)
+    : declaration.effectLimit;
+}
+
+function feedRefusals(
+  input: WorkflowCandidateInput,
+  declaration: CandidateDeclaration,
+): WorkflowCandidateCode[] {
+  const name = queueFeed(declaration.workflow);
+  const functions = input.analysis.workflows ?? {};
+  if (name === undefined)
+    return Object.keys(functions).length > 1 ? ["unsupported-source"] : [];
+  const feed = Object.hasOwn(functions, name) ? functions[name] : undefined;
+  if (feed === undefined || Object.keys(functions).length !== 2)
+    return ["queue-feed-missing"];
+  const effectLimit = feedEffectLimit(declaration.workflow);
+  const codes: WorkflowCandidateCode[] = [
+    ...workflowLimitRefusals({ effectLimit }, input.limits),
+    ...feedEffectsRefusals(feed.effects, declaration.workflow),
+  ];
+  if (
+    [feed.knownCallCount, feed.knownUnitTotal].some(
+      (count) => count > effectLimit,
+    )
+  )
+    codes.push("effect-limit");
+  if (feed.unsupportedForms.length > 0) codes.push("unsupported-source");
+  return codes;
+}
+
+function feedEffectsRefusals(
+  effects: readonly CandidateEffect[],
+  declaration: WorkflowDeclaration,
+): WorkflowCandidateCode[] {
+  const codes: WorkflowCandidateCode[] = [];
+  if (effects.some((effect) => !feedMethodReadOnly(effect)))
+    codes.push("feed-method-not-read-only");
+  if (
+    effects.some(
+      (effect) =>
+        effect.capability === "command" &&
+        effect.method !== null &&
+        !(declaration.commands ?? []).includes(
+          effect.method.slice("run:".length),
+        ),
+    )
+  )
+    codes.push("undeclared-effect");
+  return codes;
 }
 
 export function candidateDeclarationRefusals(

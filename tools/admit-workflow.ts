@@ -15,6 +15,7 @@ import { dirname, extname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   checkWorkflowCandidate,
+  isCandidateDeclaration,
   candidateDeclarationRefusals,
   workflowHelperPath,
   type WorkflowCandidateCode,
@@ -26,6 +27,7 @@ import {
 import { analyzeWorkflowCandidate } from "./workflow-candidate-source.ts";
 import type { WorkflowLimits } from "../src/workflow-limits.ts";
 import { isWorkflowManifest } from "./workflow-manifest.ts";
+import { queueFeed } from "../src/workflow-declaration.ts";
 
 export type WorkflowCandidateAdmission =
   | { readonly kind: "admitted"; readonly artifactDigest: string }
@@ -58,16 +60,27 @@ export async function admitWorkflowCandidate(
       ...(input.limits === undefined ? {} : { limits: input.limits }),
     });
     if (codes.length > 0) return { kind: "refused", codes };
-    return await compiledCandidate({ source, helpers, packageRoot });
+    return await compiledCandidate({
+      source,
+      helpers,
+      packageRoot,
+      workflowCount: declaredWorkflowCount(declaration),
+    });
   } catch {
     return { kind: "refused", codes: ["compile-failed"] };
   }
+}
+
+function declaredWorkflowCount(declaration: unknown): number {
+  if (!isCandidateDeclaration(declaration)) return 1;
+  return queueFeed(declaration.workflow) === undefined ? 1 : 2;
 }
 
 async function compiledCandidate(input: {
   readonly source: string;
   readonly helpers: Readonly<Record<string, string>>;
   readonly packageRoot: string;
+  readonly workflowCount: number;
 }): Promise<WorkflowCandidateAdmission> {
   const directory = await realpath(
     await mkdtemp(join(tmpdir(), "cloving-candidate-")),
@@ -84,7 +97,7 @@ async function compiledCandidate(input: {
       !isWorkflowManifest(manifest) ||
       Object.values(manifest.workflows ?? {}).flatMap((entries) =>
         Object.values(entries),
-      ).length !== 1
+      ).length !== input.workflowCount
     )
       return { kind: "refused", codes: ["compile-failed"] };
     const digest = createHash("sha256");

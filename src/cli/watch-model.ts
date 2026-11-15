@@ -33,6 +33,7 @@ import { establishedIssue, type PrRepository } from "./watch-pr-identity.ts";
 import { displayRun } from "./watch-paths.ts";
 import { shownCommands } from "./command-effects.ts";
 import type { DailyNumbers } from "../report-days.ts";
+import { waitingTurn } from "./turn-waits.ts";
 
 type Fields = Readonly<Record<string, unknown>>;
 
@@ -171,8 +172,10 @@ export function turnOf(records: TurnRecords): WatchTurn {
   const outcome = text(result["outcome"]);
   const report = record(parsed(text(result["result"])));
   const harness = text(started["harness"]) || text(report["harness"]);
+  const wait = waitingTurn(text(started["operationId"]), records);
   return {
     ...attemptFields(report["attempts"]),
+    ...(wait === undefined ? {} : { wait }),
     ...(harness === "" ? {} : { harness }),
     key: records.key,
     operationId: text(started["operationId"]),
@@ -182,7 +185,8 @@ export function turnOf(records: TurnRecords): WatchTurn {
     branch: text(started["branch"]),
     worktree: text(started["worktree"]),
     startedAt: text(started["startedAt"]),
-    outcome: records.result === null ? "in work" : outcome,
+    outcome:
+      records.result === null || wait !== undefined ? "in work" : outcome,
     costUsd: priceOf(report["costUsd"]),
     estimatedCostUsd: priceOf(report["estimatedCostUsd"]),
     activity: records.activity
@@ -206,6 +210,7 @@ export function turnOf(records: TurnRecords): WatchTurn {
 }
 
 export interface WatchInputs {
+  readonly globalQueue?: Fields;
   readonly schedules?: ShownSchedules;
   readonly loopRuns?: readonly Fields[];
   readonly queue?: Fields;
@@ -364,6 +369,9 @@ export function watchModel(inputs: WatchInputs): WatchModel {
         }),
     ...(inputs.queue === undefined ? {} : { queue: inputs.queue }),
     ...(inputs.queues === undefined ? {} : { queues: inputs.queues }),
+    ...(inputs.globalQueue === undefined
+      ? {}
+      : { globalQueue: inputs.globalQueue }),
     ...(inputs.today === undefined ? {} : { today: inputs.today }),
     workflowRefusals: workflowRefusals(inputs.workflowRefusals),
     updatedAt: inputs.updatedAt,

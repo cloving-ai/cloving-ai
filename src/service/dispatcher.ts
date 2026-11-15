@@ -1,3 +1,4 @@
+import { queueFeedHandler } from "./queue-feed.ts";
 import type { Reply, ServiceRequest } from "../protocol.ts";
 import { continueHandler } from "./continue-handler.ts";
 import { decision, questions } from "./decision-handler.ts";
@@ -8,13 +9,42 @@ import { queueCommand, queueRead, queueLanes } from "./queue-handlers.ts";
 import { failed, type ServiceContext } from "./replies.ts";
 import { renameRun } from "./rename-handler.ts";
 import { restartOperation } from "./restart-handler.ts";
-import { runCommand, status } from "./run-handlers.ts";
+import { status } from "./run-handlers.ts";
+import { runCommand } from "./run-control.ts";
 import { spendRead } from "./queue-spend.ts";
 import { steerRun } from "./steer-handler.ts";
 import { scheduleHandler } from "./schedule-run.ts";
 import { transcript } from "./transcript-handler.ts";
 import { admissionLock, submissionHandler } from "./submission-handler.ts";
 import { reloadUnavailable } from "./workflow-reload.ts";
+import { queueSetting } from "./queue-setting-handler.ts";
+import type { AdmissionLock } from "./admission-lock.ts";
+
+function lockedReload(context: ServiceContext, lock: AdmissionLock) {
+  let reloading = false;
+  return async () => {
+    if (reloading)
+      return failed("reload-in-progress", {
+        detail: "A reload is in work. Wait for its reply.",
+      });
+    reloading = true;
+    try {
+      return await lock(
+        ["repository:queues"],
+        () => context.reload?.() ?? reloadUnavailable(),
+      );
+    } finally {
+      reloading = false;
+    }
+  };
+}
+
+function lockedSetting(context: ServiceContext, lock: AdmissionLock) {
+  return (request: ServiceRequest) =>
+    lock(["repository:queues"], () =>
+      queueSetting(context, request.parameters),
+    );
+}
 
 export function dispatcher(
   context: ServiceContext,
@@ -24,6 +54,7 @@ export function dispatcher(
 ) => Promise<Reply | undefined> {
   const lock = admissionLock();
   const run = submissionHandler(context, lock);
+  const feed = queueFeedHandler(context, lock);
   const continued = continueHandler(context, lock);
   const schedule = scheduleHandler(context, lock);
   const operations = new Map<
@@ -34,11 +65,13 @@ export function dispatcher(
     ) => Promise<Reply | undefined>
   >([
     ["run", (request) => run(request.parameters)],
+    ["queue-feed", (request) => feed(request.parameters)],
     ["schedule", (request) => schedule(request.parameters)],
     ["queue", (request) => queueRead(context, request.parameters)],
     ["spend", () => spendRead(context)],
     ["queue-command", (request) => queueCommand(context, request.parameters)],
     ["queue-lanes", (request) => queueLanes(context, request.parameters)],
+    ["queue-setting", lockedSetting(context, lock)],
     ["status", (request) => status(context, request.parameters)],
     ["questions", (request) => questions(context, request.parameters)],
     ["decision", (request) => decision(context, request.parameters)],
@@ -49,7 +82,7 @@ export function dispatcher(
     ["rename-run", (request) => renameRun(context, request.parameters)],
     ["transcript", (request) => transcript(context, request.parameters)],
     ["effect-result", (request) => effectResult(context, request.parameters)],
-    ["reload", () => context.reload?.() ?? reloadUnavailable()],
+    ["reload", lockedReload(context, lock)],
     ["restart", (request) => restartOperation(context, request.parameters)],
     [
       "events",

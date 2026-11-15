@@ -1,6 +1,8 @@
 import { stat } from "node:fs/promises";
 import { join } from "node:path";
-import { located } from "./operation-journal.ts";
+import { located, readRecord } from "./operation-journal.ts";
+import type { WaitingTurn } from "../turn-launch.ts";
+import { waitingTurn } from "../cli/turn-waits.ts";
 import { archiveFolder, type SweepSettings } from "./record-sweep.ts";
 import { receivedNotes } from "./turn-notes.ts";
 import {
@@ -90,5 +92,27 @@ export function noteReceiptsPlace(
         operationIds,
       )),
     }),
+  };
+}
+
+export function turnWaitsPlace(
+  settings: Pick<TurnDetailsSettings, "directory">,
+) {
+  const journal = join(settings.directory, "journal");
+  return {
+    read: async (
+      operationIds: readonly string[],
+    ): Promise<readonly WaitingTurn[]> => {
+      const waits: WaitingTurn[] = [];
+      for (const operationId of operationIds) {
+        const { folder } = located(journal, operationId);
+        const wait = waitingTurn(operationId, {
+          started: await readRecord(folder, "started.json"),
+          result: await readRecord(folder, "result.json"),
+        });
+        if (wait !== undefined) waits.push(wait);
+      }
+      return waits;
+    },
   };
 }

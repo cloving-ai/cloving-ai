@@ -342,8 +342,11 @@ await test("CLV-239 resume preserves the original turn time, head and earlier re
     assert.equal(field(attempts[0], "retryKind"), "capacity");
   }));
 
-await test("CLV-239 shutdown in a capacity or network wait never resumes", async () => {
-  for (const kind of ["capacity", "network"])
+await test("CLV-239 CLV-348 shutdown in a capacity or network wait continues the wait in the next worker", async () => {
+  for (const [kind, length] of [
+    ["capacity", 60_000],
+    ["network", 600_000],
+  ] as const)
     await withScene(async (scene) => {
       const operationId = `wait-${kind}`;
       let waiting = false;
@@ -359,9 +362,18 @@ await test("CLV-239 shutdown in a capacity or network wait never resumes", async
       await worker.deliver(intent({ operationId }), signal);
       await until(() => waiting);
       await worker.close();
-      const next = scene.worker("hold");
+      const calls: number[] = [];
+      const next = scene.worker("hold", {
+        retryDelay: (milliseconds, stopping) => {
+          calls.push(milliseconds);
+          return delay(milliseconds, undefined, { signal: stopping });
+        },
+      });
       const reply = await next.reconcile(intent({ operationId }), signal);
-      assert.equal(field(reply, "reason"), "claude-turn-interrupted");
+      assert.equal(reply.kind, "accepted");
+      await until(() => calls.length === 1);
+      assert.ok((calls[0] ?? 0) > length - 10_000);
+      assert.ok((calls[0] ?? Infinity) <= length);
       assert.equal(scene.turns().length, 1);
       assert.deepEqual(scene.reports, []);
     });

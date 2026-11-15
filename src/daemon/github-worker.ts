@@ -9,7 +9,8 @@ import type {
 import { calls } from "./github-calls.ts";
 import { retriedOperation } from "./git-retry.ts";
 import { activeRun, operationStopped, payloadOf } from "./github-operation.ts";
-import type { ObservationReport } from "../service/worker-port.ts";
+import type { ObservationReport, WorkerPort } from "../service/worker-port.ts";
+import { capacityCalls } from "./github-work-capacity.ts";
 import {
   methodReasons,
   methods,
@@ -30,11 +31,11 @@ import {
   type Reported,
   type WorkerReport,
 } from "./operation-journal.ts";
-import { markedCalls } from "./working-runs.ts";
 
 export type { GithubTiming } from "./github-methods.ts";
 
 export interface GithubWorkerSettings extends MethodSettings {
+  readonly work?: WorkerPort["operationWork"];
   readonly journal: string;
   readonly document: (digest: string) => Promise<string | undefined>;
   readonly report: (report: WorkerReport) => Promise<unknown>;
@@ -82,7 +83,7 @@ interface Kept extends Reported {
 }
 
 interface Started extends Located {
-  readonly intent: Reported & { readonly target: string };
+  readonly intent: Reported & Pick<Kept, "target" | "method">;
   readonly method: Method;
   readonly payload: Readonly<Record<string, unknown>>;
 }
@@ -120,7 +121,10 @@ async function outcome(
       retriedOperation({
         settings,
         folder: run.folder,
-        calls: markedCalls(calls(settings, signal), run.folder),
+        calls: capacityCalls(calls(settings, signal), {
+          ...run,
+          work: settings.work,
+        }),
         stopCalls: () => calls(settings, AbortSignal.timeout(60_000)),
         target: intent.target,
         run: { runId: intent.runId, status: settings.runStatus },

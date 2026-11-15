@@ -12,6 +12,7 @@ import { withFiles } from "./quality/files-fixture.ts";
 import {
   admittedTurn,
   assistantTexts,
+  assertTurnResult,
   finishedRun,
   lineTurn,
   productGit,
@@ -163,6 +164,7 @@ await test(
           assistantTexts(await writing.watch.closed),
           writtenLines(writing.processId),
         );
+        assertTurnResult(run);
       },
     );
   },

@@ -1,3 +1,4 @@
+import assert from "node:assert/strict";
 import { execFileSync, type ChildProcess } from "node:child_process";
 import { copyFileSync, cpSync, symlinkSync } from "node:fs";
 import {
@@ -316,6 +317,14 @@ export function assistantTexts(
   return entries
     .filter((entry) => entry.kind === "assistant")
     .map((entry) => entry.text);
+}
+
+export function assertTurnResult(run: unknown): void {
+  assert.equal(field(run, "claudeCostUsd"), 0.25);
+  const workerTurns = items(field(run, "workerTurns"));
+  assert.equal(workerTurns.length, 1, JSON.stringify(workerTurns));
+  assert.equal(field(workerTurns[0], "summary"), "I wrote 60 lines.");
+  assert.equal(items(field(workerTurns[0], "attempts")).length, 1);
 }
 
 export function writtenLines(processId: number): readonly string[] {

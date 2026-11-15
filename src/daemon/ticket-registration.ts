@@ -19,6 +19,7 @@ import { hasTicketField, type SubmissionContract } from "../submission.ts";
 import type { LocalCommands } from "../command-settings.ts";
 import { issueIdentity } from "../issue-identity.ts";
 import { ticketIdentifier } from "../queue-state.ts";
+import { admitFeed, declaredFeed } from "./feed-registration.ts";
 import {
   ticketDependencyWaits,
   TicketDependencyReadError,
@@ -47,8 +48,12 @@ export interface TicketSource {
 
 export interface TicketRegistration extends Omit<
   WorkflowRegistration,
-  "manifest" | "availability" | "admission"
+  "manifest" | "availability" | "admission" | "feed"
 > {
+  readonly feedDefinition?: {
+    readonly functionName: string;
+    readonly effectLimit: number;
+  };
   readonly functionName: string;
   readonly effectLimit: number;
   readonly capabilities?: readonly string[];
@@ -186,6 +191,11 @@ export function ticketRegistrationTable(
 ): readonly TicketRegistration[] {
   return declarations.map(({ input, queue, ...declaration }) => ({
     ...declaration,
+    ...declaredFeed({
+      ...declaration,
+      input,
+      ...(queue === undefined ? {} : { queue }),
+    }),
     ...(queue === undefined ? {} : { queue: declaresQueue(queue) }),
     submission: input,
     resolver: declaredResolver(source, input),
@@ -205,7 +215,9 @@ export function declaredResolver(
       : { skippedTickets: tickets.skippedTickets }),
     resolve: async (request) => {
       const resolution =
-        tickets !== undefined && Object.hasOwn(request.submission, "ticket")
+        request.source !== "feed" &&
+        tickets !== undefined &&
+        Object.hasOwn(request.submission, "ticket")
           ? await tickets.resolve(request)
           : undefined;
       if (resolution?.kind === "rejected") return resolution;
@@ -244,8 +256,10 @@ export async function ticketRegistrations(
     const {
       functionName,
       capabilities = defaultCapabilities,
+      feedDefinition,
       ...registration
     } = row;
+    Reflect.deleteProperty(registration, "feed");
     const manifest = manifests[functionName];
     if (manifest === undefined)
       return {
@@ -261,8 +275,16 @@ export async function ticketRegistrations(
         kind: "rejected",
         detail: `${admission.error.code}: ${admission.error.detail}`,
       };
+    const feed = await admitFeed(manifests, {
+      ...row,
+      feedDefinition,
+      capabilities,
+      bundleDigest: options.bundleDigest,
+    });
+    if (feed.kind === "rejected") return feed;
     registrations.push({
       ...registration,
+      ...(feed.feed === undefined ? {} : { feed: feed.feed }),
       manifest: declaredManifest(admission.manifest, {
         ...row,
         bundleDigest: options.bundleDigest,

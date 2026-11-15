@@ -12,7 +12,7 @@ import { workflowPin } from "../src/broker/workflow-pin.ts";
 
 export const historyManifest = {
   ...manifest,
-  capabilities: ["command", "fake-harness"],
+  capabilities: ["command", "fake-harness", "github"],
   commands: ["review-state"],
   commandWaits: {
     review: {
@@ -129,7 +129,7 @@ function choices(state: AuthorityState, subject: Subject): readonly Fields[] {
       kind: "admit-run",
       workflow: historyPin,
       effectLimit: 5,
-      capabilities: '["command","fake-harness"]',
+      capabilities: '["command","fake-harness","github"]',
     },
     { kind: "mark-started", expectedRevision: revision },
     { kind: "pause-run", expectedRevision: revision },
@@ -176,8 +176,9 @@ function choices(state: AuthorityState, subject: Subject): readonly Fields[] {
 }
 
 export function generatedHistory(seed: number): readonly AuthorityEvent[] {
-  let state = emptyAuthority;
-  const events: AuthorityEvent[] = [];
+  const initial = workHistory(seed);
+  let state = initial.state;
+  const events: AuthorityEvent[] = [...initial.events];
   let random = seed;
   const next = (bound: number): number => {
     random = (Math.imul(random, 1_664_525) + 1_013_904_223) >>> 0;
@@ -208,4 +209,63 @@ export function generatedHistory(seed: number): readonly AuthorityEvent[] {
     events.push(...result.events);
   }
   return events;
+}
+
+function workHistory(seed: number) {
+  let state = emptyAuthority;
+  const events: AuthorityEvent[] = [];
+  const runId = `verify-${String(seed)}`;
+  const operationId = operationOf(0, runId);
+  const effect = {
+    capability: "github",
+    method: "merge",
+    target: "workspace/main",
+    payload: body,
+  };
+  const identity = {
+    operationId,
+    inputDigest: effectInputDigest(effect),
+    leaseGeneration: 1,
+    stageId: `verify-${String(seed)}-4`,
+  };
+  const commands = [
+    {
+      kind: "admit-run",
+      workflow: historyPin,
+      effectLimit: 1,
+      capabilities: '["command","fake-harness","github"]',
+    },
+    { kind: "mark-started", expectedRevision: 1 },
+    {
+      kind: "request-effect",
+      ...effect,
+      operationId,
+      inputDigest: identity.inputDigest,
+      units: 1,
+      recoveryLimit: 3,
+    },
+    {
+      kind: "grant-lease",
+      operationId,
+      leaseGeneration: 1,
+      expiresAt: "2026-10-10T12:10:00.000Z",
+      capacity: 4,
+    },
+    { kind: "enter-operation-work", ...identity },
+    { kind: "leave-operation-work", ...identity },
+  ];
+  for (const [index, fields] of commands.entries()) {
+    const result = execute(state, {
+      command: {
+        ...fields,
+        runId,
+        commandId: `verify-${String(seed)}-${String(index)}`,
+      },
+      recordedAt: "2026-10-10T12:00:00.000Z",
+    });
+    if (result.kind !== "accepted") throw new Error(JSON.stringify(result));
+    state = result.state;
+    events.push(...result.events);
+  }
+  return { state, events };
 }

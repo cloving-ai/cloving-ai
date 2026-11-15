@@ -1,3 +1,4 @@
+import { queueFeed } from "../workflow-declaration.ts";
 import { readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import type { scheduleConnection } from "./schedule-control.ts";
@@ -55,6 +56,13 @@ function queueAdapters(settings: LoopSettings, workflowId: string) {
   };
 }
 
+function hasFeed(settings: LoopSettings, workflowId: string): boolean {
+  const declaration = settings.declarations?.find(
+    (row) => row.workflowId === workflowId,
+  );
+  return declaration !== undefined && queueFeed(declaration) !== undefined;
+}
+
 async function startedQueue(
   settings: LoopSettings & { readonly resumeQueue: boolean },
   workflowId: string,
@@ -67,6 +75,7 @@ async function startedQueue(
   const intervalMilliseconds = configuration?.intervalMilliseconds;
   if (intervalMilliseconds === undefined) return undefined;
   const queue = issueQueue({
+    feed: hasFeed(settings, workflowId),
     directory: settings.directory,
     queueDirectory: await queueDirectory(settings.directory, {
       workflowId,

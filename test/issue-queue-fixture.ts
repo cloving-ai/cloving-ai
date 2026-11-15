@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { issueQueue } from "../src/daemon/issue-queue.ts";
 import { record } from "../src/protocol.ts";
@@ -19,6 +19,7 @@ async function queueCommands(file: string): Promise<readonly string[]> {
 
 interface QueueOptions {
   readonly handle: Handle;
+  readonly storage?: "workflow";
   readonly commands?: readonly string[];
   readonly failures?: readonly string[];
   readonly intervalMilliseconds?: number;
@@ -84,7 +85,12 @@ export async function withQueue(
 ): Promise<void> {
   return withHarness(async (harness) => {
     const directory = harness.stateDirectory;
-    const file = join(directory, "queue-commands.json");
+    const queueDirectory =
+      options.storage === "workflow"
+        ? join(directory, "queues", "develop")
+        : undefined;
+    await mkdir(queueDirectory ?? directory, { recursive: true });
+    const file = join(queueDirectory ?? directory, "queue-commands.json");
     await writeFile(file, JSON.stringify(savedJournal(options)));
     const listener = await listen({
       path: join(harness.runtimeDirectory, "control.sock"),
@@ -95,6 +101,7 @@ export async function withQueue(
     const queue = issueQueue({
       workflowId: "develop",
       directory,
+      ...(queueDirectory === undefined ? {} : { queueDirectory }),
       runtimeDirectory: harness.runtimeDirectory,
       intervalMilliseconds: options.intervalMilliseconds ?? 5,
       limits: () => ({

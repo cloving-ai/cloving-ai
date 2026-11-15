@@ -5,6 +5,8 @@ import { test } from "node:test";
 import { startTurn, succeeded } from "../src/daemon/claude-turn.ts";
 import {
   intent,
+  field,
+  record,
   journalKey,
   resultOf,
   until,
@@ -12,7 +14,7 @@ import {
 } from "./claude-worker-fixture.ts";
 import { fakePi, piEvents, piMessage, piReport } from "./pi-fixture.ts";
 
-await test("CLV-364 native Pi runs its JSON command in the turn worktree", () =>
+await test("CLV-364 native Pi runs its RPC command in the turn worktree", () =>
   withScene(async (scene) => {
     const worker = scene.worker("unused", {
       harness: { name: "pi", path: fakePi(scene) },
@@ -28,10 +30,14 @@ await test("CLV-364 native Pi runs its JSON command in the turn worktree", () =>
     );
     assert.deepEqual(observed["arguments"], [
       "--mode",
-      "json",
-      "--no-session",
-      "--",
-      "prompt of sha256:prompt",
+      "rpc",
+      "--session",
+      String(
+        field(
+          field(record(scene, "operation-1/started.json"), "piSession"),
+          "path",
+        ),
+      ),
     ]);
     assert.equal(observed["directory"], report["worktree"]);
     assert.equal(observed["stdin"], "");
@@ -201,13 +207,18 @@ await test("CLV-364 a Pi profile uses its private command, model and allowed env
     );
     assert.deepEqual(observed["arguments"], [
       "--mode",
-      "json",
+      "rpc",
       "--thinking",
       "high",
       "--model",
       "operator/model",
-      "--",
-      "prompt of sha256:prompt",
+      "--session",
+      String(
+        field(
+          field(record(scene, "operation-1/started.json"), "piSession"),
+          "path",
+        ),
+      ),
     ]);
     const environment = resultOf(JSON.stringify(observed["environment"]));
     assert.equal(environment["TURN_VALUE"], "allowed");

@@ -1,3 +1,5 @@
+import { queueGlobalLimits } from "./self-host-global-queue.ts";
+export { queueGlobalLimits } from "./self-host-global-queue.ts";
 import {
   defaultRoom,
   isPressureLimit,
@@ -7,6 +9,7 @@ import {
 import {
   declaredQueueValues,
   parseQueuesSetting,
+  queuePollingConfigured,
   queueValues,
   queueValueSources,
   type GeneralQueueValues,
@@ -17,6 +20,7 @@ import {
 } from "../src/queue-settings.ts";
 import {
   declaresQueue,
+  queueFeed,
   type DeclaredWorkflow,
 } from "../src/workflow-declaration.ts";
 import type { SettingSource } from "../src/project-settings.ts";
@@ -121,6 +125,7 @@ export function queueLimits(
   const context = { environment, plan };
   const lanes = queueLanes(environment, plan);
   const reserved = effectReserved(environment);
+  const global = queueGlobalLimits(environment);
   return {
     lanes,
     workingLanes: workingLanes(context, lanes),
@@ -129,6 +134,7 @@ export function queueLimits(
       maxMemoryPressure: maxMemoryPressure(context),
     },
     ...(reserved === undefined ? {} : { reserved }),
+    ...(global === undefined ? {} : { global }),
     ...(plan.kind === "on"
       ? {
           sources: {
@@ -297,11 +303,16 @@ export function queuePlan(
   given: QueueConfigurationInput,
 ): QueuePlan {
   const configuration = queueConfiguration(environment, given);
-  if (configuration === undefined) return noQueue;
+  if (configuration === undefined || !queuePollingConfigured(configuration))
+    return noQueue;
   const { declared, setting } = configuration;
   if (setting?.state === "off")
     return { kind: "off", workflowId: declared.workflowId };
-  if (!ticketCommands(environment, setting)) return noQueue;
+  if (
+    queueFeed(declared) === undefined &&
+    !ticketCommands(environment, setting)
+  )
+    return noQueue;
   return configuredPlan(configuration);
 }
 
@@ -349,26 +360,6 @@ export function queueWorkflowLimits(
   );
 }
 
-export function queueStartup(
-  environment: Environment,
-  given: QueueConfigurationInput,
-) {
-  const plan = queuePlan(environment, given);
-  const limits = queueLimits(environment, plan);
-  return {
-    queueMilliseconds: queueMilliseconds(plan),
-    ...(plan.kind === "off" ? { queueState: "off" as const } : {}),
-    ...(plan.kind === "on"
-      ? { queueIntervalSource: plan.values.everySeconds.source }
-      : {}),
-    queueLimits: limits,
-    queueLanes: limits.lanes,
-    queueConfigurations: queueConfigurations(environment, given),
-    queueDailySpendLimitUsd: queueSpendLimit(environment, plan),
-    readyCommand: readyTicketCommand(environment, plan),
-  };
-}
-
 export function reloadedQueueLimits(
   environment: Environment,
   given: QueueConfigurationInput,
@@ -376,7 +367,11 @@ export function reloadedQueueLimits(
   const configuration = queueConfiguration(environment, given);
   const plan =
     configuration === undefined ? noQueue : configuredPlan(configuration);
-  return queueLimits(environment, plan);
+  const global = queueGlobalLimits(environment, given.sources);
+  return {
+    ...queueLimits(environment, plan),
+    ...(global === undefined ? {} : { global }),
+  };
 }
 
 export function queueMilliseconds(plan: QueuePlan): number | undefined {

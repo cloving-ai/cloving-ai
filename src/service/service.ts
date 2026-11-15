@@ -82,6 +82,7 @@ export interface ServiceHost {
 }
 
 export interface HostPorts {
+  readonly work: { readonly stage: WorkerPort["operationWork"] };
   readonly commandWait: CommandWaitPort;
   readonly runWait?: {
     readonly target: (runId: string) => Promise<RunWaitTarget | undefined>;
@@ -347,6 +348,7 @@ function hostPorts(
     },
     document: authority.queries.document,
     requestEffect: worker.requestEffect,
+    work: { stage: worker.operationWork },
     reportEffect: worker.reportEffect,
     openGate: worker.openGate,
     registerWait: worker.registerWait,

@@ -24,8 +24,7 @@ export interface ScriptSetting {
 interface Renaming {
   readonly template: string;
   readonly id: string;
-  readonly from: string;
-  readonly to: string;
+  readonly functions: ReadonlyMap<string, string>;
   readonly timeZone: string;
 }
 
@@ -92,13 +91,63 @@ function functionRenaming(
   for (const name of input.takenNames) names.add(name);
   let to = camelName(input.id);
   while (to !== from && (names.has(to) || reservedWord(to))) to += "Workflow";
+  names.add(to);
+  const functions = new Map([[from, to]]);
+  const feed = feedRenaming(sources, {
+    from,
+    to,
+    names,
+    template: input.name,
+    takenNames: input.takenNames,
+  });
+  if (feed !== undefined) functions.set(feed.from, feed.to);
   return {
     template: input.name,
     id: input.id,
-    from,
-    to,
+    functions,
     timeZone: input.timeZone,
   };
+}
+
+function feedOf(
+  sources: readonly { readonly file: string; readonly text: string }[],
+  template: string,
+): string | undefined {
+  const source = sources.find(
+    ({ file }) => file === `${template}.declaration.json`,
+  );
+  if (source === undefined) return undefined;
+  const declaration = record(JSON.parse(source.text));
+  const workflow = record(declaration?.["workflow"]);
+  const feed = record(workflow?.["queue"])?.["feed"];
+  return typeof feed === "string" ? feed : undefined;
+}
+
+function feedRenaming(
+  sources: readonly { readonly file: string; readonly text: string }[],
+  input: {
+    readonly template: string;
+    readonly from: string;
+    readonly to: string;
+    readonly names: ReadonlySet<string>;
+    readonly takenNames: ReadonlySet<string>;
+  },
+): { readonly from: string; readonly to: string } | undefined {
+  const from = feedOf(sources, input.template);
+  if (from === undefined) return undefined;
+  const base = input.to === input.from ? from : `${input.to.slice(0, 60)}Feed`;
+  let to = base;
+  let attempt = 0;
+  while (
+    (to !== from && input.names.has(to)) ||
+    input.takenNames.has(to) ||
+    reservedWord(to)
+  ) {
+    attempt += 1;
+    const suffix = attempt === 1 ? "Workflow" : `Workflow${String(attempt)}`;
+    to = base.slice(0, 64 - suffix.length) + suffix;
+  }
+  return { from, to };
 }
 
 function reservedWord(name: string): boolean {
@@ -119,7 +168,7 @@ function copiedContent(
   const { file, text } = source;
   if (file.endsWith(".declaration.json"))
     return copiedDeclaration(text, renaming);
-  if (!file.endsWith(".ts") || renaming.id === renaming.template) return text;
+  if (!file.endsWith(".ts")) return text;
   return renamedSource(source, renaming);
 }
 
@@ -144,6 +193,7 @@ function copiedDeclaration(text: string, renaming: Renaming): string {
         ...declaration,
         workflow: {
           ...zoned(workflow, renaming.timeZone),
+          ...copiedQueue(workflow, renaming),
           workflowId: renaming.id,
           ...copiedHandoffs(workflow["handoffs"], renaming),
         },
@@ -152,6 +202,16 @@ function copiedDeclaration(text: string, renaming: Renaming): string {
       2,
     ) + "\n"
   );
+}
+
+function copiedQueue(
+  workflow: Readonly<Record<string, unknown>>,
+  renaming: Renaming,
+): Readonly<Record<string, unknown>> {
+  const queue = record(workflow["queue"]);
+  const feed = queue?.["feed"];
+  if (typeof feed !== "string") return {};
+  return { queue: { ...queue, feed: renaming.functions.get(feed) ?? feed } };
 }
 
 function copiedHandoffs(handoffs: unknown, renaming: Renaming) {
@@ -183,8 +243,11 @@ function renamedSource(
   const edits: { start: number; end: number; text: string }[] = [];
   const prefix = new RegExp(`^(\\.\\.?/)${renaming.template}(?=[./])`);
   const visit = (node: ts.Node): void => {
-    if (ts.isIdentifier(node) && node.text === renaming.from)
-      edits.push({ start: node.getStart(), end: node.end, text: renaming.to });
+    const name = ts.isIdentifier(node)
+      ? renaming.functions.get(node.text)
+      : undefined;
+    if (name !== undefined)
+      edits.push({ start: node.getStart(), end: node.end, text: name });
     if (selfHandoff(node, renaming.template))
       edits.push({
         start: node.getStart() + 1,

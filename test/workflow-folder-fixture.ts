@@ -38,6 +38,11 @@ export async function writeDeclaredWorkflow(
 
 function localSource(source: string, input: "prompt" | undefined): string {
   return source
+    .slice(0, source.indexOf("export async function developFeed"))
+    .replace(
+      /import \{[^}]+\} from "(?:cloving\/workflows\/steps\/protected-effect|\.\/develop\/feed-(?:selection|results|read)\.ts)";\n/g,
+      "",
+    )
     .replace("await preparePull(ticketInput(request))", "ticketInput(request)")
     .replaceAll(
       "ticketInput",

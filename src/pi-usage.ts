@@ -80,6 +80,21 @@ export function piTotalUsage(accounting: PiAccounting): WorkerUsage {
   return sumUsage(accounting.responses.map((response) => response.usage));
 }
 
+export function sumPiAccounting(
+  values: readonly (PiAccounting | undefined)[],
+): PiAccounting | undefined {
+  if (values.every((value) => value === undefined)) return undefined;
+  const nested = values.flatMap((value) =>
+    value?.nestedUsage == null ? [] : [value.nestedUsage],
+  );
+  return {
+    scope: "primary-model",
+    responses: values.flatMap((value) => value?.responses ?? []),
+    auxiliaryWork: values.some((value) => value?.auxiliaryWork !== false),
+    nestedUsage: nested.length === 0 ? null : sumUsage(nested),
+  };
+}
+
 export function piAccountingOf(value: unknown): PiAccounting | undefined {
   const fields = record(value);
   const responses = fields?.["responses"];

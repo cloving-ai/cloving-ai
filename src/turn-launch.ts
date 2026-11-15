@@ -1,6 +1,7 @@
 import { record } from "./protocol.ts";
 
 export interface TurnLaunch {
+  readonly piRpc?: string;
   readonly processId: number;
   readonly processStart: string;
   readonly marker: string;
@@ -87,6 +88,8 @@ export function plannedLaunch(value: unknown): PlannedLaunch | undefined {
   if (!texts.every((text) => typeof text === "string")) return undefined;
   const transcript = recordedTranscript(fields["transcript"]);
   const runner = recordedRunner(fields["runner"]);
+  const piRpc = fields["piRpc"];
+  if (piRpc !== undefined && typeof piRpc !== "string") return undefined;
   if (transcript === undefined || runner === undefined) return undefined;
   return {
     marker: String(marker),
@@ -96,6 +99,7 @@ export function plannedLaunch(value: unknown): PlannedLaunch | undefined {
     configuration: String(configuration),
     ...transcript,
     ...runner,
+    ...(typeof piRpc === "string" ? { piRpc } : {}),
   };
 }
 
@@ -135,4 +139,45 @@ export function connectableTurn(turn: {
     keptLaunch(turn) !== undefined &&
     typeof record(turn.entry)?.["startedAt"] === "string"
   );
+}
+
+export interface TurnWait {
+  readonly attempt: number;
+  readonly waitingAt: string;
+  readonly waitMilliseconds: number;
+}
+
+const instant = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/;
+
+export function turnWait(started: unknown): TurnWait | undefined {
+  const fields = record(started);
+  if (fields?.["phase"] !== "waiting") return undefined;
+  const attempt = attemptNumber(started);
+  const waitMilliseconds = fields["waitMilliseconds"];
+  if (
+    typeof waitMilliseconds !== "number" ||
+    !Number.isSafeInteger(waitMilliseconds) ||
+    waitMilliseconds < 0
+  )
+    return undefined;
+  const waitingAt = fields["waitingAt"];
+  if (attempt === undefined) return undefined;
+  if (typeof waitingAt !== "string" || !instant.test(waitingAt))
+    return undefined;
+  return { attempt, waitingAt, waitMilliseconds };
+}
+
+export interface WaitingTurn extends TurnWait {
+  readonly operationId: string;
+  readonly waitEndsAt: string;
+}
+
+export function openWait(turn: {
+  readonly started: unknown;
+  readonly result: unknown;
+}): TurnWait | undefined {
+  const { result } = turn;
+  if (result === undefined || result === null) return turnWait(turn.started);
+  if (record(result)?.["stoppedBy"] !== "daemon-shutdown") return undefined;
+  return turnWait(turn.started);
 }

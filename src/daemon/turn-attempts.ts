@@ -18,6 +18,7 @@ import {
   type TurnStart,
 } from "./claude-turn.ts";
 import { nativeHarness } from "../harness-defaults.ts";
+import { sumPiAccounting } from "../pi-usage.ts";
 import { profileCommand } from "../turn-profile.ts";
 import type { TurnResume } from "./claude-recovery.ts";
 import type { TurnLaunch } from "../turn-launch.ts";
@@ -49,13 +50,26 @@ export interface TurnAttach {
   readonly launch: TurnLaunch;
 }
 
+export interface WaitResume {
+  readonly startedAt: string;
+  readonly turnStartCommit: string | null;
+  readonly ends: readonly TurnEnd[];
+  readonly steerNotes: readonly string[];
+  readonly endsAt: number;
+}
+
 export interface RetryOptions extends RetrySettings {
   readonly runId: string;
   readonly resume?: TurnResume;
   readonly attach?: TurnAttach;
+  readonly waiting?: WaitResume;
   readonly stopping?: AbortController;
   readonly stopMilliseconds?: number;
   readonly metadata: Readonly<Record<string, unknown>>;
+}
+
+export function recordedTurn(options: RetryOptions) {
+  return options.attach ?? options.resume ?? options.waiting;
 }
 
 export interface Attempts {
@@ -97,10 +111,14 @@ export function combined(attempts: Attempts): TurnEnd {
   const last = ends.at(-1) ?? { exitCode: null, result: undefined };
   const result = last.result ?? ends.find((end) => end.result)?.result;
   if (result === undefined) return last;
+  const piAccounting = sumPiAccounting(
+    ends.map((end) => end.result?.piAccounting),
+  );
   return {
     ...last,
     result: {
       ...result,
+      ...(piAccounting === undefined ? {} : { piAccounting }),
       attempts: ends.map((end, index) =>
         attemptUsage(attempts, { end, attempt: index + 1 }),
       ),
@@ -153,7 +171,10 @@ function selectedCommand(
   ) {
     const model = attempts.ends[attempt - 2]?.result?.model;
     return {
-      command: model == null ? original : replaceCommandModel(original, model),
+      command:
+        start.worker === "pi" || model == null
+          ? original
+          : replaceCommandModel(original, model),
       fallback: undefined,
     };
   }
@@ -304,5 +325,7 @@ export function kindOf(attempts: Attempts, end: TurnEnd) {
   if (output === "text" || !["claude", "codex"].includes(worker ?? "claude"))
     return null;
   if (worker !== "codex") return end.retryKind ?? retryKind(end.result);
-  return capacityRefusal(end.result) ? "capacity" : null;
+  return end.retryKind === "capacity" || capacityRefusal(end.result)
+    ? "capacity"
+    : null;
 }

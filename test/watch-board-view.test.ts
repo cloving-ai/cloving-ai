@@ -83,7 +83,7 @@ await test("CLV-286 the board of a workflow sits under a back link to the floor,
   assert.doesNotMatch(html, /<nav|class="workflows"/);
   assert.match(
     html,
-    /<\/header><a class="back" href="#">← Back to the floor<\/a><div class="workspace"><main class="board">/,
+    /<\/header><a class="back" href="#">← Back to the floor<\/a><p class="meta">No queue configured<\/p><div class="workspace"><main class="board">/,
   );
   const workspace = html.slice(html.indexOf('<div class="workspace">'));
   assert.doesNotMatch(workspace, /<nav|<aside/);

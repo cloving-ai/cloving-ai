@@ -1,3 +1,5 @@
+import { record } from "../../protocol.ts";
+import { validFeedPick } from "../../submission.ts";
 import type { JsonObject } from "solid-objects";
 import type { EffectIntent } from "../../authority/reducer.ts";
 import { integer, text } from "../../storage/domain-rows.ts";
@@ -53,7 +55,56 @@ export function oversized(request: JsonObject): boolean {
   const limit = report
     ? maximumRequestBytes + commandLimits.stdoutBytes * 12
     : maximumRequestBytes;
-  return Buffer.byteLength(JSON.stringify(request)) > limit;
+  return (
+    Buffer.byteLength(JSON.stringify(request)) - admissionEscaping(request) >
+    limit
+  );
+}
+
+function admissionEscaping(request: JsonObject): number {
+  if (!feedAdmission(request)) return 0;
+  const documents = request["documents"];
+  if (!Array.isArray(documents)) return 0;
+  let total = 0;
+  for (const document of documents) {
+    const body: unknown = Reflect.get(Object(document), "body");
+    if (typeof body !== "string") continue;
+    total +=
+      Buffer.byteLength(JSON.stringify(body)) - Buffer.byteLength(body) - 2;
+  }
+  return total;
+}
+
+function feedAdmission(request: JsonObject): boolean {
+  const command = record(request["command"]);
+  if (command === undefined || command["kind"] !== "admit-run") return false;
+  const documents = request["documents"];
+  if (!Array.isArray(documents)) return false;
+  for (const document of documents) {
+    const body: unknown = Reflect.get(Object(document), "body");
+    const digest: unknown = Reflect.get(Object(document), "digest");
+    if (
+      digest === command["submission"] &&
+      typeof body === "string" &&
+      feedDocument(body)
+    )
+      return true;
+  }
+  return false;
+}
+
+function feedDocument(body: string): boolean {
+  let value: unknown;
+  try {
+    value = JSON.parse(body);
+  } catch {
+    return false;
+  }
+  const request = record(value);
+  return (
+    request?.["source"] === "feed" &&
+    validFeedPick(record(request["submission"])?.["ticket"])
+  );
 }
 
 export function failed(

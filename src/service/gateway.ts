@@ -51,6 +51,8 @@ const permitted: Readonly<Record<Principal, readonly string[]>> = {
     "fail-run",
     "request-effect",
     "report-effect",
+    "enter-operation-work",
+    "leave-operation-work",
   ],
   controller: ["expire-gate", "expire-lease", "expire-command-wait"],
 };
@@ -115,6 +117,7 @@ async function reportLimit(
   parts: { readonly authority: Authority; readonly textBytes: number },
   submission: Checked,
 ): Promise<number> {
+  if (submission.command["kind"] === "complete-run") return 262_144;
   if (
     submission.command["kind"] !== "report-effect" ||
     !submission.documents.some(

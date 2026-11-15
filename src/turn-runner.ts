@@ -20,6 +20,7 @@ export type TurnRunner =
   { readonly kind: "host" } | SeatbeltRunner | ContainerRunner;
 
 export interface RunnerPlaces {
+  readonly piSessionDirectory?: string;
   readonly piInputExtension?: string;
   readonly directory: string;
   readonly commonFolder: string;
@@ -145,6 +146,9 @@ function containerCommand(
     ...mounted(places.commonFolder),
     ...protectedGit(places.commonFolder),
     ...(places.attachments === undefined ? [] : mounted(places.attachments)),
+    ...(places.piSessionDirectory === undefined
+      ? []
+      : mounted(places.piSessionDirectory)),
     ...(places.piInputExtension === undefined
       ? []
       : ["-v", `${places.piInputExtension}:${places.piInputExtension}:ro`]),
@@ -200,6 +204,9 @@ export function seatbeltSettings(
         places.directory,
         places.commonFolder,
         ...(places.attachments === undefined ? [] : [places.attachments]),
+        ...(places.piSessionDirectory === undefined
+          ? []
+          : [places.piSessionDirectory]),
         places.temporary,
       ],
       denyWrite: [

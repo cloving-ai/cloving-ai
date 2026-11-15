@@ -1,9 +1,18 @@
+import { reservedPiRpcNotes } from "./pi-rpc-channel.ts";
 import { turnHarness } from "../harness-defaults.ts";
 import { resumeReasonField } from "../worker-usage.ts";
 import { record } from "../protocol.ts";
-import type { ProtectedIntent } from "../broker/actor/delivery-intents.ts";
+import type {
+  AdapterOutcome,
+  ProtectedIntent,
+} from "../broker/actor/delivery-intents.ts";
 import { join } from "node:path";
-import { located, readRecord, writeRecord } from "./operation-journal.ts";
+import {
+  located,
+  readRecord,
+  writeRecord,
+  type Located,
+} from "./operation-journal.ts";
 import { keepTurn } from "./turn-owners.ts";
 import { markedProcesses } from "./process-identity.ts";
 import {
@@ -13,23 +22,29 @@ import {
   recordedTexts,
   recordedTree,
   resumableHarness,
+  interruptedReply,
 } from "./claude-recovery.ts";
 import {
   completedLaunch,
   foundLaunch,
   launchState,
   markerRecord,
+  stoppedLaunch,
   type FoundLaunch,
 } from "./detached-process.ts";
 import {
   attemptNumber,
   keptLaunch,
   plannedLaunch,
+  recordedLaunch,
   type PlannedLaunch,
   type TurnLaunch,
 } from "../turn-launch.ts";
 import type { TurnAttach } from "./turn-attempts.ts";
 import { selectedProfile, type WorkerProfiles } from "./worker-profile.ts";
+import { ownedPiSession } from "./pi-session.ts";
+import { releasedLaunch } from "./detached-turn.ts";
+import { claudeLimits } from "./claude-worker-parts.ts";
 
 export async function attachableLaunch(
   folder: string,
@@ -38,9 +53,43 @@ export async function attachableLaunch(
   const attempt = attemptNumber(started);
   if (attempt === undefined) return undefined;
   const entry = await readRecord(folder, `attempt-${String(attempt)}.json`);
-  const launch = keptLaunch({ started, entry });
+  const launch =
+    keptLaunch({ started, entry }) ?? settledPiLaunch({ started, entry });
   if (launch === undefined) return undefined;
   return (await launchState(launch)) === "gone" ? "gone" : launch;
+}
+
+export async function recordedTurnLaunch(
+  settings: { readonly stopMilliseconds?: number },
+  journal: {
+    readonly folder: string;
+    readonly started: unknown;
+    readonly result: unknown;
+  },
+): Promise<TurnLaunch | "gone" | "stopped" | "unknown" | undefined> {
+  if (journal.result !== undefined) return undefined;
+  return (
+    (await attachableLaunch(journal.folder, journal.started)) ??
+    markedTurn(journal.folder, {
+      started: journal.started,
+      stopMilliseconds:
+        settings.stopMilliseconds ?? claudeLimits.stopMilliseconds,
+    })
+  );
+}
+
+function settledPiLaunch(turn: {
+  readonly started: unknown;
+  readonly entry: unknown;
+}): TurnLaunch | undefined {
+  const started = record(turn.started);
+  if (
+    started?.["harness"] !== "pi" ||
+    started["phase"] !== "running" ||
+    typeof record(turn.entry)?.["endedAt"] !== "string"
+  )
+    return undefined;
+  return recordedLaunch(started["launch"]);
 }
 
 async function connectedRecords(
@@ -87,7 +136,12 @@ async function markerSearch(
   started: unknown,
 ): Promise<MarkerSearch | undefined> {
   const attempt = attemptNumber(started);
-  if (attempt === undefined || recordedField(started, "phase") !== "starting")
+  const phase = recordedField(started, "phase");
+  const nativePi = recordedField(started, "harness") === "pi";
+  if (
+    attempt === undefined ||
+    (phase !== "starting" && !(nativePi && phase === "running"))
+  )
     return undefined;
   const place =
     attempt === 1 ? folder : join(folder, `attempt-${String(attempt)}`);
@@ -134,7 +188,12 @@ async function readAttach(
     startedAt,
     turnStartCommit: typeof head === "string" ? head : null,
     ends: records.slice(0, -1).map(priorEnd),
-    steerNotes: recordedTexts(started, "steerNotes"),
+    steerNotes: [
+      ...new Set([
+        ...recordedTexts(started, "steerNotes"),
+        ...(await reservedPiRpcNotes(started, folder)),
+      ]),
+    ],
     entry: {
       ...record(entry),
       attempt,
@@ -159,12 +218,48 @@ export async function attachPlan(
   const attach = await readAttach(folder, { started, launch });
   if (tree === undefined || attach === undefined)
     return "claude-turn-interrupted";
-  const profile = await selectedProfile(settings, intent);
+  const selected = await recordedProfile(settings, { started, intent });
+  if (typeof selected === "string") return selected;
+  const { profile, harness } = selected;
+  if (harness.worker !== "pi") return { attach, tree, profile, harness };
+  const piSession = await ownedPiSession({
+    started,
+    entry: attach.entry,
+    folder,
+    operationId: intent.operationId,
+  });
+  if (typeof piSession === "string") return piSession;
+  return { attach, tree, profile, harness: { ...harness, piSession } };
+}
+
+export async function recordedProfile(
+  settings: WorkerProfiles,
+  request: { readonly started: unknown; readonly intent: ProtectedIntent },
+) {
+  const profile = await selectedProfile(settings, request.intent);
   if (typeof profile === "string") return "claude-turn-interrupted";
   const harness = turnHarness(settings, profile);
-  if (recordedField(started, "harness") !== harness.worker)
+  if (recordedField(request.started, "harness") !== harness.worker)
     return "claude-turn-interrupted";
-  return { attach, tree, profile, harness };
+  if (harness.worker === "pi" && harness.output === "text")
+    return "claude-turn-interrupted";
+  return { profile, harness };
+}
+
+export async function rejectedAttach(rejection: {
+  readonly request: Located;
+  readonly plan: string;
+  readonly launch: TurnLaunch | undefined;
+  readonly stopMilliseconds: number | undefined;
+}): Promise<AdapterOutcome> {
+  if (rejection.launch !== undefined) {
+    await stoppedLaunch(
+      rejection.launch,
+      rejection.stopMilliseconds ?? claudeLimits.stopMilliseconds,
+    );
+    await releasedLaunch(rejection.launch);
+  }
+  return interruptedReply(rejection.request, rejection.plan);
 }
 
 export interface KeptTurn {
@@ -181,7 +276,10 @@ export async function keptTurn(
   const started = await readRecord(folder, "started.json");
   const tree = recordedTree(started);
   if (tree === undefined) return undefined;
-  const launch = await attachableLaunch(folder, started);
+  const launch =
+    recordedField(started, "harness") === "pi"
+      ? recordedLaunch(recordedField(started, "launch"))
+      : await attachableLaunch(folder, started);
   if (launch === undefined || launch === "gone") return undefined;
   return { directory: tree.path, runId: intent.runId, launch };
 }
