@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { join } from "node:path";
+import { readFile } from "node:fs/promises";
 import { field } from "./self-host-fixture.ts";
 import { call } from "./service-fixture.ts";
 import { replacementPhases } from "./restart-diagnostics-fixture.ts";
@@ -14,7 +16,19 @@ import {
   withTurnHost,
   writingTurn,
   writtenLines,
+  type TurnHost,
 } from "./restart-turn-fixture.ts";
+
+async function assertPublicClient(scene: TurnHost): Promise<void> {
+  const manifest: unknown = JSON.parse(
+    await readFile(join(scene.product, "package.json"), "utf8"),
+  );
+  const executable = field(field(manifest, "bin"), "cloving");
+  assert.equal(
+    scene.fixture.entryPoint,
+    join(scene.product, String(executable)),
+  );
+}
 
 function alive(processId: number): boolean {
   try {
@@ -30,6 +44,7 @@ await test(
   () =>
     withTurnHost({ script: lineTurn }, async (scene) => {
       const { fixture } = scene;
+      await assertPublicClient(scene);
       const runId = await admittedTurn(fixture, "lines");
       const writing = await writingTurn(scene, runId);
       const before = await call(fixture, {
@@ -38,6 +53,10 @@ await test(
       });
       const requested = Date.now();
       const turns = await restartedTurns(fixture, []);
+      const invocation: unknown = JSON.parse(
+        await readFile(join(fixture.directory, "restart-cli.json"), "utf8"),
+      );
+      assert.equal(field(invocation, "entryPoint"), fixture.entryPoint);
       assert.deepEqual(field(turns, "connected"), [runId]);
       const after = await call(fixture, {
         operation: "status",

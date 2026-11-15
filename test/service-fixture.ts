@@ -84,12 +84,16 @@ export function fakeRegistration(resolved: unknown[]): WorkflowRegistration {
 
 export function runCli(
   argumentsList: readonly string[],
-  environment: { readonly directory: string; readonly runtime: string },
+  environment: {
+    readonly directory: string;
+    readonly runtime: string;
+    readonly entryPoint?: string;
+  },
 ): Promise<CliResult> {
   return new Promise((settle, reject) => {
     const child = spawn(
       process.execPath,
-      [resolve("src/cli.ts"), ...argumentsList],
+      [environment.entryPoint ?? resolve("src/cli.ts"), ...argumentsList],
       {
         cwd: environment.directory,
         env: { ...process.env, CLOVING_RUNTIME_DIR: environment.runtime },

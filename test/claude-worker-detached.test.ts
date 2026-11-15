@@ -133,23 +133,15 @@ await test("CLV-337 a running turn that the new worker cannot connect to stops b
     assert.equal(alive(turn.processId), true);
     const next = scene.worker("gated-lines", { profiles: {} });
     const reply = await next.reconcile(review, signal);
+    const turnAlive = alive(turn.processId);
+    const launcherAlive = alive(turn.parentId);
     assert.equal(reply.kind, "failed");
-    assert.equal(
-      alive(turn.processId),
-      false,
-      stopEvidence({
-        folder: folder(scene),
-        processIds: [turn.processId, turn.parentId],
-      }),
-    );
-    assert.equal(
-      alive(turn.parentId),
-      false,
-      stopEvidence({
-        folder: folder(scene),
-        processIds: [turn.processId, turn.parentId],
-      }),
-    );
+    const evidence = stopEvidence({
+      folder: folder(scene),
+      processIds: [turn.processId, turn.parentId],
+    });
+    assert.equal(turnAlive, false, evidence);
+    assert.equal(launcherAlive, false, evidence);
   }));
 
 await test("CLV-337 a turn that ends while no worker runs ends after the start", () =>

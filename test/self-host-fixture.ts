@@ -41,6 +41,7 @@ export function git(
 }
 
 export interface Scene {
+  readonly entryPoint: string;
   readonly root: string;
   readonly directory: string;
   readonly repository: string;
@@ -133,6 +134,7 @@ export async function scene(
     board: [process.execPath, join(root, "fake-board.mjs")],
   };
   return {
+    entryPoint,
     root,
     directory,
     repository,

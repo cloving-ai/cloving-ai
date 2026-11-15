@@ -16,7 +16,6 @@ import {
   assertTurnResult,
   finishedRun,
   lineTurn,
-  productGit,
   restartedTurns,
   pinnedWorkflow,
   withTurnHost,
@@ -25,6 +24,8 @@ import {
   writtenLines,
   type TurnHost,
 } from "./restart-turn-fixture.ts";
+
+import { productGit } from "./restart-product-fixture.ts";
 
 const unavailable = "cloving-host-unavailable";
 

@@ -97,15 +97,23 @@ export async function restartCli(
   options: readonly string[],
 ): Promise<CliResult> {
   const started = Date.now();
+  const entryPoint = fixture.entryPoint;
   const file = join(fixture.directory, "restart-cli.json");
-  await writeFile(file, JSON.stringify({ started, options }));
+  await writeFile(file, JSON.stringify({ started, options, entryPoint }));
   const result = await runCli(["restart", ...options, "--json"], {
     directory: fixture.repository,
     runtime: fixture.runtimeDirectory,
+    entryPoint,
   });
   await writeFile(
     file,
-    JSON.stringify({ started, ended: Date.now(), options, ...result }),
+    JSON.stringify({
+      started,
+      ended: Date.now(),
+      options,
+      entryPoint,
+      ...result,
+    }),
   );
   return result;
 }

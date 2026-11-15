@@ -3,8 +3,8 @@ import {
   restartCli,
 } from "./restart-diagnostics-fixture.ts";
 import assert from "node:assert/strict";
-import { execFileSync, type ChildProcess } from "node:child_process";
-import { copyFileSync, cpSync, symlinkSync } from "node:fs";
+import type { ChildProcess } from "node:child_process";
+import { productCopy } from "./restart-product-fixture.ts";
 import {
   mkdir,
   mkdtemp,
@@ -30,8 +30,6 @@ import {
 } from "./self-host-fixture.ts";
 import { call } from "./service-fixture.ts";
 import { testMilliseconds } from "./test-timing.ts";
-
-const worktree = join(import.meta.dirname, "..");
 
 export const lineTurn = `
 import { writeFileSync } from "node:fs";
@@ -67,40 +65,6 @@ const declaration = {
   },
   methods: { claude: ["run-turn"] },
 };
-
-export type ProductGit = (argumentsList: readonly string[]) => string;
-
-export function productGit(product: string): ProductGit {
-  return (argumentsList) =>
-    execFileSync("git", ["-C", product, ...argumentsList], {
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "pipe"],
-    }).trim();
-}
-
-async function productCopy(root: string): Promise<string> {
-  const product = join(root, "product");
-  await mkdir(product);
-  for (const name of [
-    "package.json",
-    "package-lock.json",
-    "tsconfig.json",
-    "tsconfig.build.json",
-  ])
-    copyFileSync(join(worktree, name), join(product, name));
-  for (const name of ["src", "tools", "templates", "dist"])
-    cpSync(join(worktree, name), join(product, name), { recursive: true });
-  symlinkSync(join(worktree, "node_modules"), join(product, "node_modules"));
-  const git = productGit(product);
-  git(["init", "-q", "-b", "main"]);
-  git(["config", "user.name", "Owner"]);
-  git(["config", "user.email", "owner@example.invalid"]);
-  git(["config", "commit.gpgsign", "false"]);
-  await writeFile(join(product, ".git/info/exclude"), "dist\nnode_modules\n");
-  git(["add", "."]);
-  git(["commit", "-qm", "Copy the product"]);
-  return product;
-}
 
 export interface TurnHost {
   readonly fixture: Scene;
@@ -144,7 +108,10 @@ export async function withTurnHost(
     await options.prepare?.(product);
     await rememberedBuild(product);
     await withoutChildren(async () => {
-      const fixture = await scene(options.script, join(product, "src/cli.ts"));
+      const fixture = await scene(
+        options.script,
+        join(product, "dist/src/cli.js"),
+      );
       const workflows = join(fixture.repository, ".cloving/workflows");
       await mkdir(workflows, { recursive: true });
       await writeFile(join(workflows, "long-turn.ts"), workflowSource);

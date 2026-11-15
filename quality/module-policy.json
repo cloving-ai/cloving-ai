@@ -1921,6 +1921,7 @@
     "test/restart-host-fixture.ts": "test",
     "test/restart-keep.test.ts": "test",
     "test/restart-marks.test.ts": "test",
+    "test/restart-product-fixture.ts": "test",
     "test/restart-queue-settings.test.ts": "test",
     "test/restart-render.test.ts": "test",
     "test/restart-report-fixture.ts": "test",

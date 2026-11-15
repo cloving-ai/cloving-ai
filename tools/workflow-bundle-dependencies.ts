@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { access, readFile, realpath } from "node:fs/promises";
 import nodeModule from "node:module";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { record } from "../src/protocol.ts";
 
 interface PackageReference {
@@ -23,7 +23,7 @@ export async function workflowPackageRoot(directory: string): Promise<string> {
   const root = resolve(directory);
   try {
     await access(join(root, "package.json"));
-    return root;
+    return await originalPackageRoot(root);
   } catch (error) {
     if (!(error instanceof Error && "code" in error && error.code === "ENOENT"))
       throw error;
@@ -31,6 +31,25 @@ export async function workflowPackageRoot(directory: string): Promise<string> {
   const parent = dirname(root);
   if (parent === root) throw new Error("workflow-package-unavailable");
   return workflowPackageRoot(parent);
+}
+
+async function originalPackageRoot(directory: string): Promise<string> {
+  if (basename(directory) !== "dist") return directory;
+  const parent = dirname(directory);
+  const emitted: unknown = JSON.parse(
+    await readFile(join(directory, "package.json"), "utf8"),
+  );
+  try {
+    const original: unknown = JSON.parse(
+      await readFile(join(parent, "package.json"), "utf8"),
+    );
+    return record(original) !== undefined &&
+      JSON.stringify(emitted) === JSON.stringify(original)
+      ? parent
+      : directory;
+  } catch {
+    return directory;
+  }
 }
 
 function references(
