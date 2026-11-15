@@ -253,6 +253,7 @@ export interface WatchRepository {
 }
 
 export interface WatchModel {
+  readonly globalQueue?: Fields;
   readonly repositories?: readonly WatchRepository[];
   readonly serviceVersion?: string;
   readonly restart?: Fields;

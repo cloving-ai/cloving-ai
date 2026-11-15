@@ -11,20 +11,24 @@ import {
   type Scene,
 } from "./claude-worker-fixture.ts";
 import { fakePi, piEvents, piMessage } from "./pi-fixture.ts";
+import { claudeLimits } from "../src/daemon/claude-worker-parts.ts";
+import { launchState } from "../src/daemon/detached-process.ts";
+import { piRpcPriorFailure, rpcRecord } from "../src/daemon/pi-rpc-channel.ts";
+import { recordedLaunch, type TurnLaunch } from "../src/turn-launch.ts";
 
 const nextMessage = piMessage({ responseId: "new-response", timestamp: 2 });
 
-export async function stoppedPi(
-  scene: Scene,
-  options: {
-    readonly events?: readonly unknown[];
-    readonly resumeEvents?: readonly unknown[];
-    readonly resumeGate?: string;
-    readonly model?: string;
-  } = {},
-) {
+interface PiOptions {
+  readonly events?: readonly unknown[];
+  readonly resumeEvents?: readonly unknown[];
+  readonly resumeGate?: string;
+  readonly model?: string;
+}
+
+export async function runningPi(scene: Scene, options: PiOptions = {}) {
   const gate = join(scene.directory, "release");
   const settings = {
+    stopMilliseconds: claudeLimits.stopMilliseconds,
     profiles: {
       native: { harness: "pi", model: options.model ?? "operator/alias" },
     },
@@ -50,12 +54,36 @@ export async function stoppedPi(
   await until(() => existsSync(join(scene.directory, "observed.json")));
   const started = record(scene, "operation-1/started.json");
   const session = field(started, "piSession");
-  const processId = Number(field(field(started, "launch"), "processId"));
-  const output = String(field(field(started, "launch"), "output"));
-  await until(() => readFileSync(output, "utf8").includes('"message_end"'));
+  const launch = recordedLaunch(field(started, "launch"));
+  assert.ok(launch?.piRpc);
+  await until(() =>
+    readFileSync(launch.output, "utf8").includes('"message_end"'),
+  );
+  await until(() => initialObserved(launch));
+  return { signal, session, settings, call, first, launch };
+}
+
+function initialObserved(launch: TurnLaunch): boolean {
+  const receipt = rpcRecord(
+    join(String(launch.piRpc), "receipts", "initial.json"),
+  );
+  return Object.entries({
+    id: "initial",
+    type: "prompt",
+    marker: launch.marker,
+    written: true,
+    acknowledged: true,
+    observed: true,
+  }).every(([key, value]) => receipt?.[key] === value);
+}
+
+export async function stoppedPi(scene: Scene, options: PiOptions = {}) {
+  const { signal, session, settings, call, first, launch } = await runningPi(
+    scene,
+    options,
+  );
   await first.close();
-  assert.equal(alive(processId), false);
-  assert.equal(scene.reports.length, 0);
+  await confirmedShutdown(scene, launch);
   return {
     signal,
     session,
@@ -63,6 +91,26 @@ export async function stoppedPi(
     call,
     next: scene.worker("unused", settings),
   };
+}
+
+async function confirmedShutdown(scene: Scene, launch: TurnLaunch) {
+  assert.equal(alive(launch.processId), false);
+  assert.equal(await launchState(launch), "ended");
+  const exit = resultOf(readFileSync(launch.exit, "utf8"));
+  assert.deepEqual(
+    [exit["processId"], exit["processStart"], exit["marker"]],
+    [launch.processId, launch.processStart, launch.marker],
+  );
+  const attempt = record(scene, "operation-1/attempt-1.json");
+  assert.equal(typeof field(attempt, "endedAt"), "string");
+  const result = record(scene, "operation-1/result.json");
+  assert.equal(field(result, "stoppedBy"), "daemon-shutdown");
+  assert.equal(await piRpcPriorFailure(launch), undefined);
+  assert.equal(scene.reports.length, 0);
+}
+
+export function accepted(reply: unknown): void {
+  assert.equal(field(reply, "kind"), "accepted", JSON.stringify(reply));
 }
 
 export function prompts(scene: Scene) {
@@ -80,3 +128,11 @@ export const historicalTool = {
   content: [{ type: "text", text: "Old tool output" }],
   usage: piMessage().usage,
 };
+
+export const systemSetupEvents = [
+  ...piEvents().slice(0, 2),
+  {
+    type: "message_end",
+    message: { role: "system", content: "Setup", timestamp: 1 },
+  },
+];

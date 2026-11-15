@@ -361,7 +361,7 @@ async function reloadOutcome(
   const changes = settingChanges(state.settingDigests, bundle.settingDigests);
   settings.turnSettings.replace(bundle.turnSettings);
   settings.queueLimitSource.replace(
-    bundle.queueLimits,
+    { ...bundle.queueLimits, declarations: bundle.declarations },
     bundle.queueWorkflowLimits,
   );
   return {

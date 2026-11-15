@@ -180,6 +180,7 @@ async function readFeed(settings: Settings, commandId: string) {
         "workflow-active",
         "queue-spend-limit",
         "queue-repository-full",
+        "queue-global-working-full",
       ].includes(reply.error.code)
     )
       return "refused";
@@ -261,9 +262,12 @@ function pickOutcome(
   if (reply.kind === "result") return "admitted";
   const { code } = reply.error;
   if (
-    ["workflow-active", "queue-spend-limit", "queue-repository-full"].includes(
-      code,
-    )
+    [
+      "workflow-active",
+      "queue-spend-limit",
+      "queue-repository-full",
+      "queue-global-working-full",
+    ].includes(code)
   )
     return "held";
   if (code === "ticket-active") return "in work";

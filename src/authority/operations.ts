@@ -56,7 +56,14 @@ export interface StoppedOperation {
   readonly sequence: number;
 }
 
+export interface WorkReservation {
+  readonly generation: number;
+  readonly stageId: string;
+}
+
 export interface EffectState {
+  readonly work?: Readonly<Record<string, WorkReservation>>;
+  readonly workingQueues?: readonly string[];
   readonly budgets: Readonly<Record<string, RunBudget>>;
   readonly operations: Readonly<Record<string, Operation>>;
   readonly leases: Readonly<Record<string, Lease>>;

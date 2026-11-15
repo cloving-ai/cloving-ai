@@ -1,5 +1,12 @@
-import { changeConfigFile } from "../cli/config-file.ts";
+import { changeConfigFile, readConfigFile } from "../cli/config-file.ts";
 import { privateSettingsPath } from "../cli/project-settings.ts";
+import { send } from "../cli/client.ts";
+import type { Reply } from "../protocol.ts";
+import {
+  parseConfiguration,
+  type RecordedSource,
+} from "../project-settings.ts";
+import { join } from "node:path";
 export type { QueueConfiguration } from "../queue-room.ts";
 import {
   maximumQueueLanes,
@@ -12,12 +19,27 @@ import {
   type DeclaredWorkflow,
 } from "../workflow-declaration.ts";
 
+export interface QueueLimitReplacement extends QueueLimits {
+  readonly declarations?: readonly DeclaredWorkflow[];
+}
+
 export interface QueueLimitsSource {
+  readonly declaredLanes?: (workflowId: string) => number | undefined;
   readonly current: (workflowId?: string) => QueueLimits;
   readonly replace: (
-    next: QueueLimits,
+    next: QueueLimitReplacement,
     queues?: Readonly<Record<string, QueueLimits>>,
   ) => void;
+}
+
+function declarationLanes(
+  declarations: readonly DeclaredWorkflow[],
+): ReadonlyMap<string, number> {
+  return new Map(
+    declarations
+      .filter((row) => declaresQueue(row.queue))
+      .map((row) => [row.workflowId, declaredQueueValues(row).lanes ?? 1]),
+  );
 }
 
 export interface QueueSettings {
@@ -85,6 +107,7 @@ function aggregate(
 export function queueLimitsSource(settings: QueueSettings): QueueLimitsSource {
   const lanes = settings.queueLanes ?? 1;
   let current = settings.queueLimits ?? { lanes, workingLanes: lanes };
+  let declared = declarationLanes(settings.declarations ?? []);
   let queues = Object.fromEntries(
     (settings.declarations ?? []).flatMap((row) => {
       const configuration = queueConfiguration(settings, row.workflowId);
@@ -94,6 +117,7 @@ export function queueLimitsSource(settings: QueueSettings): QueueLimitsSource {
     }),
   );
   return {
+    declaredLanes: (id) => declared.get(id),
     current: (workflowId) =>
       workflowId === undefined
         ? aggregate(
@@ -105,8 +129,11 @@ export function queueLimitsSource(settings: QueueSettings): QueueLimitsSource {
               .map(([, limits]) => limits),
           )
         : (queues[workflowId] ?? current),
-    replace: (next, replacements) => {
+    replace: ({ declarations, ...next }, replacements) => {
+      const nextDeclared =
+        declarations === undefined ? declared : declarationLanes(declarations);
       current = next;
+      declared = nextDeclared;
       queues =
         replacements === undefined
           ? Object.fromEntries(Object.keys(queues).map((id) => [id, next]))
@@ -115,33 +142,67 @@ export function queueLimitsSource(settings: QueueSettings): QueueLimitsSource {
   };
 }
 
+interface QueueLaneWriteSettings {
+  readonly repository: string;
+  readonly runtimeDirectory: string;
+  readonly settingSources?: Readonly<Record<string, RecordedSource>>;
+  readonly reload?: () => Promise<Reply>;
+}
+
 export function queueLaneWriter(
-  settings: { readonly repository: string },
+  settings: QueueLaneWriteSettings,
   source: QueueLimitsSource,
 ): (workflowId: string, lanes: number) => Promise<void> {
   return async (workflowId, lanes) => {
-    const previous = source.current(workflowId);
-    const workingSource = previous.sources?.workingLanes ?? "default";
-    const workingLanes =
-      workingSource === "default" ? lanes : previous.workingLanes;
-    if (workingLanes > lanes) throw new Error("invalid-queue-working-lanes");
+    if (settings.settingSources?.["queues"] === "environment")
+      throw new Error(
+        "queue-lanes-apply: CLOVING_QUEUES controls this queue through the environment or a retained start override. Change that override before editing lanes here.",
+      );
     await changeConfigFile(
       privateSettingsPath(process.env, settings.repository),
       {
         scope: "private",
-        queueLanes: { workflowId, lanes },
-      },
-    );
-    source.replace(source.current(), {
-      [workflowId]: {
-        ...source.current(workflowId),
-        lanes,
-        workingLanes,
-        sources: {
-          lanes: "queues setting (private file)",
-          workingLanes: workingSource,
+        queueLanes: {
+          workflowId,
+          lanes,
+          working: await workingContext(settings, workflowId),
         },
       },
-    });
+    );
+    const reply = await (settings.reload?.() ??
+      send(settings.runtimeDirectory, { operation: "reload", parameters: {} }));
+    if (reply.kind === "error")
+      throw new Error(
+        `queue-lanes-apply: The setting was saved but not applied. ${reply.error.code}: ${reply.error.detail} Fix the cause and retry.`,
+      );
+    checkedAppliedLanes(source.current(workflowId), lanes);
   };
+}
+
+async function workingContext(
+  settings: QueueLaneWriteSettings,
+  workflowId: string,
+) {
+  const project = parseConfiguration(
+    await readConfigFile(join(settings.repository, ".cloving/config.json")),
+    "project",
+  );
+  const projectQueue = project.queues?.[workflowId]?.workingLanes;
+  const projectGeneral = project.queue?.workingLanes;
+  const environmentGeneral =
+    settings.settingSources?.["queue.workingLanes"] === "environment"
+      ? Number(process.env["CLOVING_QUEUE_WORKING_LANES"])
+      : undefined;
+  return {
+    ...(projectQueue === undefined ? {} : { projectQueue }),
+    ...(projectGeneral === undefined ? {} : { projectGeneral }),
+    ...(environmentGeneral === undefined ? {} : { environmentGeneral }),
+  };
+}
+
+function checkedAppliedLanes(effective: QueueLimits, lanes: number): void {
+  if (effective.lanes !== lanes || effective.workingLanes > lanes)
+    throw new Error(
+      `queue-lanes-apply: The setting was saved but not applied. The running limit is ${String(effective.lanes)} lanes (${effective.sources?.lanes ?? "default"}) and ${String(effective.workingLanes)} working lanes. Refresh and check the controlling setting.`,
+    );
 }

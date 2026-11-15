@@ -169,15 +169,19 @@ export function LineEnd(
   return element("div", {
     class: "line-end",
     children: [
-      ready === undefined
+      ready === undefined || props.queue !== undefined
         ? null
         : component(ReadyCount, { ready, now, words: props.words }),
       props.queue === undefined
-        ? null
+        ? element("p", { class: "meta", children: "No queue configured" })
         : component(QueueCard, {
-            queue: props.queue,
+            queue: {
+              ...props.queue,
+              ready: workflow.ready ?? props.queue["ready"],
+            },
             controls: props.queuing,
             words: props.words,
+            now,
           }),
       component(LineNext, props),
     ],

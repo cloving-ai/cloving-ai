@@ -101,8 +101,7 @@ export function authorityActor(parts: ActorParts): AuthorityActorClass {
 type AuthorityInstance = InstanceType<AuthorityActorClass>;
 
 function turnEffects(parts: ActorParts): PlanSettings {
-  const { capacity, queueLimit } = parts.leaseLimits();
-  return { ...parts.effects, capacity, queueLimit };
+  return { ...parts.effects, ...parts.leaseLimits() };
 }
 
 async function recoverTurn(
@@ -125,7 +124,7 @@ async function recoverTurn(
         ],
         turn: await recoveryTurn(connection, scope),
       }))),
-      effects,
+      effects: turnEffects(parts),
       recordedAt: parts.clock(),
     }),
   );
@@ -150,7 +149,7 @@ async function executeCommand(
       turn,
       request: turnRequest(request),
       epoch: actor.epoch,
-      effects,
+      effects: turnEffects(parts),
     }),
   );
 }
@@ -189,7 +188,7 @@ async function settleDelivery(
         attempts: failures(parts, outcome),
       },
       epoch: actor.epoch,
-      effects,
+      effects: turnEffects(parts),
     }),
   );
 }

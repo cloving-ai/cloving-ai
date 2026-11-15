@@ -1,7 +1,7 @@
 import { record, type Fields, type Reply } from "../protocol.ts";
 import { queueStateFields, readyFields, feedSkipped } from "../queue-state.ts";
-import { maximumQueueLanes } from "../queue-room.ts";
 import { failed } from "./replies.ts";
+import { globalOverview, globalQueueRefusal } from "./global-queue.ts";
 import { queueRun, queueSpend } from "./queue-spend.ts";
 import type { ServiceContext } from "./replies.ts";
 import type { Registered } from "./registry.ts";
@@ -129,19 +129,7 @@ export async function repositoryQueueRefusal(
   context: ServiceContext,
   identity: Fields,
 ) {
-  const state = await context.authority.state();
-  const active = Object.values(state.runs).filter(
-    (run) => !["completed", "failed", "cancelled"].includes(run.status),
-  );
-  const queued = await Promise.all(
-    active.map((run) => queueRun(context, run.runId)),
-  );
-  return queued.filter(Boolean).length < maximumQueueLanes
-    ? undefined
-    : failed("queue-repository-full", {
-        ...identity,
-        detail: "16 of 16 repository queue lanes busy",
-      });
+  return globalQueueRefusal(context, identity);
 }
 
 export function laneCount(admission: "when-idle" | number): number {
@@ -170,6 +158,7 @@ export async function queueOverview(context: ServiceContext): Promise<Fields> {
   const off = context.queue?.control()?.off;
   return {
     queues,
+    globalQueue: await globalOverview(context, queues),
     ...(queue === undefined ? {} : { queue }),
     ...(off === undefined ? {} : { queueOff: { ...off } }),
   };
@@ -252,6 +241,10 @@ export async function continuationLanesRefusal(
   context: ServiceContext,
   request: { readonly runId: string; readonly commandId: string },
 ): Promise<Reply | undefined> {
+  if (await queueRun(context, request.runId)) {
+    const refused = await repositoryQueueRefusal(context, request);
+    if (refused !== undefined) return refused;
+  }
   const workflowId = (
     await context.authority.queries.workflowIds([request.runId])
   )[request.runId];

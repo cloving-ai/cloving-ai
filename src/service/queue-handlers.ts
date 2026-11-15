@@ -129,36 +129,55 @@ function laneRefusal(
 }
 
 function laneWriteDetail(error: unknown): string {
+  if (error instanceof Error && error.message.startsWith("queue-lanes-apply: "))
+    return error.message.slice("queue-lanes-apply: ".length);
   if (error instanceof Error && error.message === "invalid-queue-working-lanes")
     return "The lane count cannot be below the working lane setting.";
   return "The private queue lanes setting could not be saved.";
+}
+
+function validLaneParameters(parameters: Fields): parameters is Fields & {
+  readonly lanes: number;
+  readonly expectedLanes: number;
+  readonly commandId: string;
+  readonly workflowId: string;
+} {
+  const { lanes, expectedLanes, commandId, workflowId } = parameters;
+  const validLane = (value: unknown) =>
+    Number.isSafeInteger(value) && Number(value) >= 1 && Number(value) <= 16;
+  return (
+    Object.keys(parameters).length === 4 &&
+    validLane(lanes) &&
+    validLane(expectedLanes) &&
+    isIdentifier(commandId) &&
+    isWorkflowIdentifier(workflowId)
+  );
 }
 
 export async function queueLanes(
   context: ServiceContext,
   parameters: Fields,
 ): Promise<Reply> {
-  const { lanes, expectedLanes, commandId, workflowId } = parameters;
-  const validLane = (value: unknown) =>
-    Number.isSafeInteger(value) && Number(value) >= 1 && Number(value) <= 16;
-  if (
-    !validLane(lanes) ||
-    !validLane(expectedLanes) ||
-    !isIdentifier(commandId) ||
-    !isWorkflowIdentifier(workflowId)
-  )
+  if (!validLaneParameters(parameters))
     return invalidRequest("The queue lanes request is not valid.");
+  const { lanes, expectedLanes, commandId, workflowId } = parameters;
   const selected = selection(context, parameters);
   if (selected.kind === "refused") return selected.reply;
   if (selected.port?.changeLanes === undefined) return noQueue;
   try {
     const change = await selected.port.changeLanes({
-      lanes: Number(lanes),
-      expectedLanes: Number(expectedLanes),
+      lanes,
+      expectedLanes,
       commandId,
     });
     const refusal = laneRefusal(change, commandId);
     if (refusal !== undefined) return refusal;
+    const effective = selected.port.control()?.lanes;
+    if (effective !== lanes)
+      return failed("queue-lanes-not-applied", {
+        commandId,
+        detail: `The running limit is ${String(effective)} lanes. Refresh the page and check the controlling setting before trying again.`,
+      });
     return result("queue-lanes", {
       commandId,
       replayed: change.kind === "replayed",

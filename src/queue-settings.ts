@@ -13,6 +13,8 @@ export type QueueSource =
   | "queues setting (private file)"
   | "queues setting"
   | "queue setting"
+  | "queue setting (private file)"
+  | "queue setting (project file)"
   | "environment"
   | "declaration"
   | "default";
@@ -41,6 +43,8 @@ const queueSources: readonly QueueSource[] = [
   "queues setting (private file)",
   "queues setting",
   "queue setting",
+  "queue setting (private file)",
+  "queue setting (project file)",
   "environment",
   "declaration",
   "default",

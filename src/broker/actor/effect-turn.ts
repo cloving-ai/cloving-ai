@@ -1,6 +1,9 @@
 import { readCommandWaitDeadline } from "../command-wait-restore.ts";
 import type { RunDetails } from "../../authority/details.ts";
-import type { EffectState } from "../../authority/operations.ts";
+import type {
+  EffectState,
+  WorkReservation,
+} from "../../authority/operations.ts";
 import type { EffectIntent, RunState } from "../../authority/reducer.ts";
 import { detailColumns, detailRow } from "../../storage/decision-rows.ts";
 import {
@@ -45,6 +48,7 @@ const oldestElsewhere =
 
 const queueFlag = "json_extract(d.manifest, '$.queue')";
 const queueManifest = `${queueFlag} = 1`;
+const workPopulation = `(${queueManifest} OR EXISTS (SELECT 1 FROM run_details z JOIN documents s ON s.digest = z.submission JOIN events e ON e.sequence = (SELECT min(sequence) FROM events WHERE run_id = r.run_id) WHERE z.run_id = r.run_id AND json_valid(s.body) AND json_extract(s.body, '$.workflowId') = 'develop-issue' AND e.type = 'run.created' AND json_extract(e.payload, '$.resolver') = 'issue-command:1'))`;
 
 async function candidates(
   connection: SqlConnection,
@@ -84,6 +88,11 @@ async function operations(
       )),
     );
   rows.push(...(await candidates(connection, scope)));
+  rows.push(
+    ...(await connection.all(
+      `SELECT ${candidateColumns} FROM operations p JOIN runs r ON r.run_id = p.run_id JOIN definitions d ON d.pin = r.workflow WHERE p.status IN ${holdingStatuses} AND ${workPopulation}`,
+    )),
+  );
   return [
     ...new Map(
       rows.map(operationRow).map((row) => [row.operationId, row]),
@@ -115,6 +124,7 @@ async function queueParts(
 ): Promise<{
   readonly queueLeases: readonly string[];
   readonly queueRuns: readonly string[];
+  readonly workingQueues: readonly string[];
 }> {
   const leases = await connection.all(
     `SELECT p.operation_id FROM operations p JOIN runs r ON r.run_id = p.run_id JOIN definitions d ON d.pin = r.workflow WHERE p.status IN ${holdingStatuses} AND ${queueManifest} ORDER BY p.operation_id`,
@@ -123,10 +133,36 @@ async function queueParts(
     `SELECT r.run_id FROM runs r JOIN definitions d ON d.pin = r.workflow WHERE r.run_id IN (SELECT value FROM json_each(?)) AND ${queueManifest} ORDER BY r.run_id`,
     [JSON.stringify(runIds)],
   );
+  const working = await connection.all(
+    `SELECT r.run_id FROM runs r JOIN definitions d ON d.pin = r.workflow WHERE r.run_id IN (SELECT value FROM json_each(?)) AND ${workPopulation} ORDER BY r.run_id`,
+    [JSON.stringify(runIds)],
+  );
   return {
+    workingQueues: working.map((row) => text(row, "run_id")),
     queueLeases: leases.map((row) => text(row, "operation_id")),
     queueRuns: runs.map((row) => text(row, "run_id")),
   };
+}
+
+async function workReservations(
+  connection: SqlConnection,
+  loaded: readonly OperationRow[],
+): Promise<Readonly<Record<string, WorkReservation>>> {
+  const work: Record<string, WorkReservation> = {};
+  for (const operation of loaded.filter(
+    (row) => row.capability === "github" && row.method === "merge",
+  )) {
+    const row = await connection.get(
+      "SELECT type, json_extract(payload, '$.leaseGeneration') AS generation, json_extract(payload, '$.stageId') AS stage_id FROM events WHERE run_id = ? AND type IN ('operation.work-entered', 'operation.work-left') AND json_extract(payload, '$.operationId') = ? ORDER BY sequence DESC LIMIT 1",
+      [operation.runId, operation.operationId],
+    );
+    if (row !== undefined && text(row, "type") === "operation.work-entered")
+      work[operation.operationId] = {
+        generation: Number(text(row, "generation")),
+        stageId: text(row, "stage_id"),
+      };
+  }
+  return work;
 }
 
 export async function effectTurn(
@@ -144,6 +180,7 @@ export async function effectTurn(
       )),
     );
   return storedEffects({
+    work: await workReservations(connection, loaded),
     budgets: budgets.map(budgetRow),
     operations: loaded,
     leases: await leases(connection, [
@@ -217,7 +254,9 @@ export async function neighbours(
     );
   }
   const intents: EffectIntent[] = [];
-  for (const operation of others)
+  for (const operation of others.filter(
+    (operation) => operation.status === "waiting",
+  ))
     intents.push(
       ...(
         await connection.all(

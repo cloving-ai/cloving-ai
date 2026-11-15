@@ -246,6 +246,7 @@ await test("CLV-361 the lane endpoint rejects invalid requests and reports stale
       { expectedLanes: 0 },
       { commandId: "bad id" },
       { workflowId: "bad id" },
+      { field: "queue.lanes" },
     ]) {
       const reply = await call(harness, {
         operation: "queue-lanes",
@@ -267,4 +268,32 @@ await test("CLV-361 the lane endpoint rejects invalid requests and reports stale
       });
       assert.equal(reply["code"], code);
     }
+  }));
+
+await test("CLV-377 a replay with a different effective limit cannot report applied", () =>
+  withHarness(async (harness) => {
+    await harness.start({
+      workflows: [queued(harness)],
+      queue: {
+        control: () => ({
+          failedRunIds: [],
+          drain: undefined,
+          error: undefined,
+          lanes: 4,
+        }),
+        change: () => Promise.resolve({ kind: "changed" }),
+        changeLanes: () => Promise.resolve({ kind: "replayed" }),
+      },
+    });
+    const reply = await call(harness, {
+      operation: "queue-lanes",
+      parameters: {
+        workflowId: "develop",
+        lanes: 3,
+        expectedLanes: 2,
+        commandId: "old-apply",
+      },
+    });
+    assert.equal(reply["code"], "queue-lanes-not-applied");
+    assert.match(String(reply["detail"]), /4.*Refresh/);
   }));

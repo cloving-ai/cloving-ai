@@ -247,6 +247,10 @@ function queueRoom(
       signals: settings.signals ?? hostSignals(),
       waiting: () => waitingRuns(settings),
       repositoryBusy: async () => (await queueStatus(settings)).repositoryBusy,
+      repositoryWorking: async () => {
+        const status = await queueStatus(settings);
+        return status.repositoryWorking ?? status.repositoryBusy;
+      },
       ...(settings.permit === undefined ? {} : { permit: settings.permit }),
     },
     async (hold) => {

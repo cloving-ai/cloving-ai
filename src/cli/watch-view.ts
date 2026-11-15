@@ -1,4 +1,5 @@
 import type { QueueControls } from "./watch-queue-card-view.ts";
+import { QueueCard } from "./watch-queue-card-view.ts";
 export type { QueueControls } from "./watch-queue-card-view.ts";
 import type { SteerControls } from "./watch-steer-view.ts";
 import type { RunCommandControls } from "./watch-run-command-view.ts";
@@ -43,7 +44,7 @@ import {
 export type { ContinueControls } from "./watch-needs-view.ts";
 import { Today } from "./watch-today-view.ts";
 import type { LoopControls } from "./watch-loops-view.ts";
-import type { ThemeControls } from "./watch-theme-view.ts";
+import type { ThemeControls, WatchWords } from "./watch-theme-view.ts";
 import { RunDecisions, type DecisionControls } from "./watch-decision-view.ts";
 import {
   TerminalPage,
@@ -279,7 +280,7 @@ export function FloorPage(
           element("aside", {
             class: "side-panels",
             children: [
-              component(Today, { model, words }),
+              component(Today, { model, words, controls: props.queue }),
               component(RefusedWorkflows, { model }),
             ],
           }),
@@ -315,6 +316,12 @@ export function BoardPage(
         : null,
       component(RefusedWorkflows, { model }),
       component(BackLink, { workflowId: null }),
+      component(BoardQueue, {
+        model,
+        workflowId: workflow.workflowId,
+        controls: props.queue,
+        words,
+      }),
       element("div", {
         class: "workspace",
         children: component(Board, {
@@ -334,4 +341,26 @@ export function BoardPage(
       }),
     ],
   });
+}
+
+export function BoardQueue(props: {
+  readonly model: WatchModel;
+  readonly workflowId: string;
+  readonly controls?: QueueControls | undefined;
+  readonly words?: WatchWords | undefined;
+}): Shown {
+  const queue = props.model.queues?.find(
+    (item) => item["workflowId"] === props.workflowId,
+  );
+  const ready = props.model.workflows.find(
+    (item) => item.workflowId === props.workflowId,
+  )?.ready;
+  return queue === undefined
+    ? element("p", { class: "meta", children: "No queue configured" })
+    : component(QueueCard, {
+        queue: { ...queue, ready: ready ?? queue["ready"] },
+        controls: props.controls,
+        words: props.words,
+        now: props.model.updatedAt,
+      });
 }

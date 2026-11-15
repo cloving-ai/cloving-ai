@@ -129,7 +129,40 @@ export function changedConfiguration(
 
 export interface QueueLanesSettingChange {
   readonly scope: "private";
-  readonly queueLanes: { readonly workflowId: string; readonly lanes: number };
+  readonly queueLanes: {
+    readonly workflowId: string;
+    readonly lanes: number;
+    readonly working?: {
+      readonly projectQueue?: number;
+      readonly projectGeneral?: number;
+      readonly environmentGeneral?: number;
+    };
+  };
+}
+
+function changedWorkingCap(
+  previous: Partial<Configuration>,
+  change: QueueLanesSettingChange["queueLanes"],
+): number | undefined {
+  const explicit = previous.queues?.[change.workflowId]?.workingLanes;
+  if (explicit !== undefined) return Math.min(explicit, change.lanes);
+  const inherited = inheritedWorkingCap(previous, change);
+  return inherited !== undefined && inherited > change.lanes
+    ? change.lanes
+    : undefined;
+}
+
+function inheritedWorkingCap(
+  previous: Partial<Configuration>,
+  change: QueueLanesSettingChange["queueLanes"],
+): number | undefined {
+  const working = change.working ?? {};
+  return (
+    working.projectQueue ??
+    working.environmentGeneral ??
+    previous.queue?.workingLanes ??
+    working.projectGeneral
+  );
 }
 
 export function changedQueueLanesConfiguration(
@@ -138,9 +171,17 @@ export function changedQueueLanesConfiguration(
 ): string {
   const previous = parseConfiguration(contents, "private");
   const { workflowId, lanes } = change.queueLanes;
+  const queue = previous.queues?.[workflowId];
+  const workingLanes = changedWorkingCap(previous, change.queueLanes);
   const queues = {
     ...previous.queues,
-    [workflowId]: { ...previous.queues?.[workflowId], lanes },
+    [workflowId]: {
+      ...queue,
+      lanes,
+      ...(workingLanes === undefined
+        ? {}
+        : { workingLanes: Math.min(workingLanes, lanes) }),
+    },
   };
   return changedConfiguration(contents, {
     field: "queues",

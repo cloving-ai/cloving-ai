@@ -104,10 +104,12 @@ h2, h3 { font-family: var(--font-heading); font-weight: 700; }
 .today-table th:first-child { padding-left: 0; text-align: left; overflow-wrap: anywhere; }
 .today-table tbody tr:last-child > * { border-bottom: 0; }
 .queue-capacity { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px; }
+.queue-capacity > p { flex-basis: 100%; text-align: end; } .queue-lane-control { display: flex; align-items: center; gap: 6px; } .queue-advanced { flex-basis: 100%; max-width: 280px; font-size: 12px; text-align: end; }
+.queue-lane-button { min-width: 32px; min-height: 32px; font: inherit; color: var(--color-ink); background: var(--color-panel); border: var(--shape-border) solid var(--color-line); border-radius: var(--shape-radius); cursor: pointer; } .queue-lane-button:disabled { opacity: 0.5; cursor: default; }
 .line-queue .lanes { flex-wrap: wrap; justify-content: flex-end; }
 .line-queue .queue-source { font-size: 11px; }
 .line-queue .queue-waiting ul { columns: auto; }
-.line-loop, .line-queue { width: 100%; min-height: 200px; display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+.line-loop, .line-queue { width: 100%; display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
 .loop-state { font-size: 13px; font-weight: 700; }
 .loop-active .loop-state { color: var(--color-state-running); }
 .loop-paused .loop-state { color: var(--color-state-waiting); }

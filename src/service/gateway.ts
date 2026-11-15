@@ -51,6 +51,8 @@ const permitted: Readonly<Record<Principal, readonly string[]>> = {
     "fail-run",
     "request-effect",
     "report-effect",
+    "enter-operation-work",
+    "leave-operation-work",
   ],
   controller: ["expire-gate", "expire-lease", "expire-command-wait"],
 };

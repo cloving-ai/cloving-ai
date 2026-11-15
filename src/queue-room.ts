@@ -22,10 +22,17 @@ export interface QueueLimitSources {
 }
 
 export interface QueueLimits {
+  readonly global?: GlobalQueueLimits;
   readonly lanes: number;
   readonly workingLanes: number;
   readonly room?: RoomLimits;
   readonly reserved?: number;
+  readonly sources?: QueueLimitSources;
+}
+
+export interface GlobalQueueLimits {
+  readonly lanes?: number;
+  readonly workingLanes?: number;
   readonly sources?: QueueLimitSources;
 }
 
@@ -45,6 +52,7 @@ export function isReserve(value: unknown): value is number {
 }
 
 export interface EffectLeaseLimits {
+  readonly queueWorkingLimit?: number;
   readonly capacity: number;
   readonly queueLimit: number;
   readonly reserved: number;
@@ -56,7 +64,9 @@ export interface EffectLeaseSource {
 
 export function effectLeaseLimits(limits: QueueLimits): EffectLeaseLimits {
   const reserved = limits.reserved ?? defaultReserved;
+  const working = limits.global?.workingLanes ?? limits.global?.lanes;
   return {
+    ...(working === undefined ? {} : { queueWorkingLimit: working }),
     capacity: limits.lanes + reserved,
     queueLimit: limits.lanes,
     reserved,
@@ -107,25 +117,59 @@ function sourcesOf(
     : undefined;
 }
 
+function extendedLimits(value: object) {
+  const reserve = reserveOf(value);
+  const sources = sourcesOf(value);
+  const global = globalLimitsOf(Reflect.get(value, "global"));
+  return reserve === undefined || sources === undefined || global === undefined
+    ? undefined
+    : { ...reserve, ...sources, ...global };
+}
+
 export function queueLimitsOf(value: unknown): QueueLimits | undefined {
   if (value === null || typeof value !== "object") return undefined;
   const lanes: unknown = Reflect.get(value, "lanes");
   const workingLanes: unknown = Reflect.get(value, "workingLanes");
   const given: unknown = Reflect.get(value, "room");
-  const reserve = reserveOf(value);
-  const sources = sourcesOf(value);
+  const extended = extendedLimits(value);
   if (!wholeIn(lanes, maximumQueueLanes) || !wholeIn(workingLanes, lanes))
     return undefined;
-  if (reserve === undefined || sources === undefined) return undefined;
+  if (extended === undefined) return undefined;
   const room = roomOf(given);
   if (given !== undefined && room === undefined) return undefined;
   return {
     lanes,
     workingLanes,
     ...(room === undefined ? {} : { room }),
-    ...reserve,
-    ...sources,
+    ...extended,
   };
+}
+
+function globalLimitsOf(
+  value: unknown,
+): { readonly global?: GlobalQueueLimits } | undefined {
+  if (value === undefined) return {};
+  if (value === null || typeof value !== "object") return undefined;
+  const lanes: unknown = Reflect.get(value, "lanes");
+  const workingLanes: unknown = Reflect.get(value, "workingLanes");
+  const sources = sourcesOf(value);
+  if (!optionalLane(lanes, maximumQueueLanes)) return undefined;
+  if (!optionalLane(workingLanes, lanes ?? maximumQueueLanes)) return undefined;
+  if (sources === undefined) return undefined;
+  return {
+    global: {
+      ...(lanes === undefined ? {} : { lanes }),
+      ...(workingLanes === undefined ? {} : { workingLanes }),
+      ...sources,
+    },
+  };
+}
+
+function optionalLane(
+  value: unknown,
+  maximum: number,
+): value is number | undefined {
+  return value === undefined || wholeIn(value, maximum);
 }
 
 export function cpuShare(cores: number, working: number): number {

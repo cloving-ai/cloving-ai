@@ -3,9 +3,10 @@ import { test } from "node:test";
 import { component } from "../src/cli/watch-element.ts";
 import type { WatchModel } from "../src/cli/watch-render.ts";
 import { Page } from "../src/cli/watch-view.ts";
+import { Today } from "../src/cli/watch-today-view.ts";
 import type { DailyNumbers } from "../src/report-days.ts";
 import { played } from "./watch-browser.ts";
-import { rendered } from "./watch-dom.ts";
+import { found, rendered } from "./watch-dom.ts";
 import { twoLineModel } from "./watch-floor-fixture.ts";
 import { noCopy } from "./watch-sample.ts";
 
@@ -172,6 +173,50 @@ await test("CLV-361 Today has no global queue line or lane dots", () => {
 
 await test("CLV-289 the floor has no Today panel without the numbers of the day", () => {
   assert.equal(panel(twoLineModel()), "");
+});
+
+await test("CLV-377 Today keeps effective global controls beside daily totals when a repository has no statistics", () => {
+  const changes: unknown[] = [];
+  const shown = component(Today, {
+    model: todayModel({
+      globalQueue: {
+        state: "running",
+        busy: 5,
+        lanes: 8,
+        workingLanes: 8,
+        configuredLanes: 8,
+        eligible: true,
+      },
+      repositories: [{ name: "offline", service: "down" }],
+    }),
+    controls: {
+      busy: [],
+      messages: {},
+      onCommand: () => undefined,
+      onLanes: () => undefined,
+      onSetting: (change) => changes.push(change),
+    },
+  });
+  const html = rendered(shown);
+  assert.match(html, /Global queue running, 5 of 8 global lanes busy/);
+  assert.match(html, /<strong>3<\/strong>.*runs completed/);
+  assert.match(html, /<th scope="row">offline<\/th><td>0<\/td><td>unknown/);
+  assert.ok(html.indexOf("today-numbers") < html.indexOf("global-queue"));
+  assert.ok(html.indexOf("global-queue") < html.indexOf("Last 7 days"));
+  const increase = found(shown, "button").find(
+    (button) => button["aria-label"] === "More lanes for Global queue",
+  )?.["onClick"];
+  assert.ok(typeof increase === "function");
+  Reflect.apply(increase, undefined, []);
+  assert.deepEqual(changes, [
+    {
+      scope: "global",
+      field: "lanes",
+      expectedValue: 8,
+      action: "set",
+      value: 9,
+    },
+  ]);
 });
 
 await test("CLV-289 the served page shows the Today panel at the side of the floor", () => {
