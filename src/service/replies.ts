@@ -14,8 +14,10 @@ import type { CommandEffects } from "../command-settings.ts";
 import type { RunTurns, TurnDetails } from "../record-retention.ts";
 import type { ThreadPoolCheck } from "../thread-pool-check.ts";
 import { serviceIdentity, type ServiceIdentity } from "./service-identity.ts";
-import type { EffectLeaseSource } from "../queue-room.ts";
+import type { EffectLeaseSource, GlobalQueueLimits } from "../queue-room.ts";
 import type { ParsedTranscript, TranscriptFiles } from "../turn-transcript.ts";
+import type { QueueSettingRequest } from "../queue-setting-operation.ts";
+import type { QueueLaneChange } from "../queue-state.ts";
 
 export interface GithubReader {
   readonly read: (path: string) => Promise<unknown>;
@@ -50,7 +52,20 @@ export interface TurnSteering {
   }) => Promise<SteerReply>;
 }
 
+export interface QueueSettingsPort {
+  readonly work?: () => Promise<{
+    readonly working: readonly string[];
+    readonly github: readonly string[];
+  }>;
+  readonly change?: (
+    request: QueueSettingRequest,
+    reload: () => Promise<Reply>,
+  ) => Promise<QueueLaneChange>;
+  readonly global?: () => GlobalQueueLimits | undefined;
+}
+
 export interface ServiceReads {
+  readonly queueSettings?: QueueSettingsPort;
   readonly turnTranscript?: TranscriptReads;
   readonly workerHarness?: (operationId: string) => Promise<string | undefined>;
   readonly noteReceipts?: NoteReceipts;
@@ -72,7 +87,7 @@ export interface ServiceContext extends ServiceReads, ServiceIdentity {
   readonly authority: Authority;
   readonly registry: Registry;
   readonly workflowCatalog?: WorkflowCatalog;
-  readonly reload?: () => Promise<Reply>;
+  readonly reload?: (setting?: QueueSettingRequest) => Promise<Reply>;
   readonly gateway: Gateway;
   readonly clock: () => string;
   readonly livenessMilliseconds: number;
@@ -129,6 +144,7 @@ export function queryMetadata(
   | "githubRead"
   | "threadPool"
   | "effectLeases"
+  | "queueSettings"
   | "commandEffects"
   | "queueDailySpendLimitUsd"
   | "spendScope"
@@ -157,9 +173,20 @@ export function queryMetadata(
     ...(options.threadPool === undefined
       ? {}
       : { threadPool: options.threadPool }),
+    ...queueReads(options),
+  };
+}
+
+function queueReads(
+  options: ServiceReads,
+): Pick<ServiceReads, "queueSettings" | "effectLeases"> {
+  return {
     ...(options.effectLeases === undefined
       ? {}
       : { effectLeases: options.effectLeases }),
+    ...(options.queueSettings === undefined
+      ? {}
+      : { queueSettings: options.queueSettings }),
   };
 }
 

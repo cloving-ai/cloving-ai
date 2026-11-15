@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { test } from "node:test";
 import {
   field,
@@ -11,13 +11,14 @@ import {
   withScene,
 } from "./claude-worker-fixture.ts";
 import { consumePiShutdown, piResumeSession } from "../src/daemon/pi-resume.ts";
-import { dirname } from "node:path";
 import { operationFile } from "./harness-detached-fixture.ts";
 import { piEvents, piMessage } from "./pi-fixture.ts";
 
 import {
   stoppedPi,
+  accepted,
   prompts,
+  systemSetupEvents,
   historicalTool as tool,
 } from "./pi-native-resume-fixture.ts";
 
@@ -33,6 +34,7 @@ await test("CLV-365 a confirmed Pi shutdown resumes the owned session once with 
     assert.deepEqual(
       replies.map((reply) => reply.kind),
       ["accepted", "accepted"],
+      JSON.stringify(replies),
     );
     await until(() => scene.reports.length === 1);
     assert.equal(scene.reports[0]?.outcome, "completed");
@@ -66,7 +68,7 @@ await test("CLV-365 native Pi resume excludes old assistant replay after the new
       ...piEvents(nextMessage).slice(2),
     ];
     const { signal, next } = await stoppedPi(scene, { resumeEvents: replay });
-    assert.equal((await next.reconcile(intent(), signal)).kind, "accepted");
+    accepted(await next.reconcile(intent(), signal));
     await until(() => scene.reports.length === 1);
     assert.equal(scene.reports[0]?.outcome, "completed");
     const result = resultOf(scene.reports[0].result);
@@ -289,17 +291,15 @@ await test("CLV-365 a header-only Pi checkpoint cannot resume an invocation with
 
 await test("CLV-365 native Pi refuses system setup without an original conversation", () =>
   withScene(async (scene) => {
-    const events = [
-      ...piEvents().slice(0, 2),
-      {
-        type: "message_end",
-        message: { role: "system", content: "Setup", timestamp: 1 },
-      },
-    ];
-    const { signal, next } = await stoppedPi(scene, { events });
+    const { signal, next } = await stoppedPi(scene, {
+      events: systemSetupEvents,
+    });
     const reply = await next.reconcile(intent(), signal);
-    assert.equal(reply.kind, "failed");
-    assert.equal(field(reply, "reason"), "pi-session-history-missing");
+    assert.deepEqual(
+      [reply.kind, field(reply, "reason")],
+      ["failed", "pi-session-history-missing"],
+      JSON.stringify(reply),
+    );
     assert.equal(prompts(scene).length, 1);
   }));
 

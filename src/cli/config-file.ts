@@ -9,6 +9,10 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { dirname } from "node:path";
+import {
+  changedQueueSettingConfiguration,
+  type QueueSettingChange,
+} from "../queue-setting-change.ts";
 import { acquireSettingsLock, releaseSettingsLock } from "./config-lock.ts";
 import {
   changedConfiguration,
@@ -48,7 +52,11 @@ async function atomicWrite(
 
 export async function changeConfigFile(
   path: string,
-  change: SettingChange | HarnessChange | QueueLanesSettingChange,
+  change:
+    | SettingChange
+    | HarnessChange
+    | QueueLanesSettingChange
+    | QueueSettingChange,
 ): Promise<void> {
   await mkdir(dirname(path), { recursive: true, mode: 0o700 });
   const lock = await acquireSettingsLock(`${path}.lock`);
@@ -61,7 +69,11 @@ export async function changeConfigFile(
 
 async function writeChange(
   path: string,
-  change: SettingChange | HarnessChange | QueueLanesSettingChange,
+  change:
+    | SettingChange
+    | HarnessChange
+    | QueueLanesSettingChange
+    | QueueSettingChange,
 ): Promise<void> {
   const previous = await readConfigFile(path);
   const next = changedText(previous, change);
@@ -78,11 +90,17 @@ async function writeChange(
 
 function changedText(
   previous: string | undefined,
-  change: SettingChange | HarnessChange | QueueLanesSettingChange,
+  change:
+    | SettingChange
+    | HarnessChange
+    | QueueLanesSettingChange
+    | QueueSettingChange,
 ): string {
   if ("harness" in change)
     return selectedHarnessConfiguration(previous, change.harness);
   if ("queueLanes" in change)
     return changedQueueLanesConfiguration(previous, change);
+  if ("queueSetting" in change)
+    return changedQueueSettingConfiguration(previous, change);
   return changedConfiguration(previous, change);
 }

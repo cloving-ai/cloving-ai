@@ -13,6 +13,7 @@ export interface WatchOptions {
 
 export interface Watching {
   readonly address: string;
+  readonly output?: { readonly text: string };
   readonly stop: () => Promise<number | null>;
 }
 
@@ -67,7 +68,7 @@ export async function watching(
   for (let waited = 0; waited < 500; waited += 1) {
     const [, address] =
       /Watch page: (http:\/\/127\.0\.0\.1:\d+\/)/.exec(output.text) ?? [];
-    if (address !== undefined) return { address, stop };
+    if (address !== undefined) return { address, stop, output };
     await delay(20);
   }
   await stop();

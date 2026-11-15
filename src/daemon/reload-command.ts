@@ -1,5 +1,12 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { record } from "../protocol.ts";
+import type { WorkflowReload } from "../service/workflow-reload.ts";
+
+type Refused = Extract<WorkflowReload, { readonly kind: "refused" }>;
+function refused(code: string, detail: string): Refused {
+  return { kind: "refused", code, detail };
+}
 
 export interface ReloadCommandOutput {
   readonly stdout: string;
@@ -34,4 +41,27 @@ export async function reloadCommandOutput(
     encoding: "utf8",
     maxBuffer: 16 * 1024 * 1024,
   }).then((result) => ({ stdout: result.stdout, failure: "" }), failedOutput);
+}
+
+export function parsedOutput(
+  output: string,
+): Readonly<Record<string, unknown>> | undefined {
+  try {
+    return record(JSON.parse(output));
+  } catch {
+    return undefined;
+  }
+}
+
+export function outputRefusal(
+  value: Readonly<Record<string, unknown>> | undefined,
+): Refused | undefined {
+  const error = value?.["error"];
+  if (typeof error === "string") return refused("reload-failed", error);
+  const refusal = record(value?.["refusal"]);
+  const code = refusal?.["code"];
+  const detail = refusal?.["detail"];
+  return typeof code === "string" && typeof detail === "string"
+    ? refused(code, detail)
+    : undefined;
 }

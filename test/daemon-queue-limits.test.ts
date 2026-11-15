@@ -176,18 +176,31 @@ process.exit(0);
     assert.equal(result.status, 0, result.stderr);
   }));
 
-await test("CLV-361 queue-lanes writes only the private lane field, applies it now and refuses a stale count", () =>
-  withConsumer(queueWorkflow, async (consumer) => {
-    const result = await consumer.run(`${limitsPrelude}
+const laneReloadPrelude = `${limitsPrelude}
 const { privateSettingsPath } = await import(${JSON.stringify(new URL("../src/cli/project-settings.ts", import.meta.url).href)});
+process.env.XDG_CONFIG_HOME = directory + "/private-settings";
+process.env.CLOVING_QUEUE_LANES = "2";
+const file = privateSettingsPath(process.env, directory);
+const idleHost = async () => ({ loadAverage: 0, cores: 1, memoryPressure: "normal" });
+writeFileSync("reload.json", JSON.stringify({ bundleDigest, manifests: settings.manifests, declarations: settings.declarations, workflowRefusals: [], turnSettings: { profiles: {}, fallbackModels: [], tokenPrices: {} }, settingDigests: {} }));
+writeFileSync("reload.mjs", \`import { readFileSync } from "node:fs";
+import { projectConfiguration } from ${JSON.stringify(new URL("../tools/project-configuration.ts", import.meta.url).href)};
+import { reloadedQueueLimits, queueWorkflowLimits } from ${JSON.stringify(new URL("../tools/self-host-queue.ts", import.meta.url).href)};
+const base = JSON.parse(readFileSync(process.argv[2], "utf8"));
+const config = await projectConfiguration(process.cwd(), process.env);
+const given = { declarations: base.declarations, sources: config.sources };
+process.stdout.write(JSON.stringify({ ...base, queueLimits: reloadedQueueLimits(config.environment, given), queueWorkflowLimits: queueWorkflowLimits(config.environment, given) }));\`);
+`;
+
+await test("CLV-377 queue-lanes writes only private lane settings, reloads automatically and refuses a stale count", () =>
+  withConsumer(queueWorkflow, async (consumer) => {
+    const result = await consumer.run(`${laneReloadPrelude}
 const { mkdirSync, statSync } = await import("node:fs");
 const { dirname } = await import("node:path");
-process.env.XDG_CONFIG_HOME = directory + "/private-settings";
-const file = privateSettingsPath(process.env, directory);
 mkdirSync(dirname(file), { recursive: true });
 const original = { version: 1, queues: { develop: { everySeconds: 120 }, other: { lanes: 4 } } };
 writeFileSync(file, JSON.stringify(original));
-const daemon = await launched({ queueLanes: 2 });
+const daemon = await launched({ queueLanes: 2, reloadCommand, loadBundle, hostSignals: idleHost });
 try {
   await until(async () => (await runs()).length === 2);
   const request = { workflowId: "develop", lanes: 3, expectedLanes: 2, commandId: "more-lanes" };
@@ -216,19 +229,17 @@ process.exit(0);
     assert.equal(result.status, 0, result.stderr);
   }));
 
-await test("CLV-361 a lane change preserves the reload rule for an explicit working lane limit and writes nothing on refusal", () =>
+await test("CLV-377 a lane reduction saves and reloads the valid total and working pair", () =>
   withConsumer(queueWorkflow, async (consumer) => {
-    const result = await consumer.run(`${limitsPrelude}
-const { privateSettingsPath } = await import(${JSON.stringify(new URL("../src/cli/project-settings.ts", import.meta.url).href)});
-process.env.XDG_CONFIG_HOME = directory + "/private-settings";
-const file = privateSettingsPath(process.env, directory);
-const daemon = await launched({ queueMilliseconds: 60000, queueLanes: 3, queueLimits: { lanes: 3, workingLanes: 2, sources: { lanes: "environment", workingLanes: "environment" } } });
+    const result = await consumer.run(`${laneReloadPrelude}
+process.env.CLOVING_QUEUE_WORKING_LANES = "2";
+const daemon = await launched({ reloadCommand, loadBundle, hostSignals: idleHost, settingSources: { "queue.workingLanes": "environment" }, queueMilliseconds: 60000, queueLanes: 3, queueLimits: { lanes: 3, workingLanes: 2, sources: { lanes: "environment", workingLanes: "environment" } } });
 try {
   const reply = await asked("queue-lanes", { workflowId: "develop", lanes: 1, expectedLanes: 3, commandId: "below-working" });
-  assert.equal(reply.code, "queue-lanes-failed", JSON.stringify(reply));
-  assert.match(reply.detail, /working lane setting/);
-  assert.equal((await queueOf()).lanes, 3);
-  assert.equal(existsSync(file), false);
+  assert.equal(reply.kind, "queue-lanes", JSON.stringify(reply));
+  assert.equal((await queueOf()).lanes, 1);
+  assert.equal(reply.queue.settings.workingLanes.value, 1);
+  assert.deepEqual(JSON.parse(readFileSync(file, "utf8")).queues.develop, { lanes: 1, workingLanes: 1 });
 } finally { await daemon.close(); }
 process.exit(0);
 `);

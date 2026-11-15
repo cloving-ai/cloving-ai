@@ -6,6 +6,8 @@ import {
   type WatchRepository,
 } from "./watch-render.ts";
 import { wordText, type WatchWords } from "./watch-theme-view.ts";
+import { GlobalQueue } from "./watch-queue-setting-view.ts";
+import type { QueueControls } from "./watch-queue-card-view.ts";
 
 export function dollars(value: number | null): string {
   return value === null ? "unknown" : `$${value.toFixed(2)}`;
@@ -184,30 +186,46 @@ export function RepositoryTable(props: {
   });
 }
 
+export function TodayHead(props: {
+  readonly words?: WatchWords | undefined;
+}): Shown {
+  return element("div", {
+    class: "today-head",
+    children: [
+      element("h2", {
+        id: "today-title",
+        children: wordText(props.words, { key: "today.title", text: "Today" }),
+      }),
+      element("span", { class: "today-since", children: "since midnight" }),
+    ],
+  });
+}
+
 export function Today(props: {
+  readonly controls?: QueueControls | undefined;
   readonly model: WatchModel;
   readonly words?: WatchWords | undefined;
 }): Shown {
   const { today } = props.model;
-  if (today === undefined) return null;
+  if (today === undefined)
+    return props.model.globalQueue === undefined
+      ? null
+      : component(GlobalQueue, {
+          queue: props.model.globalQueue,
+          controls: props.controls,
+        });
   return element("section", {
     class: "today",
     "aria-labelledby": "today-title",
     children: [
-      element("div", {
-        class: "today-head",
-        children: [
-          element("h2", {
-            id: "today-title",
-            children: wordText(props.words, {
-              key: "today.title",
-              text: "Today",
-            }),
-          }),
-          element("span", { class: "today-since", children: "since midnight" }),
-        ],
-      }),
+      component(TodayHead, { words: props.words }),
       component(TodayNumbers, { today }),
+      props.model.globalQueue === undefined
+        ? null
+        : component(GlobalQueue, {
+            queue: props.model.globalQueue,
+            controls: props.controls,
+          }),
       element("div", {
         class: "today-part",
         children: [

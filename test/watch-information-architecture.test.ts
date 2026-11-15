@@ -175,12 +175,13 @@ await test("watch design: one header holds the status and phone controls", () =>
   assert.equal(html.split('<section class="phone').length - 1, 1);
 });
 
-await test("watch design: the board heading that repeats the selected tab is only for screen readers", () => {
+await test("CLV-377 the board visibly identifies its selected workflow outside the compact queue card", () => {
   const html = page(
     boardModel([], { workflows: ["develop-issue"] }),
     "workflow=develop-issue",
   );
-  assert.match(html, /<h2 class="visually-hidden">develop-issue<\/h2>/);
+  assert.match(html, /<h2 class="board-title">develop-issue<\/h2>/);
+  assert.doesNotMatch(html, /<h2 class="visually-hidden">develop-issue<\/h2>/);
   const hidden = declarations(".visually-hidden");
   for (const declaration of [
     /position: absolute/,

@@ -1,5 +1,6 @@
 import {
   queueConfigurations,
+  queueGlobalLimits,
   queueLimits,
   queueMilliseconds,
   queuePlan,
@@ -21,7 +22,11 @@ export function queueStartup(
     ...given,
     declarations: active === undefined ? given.declarations : [active],
   });
-  const limits = queueLimits(environment, plan);
+  const global = queueGlobalLimits(environment, given.sources);
+  const limits = {
+    ...queueLimits(environment, plan),
+    ...(global === undefined ? {} : { global }),
+  };
   return {
     queueMilliseconds: queueMilliseconds(plan),
     ...(plan.kind === "off" ? { queueState: "off" as const } : {}),

@@ -17,6 +17,7 @@ import {
   type Evidence,
 } from "./operations.ts";
 import { reduce } from "./reduction.ts";
+import { replayedWorkRefusal } from "./operation-work.ts";
 
 export type {
   AuthorityEvent,
@@ -57,9 +58,12 @@ export function execute(
   const request = canonical(command);
   const existing = state.commands[command.commandId];
   if (existing)
-    return existing.request === request
-      ? { kind: "duplicate", sequence: existing.sequence }
-      : { kind: "rejected", reason: "conflicting-command" };
+    return repeatedCommand(state, {
+      command,
+      request,
+      existing,
+      recordedAt: proposed.recordedAt,
+    });
   if (staleRevision(state, command))
     return { kind: "rejected", reason: "stale-revision" };
   const event = commandEvent(command, {
@@ -79,6 +83,28 @@ export function execute(
       ? {}
       : { disposition: reduction.disposition }),
   };
+}
+
+function repeatedCommand(
+  state: AuthorityState,
+  given: {
+    readonly command: AuthorityCommand;
+    readonly request: string;
+    readonly existing: AuthorityState["commands"][string];
+    readonly recordedAt: string;
+  },
+): CommandResult {
+  const { command, request, existing, recordedAt } = given;
+  if (existing.request !== request)
+    return { kind: "rejected", reason: "conflicting-command" };
+  const reason = replayedWorkRefusal(state.effects, {
+    command,
+    recordedAt,
+    runStatus: state.runs[command.runId]?.status ?? "absent",
+  });
+  return reason === undefined
+    ? { kind: "duplicate", sequence: existing.sequence }
+    : { kind: "rejected", reason };
 }
 
 export function rebuild(events: readonly unknown[]): AuthorityState {

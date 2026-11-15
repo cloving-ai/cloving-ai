@@ -1,6 +1,15 @@
 import { record, type Fields } from "../protocol.ts";
 import { component, element, type Shown } from "./watch-element.ts";
 import { countText, type WatchWords } from "./watch-theme-view.ts";
+import {
+  QueueStepper,
+  QueueMeter,
+  QueueSettingFeedback,
+  QueueOverLimit,
+  QueueScopeAdvanced,
+  type QueueControls,
+} from "./watch-queue-setting-view.ts";
+export type { QueueControls } from "./watch-queue-setting-view.ts";
 
 export function skippedText(value: unknown): string {
   const ticket = record(value) ?? {};
@@ -15,75 +24,9 @@ export function skippedText(value: unknown): string {
   return `${name}: ${String(ticket["reason"])}`;
 }
 
-export interface QueueControls {
-  readonly busy: readonly string[];
-  readonly messages: Readonly<Record<string, string>>;
-  readonly onCommand: (workflowId: string, command: "drain" | "resume") => void;
-  readonly onLanes: (
-    workflowId: string,
-    change: { readonly lanes: number; readonly expectedLanes: number },
-  ) => void;
-}
-
 export interface LineQueue {
   readonly queue?: Fields | undefined;
   readonly queuing?: QueueControls | undefined;
-}
-
-export function QueueLaneButtons(props: {
-  readonly queue: Fields;
-  readonly controls: QueueControls;
-}): Shown {
-  const { queue, controls } = props;
-  const id = String(queue["workflowId"]);
-  const lanes = Number(queue["lanes"]);
-  return [-1, 1].map((change) =>
-    element("button", {
-      type: "button",
-      disabled:
-        controls.busy.includes(id) || lanes + change < 1 || lanes + change > 16,
-      "aria-label": `${change < 0 ? "Fewer" : "More"} lanes for ${id}`,
-      onClick: () => {
-        controls.onLanes(id, { lanes: lanes + change, expectedLanes: lanes });
-      },
-      children: change < 0 ? "-" : "+",
-    }),
-  );
-}
-
-export function QueueSwitch(props: {
-  readonly queue: Fields;
-  readonly controls: QueueControls;
-}): Shown {
-  const { queue, controls } = props;
-  const id = String(queue["workflowId"]);
-  const active = queue["state"] === "running";
-  const message = controls.messages[id];
-  return [
-    element("label", {
-      class: "loop-switch",
-      children: [
-        element("input", {
-          type: "checkbox",
-          role: "switch",
-          checked: active,
-          disabled: controls.busy.includes(id),
-          "aria-label": `Queue ${id} on`,
-          onChange: () => {
-            controls.onCommand(id, active ? "drain" : "resume");
-          },
-        }),
-        active ? "On" : "Off",
-      ],
-    }),
-    message === undefined
-      ? null
-      : element("p", {
-          class: "queue-message",
-          role: "status",
-          children: message,
-        }),
-  ];
 }
 
 export function queueIntervalText(seconds: number): string {
@@ -144,36 +87,6 @@ export function QueueSources(props: { readonly queue: Fields }): Shown {
   });
 }
 
-export function QueueLanes(props: {
-  readonly queue: Fields;
-  readonly controls?: QueueControls | undefined;
-}): Shown {
-  const { busy, lanes } = props.queue;
-  return element("div", {
-    class: "queue-capacity",
-    children: [
-      props.controls === undefined
-        ? null
-        : component(QueueLaneButtons, {
-            queue: props.queue,
-            controls: props.controls,
-          }),
-      element("p", {
-        children: `${String(busy)} of ${String(lanes)} lanes busy`,
-      }),
-      element("span", {
-        class: "lanes",
-        "aria-hidden": "true",
-        children: Array.from({ length: Number(lanes) }, (_, index) =>
-          element("span", {
-            class: index < Number(busy) ? "lane busy" : "lane free",
-          }),
-        ),
-      }),
-    ],
-  });
-}
-
 export function queueCardState(queue: Fields): string {
   if (queue["state"] === "running" && record(queue["hold"]) !== undefined)
     return "held";
@@ -195,10 +108,11 @@ export function queueCardReason(queue: Fields): string | null {
   return null;
 }
 
-export function QueueCard(props: {
+export function QueueDetails(props: {
   readonly queue: Fields;
   readonly controls?: QueueControls | undefined;
   readonly words?: WatchWords | undefined;
+  readonly now?: string | undefined;
 }): Shown {
   const { queue } = props;
   const interval = record(record(queue["settings"])?.["everySeconds"]);
@@ -207,32 +121,147 @@ export function QueueCard(props: {
       ? ""
       : ` · ${queueIntervalText(Number(interval["value"]))}`;
   const next = queue["nextCheckAt"];
+  return element("details", {
+    class: "queue-more",
+    children: [
+      element("summary", { children: "More" }),
+      element("div", {
+        class: "queue-details",
+        children: [
+          element("p", { children: `Queue ${queueCardState(queue)}${rule}` }),
+          typeof next === "string"
+            ? element("p", {
+                children: `next check ${new Date(next).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`,
+              })
+            : null,
+          component(QueueScopeAdvanced, props),
+          component(QueueSources, { queue }),
+          component(QueueFeed, { queue }),
+          component(QueueOldest, props),
+          component(QueueSkipped, { queue, words: props.words }),
+        ],
+      }),
+    ],
+  });
+}
+
+export function QueueActions(props: {
+  readonly queue: Fields;
+  readonly controls?: QueueControls | undefined;
+  readonly words?: WatchWords | undefined;
+  readonly now?: string | undefined;
+}): Shown {
+  const { queue, controls } = props;
+  const command =
+    queueCardState(queue) === "held" || queue["state"] === "running"
+      ? "drain"
+      : "resume";
+  return element("div", {
+    class: "queue-row",
+    children: [
+      component(QueueStepper, { ...props, field: "lanes" }),
+      controls === undefined
+        ? null
+        : element("button", {
+            type: "button",
+            class: "queue-drain",
+            disabled: controls.busy.includes(String(queue["workflowId"])),
+            onClick: () => {
+              controls.onCommand(String(queue["workflowId"]), command);
+            },
+            children: command === "drain" ? "Drain" : "Resume",
+          }),
+      component(QueueDetails, props),
+    ],
+  });
+}
+
+export function queueReadyText(queue: Fields, words?: WatchWords): string {
+  const count = record(queue["ready"])?.["count"];
+  if (typeof count !== "number") return "unknown ready";
+  return words?.["ready.count"] === undefined
+    ? `${String(count)} ready`
+    : countText(words, { key: "ready.count", count, noun: "ready" });
+}
+
+export function QueueOldest(props: {
+  readonly queue: Fields;
+  readonly now?: string | undefined;
+}): Shown {
+  const oldest = record(props.queue["ready"])?.["oldestAt"];
+  if (typeof oldest !== "string" || props.now === undefined) return null;
+  const minutes = Math.max(
+    0,
+    Math.floor((Date.parse(props.now) - Date.parse(oldest)) / 60_000),
+  );
+  const age =
+    minutes < 60
+      ? `${String(minutes)}m`
+      : `${String(Math.floor(minutes / 60))}h ${String(minutes % 60)}m`;
+  return element("span", { class: "line-wait", children: `oldest ${age}` });
+}
+
+export function QueueCounts(props: {
+  readonly queue: Fields;
+  readonly controls?: QueueControls | undefined;
+  readonly words?: WatchWords | undefined;
+}): Shown {
+  const failure = record(props.queue["ready"])?.["failure"];
+  return element("span", {
+    class: "queue-counts",
+    role: "status",
+    children: props.controls?.acknowledgements?.[
+      String(props.queue["workflowId"])
+    ] ?? [
+      `${String(props.queue["busy"])} in progress · `,
+      element("span", {
+        class: "line-ready",
+        ...(typeof failure === "string" ? { title: failure } : {}),
+        children:
+          typeof failure === "string"
+            ? "Ready list failed"
+            : queueReadyText(props.queue, props.words),
+      }),
+    ],
+  });
+}
+
+export function QueueCard(props: {
+  readonly queue: Fields;
+  readonly controls?: QueueControls | undefined;
+  readonly words?: WatchWords | undefined;
+  readonly now?: string | undefined;
+}): Shown {
+  const { queue } = props;
   const state = queueCardState(queue);
   const reason = queueCardReason(queue);
   const controls = state === "off" ? undefined : props.controls;
   return element("div", {
     class: `line-queue queue-${state}`,
     children: [
-      element("p", {
-        class: "queue-rule",
-        children: `${state === "off" ? "Queue off" : state}${rule}`,
+      element("div", {
+        class: "queue-row",
+        children: [
+          element("strong", { children: "Queue" }),
+          component(QueueCounts, props),
+        ],
+      }),
+      component(QueueMeter, { queue }),
+      component(QueueActions, {
+        queue,
+        controls,
+        words: props.words,
+        now: props.now,
       }),
       reason === null
         ? null
         : element("p", { class: "queue-reason", children: reason }),
-      component(QueueLanes, { queue, controls }),
-      typeof next !== "string"
-        ? null
-        : element("p", {
-            class: "queue-next",
-            children: `next check ${new Date(next).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`,
-          }),
-      component(QueueSources, { queue }),
-      component(QueueFeed, { queue }),
-      component(QueueSkipped, { queue, words: props.words }),
-      controls === undefined
-        ? null
-        : component(QueueSwitch, { queue, controls }),
+      component(QueueOverLimit, { queue }),
+      component(QueueSettingFeedback, {
+        queue,
+        controls: props.controls,
+        eligible: state !== "off",
+      }),
     ],
   });
 }
@@ -240,13 +269,15 @@ export function QueueCard(props: {
 export const queueCardFunctions = [
   queueIntervalText,
   skippedText,
-  QueueLaneButtons,
-  QueueSwitch,
   QueueSkipped,
   QueueSources,
   QueueFeed,
-  QueueLanes,
   queueCardState,
   queueCardReason,
+  queueReadyText,
+  QueueOldest,
+  QueueCounts,
+  QueueDetails,
+  QueueActions,
   QueueCard,
 ];

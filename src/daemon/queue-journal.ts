@@ -9,6 +9,10 @@ import {
 import { join } from "node:path";
 import { record } from "../protocol.ts";
 import {
+  queueSettingRequest,
+  type QueueSettingRequest,
+} from "../queue-setting-operation.ts";
+import {
   queueFailureLimit,
   type QueueCommand,
   type QueueDrain,
@@ -50,7 +54,12 @@ export type QueueControlRecord =
       readonly command: QueueCommand;
       readonly scope?: "workflow";
     }
-  | (QueueLaneRequest & { readonly command: "lanes" });
+  | (QueueLaneRequest & { readonly command: "lanes" })
+  | (QueueSettingRequest & {
+      readonly command: "setting";
+      readonly saved: boolean;
+      readonly applied?: boolean;
+    });
 
 export interface SelfUpdateHold {
   readonly mark: string;
@@ -133,15 +142,42 @@ function savedControl(entry: unknown): QueueControlRecord {
   const control = record(entry);
   if (control === undefined) throw new Error("invalid-queue-commands");
   const { commandId, command } = control;
-  if (typeof commandId !== "string" || commandId.length === 0)
-    throw new Error("invalid-queue-commands");
+  if (!savedIdentifier(commandId)) throw new Error("invalid-queue-commands");
   if (command === "lanes") return savedLaneControl(control, commandId);
+  if (command === "setting") return savedSettingControl(control);
   if (command !== "resume" && command !== "drain")
     throw new Error("invalid-queue-commands");
   const scope = savedScope(control["scope"]);
   if (command === "resume" && scope !== undefined)
     throw new Error("invalid-queue-commands");
   return { command, commandId, ...(scope === undefined ? {} : { scope }) };
+}
+
+function savedIdentifier(value: unknown): value is string {
+  return typeof value === "string" && value.length > 0;
+}
+
+function savedSettingControl(
+  control: Readonly<Record<string, unknown>>,
+): QueueControlRecord {
+  const fields = Object.fromEntries(
+    Object.entries(control).filter(
+      ([key]) => !["command", "saved", "applied"].includes(key),
+    ),
+  );
+  const request = queueSettingRequest(fields);
+  const saved = control["saved"];
+  const applied = control["applied"];
+  if (request === undefined || typeof saved !== "boolean")
+    throw new Error("invalid-queue-commands");
+  if (applied !== undefined && typeof applied !== "boolean")
+    throw new Error("invalid-queue-commands");
+  return {
+    ...request,
+    command: "setting",
+    saved,
+    ...(applied === undefined ? {} : { applied }),
+  };
 }
 
 function savedControls(value: unknown): QueueControlRecord[] {

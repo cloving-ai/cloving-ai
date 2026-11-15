@@ -16,7 +16,7 @@ list and get show the effective source and hidden file values. Unconfigured valu
 Changes keep the previous file as .bak and replace the file atomically under a lock.
 A live lock waits at most ten seconds, then exits with settings-locked.
 Private files, backups and temporary files have mode 0600.
-cloving reload applies changes of profiles, fallbackModels, tokenPrices, workflows.folder, queue.lanes, queue.workingLanes, queue.maxLoadPerCore, queue.maxMemoryPressure and effects.reserved. It also applies the lanes and workingLanes of each workflow in queues. Other changes require a service restart.
+cloving reload applies changes of profiles, fallbackModels, tokenPrices, workflows.folder, queue.lanes, queue.workingLanes, queue.globalLanes, queue.globalWorkingLanes, queue.maxLoadPerCore, queue.maxMemoryPressure and effects.reserved. It also applies the lanes and workingLanes of each workflow in queues. Other changes require a service restart.
 `;
 
 export const commandUsage: Readonly<Record<string, string>> = {
@@ -177,7 +177,7 @@ Checks and compiles the workflow files again while the service runs.
 New runs use the new bundle. A run that started before the reload stays on the bundle of its pin.
 A new refusal of a workflow file keeps the current workflows and shows the reason.
 A change of the queue workflow, of its activation mode, of its declared interval or of a schedule needs a restart.
-It also reads the settings files and the profiles file again, and applies changes of profiles, fallbackModels, tokenPrices, workflows.folder, queue.lanes, queue.workingLanes, queue.maxLoadPerCore, queue.maxMemoryPressure and effects.reserved.
+It also reads the settings files and the profiles file again, and applies changes of profiles, fallbackModels, tokenPrices, workflows.folder, queue.lanes, queue.workingLanes, queue.globalLanes, queue.globalWorkingLanes, queue.maxLoadPerCore, queue.maxMemoryPressure and effects.reserved.
 It applies the lanes and workingLanes of each workflow in queues. A change of state or everySeconds, or an added or removed queues entry, needs a restart.
 New turns use the new values. A turn in work keeps the values of its start.
 The reply lists each other changed field as a field that needs a restart. The service keeps its old value.

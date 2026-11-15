@@ -2,6 +2,7 @@ import { operationPhase } from "../../operation-identity.ts";
 import { endedCommandWaitCheck } from "../../authority/command-waits.ts";
 import { isInstant } from "../../authority/instants.ts";
 import { promotions } from "../../authority/leases.ts";
+import { workingQueue } from "../../authority/operation-work.ts";
 import type { Operation } from "../../authority/operations.ts";
 import { execute, type AuthorityState } from "../../authority/reducer.ts";
 import { documentDigest } from "../decision-restore.ts";
@@ -40,7 +41,13 @@ function leaseGrant(
     ).toISOString(),
     capacity: effects.capacity,
     ...(state.effects.queueRuns.includes(operation.runId)
-      ? { queueLimit: effects.queueLimit }
+      ? {
+          queueLimit: effects.queueLimit,
+        }
+      : {}),
+    ...(workingQueue(state.effects, operation.runId) &&
+    effects.queueWorkingLimit !== undefined
+      ? { queueWorkingLimit: effects.queueWorkingLimit }
       : {}),
   };
 }

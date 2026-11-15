@@ -57,7 +57,11 @@ export type QueueCommand = "resume" | "drain";
 
 export type QueueChange =
   | { readonly kind: "changed" | "replayed" | "conflicting-command" }
-  | { readonly kind: "unavailable"; readonly detail: string };
+  | {
+      readonly kind: "unavailable";
+      readonly detail: string;
+      readonly saved?: true;
+    };
 
 export interface QueueLaneRequest {
   readonly lanes: number;

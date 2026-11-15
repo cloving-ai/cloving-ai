@@ -9,6 +9,7 @@ import assert from "node:assert/strict";
 import { pageDocument } from "../src/cli/watch-page.ts";
 import type { WatchModel } from "../src/cli/watch-render.ts";
 import type { WatchThemes } from "../src/cli/watch-themes.ts";
+import { fontNames } from "../src/cli/watch-fonts.ts";
 
 interface PageFile {
   readonly type: string;
@@ -72,6 +73,29 @@ function pageHandler(
       })
       .end(sources.page);
   };
+}
+
+export async function watchFontFiles(): Promise<
+  Readonly<Record<string, PageFile>>
+> {
+  const fonts = await Promise.all(
+    fontNames.map(
+      async (name) =>
+        [
+          `/watch-fonts-v1/${name}`,
+          {
+            type: "font/woff2",
+            body: await readFile(
+              new URL(
+                `assets/watch-fonts/${name}`,
+                import.meta.resolve("#package"),
+              ),
+            ),
+          },
+        ] as const,
+    ),
+  );
+  return Object.fromEntries(fonts);
 }
 
 export async function watchPageServer(

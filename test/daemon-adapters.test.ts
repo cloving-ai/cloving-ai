@@ -72,6 +72,7 @@ function hostPorts() {
   const documents: string[] = [];
   const reports: EffectReport[] = [];
   const ports: HostPorts = {
+    work: { stage: unused },
     commandWait: { open: unused, check: unused, read: unused },
     state: () =>
       Promise.resolve({ ...emptyAuthority, runs: { [run.runId]: run } }),

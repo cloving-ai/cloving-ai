@@ -380,7 +380,7 @@ await test("CLV-251 the README section after the service settings explains clovi
 
 await test("CLV-253 CLV-322 the help of config and reload and the README name the settings that cloving reload applies", () => {
   const fields =
-    /`?profiles`?, `?fallbackModels`?, `?tokenPrices`?, `?workflows\.folder`?, `?queue\.lanes`?, `?queue\.workingLanes`?, `?queue\.maxLoadPerCore`?, `?queue\.maxMemoryPressure`? and `?effects\.reserved`?/;
+    /`?profiles`?, `?fallbackModels`?, `?tokenPrices`?, `?workflows\.folder`?, `?queue\.lanes`?, `?queue\.workingLanes`?, `?queue\.globalLanes`?, `?queue\.globalWorkingLanes`?, `?queue\.maxLoadPerCore`?, `?queue\.maxMemoryPressure`? and `?effects\.reserved`?/;
   for (const text of [configUsage, String(commandUsage["reload"]), readme])
     assert.match(text, fields);
   assert.match(configUsage, /cloving reload/);

@@ -25,6 +25,7 @@ import {
   type ServiceHost,
 } from "../service/service.ts";
 import { spendSettings } from "../service/replies.ts";
+import { queueSettingPorts } from "./queue-setting-writer.ts";
 import {
   workflowGenerations,
   prepareWorkflowGenerations,
@@ -70,7 +71,6 @@ export interface Daemon {
   readonly socket: string;
   readonly close: (options?: CloseOptions) => Promise<void>;
 }
-
 export type DaemonOpening =
   | { readonly kind: "started"; readonly daemon: Daemon }
   | {
@@ -292,6 +292,7 @@ async function openDaemon(settings: DaemonSettings): Promise<DaemonOpening> {
   const opening = await startService({
     ...daemonIdentity(settings),
     ...controlPorts(controls),
+    ...queueSettingPorts(settings, controls.queueLimitSource),
     ...spendSettings(settings),
     workerHarness: worker.harness,
     turnRecovery: resources.recoveries,

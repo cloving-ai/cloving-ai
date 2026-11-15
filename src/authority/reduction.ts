@@ -13,6 +13,7 @@ import { requested } from "./effect-requests.ts";
 import { reconciled, reported, stopReported } from "./effect-results.ts";
 import { decided, expired, opened, registered } from "./gate-reduction.ts";
 import { expired as leaseExpired, granted } from "./leases.ts";
+import { workEntered, workLeft } from "./operation-work.ts";
 import type { EffectContext, EffectResult, EffectState } from "./operations.ts";
 import {
   applied,
@@ -161,6 +162,8 @@ const handlers: Readonly<Record<string, Handler>> = {
   "effect.requested": effect(requested),
   "lease.granted": effect(granted),
   "lease.expired": effect(leaseExpired),
+  "operation.work-entered": effect(workEntered),
+  "operation.work-left": effect(workLeft),
   "effect.reported": effect(reported),
   "operation.reconciled": effect(reconciled),
   "run.started": moved("run.started"),

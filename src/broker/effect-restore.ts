@@ -115,10 +115,17 @@ export type StoredEffects = Pick<
   EffectRows,
   "budgets" | "operations" | "leases" | "stops"
 > &
-  Pick<EffectState, "holding" | "queueLeases" | "queueRuns">;
+  Pick<
+    EffectState,
+    "holding" | "queueLeases" | "queueRuns" | "workingQueues" | "work"
+  >;
 
 export function storedEffects(rows: StoredEffects): EffectState {
   return {
+    ...(rows.workingQueues === undefined
+      ? {}
+      : { workingQueues: rows.workingQueues }),
+    ...(rows.work === undefined ? {} : { work: rows.work }),
     budgets: Object.fromEntries(
       rows.budgets.map((row) => [row.runId, storedBudget(row)]),
     ),

@@ -63,6 +63,8 @@ export const eventTypes = [
   "effect.requested",
   "lease.granted",
   "lease.expired",
+  "operation.work-entered",
+  "operation.work-left",
   "effect.reported",
   "operation.reconciled",
   "schedule.skipped",
@@ -106,6 +108,8 @@ export const commandEvents: Readonly<Record<string, EventType>> = {
   "request-effect": "effect.requested",
   "grant-lease": "lease.granted",
   "expire-lease": "lease.expired",
+  "enter-operation-work": "operation.work-entered",
+  "leave-operation-work": "operation.work-left",
   "report-effect": "effect.reported",
   "record-outcome": "operation.reconciled",
   "record-schedule-skip": "schedule.skipped",
@@ -127,6 +131,7 @@ export const numberFields = [
   "sourceGeneration",
   "capacity",
   "queueLimit",
+  "queueWorkingLimit",
   "slot",
   "maximumWaitSeconds",
   "pollEverySeconds",
@@ -134,6 +139,7 @@ export const numberFields = [
 ] as const;
 
 export const textFields = [
+  "stageId",
   "parentRunId",
   "chainId",
   "workflow",
@@ -204,6 +210,8 @@ export type Move = Exclude<
   | "effect.requested"
   | "lease.granted"
   | "lease.expired"
+  | "operation.work-entered"
+  | "operation.work-left"
   | "effect.reported"
   | "operation.reconciled"
   | "schedule.skipped"

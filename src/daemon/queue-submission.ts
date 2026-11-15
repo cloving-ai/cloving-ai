@@ -52,6 +52,7 @@ async function submit(
       "ticket-dependency-open",
       "queue-spend-limit",
       "queue-repository-full",
+      "queue-global-working-full",
     ].includes(reply.error.code)
   )
     throw new Error(reply.error.code);

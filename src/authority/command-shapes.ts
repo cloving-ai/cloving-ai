@@ -11,6 +11,13 @@ export interface Shape {
 export const reportedOutcomes = ["completed", "failed", "stopped"];
 
 export const effectShapes: Readonly<Record<string, Shape>> = {
+  "enter-operation-work": {
+    required: ["operationId", "inputDigest", "leaseGeneration", "stageId"],
+    consistent: (fields) => fields["commandId"] === fields["stageId"],
+  },
+  "leave-operation-work": {
+    required: ["operationId", "inputDigest", "leaseGeneration", "stageId"],
+  },
   "request-effect": {
     required: [
       "operationId",
@@ -37,7 +44,7 @@ export const effectShapes: Readonly<Record<string, Shape>> = {
   },
   "grant-lease": {
     required: ["operationId", "leaseGeneration", "expiresAt", "capacity"],
-    optional: ["queueLimit"],
+    optional: ["queueLimit", "queueWorkingLimit"],
   },
   "expire-lease": { required: ["operationId", "leaseGeneration"] },
   "report-effect": {

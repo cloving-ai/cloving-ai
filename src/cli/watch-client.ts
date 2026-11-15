@@ -47,47 +47,6 @@ function columnControls(model, selected) {
     draw();
   } };
 }
-function queueSnapshot(workflowId) {
-  const queue = state.model?.queues?.find((queue) => queue.workflowId === workflowId);
-  return JSON.stringify([queue?.state, queue?.lanes]);
-}
-async function queuePost(workflowId, requested) {
-  if (state.queueBusy.includes(workflowId)) return;
-  const request = JSON.stringify(requested);
-  const saved = state.queueCommands[workflowId];
-  const command = saved?.request === request ? saved.command : { ...requested, workflowId, commandId: crypto.randomUUID() };
-  state.queueCommands = { ...state.queueCommands, [workflowId]: { request, command, shown: queueSnapshot(workflowId) } };
-  state.queueBusy = [...state.queueBusy, workflowId];
-  draw();
-  let message;
-  try {
-    const response = await fetch("actions/queue", {
-      method: "POST",
-      headers: { "content-type": "application/json", "x-cloving-token": actionToken },
-      body: JSON.stringify(command),
-    });
-    if (response.status === 503) throw new Error("late");
-    const reply = response.ok ? await response.json() : null;
-    message = reply === null ? refusedRequest : reply.error?.detail ?? "";
-    if (reply?.error?.code !== "outcome-unknown") {
-      const { [workflowId]: answered, ...others } = state.queueCommands;
-      state.queueCommands = others;
-    }
-  } catch {
-    message = "The watch tool does not answer. Click again to send the same command.";
-  }
-  state.queueBusy = state.queueBusy.filter((busy) => busy !== workflowId);
-  state.queueMessages = { ...state.queueMessages, [workflowId]: message };
-  await load();
-}
-function queueControls() {
-  if (actionToken === null) return undefined;
-  state.queueCommands = Object.fromEntries(Object.entries(state.queueCommands).filter(([id, saved]) => saved.shown === queueSnapshot(id)));
-  return { busy: state.queueBusy, messages: state.queueMessages,
-    onCommand(workflowId, command) { queuePost(workflowId, { command }); },
-    onLanes(workflowId, change) { queuePost(workflowId, { command: "lanes", ...change }); },
-  };
-}
 function continueMessage(reply) {
   if (reply.error) return reply.error.code + ": " + reply.error.detail;
   return "Run " + reply.runId + " continues this run.";
@@ -323,10 +282,15 @@ async function withSelectedRun(model) {
   if (run?.runId !== runId) throw new Error("watch-run-mismatch");
   return { ...model, runs: [...model.runs, { ...run, linked: true }] };
 }
-async function load() {
+function load() {
   state.again = state.loading;
-  if (state.loading) return;
+  if (state.loading) return state.loadingPromise;
   state.loading = true;
+  state.loadingPromise = readModel();
+  return state.loadingPromise;
+}
+async function readModel() {
+  let fresh = false;
   try {
     const reply = await fetch("data.json", { cache: "no-store" });
     if (!reply.ok) throw new Error("watch-not-available");
@@ -336,12 +300,14 @@ async function load() {
     steerEnded();
     state.receivedAt = receivedAt;
     state.stale = false;
+    fresh = true;
   } catch {
     state.stale = true;
   }
   state.loading = false;
   draw();
-  if (state.again) load();
+  if (state.again) return load();
+  return fresh;
 }
 function listen() {
   const source = new EventSource("events");

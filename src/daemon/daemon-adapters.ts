@@ -114,6 +114,7 @@ function githubOf(
 ): GithubWorker {
   const { directory, repository, checkCommand } = settings;
   return githubWorker({
+    work: async (stage) => (await given).work.stage(stage),
     document: async (digest) => (await given).document(digest),
     report: async (effect) => (await given).reportEffect(effect),
     observe: async (observation) =>

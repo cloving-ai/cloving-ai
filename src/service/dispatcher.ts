@@ -17,6 +17,34 @@ import { scheduleHandler } from "./schedule-run.ts";
 import { transcript } from "./transcript-handler.ts";
 import { admissionLock, submissionHandler } from "./submission-handler.ts";
 import { reloadUnavailable } from "./workflow-reload.ts";
+import { queueSetting } from "./queue-setting-handler.ts";
+import type { AdmissionLock } from "./admission-lock.ts";
+
+function lockedReload(context: ServiceContext, lock: AdmissionLock) {
+  let reloading = false;
+  return async () => {
+    if (reloading)
+      return failed("reload-in-progress", {
+        detail: "A reload is in work. Wait for its reply.",
+      });
+    reloading = true;
+    try {
+      return await lock(
+        ["repository:queues"],
+        () => context.reload?.() ?? reloadUnavailable(),
+      );
+    } finally {
+      reloading = false;
+    }
+  };
+}
+
+function lockedSetting(context: ServiceContext, lock: AdmissionLock) {
+  return (request: ServiceRequest) =>
+    lock(["repository:queues"], () =>
+      queueSetting(context, request.parameters),
+    );
+}
 
 export function dispatcher(
   context: ServiceContext,
@@ -43,6 +71,7 @@ export function dispatcher(
     ["spend", () => spendRead(context)],
     ["queue-command", (request) => queueCommand(context, request.parameters)],
     ["queue-lanes", (request) => queueLanes(context, request.parameters)],
+    ["queue-setting", lockedSetting(context, lock)],
     ["status", (request) => status(context, request.parameters)],
     ["questions", (request) => questions(context, request.parameters)],
     ["decision", (request) => decision(context, request.parameters)],
@@ -53,7 +82,7 @@ export function dispatcher(
     ["rename-run", (request) => renameRun(context, request.parameters)],
     ["transcript", (request) => transcript(context, request.parameters)],
     ["effect-result", (request) => effectResult(context, request.parameters)],
-    ["reload", () => context.reload?.() ?? reloadUnavailable()],
+    ["reload", lockedReload(context, lock)],
     ["restart", (request) => restartOperation(context, request.parameters)],
     [
       "events",

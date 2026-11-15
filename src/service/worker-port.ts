@@ -86,6 +86,7 @@ export interface EffectReply {
 }
 
 export interface WorkerPort {
+  readonly operationWork: (stage: OperationWork) => Promise<StoreReceipt>;
   readonly submit: (
     command: Command,
     documents?: readonly string[],
@@ -98,6 +99,14 @@ export interface WorkerPort {
   readonly failed: (run: Revised) => Promise<StoreReceipt>;
   readonly requestEffect: (request: EffectRequest) => Promise<EffectReply>;
   readonly reportEffect: (report: EffectReport) => Promise<EffectReply>;
+}
+
+export interface OperationWork extends Identified {
+  readonly stageId: string;
+  readonly action: "enter" | "leave";
+  readonly operationId: string;
+  readonly inputDigest: string;
+  readonly leaseGeneration: number;
 }
 
 function reference(text: unknown): string | null {
@@ -226,6 +235,12 @@ export function workerPort(parts: Parts): WorkerPort {
       ...(documents === undefined ? {} : { documents }),
     });
   return {
+    operationWork: ({ action, ...stage }) =>
+      gateway.execute({
+        principal: "worker",
+        command: { kind: `${action}-operation-work`, ...stage },
+        epoch: parts.authority.epoch,
+      }),
     submit,
     started: (run) => submit({ kind: "mark-started", ...run }),
     openGate: (opening) => {

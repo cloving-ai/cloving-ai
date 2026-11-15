@@ -1,3 +1,5 @@
+import { queueGlobalLimits } from "./self-host-global-queue.ts";
+export { queueGlobalLimits } from "./self-host-global-queue.ts";
 import {
   defaultRoom,
   isPressureLimit,
@@ -123,6 +125,7 @@ export function queueLimits(
   const context = { environment, plan };
   const lanes = queueLanes(environment, plan);
   const reserved = effectReserved(environment);
+  const global = queueGlobalLimits(environment);
   return {
     lanes,
     workingLanes: workingLanes(context, lanes),
@@ -131,6 +134,7 @@ export function queueLimits(
       maxMemoryPressure: maxMemoryPressure(context),
     },
     ...(reserved === undefined ? {} : { reserved }),
+    ...(global === undefined ? {} : { global }),
     ...(plan.kind === "on"
       ? {
           sources: {
@@ -363,7 +367,11 @@ export function reloadedQueueLimits(
   const configuration = queueConfiguration(environment, given);
   const plan =
     configuration === undefined ? noQueue : configuredPlan(configuration);
-  return queueLimits(environment, plan);
+  const global = queueGlobalLimits(environment, given.sources);
+  return {
+    ...queueLimits(environment, plan),
+    ...(global === undefined ? {} : { global }),
+  };
 }
 
 export function queueMilliseconds(plan: QueuePlan): number | undefined {
