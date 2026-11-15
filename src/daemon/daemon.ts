@@ -49,11 +49,7 @@ import { daemonLoops } from "./daemon-loops.ts";
 import { clearedTreeClaims } from "./tree-claims.ts";
 import { authorityRuns } from "./record-sweep.ts";
 import { currentBundle, type CurrentBundle } from "./bundle-sweep.ts";
-import {
-  noteReceiptsPlace,
-  retentionExpiry,
-  turnDetailsPlace,
-} from "./turn-details.ts";
+import * as turnRecords from "./turn-details.ts";
 import { transcriptFiles } from "./transcript-files.ts";
 import { githubReader } from "./github-read.ts";
 import { defaultRetention } from "../record-retention.ts";
@@ -217,14 +213,15 @@ function retentionReads(settings: DaemonSettings, ports: Promise<HostPorts>) {
     now: settings.retentionClock ?? Date.now,
   };
   return {
-    turnDetails: turnDetailsPlace(place),
+    turnDetails: turnRecords.turnDetailsPlace(place),
     turnTranscript: {
       read: transcriptFiles(settings.directory),
       privateTexts: settings.privateTexts ?? [],
       cache: new Map(),
     },
-    retentionExpired: retentionExpiry(place),
-    noteReceipts: noteReceiptsPlace(place),
+    retentionExpired: turnRecords.retentionExpiry(place),
+    noteReceipts: turnRecords.noteReceiptsPlace(place),
+    turnWaits: turnRecords.turnWaitsPlace(place),
     githubRead: githubReader(settings),
   };
 }

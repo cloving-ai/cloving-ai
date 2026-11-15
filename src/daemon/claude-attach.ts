@@ -218,13 +218,9 @@ export async function attachPlan(
   const attach = await readAttach(folder, { started, launch });
   if (tree === undefined || attach === undefined)
     return "claude-turn-interrupted";
-  const profile = await selectedProfile(settings, intent);
-  if (typeof profile === "string") return "claude-turn-interrupted";
-  const harness = turnHarness(settings, profile);
-  if (recordedField(started, "harness") !== harness.worker)
-    return "claude-turn-interrupted";
-  if (harness.worker === "pi" && harness.output === "text")
-    return "claude-turn-interrupted";
+  const selected = await recordedProfile(settings, { started, intent });
+  if (typeof selected === "string") return selected;
+  const { profile, harness } = selected;
   if (harness.worker !== "pi") return { attach, tree, profile, harness };
   const piSession = await ownedPiSession({
     started,
@@ -234,6 +230,20 @@ export async function attachPlan(
   });
   if (typeof piSession === "string") return piSession;
   return { attach, tree, profile, harness: { ...harness, piSession } };
+}
+
+export async function recordedProfile(
+  settings: WorkerProfiles,
+  request: { readonly started: unknown; readonly intent: ProtectedIntent },
+) {
+  const profile = await selectedProfile(settings, request.intent);
+  if (typeof profile === "string") return "claude-turn-interrupted";
+  const harness = turnHarness(settings, profile);
+  if (recordedField(request.started, "harness") !== harness.worker)
+    return "claude-turn-interrupted";
+  if (harness.worker === "pi" && harness.output === "text")
+    return "claude-turn-interrupted";
+  return { profile, harness };
 }
 
 export async function rejectedAttach(rejection: {

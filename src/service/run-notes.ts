@@ -69,6 +69,27 @@ async function notesOf(
   };
 }
 
+async function turnWaitsOf(
+  context: ServiceContext,
+  runId: string,
+): Promise<Fields> {
+  if (context.turnWaits === undefined) return {};
+  const operations = await context.authority.effects.operations(runId);
+  const waits = await context.turnWaits.read(
+    operations
+      .filter((operation) => operation.capability === "claude")
+      .map((operation) => operation.operationId),
+  );
+  if (waits.length === 0) return {};
+  const now = Date.parse(context.clock());
+  return {
+    turnWaits: waits.map((wait) => ({
+      ...wait,
+      remainingMilliseconds: Math.max(0, Date.parse(wait.waitEndsAt) - now),
+    })),
+  };
+}
+
 export async function turnRecordsOf(
   context: ServiceContext,
   run: {
@@ -78,5 +99,9 @@ export async function turnRecordsOf(
   },
 ): Promise<Fields> {
   const details = await turnDetailsOf(context, run);
-  return { ...details, ...(await notesOf(context, { ...run, ...details })) };
+  return {
+    ...details,
+    ...(await notesOf(context, { ...run, ...details })),
+    ...(await turnWaitsOf(context, run.runId)),
+  };
 }

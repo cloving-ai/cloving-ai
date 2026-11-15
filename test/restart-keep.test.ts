@@ -316,6 +316,7 @@ await test("CLV-337 the status shows the turns that the new service connected to
       state: "recovering",
       connected: [],
       resumed: [],
+      waiting: [],
       commands: [],
     });
     recoveries.note({ runId: "run-b", way: "connected" });
@@ -328,6 +329,7 @@ await test("CLV-337 the status shows the turns that the new service connected to
       state: "done",
       connected: ["run-a", "run-b"],
       resumed: ["run-c"],
+      waiting: [],
       commands: ["run-d"],
     });
   }));
@@ -373,6 +375,7 @@ await test("CLV-337 the restart waits for the end of the turn recovery and lists
   assert.deepEqual(restarted?.["turns"], {
     connected: ["run-a", "run-b"],
     resumed: ["run-c"],
+    waiting: [],
     commands: ["run-d"],
   });
 });

@@ -1,6 +1,6 @@
 import type { Fields } from "./protocol.ts";
 
-export type RecoveryWay = "connected" | "resumed" | "command";
+export type RecoveryWay = "connected" | "resumed" | "waiting" | "command";
 
 export interface TurnRecovery {
   readonly runId: string;
@@ -17,6 +17,7 @@ export function turnRecoveries(): TurnRecoveries {
   const runs: Readonly<Record<RecoveryWay, Set<string>>> = {
     connected: new Set(),
     resumed: new Set(),
+    waiting: new Set(),
     command: new Set(),
   };
   let state: "recovering" | "done" = "recovering";
@@ -31,6 +32,7 @@ export function turnRecoveries(): TurnRecoveries {
       state,
       connected: [...runs.connected].toSorted(),
       resumed: [...runs.resumed].toSorted(),
+      waiting: [...runs.waiting].toSorted(),
       commands: [...runs.command].toSorted(),
     }),
   };

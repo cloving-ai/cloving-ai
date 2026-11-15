@@ -172,6 +172,7 @@ export async function consumePiShutdown(
   plan: {
     readonly resume?: { readonly piSession?: PiSession };
     readonly attach?: unknown;
+    readonly wait?: unknown;
   },
 ): Promise<void> {
   if (plan.resume?.piSession === undefined) return;

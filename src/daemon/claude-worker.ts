@@ -12,13 +12,13 @@ import type {
 } from "../broker/actor/delivery-intents.ts";
 import { begun } from "./claude-begin.ts";
 import {
-  attachPlan,
   holdKeptTurn,
   recordedTurnLaunch,
   recoverableTurn,
   rejectedAttach,
 } from "./claude-attach.ts";
-import type { TurnLaunch } from "../turn-launch.ts";
+import type { TurnLaunch, TurnWait } from "../turn-launch.ts";
+import { keptWait, recoveryPlan, recoveryWay } from "./claude-wait.ts";
 import {
   located,
   readRecord as read,
@@ -34,7 +34,6 @@ import {
   interruptedReply,
   stopRecoveryPlan,
   uncertainProcess,
-  resumePlan,
   recordedField,
   recoverTurn,
   turnIntent,
@@ -101,6 +100,7 @@ async function reconcileOperation(
     return { kind: "unknown", evidence: `${conflict}:${key}` };
   if ((await read(folder, "stop-request.json")) !== undefined)
     return stopped(parts, intent);
+  const wait = keptWait({ started, result });
   const resumeState = piResumeState(started, result);
   if (resumeState === "resume")
     return resumed(parts, { intent, key, folder, started, signal });
@@ -116,6 +116,7 @@ async function reconcileOperation(
     started,
     signal,
     launch,
+    wait,
   });
 }
 
@@ -126,6 +127,7 @@ async function launchedOrResumed(
     readonly started: unknown;
     readonly signal: AbortSignal;
     readonly launch: TurnLaunch | "gone" | "stopped" | "unknown" | undefined;
+    readonly wait: TurnWait | undefined;
   },
 ): Promise<AdapterOutcome> {
   const { launch, ...rest } = request;
@@ -157,6 +159,7 @@ async function resumed(
     readonly started: unknown;
     readonly signal: AbortSignal;
     readonly launch?: TurnLaunch;
+    readonly wait?: TurnWait | undefined;
   },
 ): Promise<AdapterOutcome> {
   const { intent, started, key, folder, signal, launch } = request;
@@ -166,9 +169,7 @@ async function resumed(
   if (aborted()) return failure("claude-start-aborted");
   const current = parts.settings.turnSettings();
   const settings = { ...parts.settings, ...current };
-  const plan = await (launch === undefined
-    ? resumePlan(settings, { folder, started, intent, signal })
-    : attachPlan(settings, { folder, started, intent, launch }));
+  const plan = await recoveryPlan(settings, { ...request, intent });
   if (aborted()) return failure("claude-start-aborted");
   if (typeof plan === "string")
     return rejectedAttach({
@@ -183,7 +184,7 @@ async function resumed(
     return interruptedReply(request, "claude-turn-interrupted");
   parts.settings.recovered?.({
     runId: intent.runId,
-    way: launch === undefined ? "resumed" : "connected",
+    way: recoveryWay(plan),
   });
   const noted = await parts.notes.recorded({ ...intent, prompt, started });
   await consumePiShutdown(folder, plan);
