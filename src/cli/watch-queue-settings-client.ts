@@ -41,7 +41,7 @@ async function queueSettingPost(change, retry = false) {
     const response = await fetch("actions/queue-settings", { method: "POST", headers: { "content-type": "application/json", "x-cloving-token": actionToken }, body: JSON.stringify(command) });
     if (response.status === 503) throw new Error("outcome-unknown");
     reply = response.ok ? await response.json() : null;
-    if (reply?.error?.code !== "outcome-unknown" && reply !== null) {
+    if (reply?.error?.code !== "outcome-unknown" && reply?.error?.saved !== true && reply !== null) {
       const { [key]: answered, ...others } = state.queueSettings;
       state.queueSettings = others;
     }

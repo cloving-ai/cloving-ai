@@ -162,16 +162,18 @@ function adjustedPair(
     return refused(
       "The inherited active-work cap exceeds the lane limit. Increase lanes or lower the active-work cap before using inheritance.",
     );
-  if (request.scope === "global") {
-    if (context.environment["CLOVING_QUEUE_GLOBAL_WORKING_LANES"] !== undefined)
-      return refused(
-        "CLOVING_QUEUE_GLOBAL_WORKING_LANES controls the active-work cap through the environment or a retained start override. Change it before reducing lanes.",
-      );
+  if (
+    request.scope === "global" &&
+    context.environment["CLOVING_QUEUE_GLOBAL_WORKING_LANES"] !== undefined
+  )
+    return refused(
+      "CLOVING_QUEUE_GLOBAL_WORKING_LANES controls the active-work cap through the environment or a retained start override. Change it before reducing lanes.",
+    );
+  if (request.scope === "global")
     return {
       ...next,
       queue: { ...next.queue, globalWorkingLanes: pair.lanes },
     };
-  }
   const id = request.workflowId ?? "";
   return {
     ...next,

@@ -20,7 +20,10 @@ function eligible(context: ServiceContext, id: string): boolean {
 
 function refusal(changed: QueueLaneChange): Reply | undefined {
   if (changed.kind === "unavailable")
-    return failed("queue-setting-failed", { detail: changed.detail });
+    return failed("queue-setting-failed", {
+      detail: changed.detail,
+      ...(changed.saved === true ? { saved: true } : {}),
+    });
   if (changed.kind === "conflicting-command")
     return failed("conflicting-command", {
       detail:

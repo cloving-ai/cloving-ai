@@ -139,11 +139,13 @@ async function apply(
   if (reply.kind === "error")
     return {
       kind: "unavailable",
+      saved: true,
       detail: `The setting was saved but not applied. ${reply.error.detail} Fix the cause and retry this request.`,
     };
   if (!appliedPair(source, { request, expected: expected.pair }))
     return {
       kind: "unavailable",
+      saved: true,
       detail: `The setting was saved but not applied. The running value is ${String(effective(source, request))}. Check its controlling source, then retry.`,
     };
   return { kind: "changed" };

@@ -53,6 +53,10 @@ await test("CLV-377 typed setting refusals and lost-reply replay return scoped a
       { kind: "unavailable", detail: "Fix the reload and retry." },
       "queue-setting-failed",
     ],
+    [
+      { kind: "unavailable", detail: "Saved but not applied.", saved: true },
+      "queue-setting-failed",
+    ],
     [{ kind: "conflicting-command" }, "conflicting-command"],
     [{ kind: "stale" }, "queue-setting-changed"],
     [{ kind: "replayed" }, "queue-setting"],
@@ -74,6 +78,11 @@ await test("CLV-377 typed setting refusals and lost-reply replay return scoped a
         parameters: { ...request, value: 4 },
       });
       assert.equal(reply["code"] ?? reply["kind"], code, JSON.stringify(reply));
+      assert.equal(
+        reply["saved"],
+        Reflect.get(outcome, "saved"),
+        JSON.stringify(reply),
+      );
       assert.doesNotMatch(JSON.stringify(reply), /sensitive internal failure/);
     });
 });

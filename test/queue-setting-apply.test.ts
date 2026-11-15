@@ -322,6 +322,7 @@ await test("CLV-377 reload refusal and unchanged inherited readback cannot claim
         }),
     );
     assert.equal(refused.kind, "unavailable");
+    assert.equal(Reflect.get(refused, "saved"), true);
     assert.match(
       JSON.stringify(refused),
       /saved.*not applied.*Fix the workflow/,
@@ -339,4 +340,12 @@ await test("CLV-377 reload refusal and unchanged inherited readback cannot claim
       Promise.resolve({ kind: "result", result: {} }),
     );
     assert.equal(unchanged.kind, "unavailable");
+    assert.equal(Reflect.get(unchanged, "saved"), true);
+    const beforeRetry = await readFile(scene.privateFile, "utf8");
+    const retried = await scene.edit()(inherit, () => {
+      scene.source.replace({ lanes: 4, workingLanes: 4 });
+      return Promise.resolve({ kind: "result", result: {} });
+    });
+    assert.equal(retried.kind, "changed");
+    assert.equal(await readFile(scene.privateFile, "utf8"), beforeRetry);
   }));
