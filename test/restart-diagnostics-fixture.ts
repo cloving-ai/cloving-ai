@@ -94,23 +94,30 @@ export async function diagnosedRestartScene<Value extends DiagnosticScene>(
 
 export async function restartCli(
   fixture: Scene,
-  options: readonly string[],
+  options: {
+    readonly arguments: readonly string[];
+    readonly signal?: AbortSignal;
+  },
 ): Promise<CliResult> {
   const started = Date.now();
   const entryPoint = fixture.entryPoint;
   const file = join(fixture.directory, "restart-cli.json");
-  await writeFile(file, JSON.stringify({ started, options, entryPoint }));
-  const result = await runCli(["restart", ...options, "--json"], {
+  await writeFile(
+    file,
+    JSON.stringify({ started, options: options.arguments, entryPoint }),
+  );
+  const result = await runCli(["restart", ...options.arguments, "--json"], {
     directory: fixture.repository,
     runtime: fixture.runtimeDirectory,
     entryPoint,
+    ...(options.signal === undefined ? {} : { signal: options.signal }),
   });
   await writeFile(
     file,
     JSON.stringify({
       started,
       ended: Date.now(),
-      options,
+      options: options.arguments,
       entryPoint,
       ...result,
     }),

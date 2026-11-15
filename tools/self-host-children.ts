@@ -5,6 +5,7 @@ import {
 } from "node:child_process";
 import { extname, join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
+import { restartTrace } from "./restart-trace.ts";
 
 export interface HostProcesses {
   readonly environment?: Readonly<NodeJS.ProcessEnv>;
@@ -135,12 +136,14 @@ export interface Hosted {
 }
 
 export function hostedChildren(settings: HostProcesses): Hosted {
+  restartTrace("daemon-spawn-start");
   const daemon = launched([join(settings.project, "start.mjs")], {
     name: "daemon",
     directory: settings.project,
     environment: settings.environment ?? process.env,
     stdio: ["inherit", "inherit", "inherit", "ipc"],
   });
+  restartTrace("daemon-spawn-end");
   const relay =
     settings.phoneRelay === "off" ? [] : [productChild(settings, ["relay"])];
   return { daemon, programs: [daemon, ...relay] };

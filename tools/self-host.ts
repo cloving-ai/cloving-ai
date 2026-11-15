@@ -174,11 +174,11 @@ function source(file: string): string {
     ).href,
   );
 }
-
 async function launchers(
   commands: Commands,
   workflows: RegisteredWorkflows,
 ): Promise<void> {
+  restartTrace("launchers-start");
   const settings = {
     ...commands,
     directory,
@@ -188,19 +188,25 @@ async function launchers(
   };
   await writeFile(
     join(project, "start.mjs"),
-    `import { hostEnvironment } from ${source("src/daemon/host-environment.ts")};
+    `import { restartTrace } from ${source("tools/restart-trace.ts")};
+restartTrace("daemon-entry");
+const { hostEnvironment } = await import(${source("src/daemon/host-environment.ts")});
 Object.assign(process.env, hostEnvironment(${JSON.stringify({ directory, concurrency, leaseSeconds })}));
 await import("./main.mjs");
 `,
   );
   await writeFile(
     join(project, "main.mjs"),
-    `import * as workflows from "./artifacts/client.mjs";
+    `import { restartTrace } from ${source("tools/restart-trace.ts")};
+import * as workflows from "./artifacts/client.mjs";
 import { POST } from "./artifacts/flow.mjs";
 import { startDaemon } from ${source("src/daemon/daemon.ts")};
-import { restartSettings } from ${source("tools/restart-settings.ts")};
 ${workflowBundleLoader()}
-const validateRestart = restartSettings({ ...${JSON.stringify({ repository, directory, fileVariables: Object.keys(environment).filter((name) => process.env[name] === undefined) })}, environment: process.env });
+restartTrace("daemon-modules-ready");
+const restartEnvironment = { ...process.env };
+let validation;
+const validateRestart = async (mark) => (await (validation ??= import(${source("tools/restart-settings.ts")}).then(({ restartSettings }) => restartSettings({ ...${JSON.stringify({ repository, directory, fileVariables: Object.keys(environment).filter((name) => process.env[name] === undefined) })}, environment: restartEnvironment }))))(mark);
+restartTrace("daemon-call");
 const opening = await startDaemon({ ...JSON.parse(${JSON.stringify(JSON.stringify(settings))}), workflows, handler: POST, loadBundle: loadWorkflowBundle, validateRestart });
 if (opening.kind !== "started") {
   process.stderr.write("The daemon did not start: " + opening.reason + ": " + opening.detail + "\\n");
@@ -216,8 +222,8 @@ process.on("SIGTERM", stop);
 process.on(${JSON.stringify(turnKeepingSignal)}, () => { closing ??= opening.daemon.close({ turns: "keep" }).then(() => process.exit(0)); });
 `,
   );
+  restartTrace("launchers-end");
 }
-
 function runCommand(declaration: DeclaredWorkflow): string {
   const { workflowId, input } = declaration;
   for (const [field, value, argument] of [
@@ -234,7 +240,6 @@ function runCommand(declaration: DeclaredWorkflow): string {
   }
   return `  ${client} run ${workflowId} --input <json-file>`;
 }
-
 function guide(workflows: RegisteredWorkflows): string {
   return [
     "Cloving runs. Stop it with Control-C.",
@@ -257,7 +262,6 @@ function guide(workflows: RegisteredWorkflows): string {
     "",
   ].join("\n");
 }
-
 const { tokenPrices, fallbackModels, profiles } =
   await configuredTurnSettings(configuration).catch(startRefusal);
 const commands = parseCommands(environment["CLOVING_COMMANDS"]);
@@ -325,7 +329,9 @@ const queue = queueStartup(environment, {
   declarations: manifests.declarations,
   sources: configuration.sources,
 });
-
+restartTrace("product-commit-start");
+const commit = await productCommit(checkout);
+restartTrace("product-commit-end");
 await launchers(
   {
     commands,
@@ -356,7 +362,7 @@ await launchers(
     checkCommand: listed("CLOVING_CHECK_COMMAND"),
     mergeMode: merging,
     privateTexts: listed("CLOVING_PRIVATE_TEXTS"),
-    commit: await productCommit(checkout),
+    commit,
     reloadCommand: [
       process.execPath,
       join(product, `tools/self-host-reload${extname(import.meta.filename)}`),

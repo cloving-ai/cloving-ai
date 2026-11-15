@@ -99,6 +99,7 @@ export async function withTurnHost(
   options: {
     readonly script: string;
     readonly prepare?: (product: string) => Promise<void>;
+    readonly signal?: AbortSignal;
   },
   body: (scene: TurnHost) => Promise<void>,
 ): Promise<void> {
@@ -128,7 +129,16 @@ export async function withTurnHost(
         });
         const output = captured(host);
         await diagnosedRestartScene(
-          { fixture, product, host, output, ending: ending.signal },
+          {
+            fixture,
+            product,
+            host,
+            output,
+            ending:
+              options.signal === undefined
+                ? ending.signal
+                : AbortSignal.any([ending.signal, options.signal]),
+          },
           body,
         );
       } finally {
@@ -337,9 +347,14 @@ export async function writingTurn(
 
 export async function restartedTurns(
   fixture: Scene,
-  options: readonly string[],
+  options:
+    | readonly string[]
+    | { readonly arguments: readonly string[]; readonly signal: AbortSignal },
 ): Promise<unknown> {
-  const restart = await restartCli(fixture, options);
+  const restart = await restartCli(
+    fixture,
+    "arguments" in options ? options : { arguments: options },
+  );
   if (restart.status !== 0)
     throw new Error(
       `cloving restart failed: ${restart.stdout}${restart.stderr}`,

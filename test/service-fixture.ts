@@ -88,6 +88,7 @@ export function runCli(
     readonly directory: string;
     readonly runtime: string;
     readonly entryPoint?: string;
+    readonly signal?: AbortSignal;
   },
 ): Promise<CliResult> {
   return new Promise((settle, reject) => {
@@ -107,11 +108,18 @@ export function runCli(
     child.stderr.on("data", (data: Buffer) => {
       output.stderr += data.toString();
     });
-    const timer = setTimeout(() => {
+    const stop = (): void => {
       stopChild(child).catch(reject);
-    }, testMilliseconds(20_000));
+    };
+    const timer =
+      environment.signal === undefined
+        ? setTimeout(stop, testMilliseconds(20_000))
+        : undefined;
+    environment.signal?.addEventListener("abort", stop, { once: true });
+    if (environment.signal?.aborted) stop();
     child.on("close", (code) => {
       clearTimeout(timer);
+      environment.signal?.removeEventListener("abort", stop);
       settle({ status: code ?? -1, ...output });
     });
   });

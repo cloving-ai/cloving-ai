@@ -109,9 +109,14 @@ async function bundlePin(directory: string, bundle: string): Promise<string> {
   return workflowPin({ ...admission.manifest, bundleDigest: bundle });
 }
 
-async function updatedService(scene: Pick<TurnHost, "fixture" | "output">) {
+async function updatedService(
+  scene: Pick<TurnHost, "fixture" | "output" | "ending">,
+) {
   const requested = Date.now();
-  const turns = await restartedTurns(scene.fixture, ["--update"]);
+  const turns = await restartedTurns(scene.fixture, {
+    arguments: ["--update"],
+    signal: scene.ending,
+  });
   const status = await call(scene.fixture, {
     operation: "status",
     parameters: {},
@@ -136,14 +141,17 @@ async function updatedService(scene: Pick<TurnHost, "fixture" | "output">) {
   return { turns, status };
 }
 
+const updateDeadline = AbortSignal.timeout(120_000);
+
 await test(
   "CLV-347 cloving restart --update in the middle of a turn updates the checkout, and the turn goes on with its pinned bundle and ends with its result",
-  { timeout: 120_000 },
+  { timeout: 120_000, signal: updateDeadline },
   async () => {
     const update = { target: "" };
     await withTurnHost(
       {
         script: lineTurn,
+        signal: updateDeadline,
         prepare: async (product) => {
           update.target = await updatedOrigin(product);
         },
