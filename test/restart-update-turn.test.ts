@@ -9,6 +9,7 @@ import { staleBuild } from "../tools/restart-build.ts";
 import { field } from "./self-host-fixture.ts";
 import { call } from "./service-fixture.ts";
 import { withFiles } from "./quality/files-fixture.ts";
+import { replacementPhases } from "./restart-diagnostics-fixture.ts";
 import {
   admittedTurn,
   assistantTexts,
@@ -22,6 +23,7 @@ import {
   workflowBundles,
   writingTurn,
   writtenLines,
+  type TurnHost,
 } from "./restart-turn-fixture.ts";
 
 const unavailable = "cloving-host-unavailable";
@@ -106,6 +108,33 @@ async function bundlePin(directory: string, bundle: string): Promise<string> {
   return workflowPin({ ...admission.manifest, bundleDigest: bundle });
 }
 
+async function updatedService(scene: Pick<TurnHost, "fixture" | "output">) {
+  const requested = Date.now();
+  const turns = await restartedTurns(scene.fixture, ["--update"]);
+  const status = await call(scene.fixture, {
+    operation: "status",
+    parameters: {},
+  });
+  const { phases } = await replacementPhases({
+    output: scene.output,
+    requested,
+    startedAt: Date.parse(String(status["serviceStartedAt"])),
+    required: [
+      "candidate-cache-hit",
+      "candidate-compiler-start",
+      "candidate-compiler-end",
+      "compiler-start",
+      "compiler-end",
+      "update-end",
+    ],
+  });
+  console.info("Update restart phases:", JSON.stringify(phases));
+  assert.ok(phases.some((entry) => entry.phase === "candidate-cache-hit"));
+  assert.ok(phases.some((entry) => entry.phase === "candidate-compiler-start"));
+  assert.ok(phases.some((entry) => entry.phase === "compiler-start"));
+  return { turns, status };
+}
+
 await test(
   "CLV-347 cloving restart --update in the middle of a turn updates the checkout, and the turn goes on with its pinned bundle and ends with its result",
   { timeout: 120_000 },
@@ -139,13 +168,9 @@ await test(
           pinned,
           await bundlePin(fixture.directory, String(bundle)),
         );
-        const turns = await restartedTurns(fixture, ["--update"]);
+        const { turns, status } = await updatedService(scene);
         assert.deepEqual(field(turns, "connected"), [runId]);
         assert.equal(git(["rev-parse", "HEAD"]), update.target);
-        const status = await call(fixture, {
-          operation: "status",
-          parameters: {},
-        });
         assert.equal(status["serviceCommit"], update.target);
         assert.match(
           await readFile(

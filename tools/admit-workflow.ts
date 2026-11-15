@@ -1,3 +1,4 @@
+import { restartTrace } from "./restart-trace.ts";
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
@@ -28,6 +29,11 @@ import { analyzeWorkflowCandidate } from "./workflow-candidate-source.ts";
 import type { WorkflowLimits } from "../src/workflow-limits.ts";
 import { isWorkflowManifest } from "./workflow-manifest.ts";
 import { queueFeed } from "../src/workflow-declaration.ts";
+import {
+  candidateCache,
+  restoredCandidate,
+  rememberedCandidate,
+} from "./workflow-candidate-cache.ts";
 
 export type WorkflowCandidateAdmission =
   | { readonly kind: "admitted"; readonly artifactDigest: string }
@@ -64,6 +70,7 @@ export async function admitWorkflowCandidate(
       source,
       helpers,
       packageRoot,
+      cacheDirectory: installed.cacheDirectory,
       workflowCount: declaredWorkflowCount(declaration),
     });
   } catch {
@@ -81,41 +88,26 @@ async function compiledCandidate(input: {
   readonly helpers: Readonly<Record<string, string>>;
   readonly packageRoot: string;
   readonly workflowCount: number;
+  readonly cacheDirectory: string | undefined;
 }): Promise<WorkflowCandidateAdmission> {
   const directory = await realpath(
     await mkdtemp(join(tmpdir(), "cloving-candidate-")),
   );
   try {
     await prepareCandidateProject(directory, input);
-    if (!(await compile(directory)))
-      return { kind: "refused", codes: ["compile-failed"] };
-    const artifactDirectory = join(directory, "artifacts");
-    const manifest: unknown = JSON.parse(
-      await readFile(join(artifactDirectory, "manifest.json"), "utf8"),
+    const cache = await candidateCache({ ...input, project: directory });
+    const restored = await restoredCandidate(cache);
+    restartTrace(
+      restored === undefined ? "candidate-cache-miss" : "candidate-cache-hit",
     );
-    if (
-      !isWorkflowManifest(manifest) ||
-      Object.values(manifest.workflows ?? {}).flatMap((entries) =>
-        Object.values(entries),
-      ).length !== input.workflowCount
-    )
+    if (restored === undefined && !(await compile(directory)))
       return { kind: "refused", codes: ["compile-failed"] };
-    const digest = createHash("sha256");
-    for (const [name, content] of Object.entries(input.helpers).sort(
-      ([left], [right]) => (left < right ? -1 : Number(left > right)),
-    ))
-      digest.update(JSON.stringify([name, content]));
-    for (const name of [
-      "manifest.json",
-      "flow.mjs",
-      "steps.mjs",
-      "client.mjs",
-    ]) {
-      const bytes = await readFile(join(artifactDirectory, name));
-      digest.update(JSON.stringify([name, bytes.length]));
-      digest.update(bytes);
-    }
-    return { kind: "admitted", artifactDigest: digest.digest("hex") };
+    const artifactDirectory = join(restored ?? directory, "artifacts");
+    const artifactDigest = await compiledDigest(artifactDirectory, input);
+    if (artifactDigest === undefined)
+      return { kind: "refused", codes: ["compile-failed"] };
+    if (restored === undefined) await rememberedCandidate(cache);
+    return { kind: "admitted", artifactDigest };
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
@@ -168,6 +160,7 @@ function compile(directory: string): Promise<boolean> {
     new URL(`./compile-workflows${extension}`, import.meta.url),
   );
   return new Promise((settle) => {
+    restartTrace("candidate-compiler-start");
     const child = spawn(
       process.execPath,
       [executable, "workflows", "artifacts"],
@@ -182,7 +175,38 @@ function compile(directory: string): Promise<boolean> {
       settle(false);
     });
     child.once("close", (code) => {
+      restartTrace("candidate-compiler-end");
       settle(code === 0);
     });
   });
+}
+
+async function compiledDigest(
+  artifactDirectory: string,
+  input: {
+    readonly helpers: Readonly<Record<string, string>>;
+    readonly workflowCount: number;
+  },
+): Promise<string | undefined> {
+  const manifest: unknown = JSON.parse(
+    await readFile(join(artifactDirectory, "manifest.json"), "utf8"),
+  );
+  if (
+    !isWorkflowManifest(manifest) ||
+    Object.values(manifest.workflows ?? {}).flatMap((entries) =>
+      Object.values(entries),
+    ).length !== input.workflowCount
+  )
+    return undefined;
+  const digest = createHash("sha256");
+  for (const [name, content] of Object.entries(input.helpers).sort(
+    ([left], [right]) => (left < right ? -1 : Number(left > right)),
+  ))
+    digest.update(JSON.stringify([name, content]));
+  for (const name of ["manifest.json", "flow.mjs", "steps.mjs", "client.mjs"]) {
+    const bytes = await readFile(join(artifactDirectory, name));
+    digest.update(JSON.stringify([name, bytes.length]));
+    digest.update(bytes);
+  }
+  return digest.digest("hex");
 }

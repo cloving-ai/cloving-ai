@@ -1,3 +1,4 @@
+import { restartTrace } from "../service/restart-trace.ts";
 import {
   adapters,
   daemonIdentity,
@@ -316,8 +317,10 @@ async function openDaemon(settings: DaemonSettings): Promise<DaemonOpening> {
     return opening;
   }
   const running = { ...resources, ...controls, service: opening.service };
+  restartTrace("recovery-start");
   await recoverWorkers(running, given.promise);
   resources.recoveries.finish();
+  restartTrace("recovery-end");
   return {
     kind: "started",
     daemon: await runningDaemon(settings, { ...running, ports: given.promise }),

@@ -1,5 +1,5 @@
 import { homedir } from "node:os";
-import { extname, resolve } from "node:path";
+import { extname, join, resolve } from "node:path";
 import {
   absoluteWorkflowFolder,
   settingVariables,
@@ -23,6 +23,7 @@ async function checkedQueueSettings(given: {
   readonly repository: string;
   readonly environment: Readonly<NodeJS.ProcessEnv>;
   readonly sources: Readonly<Record<string, SettingSource>>;
+  readonly directory: string | undefined;
 }): Promise<void> {
   const { repository, environment, sources } = given;
   const folders = await loadWorkflowFolders(
@@ -39,6 +40,9 @@ async function checkedQueueSettings(given: {
       packageRoot: await workflowPackageRoot(
         resolve(import.meta.dirname, ".."),
       ),
+      ...(given.directory === undefined
+        ? {}
+        : { cacheDirectory: join(given.directory, "candidate-builds") }),
     },
   );
   queueStartup(environment, {
@@ -83,6 +87,7 @@ export function restartSettings(start: {
   readonly repository: string;
   readonly fileVariables: readonly string[];
   readonly environment: Readonly<NodeJS.ProcessEnv>;
+  readonly directory?: string;
 }): ValidateRestart {
   const names = new Set(start.fileVariables);
   const environment = Object.fromEntries(
@@ -112,6 +117,7 @@ export function restartSettings(start: {
         repository: start.repository,
         environment: configuration.environment,
         sources: configuration.sources,
+        directory: start.directory,
       });
       return undefined;
     } catch (error) {

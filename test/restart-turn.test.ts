@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { field } from "./self-host-fixture.ts";
 import { call } from "./service-fixture.ts";
+import { replacementPhases } from "./restart-diagnostics-fixture.ts";
 import {
   admittedTurn,
   assistantTexts,
@@ -47,6 +48,18 @@ await test(
       assert.ok(
         startedAt - requested < 10_000,
         `The new service started ${String(startedAt - requested)} ms after the request.`,
+      );
+      const { phases, ready } = await replacementPhases({
+        output: scene.output,
+        requested,
+        startedAt,
+      });
+      console.info("Restart phases:", JSON.stringify(phases));
+      assert.ok(ready.at - requested < 10_000);
+      assert.equal(
+        phases.filter((entry) => entry.phase === "candidate-compiler-start")
+          .length,
+        0,
       );
       console.info(
         `The new service started ${String(startedAt - requested)} ms after the request.`,

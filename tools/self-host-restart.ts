@@ -1,3 +1,4 @@
+import { restartTrace } from "./restart-trace.ts";
 import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import {
@@ -307,11 +308,17 @@ async function restarted(
   claimed: RestartMark,
 ): Promise<number | undefined> {
   if (stopSignalled(watch) || (await refused(watch, claimed))) return undefined;
+  restartTrace("build-precheck-end");
   if (await childrenAlive(watch, claimed)) return undefined;
+  restartTrace("children-stopped");
   if (await workStarted(watch, claimed)) return undefined;
+  restartTrace("shutdown-start");
   await watch.stop();
+  restartTrace("shutdown-end");
   if (stopSignalled(watch)) return undefined;
+  restartTrace("update-start");
   await updateNoted(watch, claimed);
+  restartTrace("update-end");
   if (stopSignalled(watch)) return undefined;
   await notesWritten(watch.directory, claimed);
   await clearedRestart(watch.directory);
@@ -355,6 +362,7 @@ async function restartRequests(
       () => undefined,
     );
     if (request === undefined) continue;
+    restartTrace("request-found");
     const work = await waitingWork(watch, request.mark).catch(() => null);
     if (work === null || work.length > 0) {
       await expired(watch, { request, work }).catch(() => undefined);
@@ -364,6 +372,7 @@ async function restartRequests(
       () => undefined,
     );
     if (claimed === undefined) continue;
+    restartTrace("claimed");
     const status = await watch.exclusive(() => restarted(watch, claimed));
     if (status !== undefined) return status;
   }

@@ -1,3 +1,4 @@
+import { restartTrace } from "./restart-trace.ts";
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
@@ -281,8 +282,11 @@ async function preparedCompilation(
       repository: settings.repository,
       key,
     }))
-  )
+  ) {
+    restartTrace("compiler-start");
     await compile(settings);
+    restartTrace("compiler-end");
+  }
   const compiled: unknown = JSON.parse(
     await readFile(join(project, "artifacts/manifest.json"), "utf8"),
   );
@@ -296,15 +300,21 @@ export async function preparedBundle(
   settings: ProjectSettings,
 ): Promise<RegisteredWorkflows> {
   const { product, project } = settings;
+  restartTrace("initialize-start");
   await initializeProject(settings);
+  restartTrace("discovery-start");
   const folders = await loadWorkflowFolders(settings, {
     packageRoot: await workflowPackageRoot(product),
+    cacheDirectory: join(dirname(project), "candidate-builds"),
   });
+  restartTrace("discovery-end");
   const staged = await stageCandidates(project, folders.candidates);
+  restartTrace("dependencies-start");
   const dependencies = await workflowBundleDependencies({
     product,
     packages: Object.keys(packageMetadata.dependencies),
   });
+  restartTrace("dependencies-end");
   const compiled = await preparedCompilation(settings, dependencies);
   await recordProject(settings);
   const combined = staged.map((candidate) =>
@@ -319,6 +329,7 @@ export async function preparedBundle(
   );
   await writeFile(join(project, "declarations.json"), JSON.stringify(combined));
   await writeFile(join(project, "dependencies.json"), dependencies);
+  restartTrace("retain-start");
   const bundleDigest = await retainWorkflowBundle({
     project,
     repository: folders.repository,

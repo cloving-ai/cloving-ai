@@ -11,6 +11,7 @@ export const candidatePackageRoot = dirname(
 export interface CandidatePackageOptions {
   readonly packageRoot?: string;
   readonly helpers?: Readonly<Record<string, string>>;
+  readonly cacheDirectory?: string;
 }
 
 export function resolvedSymbol(

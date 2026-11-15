@@ -1,3 +1,4 @@
+import { restartTrace } from "./restart-trace.ts";
 import {
   turnHarness,
   harnessDefaults,
@@ -70,6 +71,7 @@ function flag(name: string): string | undefined {
     : argument?.slice(name.length + 1);
 }
 
+restartTrace("host-entry");
 const runtimeArgument = flag("--runtime");
 if (runtimeArgument === undefined)
   throw new Error("The start program needs --runtime. Use: cloving start");
@@ -198,7 +200,7 @@ import { POST } from "./artifacts/flow.mjs";
 import { startDaemon } from ${source("src/daemon/daemon.ts")};
 import { restartSettings } from ${source("tools/restart-settings.ts")};
 ${workflowBundleLoader()}
-const validateRestart = restartSettings({ ...${JSON.stringify({ repository, fileVariables: Object.keys(environment).filter((name) => process.env[name] === undefined) })}, environment: process.env });
+const validateRestart = restartSettings({ ...${JSON.stringify({ repository, directory, fileVariables: Object.keys(environment).filter((name) => process.env[name] === undefined) })}, environment: process.env });
 const opening = await startDaemon({ ...JSON.parse(${JSON.stringify(JSON.stringify(settings))}), workflows, handler: POST, loadBundle: loadWorkflowBundle, validateRestart });
 if (opening.kind !== "started") {
   process.stderr.write("The daemon did not start: " + opening.reason + ": " + opening.detail + "\\n");
@@ -316,7 +318,9 @@ const folders = {
   limits,
 };
 const profilesPath = environment["CLOVING_PROFILES"];
+restartTrace("preparation-start");
 const manifests = await preparedProject({ product, project, ...folders });
+restartTrace("preparation-end");
 const queue = queueStartup(environment, {
   declarations: manifests.declarations,
   sources: configuration.sources,

@@ -1,3 +1,4 @@
+import { restartTrace } from "./restart-trace.ts";
 import { createHash, randomUUID } from "node:crypto";
 import { cp, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
@@ -37,9 +38,10 @@ export async function workflowBuildKey(input: {
   readonly recordedProject?: string;
   readonly dependencies: string;
 }): Promise<string> {
+  restartTrace("hash-start");
   const productFiles = (
     await Promise.all(
-      ["src", "tools"].map((name) => inputFiles(input.product, name)),
+      ["src", "tools", "dist"].map((name) => inputFiles(input.product, name)),
     )
   ).flat();
   const workflows = await inputFiles(input.project, "workflows");
@@ -74,6 +76,7 @@ export async function restoreWorkflowArtifacts(input: {
       JSON.stringify(input.key)
     )
       return false;
+    restartTrace("combined-cache-hit");
     await cp(
       join(bundle.directory, "artifacts"),
       join(input.project, "artifacts"),

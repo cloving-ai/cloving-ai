@@ -1,3 +1,7 @@
+import {
+  diagnosedRestartScene,
+  restartCli,
+} from "./restart-diagnostics-fixture.ts";
 import assert from "node:assert/strict";
 import { execFileSync, type ChildProcess } from "node:child_process";
 import { copyFileSync, cpSync, symlinkSync } from "node:fs";
@@ -24,7 +28,7 @@ import {
   withoutChildren,
   type Scene,
 } from "./self-host-fixture.ts";
-import { call, runCli } from "./service-fixture.ts";
+import { call } from "./service-fixture.ts";
 import { testMilliseconds } from "./test-timing.ts";
 
 const worktree = join(import.meta.dirname, "..");
@@ -152,10 +156,14 @@ export async function withTurnHost(
       try {
         const host = await fixture.start({
           CLOVING_PHONE_RELAY: "off",
+          CLOVING_RESTART_TRACE: "1",
           NODE_V8_COVERAGE: undefined,
         });
         const output = captured(host);
-        await body({ fixture, product, host, output, ending: ending.signal });
+        await diagnosedRestartScene(
+          { fixture, product, host, output, ending: ending.signal },
+          body,
+        );
       } finally {
         ending.abort();
         await stopTurns(fixture.root);
@@ -364,10 +372,7 @@ export async function restartedTurns(
   fixture: Scene,
   options: readonly string[],
 ): Promise<unknown> {
-  const restart = await runCli(["restart", ...options, "--json"], {
-    directory: fixture.repository,
-    runtime: fixture.runtimeDirectory,
-  });
+  const restart = await restartCli(fixture, options);
   if (restart.status !== 0)
     throw new Error(
       `cloving restart failed: ${restart.stdout}${restart.stderr}`,

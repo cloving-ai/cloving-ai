@@ -1,3 +1,4 @@
+import { restartTrace } from "./restart-trace.ts";
 import { lstat, rm } from "node:fs/promises";
 import { join } from "node:path";
 import {
@@ -223,6 +224,7 @@ async function started(
       worldReports: () => host?.reports?.() ?? [],
     }),
   });
+  restartTrace("listener-ready");
   const stopping = new AbortController();
   const delivering = Promise.allSettled([authority.deliver(stopping.signal)]);
   const expiry = expiryScan({
