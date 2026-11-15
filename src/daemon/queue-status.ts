@@ -16,15 +16,20 @@ function overviewStatus(result: Fields, workflowId: string) {
     ? queues.map(record).find((entry) => entry?.["workflowId"] === workflowId)
     : record(result["queue"]);
   const busy = queueBusy(queue);
+  const global = record(result["globalQueue"]);
   if (busy === undefined) return undefined;
   return {
     busy,
-    repositoryBusy: Array.isArray(queues)
-      ? queues.reduce(
-          (total: number, entry: unknown) => total + (queueBusy(entry) ?? 0),
-          0,
-        )
-      : busy,
+    repositoryWorking:
+      typeof global?.["working"] === "number" ? global["working"] : undefined,
+    repositoryBusy:
+      queueBusy(global) ??
+      (Array.isArray(queues)
+        ? queues.reduce(
+            (total: number, entry: unknown) => total + (queueBusy(entry) ?? 0),
+            0,
+          )
+        : busy),
     holding: record(queue?.["spend"])?.["holding"] === true,
   };
 }
@@ -36,6 +41,7 @@ export async function queueStatus(settings: {
   readonly busy: number;
   readonly holding: boolean;
   readonly repositoryBusy: number;
+  readonly repositoryWorking?: number | undefined;
 }> {
   let count = 0;
   let after: string | null = "";

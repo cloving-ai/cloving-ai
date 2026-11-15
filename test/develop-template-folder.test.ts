@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
-import { loadWorkflowFolders } from "./candidate-package-fixture.ts";
+import { analyzeWorkflowCandidate } from "../tools/workflow-candidate-source.ts";
+import {
+  candidatePackageRoot,
+  loadWorkflowFolders,
+} from "./candidate-package-fixture.ts";
 import { folderInput } from "./workflow-folder-fixture.ts";
 import { withFiles } from "./quality/files-fixture.ts";
 
@@ -13,6 +17,22 @@ import {
   completeConfigurations,
   type DevelopSelection,
 } from "./develop-template-options-fixture.ts";
+
+const workMethods = [
+  "close-issue",
+  "close-pr",
+  "label",
+  "merge",
+  "mergeWhenGreen",
+  "open-pr",
+  "partial-issue",
+  "prepare",
+  "reviewByAgent",
+  "run-turn",
+  "sleep",
+  "wait-review",
+  "waitForDecision",
+];
 
 await test("CLV-221 the executable default passes folder admission", async () => {
   const template = fileURLToPath(
@@ -26,9 +46,28 @@ await test("CLV-221 the executable default passes folder admission", async () =>
       loaded.candidates[0]?.declaration ?? "null",
     );
     assert.ok(isCandidateDeclaration(declaration));
+    const candidate = loaded.candidates[0];
+    assert.ok(candidate);
+    const { analysis } = analyzeWorkflowCandidate(candidate.source, {
+      packageRoot: candidatePackageRoot,
+      helpers: candidate.helpers,
+    });
+    const work = analysis.workflows?.["develop"];
+    assert.ok(work);
+    assert.equal(work.knownCallCount, 81);
+    assert.equal(work.knownUnitTotal, 81);
+    assert.deepEqual(
+      Array.from(new Set(work.effects.map((effect) => effect.method))).sort(),
+      workMethods,
+    );
+    assert.deepEqual(analysis.workflows["developFeed"]?.effects, [
+      { capability: "github", method: "issues" },
+      { capability: "github", method: "issue-states" },
+    ]);
     assert.deepEqual(declaration.workflow.queue, {
       everySeconds: 120,
       lanes: 1,
+      feed: "developFeed",
     });
   });
 });

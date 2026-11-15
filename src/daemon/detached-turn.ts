@@ -16,6 +16,8 @@ import {
   type Watch,
 } from "./detached-process.ts";
 import type { TurnProgress } from "./turn-stream.ts";
+import type { PiRpcStart } from "./pi-rpc-launcher.ts";
+import type { PiSession } from "./pi-session.ts";
 import {
   harnessReader,
   translatedHarness,
@@ -37,6 +39,7 @@ export interface FollowedTurn {
 }
 
 export interface FollowStart {
+  readonly piSession?: PiSession;
   readonly progress?: ((progress: TurnProgress) => Promise<void>) | undefined;
   readonly worker?: string | undefined;
   readonly command: readonly string[];
@@ -44,6 +47,7 @@ export interface FollowStart {
 }
 
 export interface DetachedStart extends FollowStart {
+  readonly piRpc?: PiRpcStart;
   readonly executable: string;
   readonly arguments: readonly string[];
   readonly environment: NodeJS.ProcessEnv;
@@ -205,10 +209,13 @@ function followed(start: FollowStart, parts: Followed) {
       throw new Error("turn-released");
     }
     try {
-      return await concluded(parts.files, {
+      const completion = await concluded(parts.files, {
         reader,
         exitCode: state === "gone" ? null : state.exitCode,
       });
+      return typeof state !== "string" && state.reason !== undefined
+        ? { ...completion, reason: state.reason }
+        : completion;
     } finally {
       transcript.close();
       await releasedLaunch(parts.files);
@@ -282,6 +289,7 @@ export function detachedTurn(start: DetachedStart): FollowedTurn {
     configuration: start.configuration,
     ...("transcript" in files ? { transcript: files.transcript } : {}),
     ...(start.runnerPlace === undefined ? {} : { runner: start.runnerPlace }),
+    ...(start.piRpc === undefined ? {} : { piRpc: start.piRpc.folder }),
   };
   const detached = launchedProcess({
     executable: start.executable,
@@ -290,6 +298,7 @@ export function detachedTurn(start: DetachedStart): FollowedTurn {
     directory: start.directory,
     descriptors: files.descriptors,
     marker: launchMarker(start.folder, recordedFiles),
+    ...(start.piRpc === undefined ? {} : { piRpc: start.piRpc }),
   });
   const launch = detached.launch.then((recorded) =>
     recorded === null ? null : { ...recorded, ...recordedFiles },

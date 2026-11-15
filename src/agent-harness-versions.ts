@@ -61,3 +61,15 @@ export function harnessVersion(output: string, pattern: string): string | null {
   if (/\b(?:error|unavailable|not found)\b/i.test(line)) return null;
   return new RegExp(pattern).test(line) ? line : null;
 }
+
+export function harnessVersionReason(
+  output: string,
+  name: string,
+): string | null {
+  if (harnessVersion(output, harnessDefinition(name).versionPattern) !== null)
+    return null;
+  return name === "pi" &&
+    harnessVersion(output, `^${semanticVersion}$`) !== null
+    ? "unsupported-version"
+    : "no-version";
+}

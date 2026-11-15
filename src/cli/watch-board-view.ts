@@ -349,7 +349,7 @@ export function Board(props: {
     class: "board",
     children: [
       element("h2", {
-        class: "visually-hidden",
+        class: "board-title",
         children: workflow.workflowId,
       }),
       workflow.schedule === undefined

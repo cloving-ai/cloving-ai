@@ -9,6 +9,10 @@ import {
 import { join } from "node:path";
 import { record } from "../protocol.ts";
 import {
+  queueSettingRequest,
+  type QueueSettingRequest,
+} from "../queue-setting-operation.ts";
+import {
   queueFailureLimit,
   type QueueCommand,
   type QueueDrain,
@@ -45,8 +49,17 @@ export async function queueDirectory(
 export const queueControlLimit = 32;
 
 export type QueueControlRecord =
-  | { readonly commandId: string; readonly command: QueueCommand }
-  | (QueueLaneRequest & { readonly command: "lanes" });
+  | {
+      readonly commandId: string;
+      readonly command: QueueCommand;
+      readonly scope?: "workflow";
+    }
+  | (QueueLaneRequest & { readonly command: "lanes" })
+  | (QueueSettingRequest & {
+      readonly command: "setting";
+      readonly saved: boolean;
+      readonly applied?: boolean;
+    });
 
 export interface SelfUpdateHold {
   readonly mark: string;
@@ -80,6 +93,11 @@ function instant(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value) && value > 0;
 }
 
+function savedScope(value: unknown): "workflow" | undefined {
+  if (value === undefined || value === "workflow") return value;
+  throw new Error("invalid-queue-commands");
+}
+
 function savedDrain(value: unknown): QueueDrain | undefined {
   if (value === undefined) return undefined;
   const drain = record(value);
@@ -89,7 +107,12 @@ function savedDrain(value: unknown): QueueDrain | undefined {
     !(drainedAt === null || instant(drainedAt))
   )
     throw new Error("invalid-queue-commands");
-  return { startedAt: drain["startedAt"], drainedAt };
+  const scope = savedScope(drain["scope"]);
+  return {
+    startedAt: drain["startedAt"],
+    drainedAt,
+    ...(scope === undefined ? {} : { scope }),
+  };
 }
 
 function savedLaneControl(
@@ -117,18 +140,44 @@ function savedLaneControl(
 
 function savedControl(entry: unknown): QueueControlRecord {
   const control = record(entry);
-  const commandId = control?.["commandId"];
-  const command = control?.["command"];
-  if (
-    control === undefined ||
-    typeof commandId !== "string" ||
-    commandId.length === 0
-  )
-    throw new Error("invalid-queue-commands");
+  if (control === undefined) throw new Error("invalid-queue-commands");
+  const { commandId, command } = control;
+  if (!savedIdentifier(commandId)) throw new Error("invalid-queue-commands");
   if (command === "lanes") return savedLaneControl(control, commandId);
+  if (command === "setting") return savedSettingControl(control);
   if (command !== "resume" && command !== "drain")
     throw new Error("invalid-queue-commands");
-  return { command, commandId };
+  const scope = savedScope(control["scope"]);
+  if (command === "resume" && scope !== undefined)
+    throw new Error("invalid-queue-commands");
+  return { command, commandId, ...(scope === undefined ? {} : { scope }) };
+}
+
+function savedIdentifier(value: unknown): value is string {
+  return typeof value === "string" && value.length > 0;
+}
+
+function savedSettingControl(
+  control: Readonly<Record<string, unknown>>,
+): QueueControlRecord {
+  const fields = Object.fromEntries(
+    Object.entries(control).filter(
+      ([key]) => !["command", "saved", "applied"].includes(key),
+    ),
+  );
+  const request = queueSettingRequest(fields);
+  const saved = control["saved"];
+  const applied = control["applied"];
+  if (request === undefined || typeof saved !== "boolean")
+    throw new Error("invalid-queue-commands");
+  if (applied !== undefined && typeof applied !== "boolean")
+    throw new Error("invalid-queue-commands");
+  return {
+    ...request,
+    command: "setting",
+    saved,
+    ...(applied === undefined ? {} : { applied }),
+  };
 }
 
 function savedControls(value: unknown): QueueControlRecord[] {

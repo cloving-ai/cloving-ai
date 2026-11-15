@@ -19,7 +19,8 @@ import {
   commitSignaturesSetting,
   turnVariablesSetting,
 } from "../src/turn-environment.ts";
-import { listedSetting, queueStartup, spendScope } from "./self-host-queue.ts";
+import { listedSetting, spendScope } from "./self-host-queue.ts";
+import { queueStartup } from "./self-host-queue-startup.ts";
 import {
   configurationDigests,
   configuredTurnSettings,
@@ -273,11 +274,20 @@ function nativeCommands(): Readonly<
     ),
   ]);
   return Object.fromEntries(
-    [...names].filter(nativeHarness).flatMap((name) => {
-      const variable = harnessDefaults(name).variable;
-      const command = variable === undefined ? undefined : listed(variable);
-      return command === undefined ? [] : [[name, command]];
-    }),
+    [...names]
+      .filter((name) =>
+        nativeHarness(
+          name,
+          configuration.harness?.name === name
+            ? configuration.harness.turn
+            : undefined,
+        ),
+      )
+      .flatMap((name) => {
+        const variable = harnessDefaults(name).variable;
+        const command = variable === undefined ? undefined : listed(variable);
+        return command === undefined ? [] : [[name, command]];
+      }),
   );
 }
 const workerCommands = nativeCommands();

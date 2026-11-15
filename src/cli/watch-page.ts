@@ -1,4 +1,5 @@
 import { queueCardFunctions } from "./watch-queue-card-view.ts";
+import { queueSettingFunctions } from "./watch-queue-setting-view.ts";
 import {
   calendarText,
   dayText,
@@ -31,6 +32,8 @@ import {
 } from "./watch-card-view.ts";
 import { watchClient } from "./watch-client.ts";
 import { watchDecisionClient } from "./watch-decision-client.ts";
+import { watchQueueClient } from "./watch-queue-client.ts";
+import { watchQueueSettingsClient } from "./watch-queue-settings-client.ts";
 import { watchLoopsClient } from "./watch-loops-client.ts";
 import { watchTranscriptClient } from "./watch-transcript-client.ts";
 import { transcriptFunctions } from "./watch-transcript-view.ts";
@@ -63,6 +66,7 @@ import {
   attemptText,
   totalsSuffix,
 } from "./usage-render.ts";
+import { queueStyle } from "./watch-queue-style.ts";
 import { watchStyle } from "./watch-page-style.ts";
 import { artStyle } from "./watch-art-style.ts";
 import { transcriptStyle } from "./watch-transcript-style.ts";
@@ -99,6 +103,7 @@ import {
   DayChart,
   RepositoryTable,
   Today,
+  TodayHead,
   TodayNumber,
   TodayNumbers,
   WorkflowTable,
@@ -147,6 +152,7 @@ import {
   Banner,
   BannerDetail,
   BoardPage,
+  BoardQueue,
   FloorPage,
   Page,
   Phases,
@@ -183,6 +189,7 @@ const functions = [
   LoopLast,
   LoopCell,
   ...queueCardFunctions,
+  ...queueSettingFunctions,
   record,
   commandText,
   Commands,
@@ -268,6 +275,7 @@ const functions = [
   WorkflowTable,
   RepositoryTable,
   Today,
+  TodayHead,
   counted,
   elapsed,
   clockTime,
@@ -303,6 +311,7 @@ const functions = [
   BannerBack,
   FloorPage,
   BoardPage,
+  BoardQueue,
   Page,
 ];
 
@@ -324,6 +333,8 @@ export function pageDocument(
     watchCardClient,
     watchPhoneClient,
     watchLoopsClient,
+    watchQueueClient,
+    watchQueueSettingsClient,
     watchRunCommandClient,
     watchTranscriptClient,
     watchDecisionClient,
@@ -333,7 +344,7 @@ export function pageDocument(
     "<!doctype html>",
     '<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Cloving</title>',
     `<link rel="icon" href="data:image/svg+xml,${encodeURIComponent(icon)}">`,
-    `<style>${watchStyle}${artStyle}${transcriptStyle}${runPageStyle}</style><style id="theme-style">${themes.style}</style></head><body>`,
+    `<style>${watchStyle}${queueStyle}${artStyle}${transcriptStyle}${runPageStyle}</style><style id="theme-style">${themes.style}</style></head><body>`,
     '<div id="app"></div>',
     `<script type="module">${script}</script></body></html>`,
     "",

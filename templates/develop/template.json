@@ -2,10 +2,6 @@
   "version": 1,
   "name": "develop",
   "summary": "Develop a ticket or task with explicit choices for selection, verification, acceptance, merge and partial work. The first option at each point is the hands-off default.",
-  "scripts": [
-    { "file": "develop/next-ticket.mts", "setting": "tickets.nextCommand" },
-    { "file": "develop/ready-tickets.mts", "setting": "tickets.readyCommand" }
-  ],
   "points": [
     {
       "id": "input",
@@ -39,18 +35,18 @@
         {
           "id": "queue",
           "label": "The queue",
-          "summary": "Select a ready ticket through the configured next-ticket command.",
-          "change": "In develop.declaration.json, set workflow.queue to an object (\"queue\": { \"everySeconds\": 120, \"lanes\": 1 }).",
+          "summary": "Select ready GitHub issues with the developFeed function.",
+          "change": "In develop.declaration.json, set workflow.queue to { \"everySeconds\": 120, \"lanes\": 1, \"feed\": \"developFeed\" }. Keep developFeed and its GitHub methods issues and issue-states.",
           "requires": {
             "input": ["ticket"]
           },
-          "needs": ["next-command", "queue-interval"]
+          "needs": ["queue-interval"]
         },
         {
           "id": "person",
           "label": "A person",
           "summary": "A person submits the ticket or task when starting a run.",
-          "change": "In develop.declaration.json, remove the workflow.queue field.",
+          "change": "In develop.declaration.json, remove workflow.queue and the GitHub methods issues and issue-states. Remove developFeed and its imports from develop.ts. Keep the develop work function. Remove the feedTests import and loop from develop.test.ts.",
           "requires": {},
           "needs": []
         }
@@ -74,10 +70,7 @@
           "summary": "Verify an assertion failure on the base and passing tests on the pull request head before review.",
           "change": "In develop/round.ts import verifyRedGreen from develop/red-green.ts. In deliverPull, before acceptWork, call verifyRedGreen({ cycleId: pull.target, head: pull.commit, round }). Return a blocked outcome immediately; for non-null feedback return { merged: false, reason: verification.reason, output: verification.output }, so that developRound passes it to recover for the next fix turn. In develop.declaration.json add the command capability to workflow.capabilities and \"commands\": [\"red-green\"] to workflow, and command: [\"run:red-green\"] to methods. Add 6 to workflow.effectLimit. Configure the operator red-green command and checks.redGreen.",
           "requires": {
-            "merge": [
-              "green",
-              "person"
-            ]
+            "merge": ["green", "person"]
           },
           "needs": []
         }
@@ -177,7 +170,6 @@
             "gh-login",
             "github-origin",
             "ticket-command",
-            "next-command",
             "queue-interval"
           ]
         },

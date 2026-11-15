@@ -17,7 +17,11 @@ import {
   type WorkflowRefusal,
 } from "../workflow-refusals.ts";
 import type { DaemonSettings } from "./daemon-adapters.ts";
-import { reloadCommandOutput } from "./reload-command.ts";
+import {
+  reloadCommandOutput,
+  parsedOutput,
+  outputRefusal,
+} from "./reload-command.ts";
 import {
   ticketRegistrations,
   ticketRegistrationTable,
@@ -38,6 +42,7 @@ import {
   type TurnSettingsSource,
 } from "./settings-reload.ts";
 import { queueConfiguration, type QueueLimitsSource } from "./queue-limits.ts";
+import { queueSettingsStep } from "./queue-settings-reload.ts";
 
 interface PreparedBundle extends ReloadedSettings {
   readonly kind: "prepared";
@@ -134,29 +139,6 @@ function manifestPaths(
     : undefined;
 }
 
-function parsedOutput(
-  output: string,
-): Readonly<Record<string, unknown>> | undefined {
-  try {
-    return record(JSON.parse(output));
-  } catch {
-    return undefined;
-  }
-}
-
-function outputRefusal(
-  value: Readonly<Record<string, unknown>> | undefined,
-): Refused | undefined {
-  const error = value?.["error"];
-  if (typeof error === "string") return refused("reload-failed", error);
-  const refusal = record(value?.["refusal"]);
-  const code = refusal?.["code"];
-  const detail = refusal?.["detail"];
-  return typeof code === "string" && typeof detail === "string"
-    ? refused(code, detail)
-    : undefined;
-}
-
 function preparedBundle(
   output: string,
   failure: string,
@@ -202,7 +184,9 @@ function queueFacts(declarations: readonly DeclaredWorkflow[]) {
       (declaration) =>
         [
           declaration.workflowId,
-          declaredQueueValues(declaration).everySeconds ?? defaultQueueSeconds,
+          declaredQueueValues(declaration).everySeconds ??
+            (declaration.queue === true ? null : defaultQueueSeconds),
+          declaredQueueValues(declaration).feed !== undefined,
         ] as const,
     )
     .sort(([left], [right]) => (left < right ? -1 : Number(left > right)));
@@ -325,6 +309,7 @@ interface ReloadState {
   readonly bundleDigest: string | undefined;
   readonly workflowRefusals: readonly WorkflowRefusal[];
   readonly settingDigests: SettingDigests;
+  readonly declarations: readonly DeclaredWorkflow[];
 }
 
 interface ReloadStep {
@@ -359,7 +344,7 @@ async function reloadOutcome(
   const changes = settingChanges(state.settingDigests, bundle.settingDigests);
   settings.turnSettings.replace(bundle.turnSettings);
   settings.queueLimitSource.replace(
-    bundle.queueLimits,
+    { ...bundle.queueLimits, declarations: bundle.declarations },
     bundle.queueWorkflowLimits,
   );
   return {
@@ -374,6 +359,7 @@ async function reloadOutcome(
         digests: bundle.settingDigests,
         reloadedFields: changes.reloadedFields,
       }),
+      declarations: bundle.declarations,
     },
   };
 }
@@ -385,10 +371,14 @@ export function workflowReload(
     bundleDigest: settings.bundleDigest,
     workflowRefusals: workflowRefusals(settings.workflowRefusals),
     settingDigests: settings.settingDigests ?? {},
+    declarations: settings.declarations ?? [],
   };
-  return async () => {
+  return async (scope) => {
     const previous = state.bundleDigest;
-    const step = await reloadOutcome(settings, state);
+    const step =
+      scope !== undefined
+        ? await queueSettingsStep({ ...settings, request: scope }, state)
+        : await reloadOutcome(settings, state);
     state = step.state;
     process.stdout.write(
       reloadLine(step.outcome, { previous, current: state.bundleDigest }),

@@ -37,6 +37,7 @@ const codes = [
   "check-command",
   "merge-mode",
   "queue-interval",
+  "queue-feed",
   "private-texts",
   "turn-environment",
   "commit-signatures",
@@ -96,6 +97,7 @@ await test("CLV-207 invalid settings fail first and skip setting dependent probe
       "next-command",
       "check-command",
       "queue-interval",
+      "queue-feed",
       "private-texts",
     ])
       assert.equal(check(output, code)["result"], "skip", code);

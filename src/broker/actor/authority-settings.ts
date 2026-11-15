@@ -26,6 +26,7 @@ export const authorityTiming: AuthorityTiming = {
 };
 
 export interface EffectSettings {
+  readonly queueWorkingLimit?: number;
   readonly capacity: number;
   readonly queueLimit: number;
   readonly leaseMilliseconds: number;

@@ -13,6 +13,7 @@ export interface QueueRoom {
   readonly signals: () => Promise<HostSignals>;
   readonly waiting: () => Promise<number>;
   readonly repositoryBusy?: () => Promise<number>;
+  readonly repositoryWorking?: () => Promise<number>;
   readonly permit?: () => Promise<Permit>;
 }
 
@@ -30,6 +31,40 @@ async function permitted(
   if (permit?.kind === "held") return permit.hold;
   if (permit !== undefined) granted(permit.release);
   return undefined;
+}
+
+async function repositoryHold(room: QueueRoom): Promise<QueueHold | undefined> {
+  const global = room.limits().global;
+  const limit = global?.lanes ?? maximumQueueLanes;
+  const busy = (await room.repositoryBusy?.()) ?? 0;
+  if (busy >= limit)
+    return {
+      reason: "repository-lanes",
+      busy,
+      limit,
+      text:
+        global?.lanes === undefined
+          ? "Held: 16 of 16 repository queue lanes busy"
+          : `Held: ${String(busy)} of ${String(limit)} global queue lanes busy`,
+    };
+  return repositoryWorkHold(room, busy);
+}
+
+async function repositoryWorkHold(
+  room: QueueRoom,
+  busy: number,
+): Promise<QueueHold | undefined> {
+  const limit = room.limits().global?.workingLanes;
+  if (limit === undefined) return undefined;
+  const working = (await room.repositoryWorking?.()) ?? busy;
+  return working < limit
+    ? undefined
+    : {
+        reason: "working-lanes",
+        working,
+        limit,
+        text: `Held: ${String(working)} of ${String(limit)} global active-work lanes busy`,
+      };
 }
 
 export function roomGate(
@@ -51,18 +86,8 @@ export function roomGate(
         limits.workingLanes < limits.lanes
           ? workingHold(busy - (await room.waiting()), limits.workingLanes)
           : undefined;
-      const repositoryBusy = (await room.repositoryBusy?.()) ?? 0;
-      const repository =
-        repositoryBusy < maximumQueueLanes
-          ? undefined
-          : {
-              reason: "repository-lanes" as const,
-              busy: repositoryBusy,
-              limit: maximumQueueLanes,
-              text: "Held: 16 of 16 repository queue lanes busy",
-            };
       const hold =
-        repository ??
+        (await repositoryHold(room)) ??
         working ??
         (limits.room === undefined
           ? undefined

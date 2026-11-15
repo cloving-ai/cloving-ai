@@ -1,4 +1,5 @@
 import { parseCommand } from "../../authority/commands.ts";
+import { workCapacityRefusal } from "../../authority/operation-work.ts";
 import { execute } from "../../authority/reducer.ts";
 import type { AuthorityCommand } from "../../authority/transitions.ts";
 import { admitted } from "../authority-admission.ts";
@@ -168,15 +169,28 @@ function missingDocument(planning: CommandPlanning): string | undefined {
 function freshRefusal(planning: CommandPlanning): Row | undefined {
   const { turn, request, epoch } = planning;
   const command = parseCommand(request.command);
-  if (command === null || turn.state.commands[command.commandId] !== undefined)
-    return undefined;
+  if (command === null) return undefined;
+  const repeated = turn.state.commands[command.commandId] !== undefined;
+  if (repeated && command.kind !== "enter-operation-work") return undefined;
   const reason = refusalOf({
     command,
     recordedAt: request.recordedAt,
     given: request.epoch,
     epoch,
   });
-  return reason === undefined ? undefined : { kind: "rejected", reason };
+  const refused =
+    reason ??
+    (repeated
+      ? undefined
+      : workCapacityRefusal(turn.state.effects, {
+          command,
+          ...(planning.effects.queueWorkingLimit === undefined
+            ? {}
+            : { limit: planning.effects.queueWorkingLimit }),
+        }));
+  return refused === undefined
+    ? undefined
+    : { kind: "rejected", reason: refused };
 }
 
 export function planAdoption(sequence: number): TurnPlan {

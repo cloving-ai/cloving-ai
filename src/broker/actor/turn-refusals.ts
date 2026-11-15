@@ -23,7 +23,12 @@ function scanned(command: AuthorityCommand): boolean {
 
 const planKinds = ["record-dispatch", "grant-lease", "record-outcome"];
 const planPrefixes = ["lease:", "outcome:", "dispatch:"];
-const workerKinds = ["request-effect", "report-effect"];
+const workerKinds = [
+  "request-effect",
+  "report-effect",
+  "enter-operation-work",
+  "leave-operation-work",
+];
 const timedKinds = [...workerKinds, "expire-lease"];
 
 const rules: readonly (readonly [string, Rule])[] = [

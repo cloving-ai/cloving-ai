@@ -126,14 +126,27 @@ for (const worker of Object.keys(harnessOutputs))
         await until(() => scene.reports.length === 2);
         assert.equal(scene.reports[1]?.outcome, "completed");
         const result = picked(scene.reports[1].result);
-        assert.deepEqual(result, reference.result);
+        const owned = field(
+          field(record(scene, "operation-1/started.json"), "piSession"),
+          "id",
+        );
+        const sessionId =
+          worker === "pi" ? owned : reference.result["sessionId"];
         assert.equal(
           typeof (result["costUsd"] ?? result["estimatedCostUsd"]),
           "number",
         );
+        assert.deepEqual(result, { ...reference.result, sessionId });
         assert.deepEqual(
           transcriptLines(scene, "operation-1"),
-          reference.transcript,
+          reference.transcript.map((line) =>
+            worker === "pi"
+              ? line.replaceAll(
+                  String(reference.result["sessionId"]),
+                  String(sessionId),
+                )
+              : line,
+          ),
         );
         assert.equal(harnessProcesses(harness).length, 1);
       } finally {

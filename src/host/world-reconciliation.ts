@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
 import {
   reconcile,
@@ -12,6 +13,7 @@ export type ReconciledState = Pick<
 >;
 
 export interface WorkflowOutcome {
+  readonly result?: string;
   readonly kind: string;
   readonly promotionId?: string;
   readonly reason?: string;
@@ -21,11 +23,17 @@ export interface WorkflowOutcome {
 
 export interface ReconciliationPorts {
   readonly state: () => Promise<ReconciledState>;
-  readonly submit: (command: Readonly<Record<string, unknown>>) => Promise<{
+  readonly submit: (
+    command: Readonly<Record<string, unknown>>,
+    documents?: readonly string[],
+  ) => Promise<{
     readonly kind: "accepted" | "duplicate" | "rejected" | "failed";
   }>;
   readonly runs: () => Promise<readonly WorldRun[]>;
-  readonly outcome: (receipt: string) => Promise<WorkflowOutcome | undefined>;
+  readonly outcome: (
+    receipt: string,
+    runId: string,
+  ) => Promise<WorkflowOutcome | undefined>;
 }
 
 export interface Pass {
@@ -44,29 +52,36 @@ async function withOutcome(
     world.status === "completed" &&
     state.runs[world.runId]?.status === "running";
   if (!ended) return world;
-  const read = await ports.outcome(world.receipt).then(
+  const read = await ports.outcome(world.receipt, world.runId).then(
     (outcome) => ({ outcome }),
     () => undefined,
   );
   if (read === undefined) return { ...world, status: "unreadable" };
   return read.outcome === undefined
     ? world
-    : {
-        ...world,
-        outcome: read.outcome.kind,
-        ...(read.outcome.promotionId === undefined
-          ? {}
-          : { promotionId: read.outcome.promotionId }),
-        ...(read.outcome.issueUpdate === "failed"
-          ? { issueUpdate: read.outcome.issueUpdate }
-          : {}),
-        ...(read.outcome.ticketStatus === undefined
-          ? {}
-          : { ticketStatus: read.outcome.ticketStatus }),
-        ...(read.outcome.reason === undefined
-          ? {}
-          : { outcomeReason: read.outcome.reason }),
-      };
+    : { ...world, ...outcomeFields(read.outcome) };
+}
+
+function outcomeFields(outcome: WorkflowOutcome): Partial<WorldRun> {
+  return {
+    outcome: outcome.kind,
+    ...(outcome.result === undefined
+      ? {}
+      : {
+          result: `sha256:${createHash("sha256").update(outcome.result).digest("hex")}`,
+          resultBody: outcome.result,
+        }),
+    ...(outcome.promotionId === undefined
+      ? {}
+      : { promotionId: outcome.promotionId }),
+    ...(outcome.issueUpdate === "failed"
+      ? { issueUpdate: outcome.issueUpdate }
+      : {}),
+    ...(outcome.ticketStatus === undefined
+      ? {}
+      : { ticketStatus: outcome.ticketStatus }),
+    ...(outcome.reason === undefined ? {} : { outcomeReason: outcome.reason }),
+  };
 }
 
 export async function reconcileWorld(
@@ -80,7 +95,13 @@ export async function reconcileWorld(
   const { commands, reports, conflicts } = reconcile(state, runs);
   const sent: string[] = [];
   for (const command of commands) {
-    const receipt = await ports.submit(command);
+    const body = runs.find(
+      (run) => run.result === command["result"],
+    )?.resultBody;
+    const receipt = await ports.submit(
+      command,
+      body === undefined ? undefined : [body],
+    );
     sent.push(`${String(command["commandId"])} ${receipt.kind}`);
     if (receipt.kind === "failed")
       return { sent, interrupted: true, reports, conflicts };

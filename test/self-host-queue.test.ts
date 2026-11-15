@@ -168,3 +168,28 @@ await test("CLV-361 an explicit queues environment value takes precedence over f
   assert.equal(plan.kind, "on");
   assert.deepEqual(plan.values.lanes, { value: 6, source: "environment" });
 });
+
+await test("CLV-363 a declared feed starts its queue without ticket selection commands", () => {
+  const configuration = {
+    declarations: [
+      {
+        workflowId: "develop",
+        queue: { everySeconds: 120, lanes: 1, feed: "developFeed" },
+      },
+    ],
+    sources: {},
+  };
+  for (const environment of [
+    {},
+    { CLOVING_TICKET_COMMAND: '["ticket"]' },
+    { CLOVING_QUEUE_SECONDS: "10", CLOVING_TICKET_COMMAND: '["ticket"]' },
+  ]) {
+    const plan = queuePlan(environment, configuration);
+    assert.equal(plan.kind, "on");
+    assert.equal(plan.workflowId, "develop");
+    assert.deepEqual(queueLimits(environment, plan).room, {
+      maxLoadPerCore: 0.7,
+      maxMemoryPressure: "normal",
+    });
+  }
+});

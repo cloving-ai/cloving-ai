@@ -7,6 +7,7 @@ import packageMetadata from "#package" with { type: "json" };
 import { record } from "../src/protocol.ts";
 import {
   isWorkflowDeclaration,
+  queueFeed,
   type DeclaredWorkflow,
 } from "../src/workflow-declaration.ts";
 import type { WorkflowRefusal } from "../src/workflow-refusals.ts";
@@ -188,11 +189,17 @@ function operatorDeclaration(
   const functions = entries.flatMap(([, functions]) =>
     Object.values(functions),
   );
-  const [workflow] = functions;
+  if (!isWorkflowDeclaration(declaration))
+    throw new Error("The admitted workflow declaration is invalid.");
+  const feed = queueFeed(declaration);
+  const workflow = functions.find(
+    (entry) => !entry.workflowId.endsWith(`//${feed ?? ""}`),
+  );
   if (
-    !isWorkflowDeclaration(declaration) ||
-    functions.length !== 1 ||
-    workflow === undefined
+    functions.length !== (feed === undefined ? 1 : 2) ||
+    workflow === undefined ||
+    (feed !== undefined &&
+      !functions.some((entry) => entry.workflowId.endsWith(`//${feed}`)))
   )
     throw new Error(
       "The admitted workflow is missing from the compiled bundle.",

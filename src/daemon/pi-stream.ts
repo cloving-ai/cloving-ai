@@ -1,6 +1,10 @@
 import {
+  responseIdentity,
+  responseAnchor,
+  piSessionHeader,
   validPiActivity,
   validPiToolResult,
+  piMessageFailure,
   piWorkEvents,
 } from "./pi-records.ts";
 import { record, type Fields } from "../protocol.ts";
@@ -13,21 +17,26 @@ import {
   type PiAccounting,
   type PiResponseUsage,
 } from "../pi-usage.ts";
-import { sumUsage, type WorkerUsage } from "../worker-usage.ts";
+import { sumUsage, usageOf, type WorkerUsage } from "../worker-usage.ts";
 import { piActivity } from "./pi-activity.ts";
 
 interface State {
   readonly activity: ReturnType<typeof piActivity>;
   sessionId: string | null;
+  sessionHeader: string | null;
+  invocationStarted: boolean;
   settled: boolean;
   aborted: boolean;
   openAssistant: boolean;
+  openIdentity: string | undefined;
   failure: string | undefined;
   outcomeError: string | undefined;
   message: Fields | undefined;
   readonly responses: PiResponseUsage[];
   readonly responseIds: Set<string>;
+  readonly startIds: Set<string>;
   readonly tools: Set<string>;
+  readonly historicalTools: Set<string>;
   readonly nested: WorkerUsage[];
   readonly nestedIds: Set<string>;
   auxiliaryWork: boolean;
@@ -47,56 +56,47 @@ function messageText(message: State["message"]): string {
     .join("\n");
 }
 
-function contentParts(content: unknown): readonly Fields[] | undefined {
-  if (!Array.isArray(content)) return undefined;
-  const parts = content.map((part: unknown) => record(part));
-  if (parts.some((part) => part === undefined)) return undefined;
-  return parts.filter((part) => part !== undefined);
+function historicalToolEvent(event: Fields, state: State): boolean {
+  const message = record(event["message"]);
+  return state.historicalTools.has(
+    text(event["toolCallId"] ?? message?.["toolCallId"]),
+  );
 }
 
-function validPart(part: Fields): boolean {
-  switch (part["type"]) {
-    case "text":
-      return typeof part["text"] === "string";
-    case "thinking":
-      return typeof part["thinking"] === "string" || part["redacted"] === true;
-    case "toolCall":
-      return (
-        typeof part["id"] === "string" &&
-        typeof part["name"] === "string" &&
-        record(part["arguments"]) !== undefined
-      );
-    default:
-      return false;
-  }
+function replayed(event: Fields, state: State): boolean {
+  const message = record(event["message"]);
+  if (historicalToolEvent(event, state)) return true;
+  if (
+    !["message_start", "message_end"].includes(String(event["type"])) ||
+    message?.["role"] !== "assistant"
+  )
+    return false;
+  const identity = responseIdentity(message);
+  if (identity === undefined) return false;
+  if (state.responseIds.has(identity)) return true;
+  return event["type"] === "message_start" && state.startIds.has(identity);
+}
+
+function replayedAssistant(message: Fields, state: State): readonly string[] {
+  if (
+    state.openIdentity === undefined ||
+    state.openIdentity !== responseAnchor(message)
+  )
+    return [];
+  state.openAssistant = false;
+  state.openIdentity = undefined;
+  return state.activity.completed({ content: [] });
 }
 
 function assistant(message: Fields, state: State): readonly string[] {
-  const parts = contentParts(message["content"]);
-  const reason = message["stopReason"];
-  if (
-    parts === undefined ||
-    !parts.every(validPart) ||
-    !["stop", "length", "toolUse", "error", "aborted", "deferred"].includes(
-      text(reason),
-    )
-  ) {
-    state.failure ??= "Pi malformed assistant record";
-    return [];
-  }
+  const response = piResponse(message);
+  const identity = responseIdentity(message);
+  if (identity !== undefined && state.responseIds.has(identity))
+    return replayedAssistant(message, state);
   state.message = message;
   state.outcomeError = undefined;
   state.openAssistant = false;
-  const response = piResponse(message);
-  const identity =
-    response.responseId === null
-      ? undefined
-      : JSON.stringify([
-          response.provider,
-          response.model,
-          response.responseId,
-        ]);
-  if (identity !== undefined && state.responseIds.has(identity)) return [];
+  state.openIdentity = undefined;
   if (identity !== undefined) state.responseIds.add(identity);
   state.responses.push(response);
   return state.activity.completed(message);
@@ -104,6 +104,7 @@ function assistant(message: Fields, state: State): readonly string[] {
 
 function toolResult(event: Fields, state: State): readonly string[] {
   const id = text(event["toolCallId"]);
+  if (state.historicalTools.has(id)) return [];
   const result = record(event["result"]) ?? event;
   if (result["nestedCalls"] !== undefined) state.auxiliaryWork = true;
   if (result["usage"] !== undefined && !state.nestedIds.has(id)) {
@@ -159,15 +160,44 @@ function settled(event: Fields, state: State): void {
 }
 
 function received(event: Fields, state: State): readonly string[] {
+  if (state.failure !== undefined) return [];
   if (event["type"] === "session") return session(event, state);
-  if (state.sessionId === null) state.failure ??= "Pi missing session record";
-  if (!validPiActivity(event)) {
-    state.failure ??= `Pi malformed ${String(event["type"])} record`;
+  if (event["type"] === "response") return [];
+  state.failure = activityFailure(event, state);
+  if (state.failure !== undefined) return [];
+  if (event["type"] === "agent_start") state.invocationStarted = true;
+  if (
+    !state.invocationStarted &&
+    ["message_start", "message_end"].includes(String(event["type"]))
+  )
     return [];
-  }
-  if (piWorkEvents.has(String(event["type"]))) state.settled = false;
+  if (!replayed(event, state) && piWorkEvents.has(String(event["type"])))
+    state.settled = false;
   invalidateOutcome(event, state);
   return activity(event, state);
+}
+
+function activityFailure(event: Fields, state: State): string | undefined {
+  if (state.sessionId === null) return "Pi missing session record";
+  const failure = piMessageFailure(event);
+  if (failure !== undefined) return failure;
+  return validPiActivity(event)
+    ? undefined
+    : `Pi malformed ${String(event["type"])} record`;
+}
+
+function messageStarted(event: Fields, state: State): readonly string[] {
+  const message = record(event["message"]);
+  if (message?.["role"] !== "assistant") return [];
+  const replay = replayed(event, state);
+  if (replay && !state.openAssistant)
+    state.openIdentity = responseAnchor(message);
+  if (replay) return [];
+  const identity = responseIdentity(message);
+  if (identity !== undefined) state.startIds.add(identity);
+  state.openAssistant = true;
+  state.openIdentity = responseAnchor(message);
+  return state.activity.start(message);
 }
 
 function activity(event: Fields, state: State): readonly string[] {
@@ -176,11 +206,7 @@ function activity(event: Fields, state: State): readonly string[] {
       settled(event, state);
       break;
     case "message_start":
-      if (record(event["message"])?.["role"] === "assistant") {
-        state.openAssistant = true;
-        return state.activity.start(record(event["message"]) ?? {});
-      }
-      break;
+      return messageStarted(event, state);
     case "message_update":
       state.openAssistant = true;
       return state.activity.update(event);
@@ -198,6 +224,7 @@ function activity(event: Fields, state: State): readonly string[] {
 function toolActivity(event: Fields, state: State): readonly string[] {
   switch (event["type"]) {
     case "tool_execution_start":
+      if (state.historicalTools.has(text(event["toolCallId"]))) return [];
       return [
         JSON.stringify({
           type: "assistant",
@@ -256,23 +283,40 @@ function parsed(line: string, state: State): readonly string[] {
   }
 }
 
-export function piStream() {
-  const state: State = {
+interface PiStreamSession {
+  readonly historicalResponses?: readonly string[];
+  readonly historicalTools?: readonly string[];
+  readonly id: string;
+  readonly cwd: string;
+  readonly timestamp: string;
+}
+
+function initialState(ownedSession: PiStreamSession | undefined): State {
+  return {
     activity: piActivity(),
     sessionId: null,
+    sessionHeader: piSessionHeader(ownedSession),
+    invocationStarted: false,
     settled: false,
     aborted: false,
     openAssistant: false,
+    openIdentity: undefined,
     failure: undefined,
     outcomeError: undefined,
     message: undefined,
     responses: [],
-    responseIds: new Set(),
-    tools: new Set(),
+    responseIds: new Set(ownedSession?.historicalResponses),
+    startIds: new Set(),
+    tools: new Set(ownedSession?.historicalTools),
+    historicalTools: new Set(ownedSession?.historicalTools),
     nested: [],
     nestedIds: new Set(),
     auxiliaryWork: false,
   };
+}
+
+export function piStream(ownedSession?: PiStreamSession) {
+  const state = initialState(ownedSession);
   return {
     line: (line: string) =>
       parsed(line.endsWith("\r") ? line.slice(0, -1) : line, state),
@@ -283,10 +327,12 @@ export function piStream() {
     },
     result: (exitCode: number | null): string => {
       const error = failure(state, exitCode);
+      const complete =
+        state.settled && !state.openAssistant && state.failure === undefined;
       const accounting: PiAccounting = {
         scope: "primary-model",
         responses: state.responses,
-        auxiliaryWork: state.auxiliaryWork,
+        auxiliaryWork: state.auxiliaryWork || !complete,
         nestedUsage: state.nested.length === 0 ? null : sumUsage(state.nested),
       };
       return JSON.stringify({
@@ -296,9 +342,9 @@ export function piStream() {
         session_id: state.sessionId,
         model: piPricingModel({ ...accounting, auxiliaryWork: false }),
         pricingModel: piPricingModel(accounting),
-        total_cost_usd: piBilledCost(accounting),
+        total_cost_usd: complete ? piBilledCost(accounting) : null,
         piAccounting: accounting,
-        usage: piTotalUsage(accounting),
+        usage: complete ? piTotalUsage(accounting) : usageOf(null),
         num_turns: state.responses.length,
       });
     },
@@ -306,13 +352,21 @@ export function piStream() {
 }
 
 function session(event: Fields, state: State): readonly string[] {
-  if (
-    state.sessionId !== null ||
-    event["version"] !== 3 ||
-    text(event["id"]) === ""
-  )
+  if (event["version"] !== 3 || text(event["id"]) === "") {
     state.failure ??= "Pi unsupported or malformed session record";
-  state.sessionId = text(event["id"]) || null;
+    return [];
+  }
+  const header = JSON.stringify([
+    event["id"],
+    event["cwd"],
+    event["timestamp"],
+  ]);
+  if (state.sessionHeader !== null && state.sessionHeader !== header) {
+    state.failure ??= "Pi conflicting session record";
+    return [];
+  }
+  state.sessionId = text(event["id"]);
+  state.sessionHeader = header;
   return [];
 }
 

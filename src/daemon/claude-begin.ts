@@ -50,17 +50,16 @@ function turnMetadata(start: Started) {
   };
 }
 
-export async function begun(
-  parts: Parts,
-  start: Started & {
-    readonly prompt: string;
-    readonly profile: TurnProfile;
-    readonly resume?: TurnResume;
-    readonly attach?: TurnAttach;
-    readonly wait?: WaitResume;
-    readonly signal: AbortSignal;
-  },
-): Promise<void> {
+interface BeginTurn extends Started {
+  readonly prompt: string;
+  readonly profile: TurnProfile;
+  readonly resume?: TurnResume;
+  readonly attach?: TurnAttach;
+  readonly wait?: WaitResume;
+  readonly signal: AbortSignal;
+}
+
+export async function begun(parts: Parts, start: BeginTurn): Promise<void> {
   const { intent, key, folder, tree, prompt, harness } = start;
   const stopping = { requested: false, controller: new AbortController() };
   const cancel = () => {
@@ -95,6 +94,7 @@ export async function begun(
     },
   );
   parts.active.set(key, {
+    ...(harness.output === undefined ? {} : { output: harness.output }),
     worker: harness.worker,
     intent,
     turn,

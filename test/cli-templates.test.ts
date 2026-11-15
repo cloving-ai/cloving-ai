@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { readFile, writeFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -155,13 +155,8 @@ await test("CLV-223 templates copy with an id renames the files, the workflow an
     const workflow = record(declaration?.["workflow"]);
     assert.equal(workflow?.["workflowId"], "site-develop");
     assert.equal(declaration?.["template"], "develop");
-    await writeFile(
-      declarationFile,
-      JSON.stringify({
-        ...declaration,
-        workflow: { ...workflow, queue: false },
-      }),
-    );
+    assert.equal(record(workflow["queue"])?.["feed"], "siteDevelopFeed");
+    assert.match(source, /export async function siteDevelopFeed\(/);
     const admitted = listed(root).filter(
       (item) =>
         ["develop", "site-develop"].includes(String(item["workflowId"])) &&

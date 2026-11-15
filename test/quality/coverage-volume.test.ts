@@ -1,13 +1,17 @@
 import assert from "node:assert/strict";
 import { Parser } from "acorn";
 import { spawnSync } from "node:child_process";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { syncBuiltinESMExports } from "node:module";
 import { join, resolve } from "node:path";
 import { test } from "node:test";
 import timers, { setTimeout } from "node:timers/promises";
 import { pathToFileURL } from "node:url";
-import { collectCoverage } from "../../quality/coverage-report.ts";
+import istanbul from "istanbul-lib-coverage";
+import {
+  collectCoverage,
+  readScriptCoverage,
+} from "../../quality/coverage-report.ts";
 import { testMilliseconds } from "../test-timing.ts";
 import { withFiles } from "./files-fixture.ts";
 
@@ -48,6 +52,23 @@ async function requestedCoverage(directory: string): Promise<void> {
       ],
     }),
   );
+}
+
+async function withCoverageMap(
+  run: (map: istanbul.CoverageMap) => Promise<void>,
+): Promise<void> {
+  const descriptor = Object.getOwnPropertyDescriptor(
+    istanbul,
+    "createCoverageMap",
+  );
+  assert.ok(descriptor);
+  const map = istanbul.createCoverageMap({});
+  Object.defineProperty(istanbul, "createCoverageMap", { value: () => map });
+  try {
+    await run(map);
+  } finally {
+    Object.defineProperty(istanbul, "createCoverageMap", descriptor);
+  }
 }
 
 await test("CLV-122 converts repeated process coverage profiles once per collection and preserves their merged metrics", async () => {
@@ -104,6 +125,85 @@ await test("CLV-122 keeps identical coverage profiles for different source files
       { ...expected, path: second },
     ]);
   });
+});
+
+await test("CLV-361 merges repeated process profiles once and preserves every hit", async () => {
+  await withFiles({}, async (directory) => {
+    await requestedCoverage(directory);
+    const coverage = join(directory, "coverage");
+    const file = join(directory, "main.js");
+    const expected = await collectCoverage(coverage, [file]);
+    const [profile] = await readScriptCoverage(
+      join(coverage, "requested.json"),
+    );
+    assert.ok(profile);
+    await writeFile(
+      join(coverage, "repeated.json"),
+      JSON.stringify({
+        result: Array.from({ length: 100 }, (_, index) => ({
+          ...profile,
+          scriptId: String(index + 2),
+        })),
+      }),
+    );
+    await withCoverageMap(async (map) => {
+      const merge = map.merge.bind(map);
+      let merges = 0;
+      map.merge = (data) => {
+        merges += 1;
+        merge(data);
+      };
+      assert.deepEqual(await collectCoverage(coverage, [file]), expected);
+      assert.deepEqual(Object.values(map.fileCoverageFor(file).s), [101]);
+      assert.equal(merges, 1);
+    });
+  });
+});
+
+await test("CLV-361 repeated profiles retain function hits and implicit branch hits", async () => {
+  await withFiles(
+    {
+      "main.mjs":
+        "export function choose(input) { if (input) return 1; return 0; }",
+    },
+    async (directory) => {
+      const coverage = join(directory, "coverage");
+      const file = join(directory, "main.mjs");
+      const run = spawnSync(
+        process.execPath,
+        [
+          "--input-type=module",
+          "-e",
+          `import { choose } from ${JSON.stringify(pathToFileURL(file).href)}; choose(true); choose(false);`,
+        ],
+        {
+          encoding: "utf8",
+          env: { NODE_V8_COVERAGE: coverage },
+          timeout: testMilliseconds(30000),
+        },
+      );
+      assert.equal(run.status, 0, run.stderr);
+      const expected = await collectCoverage(coverage, [file]);
+      const [recording] = await readdir(coverage);
+      assert.ok(recording);
+      const profiles = await readScriptCoverage(join(coverage, recording));
+      const profile = profiles.find(
+        (value) => value.url === pathToFileURL(file).href,
+      );
+      assert.ok(profile);
+      await writeFile(
+        join(coverage, "repeated.json"),
+        JSON.stringify({ result: Array.from({ length: 100 }, () => profile) }),
+      );
+      await withCoverageMap(async (map) => {
+        assert.deepEqual(await collectCoverage(coverage, [file]), expected);
+        assert.deepEqual(Object.values(map.fileCoverageFor(file).f), [202]);
+        assert.deepEqual(Object.values(map.fileCoverageFor(file).b), [
+          [101, 101],
+        ]);
+      });
+    },
+  );
 });
 
 for (const unfinished of ["", '{"result":'])

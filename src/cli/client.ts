@@ -23,6 +23,7 @@ const lostDetails: ReadonlyMap<string, string> = new Map([
   ["steer-run", resend],
   ["queue-command", resend],
   ["queue-lanes", resend],
+  ["queue-setting", resend],
   [
     "restart",
     "The connection ended before the reply. The restart can be pending or complete. Run cloving status before you send the restart again.",

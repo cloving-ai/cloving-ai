@@ -38,6 +38,34 @@ const command = (
 ): Promise<Readonly<Record<string, unknown>>> =>
   call(harness, { operation: "queue-command", parameters });
 
+await test("CLV-373 only an explicit CLI workflow selector requests a workflow drain", () =>
+  withHarness(async (harness) => {
+    const changes: unknown[] = [];
+    await harness.start({
+      workflows: [queued(harness)],
+      queue: {
+        ...port({ kind: "changed" }),
+        change: (request) => {
+          changes.push(request);
+          return Promise.resolve({ kind: "changed" });
+        },
+      },
+    });
+    for (const args of [
+      ["drain", "--command-id", "legacy-drain"],
+      ["drain", "--workflow", "develop", "--command-id", "local-drain"],
+      ["resume", "--workflow", "develop", "--command-id", "resume-drain"],
+    ]) {
+      const reply = await harness.cli(["queue", ...args, "--json"]);
+      assert.equal(reply.status, 0, reply.stdout + reply.stderr);
+    }
+    assert.deepEqual(changes, [
+      { command: "drain", commandId: "legacy-drain" },
+      { command: "drain", commandId: "local-drain", scope: "workflow" },
+      { command: "resume", commandId: "resume-drain" },
+    ]);
+  }));
+
 await test("CLV-273 the service refuses a queue command ID that names another command", () =>
   withHarness(async (harness) => {
     await harness.start({
@@ -218,6 +246,7 @@ await test("CLV-361 the lane endpoint rejects invalid requests and reports stale
       { expectedLanes: 0 },
       { commandId: "bad id" },
       { workflowId: "bad id" },
+      { field: "queue.lanes" },
     ]) {
       const reply = await call(harness, {
         operation: "queue-lanes",
@@ -239,4 +268,32 @@ await test("CLV-361 the lane endpoint rejects invalid requests and reports stale
       });
       assert.equal(reply["code"], code);
     }
+  }));
+
+await test("CLV-377 a replay with a different effective limit cannot report applied", () =>
+  withHarness(async (harness) => {
+    await harness.start({
+      workflows: [queued(harness)],
+      queue: {
+        control: () => ({
+          failedRunIds: [],
+          drain: undefined,
+          error: undefined,
+          lanes: 4,
+        }),
+        change: () => Promise.resolve({ kind: "changed" }),
+        changeLanes: () => Promise.resolve({ kind: "replayed" }),
+      },
+    });
+    const reply = await call(harness, {
+      operation: "queue-lanes",
+      parameters: {
+        workflowId: "develop",
+        lanes: 3,
+        expectedLanes: 2,
+        commandId: "old-apply",
+      },
+    });
+    assert.equal(reply["code"], "queue-lanes-not-applied");
+    assert.match(String(reply["detail"]), /4.*Refresh/);
   }));

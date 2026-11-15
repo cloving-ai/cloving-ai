@@ -1,3 +1,4 @@
+import { internalFeedPrefix } from "../queue-feed.ts";
 import type {
   CommandWaits,
   WorkflowStage,
@@ -28,6 +29,7 @@ export type Resolution =
     };
 
 export interface ResolutionRequest {
+  readonly source?: "feed";
   readonly workflowId: string;
   readonly submission: Readonly<Record<string, unknown>>;
   readonly commandId: string;
@@ -43,6 +45,7 @@ export interface Resolver {
 }
 
 export interface WorkflowRegistration {
+  readonly feed?: FeedRegistration;
   readonly queue?: boolean;
   readonly workflowId: string;
   readonly manifest: ExecutionManifest;
@@ -57,6 +60,12 @@ export interface WorkflowRegistration {
   readonly commands?: readonly string[];
   readonly commandWaits?: CommandWaits;
   readonly admission?: "when-idle" | number;
+}
+
+export interface FeedRegistration {
+  readonly functionName: string;
+  readonly effectLimit: number;
+  readonly manifest: ExecutionManifest;
 }
 
 export interface Registered extends WorkflowRegistration {
@@ -88,6 +97,25 @@ function availableVersions(workflow: Registered): readonly Registered[] {
   const manifest = { ...workflow.manifest };
   delete manifest.bundleDigest;
   return [workflow, { ...workflow, manifest, pin: workflowPin(manifest) }];
+}
+
+function feedVersions(workflow: Registered): readonly Registered[] {
+  const { feed } = workflow;
+  if (feed === undefined) return [];
+  return availableVersions(
+    registered({
+      workflowId: internalFeedPrefix + workflow.workflowId,
+      manifest: feed.manifest,
+      availability: workflow.availability,
+      effectLimit: feed.effectLimit,
+      submission: { maximumBytes: 2, fields: {} },
+      resolver: {
+        id: "queue-feed",
+        version: "1",
+        resolve: () => Promise.resolve({ kind: "resolved", input: null }),
+      },
+    }),
+  );
 }
 
 export interface RegistryOptions {
@@ -136,7 +164,10 @@ export function workflowRegistry(
   const available = [
     ...current,
     ...(options.retainedWorkflows ?? []).map(registered),
-  ].flatMap(availableVersions);
+  ].flatMap((workflow) => [
+    ...availableVersions(workflow),
+    ...feedVersions(workflow),
+  ]);
   const byPin = (pin: string): Registered | undefined =>
     available.find((workflow) => workflow.pin === pin);
   const bundle = async (pinned: ExecutionManifest) => {

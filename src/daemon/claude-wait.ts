@@ -1,10 +1,12 @@
+import type { RecoveryWay } from "../turn-recovery.ts";
 import type { ProtectedIntent } from "../broker/actor/delivery-intents.ts";
-import { turnWait, type TurnWait } from "../turn-launch.ts";
+import { turnWait, type TurnWait, type TurnLaunch } from "../turn-launch.ts";
 import { waitEnd } from "../cli/turn-waits.ts";
 import { readRecord } from "./operation-journal.ts";
-import { recordedProfile } from "./claude-attach.ts";
+import { attachPlan, recordedProfile } from "./claude-attach.ts";
 import {
   priorEnd,
+  resumePlan,
   recordedField,
   recordedTexts,
   recordedTree,
@@ -59,4 +61,26 @@ export async function waitPlan(
   const selected = await recordedProfile(settings, { started, intent });
   if (typeof selected === "string") return selected;
   return { wait, tree, ...selected };
+}
+
+export function recoveryPlan(
+  settings: Parameters<typeof resumePlan>[0],
+  request: {
+    readonly folder: string;
+    readonly started: unknown;
+    readonly intent: ProtectedIntent;
+    readonly signal: AbortSignal;
+    readonly launch?: TurnLaunch;
+    readonly wait?: TurnWait | undefined;
+  },
+) {
+  const { launch, wait } = request;
+  if (launch !== undefined) return attachPlan(settings, { ...request, launch });
+  if (wait !== undefined) return waitPlan(settings, { ...request, wait });
+  return resumePlan(settings, request);
+}
+
+export function recoveryWay(plan: object): RecoveryWay {
+  if ("attach" in plan) return "connected";
+  return "wait" in plan ? "waiting" : "resumed";
 }

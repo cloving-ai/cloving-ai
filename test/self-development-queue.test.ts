@@ -1,12 +1,11 @@
 import assert from "node:assert/strict";
 import { readFile, writeFile } from "node:fs/promises";
-import { join } from "node:path";
 import { test } from "node:test";
 import { privateQueue } from "./self-development-fixture.ts";
 import { ended, reached, withoutChildren } from "./self-host-fixture.ts";
 import { call, fields, items } from "./service-fixture.ts";
 
-await test("CLV-227 the private default template receives the queue before and after daemon restart", () =>
+await test("CLV-363 the private develop feed selects tickets without queue commands before and after restart", () =>
   withoutChildren(async () => {
     const fixture = await privateQueue();
     const asked = () =>
@@ -15,7 +14,7 @@ await test("CLV-227 the private default template receives the queue before and a
         { operation: "status", parameters: {} },
       );
     for (const count of [1, 2]) {
-      await writeFile(join(fixture.root, "ready"), String(899 + count));
+      await readyIssue(fixture.state, 899 + count);
       const child = await fixture.start(fixture.environment);
       try {
         const runs = await reached(async () => {
@@ -41,3 +40,24 @@ await test("CLV-227 the private default template receives the queue before and a
       }
     }
   }));
+
+async function readyIssue(state: string, number: number): Promise<void> {
+  const github = fields(JSON.parse(await readFile(state, "utf8")));
+  await writeFile(
+    state,
+    JSON.stringify({
+      ...github,
+      issueRows: [
+        {
+          number,
+          state: "open",
+          title: `Task ${String(number)}`,
+          body: "Do the work.",
+          html_url: `https://github.com/acme/demo/issues/${String(number)}`,
+          created_at: "2026-11-01T00:00:00Z",
+          labels: [{ name: "cloving: ready" }],
+        },
+      ],
+    }),
+  );
+}

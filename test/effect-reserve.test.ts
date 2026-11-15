@@ -34,6 +34,46 @@ await test("CLV-322 reloaded queue limits keep a reserve from 0 to 8 and refuse 
     assert.equal(queueLimitsOf({ ...limits, reserved }), undefined);
 });
 
+await test("CLV-377 global reload limits validate optional caps and source metadata as one pair", () => {
+  const limits = { lanes: 4, workingLanes: 4 };
+  for (const global of [
+    null,
+    2,
+    { lanes: 0 },
+    { lanes: 17 },
+    { workingLanes: 0 },
+    { workingLanes: 17 },
+    { lanes: 2, workingLanes: 3 },
+    { sources: null },
+    { sources: { lanes: "unknown", workingLanes: "default" } },
+  ])
+    assert.equal(queueLimitsOf({ ...limits, global }), undefined);
+  for (const global of [
+    {},
+    { lanes: 16 },
+    { workingLanes: 2 },
+    { lanes: 4, workingLanes: 2 },
+    { sources: { lanes: "environment", workingLanes: "default" } },
+  ])
+    assert.deepEqual(queueLimitsOf({ ...limits, global }), {
+      ...limits,
+      global,
+    });
+  assert.equal(
+    effectLeaseLimits({ ...limits, global: {} }).queueWorkingLimit,
+    undefined,
+  );
+  assert.equal(
+    effectLeaseLimits({ ...limits, global: { lanes: 3 } }).queueWorkingLimit,
+    3,
+  );
+  assert.equal(
+    effectLeaseLimits({ ...limits, global: { lanes: 3, workingLanes: 2 } })
+      .queueWorkingLimit,
+    2,
+  );
+});
+
 await test("CLV-322 cloving status shows the effect capacity, the queue limit and the reserve", () => {
   const text = rendered({
     schemaVersion: 1,

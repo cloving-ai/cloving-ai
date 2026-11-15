@@ -1,8 +1,5 @@
-import {
-  type RunningTurn,
-  type TurnEnd,
-  type TurnStart,
-} from "./claude-turn.ts";
+import { steerPi } from "./pi-turn-steering.ts";
+import type { RunningTurn, TurnEnd, TurnStart } from "./claude-turn.ts";
 import { turnHead, retryEvidence, indexFailure } from "./retry-worktree.ts";
 import { readRecord, writeRecord } from "./operation-journal.ts";
 import { resumeWorktree } from "./resume-worktree.ts";
@@ -10,6 +7,7 @@ import { controlledTurn } from "./controlled-turn.ts";
 import { readResume, resumedCommand, resumePrompt } from "./claude-recovery.ts";
 import {
   attemptCommand,
+  recordedTurn,
   combined,
   kindOf,
   attemptSince,
@@ -38,7 +36,7 @@ import {
 export type { RetrySettings } from "./turn-attempts.ts";
 
 export interface RetriedTurn extends RunningTurn {
-  readonly steer: (note: SteerNote) => SteerOutcome;
+  readonly steer: (note: SteerNote) => SteerOutcome | Promise<SteerOutcome>;
 }
 
 const waits = { capacity: [60_000, 180_000], network: [600_000, 2_400_000] };
@@ -108,7 +106,13 @@ async function launched(
     steered,
     start: {
       ...start,
-      command: launchCommand(attempts, launch),
+      ...(entry.piSession === undefined ? {} : { piSession: entry.piSession }),
+      command: [
+        ...launchCommand(attempts, launch),
+        ...(entry.piSession === undefined
+          ? []
+          : ["--session", entry.piSession.path]),
+      ],
       folder,
       ...(entry.attempt === 1
         ? {}
@@ -190,6 +194,7 @@ async function finished(
   turn: RunningTurn,
 ): Promise<TurnEnd> {
   const end = await turn.ended;
+  await attempts.steering.delivery;
   delete attempts.steering.child;
   attempts.ends.push(end);
   await recordedEnd(attempts, { processId: turn.processId, end });
@@ -317,10 +322,6 @@ function attachedAttempt(
   });
 }
 
-function recordedTurn(options: RetryOptions) {
-  return options.attach ?? options.resume ?? options.waiting;
-}
-
 async function startCommit(
   start: TurnStart,
   options: RetryOptions & { readonly stopping: AbortController },
@@ -379,13 +380,16 @@ function retriedTurn(
 ): RetriedTurn {
   return {
     ...running,
-    steer: (note) =>
-      resumable(attempts.start)
+    steer: (note) => {
+      if (attempts.start.worker === "pi" && attempts.start.output !== "text")
+        return steerPi(attempts, note);
+      return resumable(attempts.start)
         ? steer(attempts.steering, {
             note,
             grace: attempts.grace.milliseconds,
           })
-        : queued("harness-cannot-resume"),
+        : queued("harness-cannot-resume");
+    },
     stop: (graceMilliseconds) => {
       attempts.grace.milliseconds = graceMilliseconds;
       attempts.stopping.abort();

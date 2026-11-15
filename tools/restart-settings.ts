@@ -14,12 +14,7 @@ import {
   type ValidateRestart,
 } from "../src/restart-request.ts";
 import { projectConfiguration, topLevel } from "./project-configuration.ts";
-import {
-  queueLimits,
-  queuePlan,
-  queueSpendLimit,
-  readyTicketCommand,
-} from "./self-host-queue.ts";
+import { queueStartup } from "./self-host-queue-startup.ts";
 import { workflowPackageRoot } from "./workflow-bundle-dependencies.ts";
 import { loadWorkflowFolders } from "./workflow-folders.ts";
 import { selfUpdateMilliseconds } from "./self-update-host.ts";
@@ -46,7 +41,7 @@ async function checkedQueueSettings(given: {
       ),
     },
   );
-  const plan = queuePlan(environment, {
+  queueStartup(environment, {
     declarations: folders.workflows.flatMap(({ admitted, declaration }) =>
       admitted && isCandidateDeclaration(declaration)
         ? [declaration.workflow]
@@ -54,9 +49,6 @@ async function checkedQueueSettings(given: {
     ),
     sources,
   });
-  queueLimits(environment, plan);
-  queueSpendLimit(environment, plan);
-  readyTicketCommand(environment, plan);
 }
 
 function changedSettingKey(mark: RestartMark, detail: string): string {

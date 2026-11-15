@@ -21,12 +21,17 @@ const gatedProgram = `
 import { appendFileSync, existsSync, readFileSync } from "node:fs";
 const [specification, gate, log] = process.argv.slice(2);
 const { head, tail, stderr } = JSON.parse(readFileSync(specification, "utf8"));
-appendFileSync(log, JSON.stringify({ processId: process.pid, parentId: process.ppid }) + "\\n");
-for (const line of head) process.stdout.write(line + "\\n");
+const separator = process.argv.indexOf("--");
+const prompt = separator < 0 ? null : process.argv[separator + 1];
+appendFileSync(log, JSON.stringify({ processId: process.pid, parentId: process.ppid, prompt }) + "\\n");
+const selected = process.argv.indexOf("--session");
+const header = selected < 0 ? undefined : JSON.parse(readFileSync(process.argv[selected + 1], "utf8").split("\\n")[0]);
+const output = (line) => header && line.startsWith('{"type":"session",') ? JSON.stringify(header) : line;
+for (const line of head) process.stdout.write(output(line) + "\\n");
 const timer = setInterval(() => {
   if (!existsSync(gate)) return;
   clearInterval(timer);
-  for (const line of tail) process.stdout.write(line + "\\n");
+  for (const line of tail) process.stdout.write(output(line) + "\\n");
   process.stderr.write(stderr);
 }, 20);
 `;

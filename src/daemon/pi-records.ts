@@ -1,4 +1,5 @@
 import { record, type Fields } from "../protocol.ts";
+import { piResponse } from "../pi-usage.ts";
 import { tokenCount } from "../worker-usage.ts";
 
 function update(event: Fields): boolean {
@@ -12,6 +13,41 @@ function update(event: Fields): boolean {
     return typeof update["content"] === "string";
   if (type === "toolcall_end") return record(update["toolCall"]) !== undefined;
   return ["text_start", "thinking_start", "toolcall_start"].includes(type);
+}
+
+function validPart(value: unknown): boolean {
+  const part = record(value) ?? {};
+  switch (part["type"]) {
+    case "text":
+      return typeof part["text"] === "string";
+    case "thinking":
+      return typeof part["thinking"] === "string" || part["redacted"] === true;
+    case "toolCall":
+      return (
+        typeof part["id"] === "string" &&
+        typeof part["name"] === "string" &&
+        record(part["arguments"]) !== undefined
+      );
+    default:
+      return false;
+  }
+}
+
+export function piMessageFailure(event: Fields): string | undefined {
+  if (event["type"] !== "message_end") return undefined;
+  const message = record(event["message"]);
+  if (message === undefined || typeof message["role"] !== "string")
+    return "Pi malformed message_end record";
+  if (message["role"] === "toolResult" && !validPiToolResult(message))
+    return "Pi malformed toolResult message_end record";
+  if (message["role"] !== "assistant") return undefined;
+  const content = message["content"];
+  const reasons = ["stop", "length", "toolUse", "error", "aborted", "deferred"];
+  return Array.isArray(content) &&
+    content.every(validPart) &&
+    reasons.includes(String(message["stopReason"]))
+    ? undefined
+    : "Pi malformed assistant record";
 }
 
 export function validPiActivity(event: Fields): boolean {
@@ -86,4 +122,56 @@ export function validPiToolResult(message: Fields): boolean {
             typeof part["mimeType"] === "string";
     })
   );
+}
+
+export function responseIdentity(message: Fields): string | undefined {
+  const response = piResponse(message);
+  if (response.responseId !== null)
+    return JSON.stringify([
+      response.provider,
+      response.model,
+      response.responseId,
+    ]);
+  const timestamp = message["timestamp"];
+  if (
+    typeof timestamp !== "number" ||
+    !Number.isSafeInteger(timestamp) ||
+    timestamp < 0
+  )
+    return undefined;
+  return JSON.stringify([
+    response,
+    timestamp,
+    message["content"],
+    message["stopReason"],
+    message["errorMessage"],
+    message["api"],
+    message["thinkingLevel"],
+  ]);
+}
+
+export function responseAnchor(message: Fields): string | undefined {
+  const response = piResponse(message);
+  if (response.responseId !== null)
+    return JSON.stringify([
+      response.provider,
+      response.model,
+      response.responseId,
+    ]);
+  if (typeof message["timestamp"] !== "number") return undefined;
+  return JSON.stringify([
+    response.provider,
+    response.model,
+    message["timestamp"],
+  ]);
+}
+
+export function piSessionHeader(identity?: {
+  readonly id: string;
+  readonly cwd: string;
+  readonly timestamp: string;
+}): string | null {
+  return identity === undefined
+    ? null
+    : JSON.stringify([identity.id, identity.cwd, identity.timestamp]);
 }

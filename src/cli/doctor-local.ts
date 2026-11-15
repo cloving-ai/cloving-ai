@@ -6,6 +6,8 @@ import {
   declaredQueueValues,
   parseQueuesSetting,
   queueIntervalValue,
+  queuePollingConfigured,
+  type QueueSource,
   type WorkflowQueueSetting,
 } from "../queue-settings.ts";
 import { queueOffDetail } from "../queue-state.ts";
@@ -144,16 +146,21 @@ function declaredInterval(
   const setting = queueSetting(environment, declared.workflowId);
   if (setting?.state === "off")
     return { result: "ok", detail: queueOffDetail(declared.workflowId) };
-  const source =
+  const source: QueueSource =
     sources["queue.everySeconds"] === "private" ||
     sources["queue.everySeconds"] === "project"
       ? "queue setting"
       : "environment";
-  const everySeconds = queueIntervalValue({
-    declared: declaredQueueValues(declared),
+  const configuration = {
+    declared,
     setting,
     general:
       seconds === undefined ? {} : { everySeconds: { value: seconds, source } },
+  };
+  if (!queuePollingConfigured(configuration)) return intervalRefusal;
+  const everySeconds = queueIntervalValue({
+    ...configuration,
+    declared: declaredQueueValues(declared),
   });
   return {
     result: "ok",

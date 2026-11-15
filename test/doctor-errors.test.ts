@@ -214,6 +214,7 @@ await test("CLV-207 inaccessible settings locations still produce a versioned re
       "next-command",
       "check-command",
       "queue-interval",
+      "queue-feed",
       "private-texts",
     ])
       assert.equal(check(output, code)["result"], "skip", code);
@@ -235,6 +236,7 @@ await test("CLV-207 unavailable workflow discovery skips dependent checks withou
       "gh-login",
       "github-origin",
       "ticket-command",
+      "queue-feed",
       "check-command",
       "private-texts",
     ])

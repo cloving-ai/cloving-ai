@@ -18,6 +18,7 @@ import {
   type TurnStart,
 } from "./claude-turn.ts";
 import { nativeHarness } from "../harness-defaults.ts";
+import { sumPiAccounting } from "../pi-usage.ts";
 import { profileCommand } from "../turn-profile.ts";
 import type { TurnResume } from "./claude-recovery.ts";
 import type { TurnLaunch } from "../turn-launch.ts";
@@ -67,6 +68,10 @@ export interface RetryOptions extends RetrySettings {
   readonly metadata: Readonly<Record<string, unknown>>;
 }
 
+export function recordedTurn(options: RetryOptions) {
+  return options.attach ?? options.resume ?? options.waiting;
+}
+
 export interface Attempts {
   failure?: string;
   readonly start: TurnStart;
@@ -106,10 +111,14 @@ export function combined(attempts: Attempts): TurnEnd {
   const last = ends.at(-1) ?? { exitCode: null, result: undefined };
   const result = last.result ?? ends.find((end) => end.result)?.result;
   if (result === undefined) return last;
+  const piAccounting = sumPiAccounting(
+    ends.map((end) => end.result?.piAccounting),
+  );
   return {
     ...last,
     result: {
       ...result,
+      ...(piAccounting === undefined ? {} : { piAccounting }),
       attempts: ends.map((end, index) =>
         attemptUsage(attempts, { end, attempt: index + 1 }),
       ),
@@ -162,7 +171,10 @@ function selectedCommand(
   ) {
     const model = attempts.ends[attempt - 2]?.result?.model;
     return {
-      command: model == null ? original : replaceCommandModel(original, model),
+      command:
+        start.worker === "pi" || model == null
+          ? original
+          : replaceCommandModel(original, model),
       fallback: undefined,
     };
   }

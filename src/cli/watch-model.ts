@@ -210,6 +210,7 @@ export function turnOf(records: TurnRecords): WatchTurn {
 }
 
 export interface WatchInputs {
+  readonly globalQueue?: Fields;
   readonly schedules?: ShownSchedules;
   readonly loopRuns?: readonly Fields[];
   readonly queue?: Fields;
@@ -368,6 +369,9 @@ export function watchModel(inputs: WatchInputs): WatchModel {
         }),
     ...(inputs.queue === undefined ? {} : { queue: inputs.queue }),
     ...(inputs.queues === undefined ? {} : { queues: inputs.queues }),
+    ...(inputs.globalQueue === undefined
+      ? {}
+      : { globalQueue: inputs.globalQueue }),
     ...(inputs.today === undefined ? {} : { today: inputs.today }),
     workflowRefusals: workflowRefusals(inputs.workflowRefusals),
     updatedAt: inputs.updatedAt,

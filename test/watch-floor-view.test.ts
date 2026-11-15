@@ -118,8 +118,13 @@ await test("CLV-286 the line end of a scheduled workflow with no loop row shows 
   const end = (schedule: ShownSchedule) => {
     const html = page({ ...scheduleModel(schedule), loops: [] });
     const [scheduled = "", manual = ""] = lines(html);
-    assert.match(manual, /<div class="line-end"><\/div>/);
-    return /<div class="line-end">([\s\S]*?)<\/div>/.exec(scheduled)?.[1];
+    assert.match(
+      manual,
+      /<div class="line-end"><p class="meta">No queue configured<\/p><\/div>/,
+    );
+    return /<div class="line-end"><p class="meta">No queue configured<\/p>([\s\S]*?)<\/div>/.exec(
+      scheduled,
+    )?.[1];
   };
   const soon = activeSchedule.nextAt ?? 0;
   assert.equal(
@@ -151,11 +156,16 @@ function queuedModel(ready: unknown): WatchModel {
 await test("CLV-286 the line end of a queued workflow shows the count of ready tickets and the oldest wait", () => {
   const end = (ready: unknown) => {
     const [queued = "", other = ""] = lines(page(queuedModel(ready)));
-    assert.match(other, /<div class="line-end"><\/div>/);
+    assert.match(
+      other,
+      /<div class="line-end"><p class="meta">No queue configured<\/p><\/div>/,
+    );
     assert.match(queued, /line-queue/);
-    return /<div class="line-end">([\s\S]*?)<div class="line-queue/.exec(
-      queued,
-    )?.[1];
+    const readyText =
+      /<span class="line-ready"[^>]*>[\s\S]*?<\/span>/.exec(queued)?.[0] ?? "";
+    const oldest =
+      /<span class="line-wait">[\s\S]*?<\/span>/.exec(queued)?.[0] ?? "";
+    return readyText + oldest;
   };
   assert.equal(
     end({ count: 3, oldestAt: minutesBefore(125) }),
@@ -173,7 +183,7 @@ await test("CLV-286 the line end of a queued workflow shows the count of ready t
     end({ failure: "The command failed." }),
     '<span class="line-ready" title="The command failed.">Ready list failed</span>',
   );
-  assert.equal(end(undefined), "");
+  assert.equal(end(undefined), '<span class="line-ready">unknown ready</span>');
   const served = played(
     queuedModel({ count: 3, oldestAt: minutesBefore(125) }),
     `
@@ -186,7 +196,7 @@ console.log(JSON.stringify({ html: app.inner }));
   );
   assert.match(
     JSON.stringify(served["html"]),
-    /<span class=\\"line-ready\\">3 ready<\/span><span class=\\"line-wait\\">oldest 2h 5m<\/span>/,
+    /<span class=\\"line-ready\\">3 ready<\/span>[\s\S]*<span class=\\"line-wait\\">oldest 2h 5m<\/span>/,
   );
 });
 
@@ -239,7 +249,7 @@ await test("CLV-286 a line name opens the board of its workflow, without workflo
   assert.match(html, /<a class="back" href="#">← Back to the floor<\/a>/);
   assert.match(
     html,
-    /<main class="board"><h2 class="visually-hidden">develop-issue<\/h2>/,
+    /<main class="board"><h2 class="board-title">develop-issue<\/h2>/,
   );
   assert.doesNotMatch(html, /class="workflows"|class="floor"/);
   assert.match(

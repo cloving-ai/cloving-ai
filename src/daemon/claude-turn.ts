@@ -26,6 +26,7 @@ import { runnerProgram, type TurnRunner } from "../turn-runner.ts";
 import { runnerLaunch, type RunnerLaunch } from "./turn-runner-spawn.ts";
 import { attachedTurn, detachedTurn, type TurnExit } from "./detached-turn.ts";
 import type { TurnLaunch } from "../turn-launch.ts";
+import type { PiSession } from "./pi-session.ts";
 import {
   githubTokens,
   passedVariables,
@@ -44,6 +45,7 @@ export interface TurnEnd {
 }
 
 export interface TurnStart {
+  readonly piSession?: PiSession;
   readonly progress?: (progress: TurnProgress) => Promise<void>;
   readonly resultBytes?: number;
   readonly output?: "text";
@@ -219,13 +221,17 @@ function launchedTurn(start: TurnStart): StartedTurn | undefined {
     parts: turnParts,
     standardInput,
     inputExtension,
+    rpc,
   } = turnCommand(start);
   const configuration = mkdtempSync(join(start.folder, "gh-config-"));
   const environment = turnEnvironment(configuration, start);
   const parts = shellCommand(start, { configuration, parts: turnParts });
   try {
     const program = runnerProgram(start.runner, parts);
-    if (!commandFound(program, { ...start, path: environment["PATH"] })) {
+    if (
+      rpc !== true &&
+      !commandFound(program, { ...start, path: environment["PATH"] })
+    ) {
       rmSync(configuration, { recursive: true, force: true });
       return undefined;
     }
@@ -246,6 +252,15 @@ function launchedTurn(start: TurnStart): StartedTurn | undefined {
       environment: launch.environment,
       standardInput,
       configuration,
+      ...(rpc !== true || start.piSession === undefined
+        ? {}
+        : {
+            piRpc: {
+              folder: join(start.folder, "pi-rpc"),
+              session: start.piSession,
+              prompt: start.prompt,
+            },
+          }),
       ...(launch.place === undefined ? {} : { runnerPlace: launch.place }),
     });
   } catch (error) {

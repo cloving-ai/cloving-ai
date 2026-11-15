@@ -1,4 +1,5 @@
 import { startUsage } from "./usage-start.ts";
+import { queueUsage } from "./usage-queue.ts";
 
 const binding =
   "--expected-revision <n> --generation <n> --subject-digest <digest>";
@@ -14,7 +15,7 @@ list and get show the effective source and hidden file values. Unconfigured valu
 Changes keep the previous file as .bak and replace the file atomically under a lock.
 A live lock waits at most ten seconds, then exits with settings-locked.
 Private files, backups and temporary files have mode 0600.
-cloving reload applies changes of profiles, fallbackModels, tokenPrices, workflows.folder, queue.lanes, queue.workingLanes, queue.maxLoadPerCore, queue.maxMemoryPressure and effects.reserved. It also applies the lanes and workingLanes of each workflow in queues. Other changes require a service restart.
+cloving reload applies changes of profiles, fallbackModels, tokenPrices, workflows.folder, queue.lanes, queue.workingLanes, queue.globalLanes, queue.globalWorkingLanes, queue.maxLoadPerCore, queue.maxMemoryPressure and effects.reserved. It also applies the lanes and workingLanes of each workflow in queues. Other changes require a service restart.
 `;
 
 export const commandUsage: Readonly<Record<string, string>> = {
@@ -25,13 +26,11 @@ export const commandUsage: Readonly<Record<string, string>> = {
 Serves cloving_status, cloving_questions and cloving_events as read tools over stdio.
 Serves cloving_run, cloving_answer, cloving_approve, cloving_deny, cloving_pause,
 cloving_resume, cloving_drop, cloving_continue, cloving_dismiss, cloving_steer and cloving_rename to submit runs, decisions,
-notes and names. Each of these tools
-needs a commandId. After a lost reply, send the same commandId again.
+notes and names. Each of these tools needs a commandId. After a lost reply, send the same commandId again.
 The server binds to one repository at startup. It needs an existing Cloving service.
 With --workspace, one server serves each repository of the running workspace.
 It adds the read tool cloving_repositories, which lists the repositories, and
-a repository argument with the workspace names to each tool. A tool that
-changes state needs the repository argument when the workspace lists more than
+a repository argument with the workspace names to each tool. A tool that changes state needs the repository argument when the workspace lists more than
 one repository. A read tool with no repository argument reads each repository.
 Standard output contains only JSON-RPC messages. Diagnostics use standard error.
 --channel tells a connected Claude Code session when a run needs you: a pending
@@ -76,21 +75,7 @@ cloving doctor reports a selected theme that is missing or refused.
 Checks repository requirements without repairs, model turns or GitHub writes.
 Required failures or skipped prerequisites exit with status 1.
 `,
-  queue: `Usage: cloving queue [--workflow <id>] [--json]
-       cloving queue resume [--workflow <id>] [--command-id <id>] [--json]
-       cloving queue drain [--workflow <id>] [--command-id <id>] [--json]
-       cloving queue lanes <n> --workflow <id> [--command-id <id>] [--json]
-
-Shows the state of the queue: running, stopped, draining or drained, with the busy lanes. With several queues, --workflow <id> is required. With one queue, it is optional.
-lanes writes 1 to 16 lanes to the private queues setting and applies it now. Fewer lanes keep runs in work.
-A stopped queue shows the reason and the failed runs in a row.
-resume sets the failure count to 0 and ends a stop or a drain. The next queue check can start a run.
-drain starts no new queue run. The runs in work continue to their end.
-When no lane is busy, the queue records the drain time, writes "Queue drained" one time and shows drained.
-A drained queue is a safe point for a restart. A drain stays in place after a restart.
-The queue keeps the newest 32 command IDs. A repeated kept ID does not apply the command again.
-The reply shows the current state. A different command with a kept ID is refused.
-`,
+  queue: queueUsage,
   report: `Usage: cloving report [--since <hours>] [--json]
 
 Reads loop facts without writing state. Hours are a whole number from 1 to 168; default 24.
@@ -170,7 +155,8 @@ The dismissal is an event of the run and stays after a restart. It does not chan
 
 Records a note of 1 to 4000 characters for an active run. The next agent turn of the run gets the note.
 With --now, a Claude Code or Codex turn in work that recorded a session stops and resumes the same session
-with the note as the next message. A turn takes at most three such notes. In other cases the reply says
+with the note as the next message. A qualified native Pi turn uses its existing RPC process and requires
+both an acknowledgment and the observed note. A turn takes at most three such notes. In other cases the reply says
 queued with the reason, and the note waits for the next turn.
 `,
   rename: `Usage: cloving rename <run-id> (--title <text> [--label <text>] | --clear) [--command-id <id>] [--json]
@@ -189,9 +175,9 @@ Prints the committed events after a sequence. With --json, each line is one even
 Checks and compiles the workflow files again while the service runs.
 New runs use the new bundle. A run that started before the reload stays on the bundle of its pin.
 A new refusal of a workflow file keeps the current workflows and shows the reason.
-A change of the queue workflow, of its declared interval or of a schedule needs a restart.
-It also reads the settings files and the profiles file again, and applies changes of profiles, fallbackModels, tokenPrices, workflows.folder, queue.lanes, queue.workingLanes, queue.maxLoadPerCore, queue.maxMemoryPressure and effects.reserved.
-It applies the lanes and workingLanes of each workflow in queues. A change of state or everySeconds in queues needs a restart.
+A change of the queue workflow, of its activation mode, of its declared interval or of a schedule needs a restart.
+It also reads the settings files and the profiles file again, and applies changes of profiles, fallbackModels, tokenPrices, workflows.folder, queue.lanes, queue.workingLanes, queue.globalLanes, queue.globalWorkingLanes, queue.maxLoadPerCore, queue.maxMemoryPressure and effects.reserved.
+It applies the lanes and workingLanes of each workflow in queues. A change of state or everySeconds, or an added or removed queues entry, needs a restart.
 New turns use the new values. A turn in work keeps the values of its start.
 The reply lists each other changed field as a field that needs a restart. The service keeps its old value.
 An invalid settings file, an invalid profiles file or a profile harness with no worker at the start refuses the reload. Then nothing changes.
@@ -273,7 +259,7 @@ Commands:
   status     List the runs or show one run.
   mcp        Serve the Cloving tools over stdio.
   schedule   List, pause and resume workflow schedules.
-  queue      Show, resume and drain the queue.
+  queue      Show queues, change their lanes and drain or resume them.
   report     Report loop facts and seven-day baselines.
   questions  List the pending decisions.
   answer     Answer one design question.

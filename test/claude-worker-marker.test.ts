@@ -133,11 +133,15 @@ await test("CLV-350 a new worker stops the turn and each other process with its 
 await test("CLV-350 a turn with a marker and no matching process is not connected", () =>
   withScene(async (scene) => {
     await crashedTurn(scene, "sessionless");
+    assert.notEqual(
+      typeof field(record(scene, "operation-1/attempt-1.json"), "sessionId"),
+      "string",
+    );
     const turn = keptTurn(scene);
     process.kill(-turn.parentId, "SIGKILL");
     await until(() => !alive(turn.processId) && !alive(turn.parentId));
     const noted: TurnRecovery[] = [];
-    const next = scene.worker("gated-lines", {
+    const next = scene.worker("sessionless", {
       recovered: (recovery) => noted.push(recovery),
     });
     const reply = await next.reconcile(intent(), signal);

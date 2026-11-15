@@ -27,7 +27,19 @@ await test("CLV-228 queue guidance requires a declared queue workflow", () => {
       line.startsWith("Each workflow declares its own queue with"),
     );
   assert.ok(queue);
-  assert.match(queue, /No interval setting is necessary/);
+  assert.match(
+    queue,
+    /`"queue": true` preserves the legacy activation rule: without `queue.everySeconds` or `CLOVING_QUEUE_SECONDS`, it stays inactive/,
+  );
+  assert.match(
+    queue,
+    /To select the new polling defaults explicitly, use a queue object.*or add that workflow to the `queues` setting/,
+  );
+  assert.match(
+    queue,
+    /Those choices use 120 seconds and 1 lane when no source gives a value/,
+  );
+  assert.doesNotMatch(queue, /No interval setting is necessary/);
   assert.match(queue, /no workflow declares a queue, no queue starts/);
   assert.doesNotMatch(queue, /bundled|develop-issue/);
 });
@@ -90,7 +102,10 @@ const facts: readonly (readonly [string, RegExp])[] = [
     /JSON list .*Requires CLOVING_QUEUE_SECONDS.*queue starts.*one queue interval after each run ends.*no added argument.*JSON list of the ready tickets.*Queue checks do not wait.*id.*readyAt UTC time.*watch page.*not in work.*dependency.*oldest wait.*no default/,
   ],
   ["CLOVING_CLAUDE_COMMAND", /JSON list/],
-  ["CLOVING_PI_COMMAND", /JSON list.*Pi v1\.5\.2.*pi --mode json --no-session/],
+  [
+    "CLOVING_PI_COMMAND",
+    /JSON list.*Pi v1\.5\.2.*default is pi --mode json\. .*private session/,
+  ],
   [
     "CLOVING_GROK_COMMAND",
     /JSON list.*streaming-messages-json.*--always-approve.*-p/,

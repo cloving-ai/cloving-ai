@@ -173,3 +173,90 @@ await test("CLV-361 watch actions off remove the queue endpoint and expose no pa
     },
   );
 });
+
+await test("CLV-377 malformed lane actions cannot reach the service", () => {
+  const requests: ServiceRequest[] = [];
+  return withWatchService(
+    (request) => {
+      if (request.operation === "queue-lanes") requests.push(request);
+      return { kind: "result", result: {} };
+    },
+    async (watch) => {
+      const headers = actionHeaders(watch, await pageToken(watch));
+      const valid = {
+        command: "lanes",
+        workflowId: "develop",
+        lanes: 3,
+        expectedLanes: 2,
+        commandId: "lane-edit",
+      };
+      for (const patch of [
+        { lanes: 0 },
+        { lanes: 17 },
+        { lanes: 1.5 },
+        { lanes: "3" },
+        { expectedLanes: 0 },
+        { commandId: null },
+        { workflowId: "../develop" },
+        { path: "config.json" },
+        { field: "harness.command" },
+      ]) {
+        const response = await postCard(watch, {
+          path: "actions/queue",
+          headers,
+          body: JSON.stringify({ ...valid, ...patch }),
+        });
+        assert.equal(response.status, 403, JSON.stringify(patch));
+      }
+      assert.equal(requests.length, 0);
+    },
+  );
+});
+
+await test("CLV-377 typed global and workflow settings use the existing watch authentication boundary", () => {
+  const requests: ServiceRequest[] = [];
+  return withWatchService(
+    (request) => {
+      if (request.operation === "queue-setting") requests.push(request);
+      return { kind: "result", result: {} };
+    },
+    async (watch) => {
+      const headers = actionHeaders(watch, await pageToken(watch));
+      const valid = {
+        commandId: "global-edit",
+        scope: "global",
+        field: "lanes",
+        action: "set",
+        value: 3,
+        expectedValue: 16,
+      };
+      const post = (body: unknown, given = headers) =>
+        postCard(watch, {
+          path: "actions/queue-settings",
+          headers: given,
+          body: JSON.stringify(body),
+        });
+      assert.equal(
+        (await post(valid, { ...headers, "x-cloving-token": "" })).status,
+        403,
+      );
+      assert.equal(
+        (await post(valid, { ...headers, origin: "https://other.example" }))
+          .status,
+        403,
+      );
+      for (const patch of [
+        { path: "config.json" },
+        { field: "harness.command" },
+        { value: 0 },
+        { workflowId: "alpha" },
+      ])
+        assert.equal((await post({ ...valid, ...patch })).status, 403);
+      assert.equal(requests.length, 0);
+      assert.equal((await post(valid)).status, 200);
+      assert.deepEqual(requests, [
+        { operation: "queue-setting", parameters: valid },
+      ]);
+    },
+  );
+});
