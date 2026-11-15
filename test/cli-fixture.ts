@@ -53,6 +53,15 @@ export interface CliResult {
   readonly stderr: string;
 }
 
+export function parsed(
+  result: Pick<CliResult, "stdout">,
+): Readonly<Record<string, unknown>> {
+  const value: unknown = JSON.parse(result.stdout);
+  if (typeof value !== "object" || value === null || Array.isArray(value))
+    throw new Error(`not-an-object: ${result.stdout}`);
+  return Object.fromEntries(Object.entries(value));
+}
+
 export async function withProject<Result>(
   files: Readonly<Record<string, string | null>>,
   inspect: (

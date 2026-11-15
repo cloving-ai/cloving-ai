@@ -2,12 +2,103 @@ import type { CliResult } from "./service-fixture.ts";
 import type { Scene } from "./self-host-fixture.ts";
 import { eventually, runCli } from "./service-fixture.ts";
 import { readFile, readdir, writeFile } from "node:fs/promises";
+import {
+  closeSync,
+  constants,
+  fstatSync,
+  openSync,
+  readSync,
+  readdirSync,
+  writeSync,
+  writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
 import { record } from "../src/protocol.ts";
 
 interface DiagnosticScene {
   readonly fixture: { readonly directory: string };
   readonly output: () => string;
+}
+
+export interface RestartDeadlineDiagnostics {
+  phase: string;
+  host: string;
+  directory: string | undefined;
+  readonly close: () => void;
+}
+
+function boundedDiagnosticFile(path: string): string {
+  try {
+    const file = openSync(
+      path,
+      constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK,
+    );
+    try {
+      if (!fstatSync(file).isFile()) return "not a regular file";
+      const bytes = Buffer.alloc(1000);
+      return bytes.subarray(0, readSync(file, bytes)).toString("utf8");
+    } finally {
+      closeSync(file);
+    }
+  } catch (error) {
+    return String(error);
+  }
+}
+
+function diagnosticFiles(directory: string | undefined) {
+  if (directory === undefined) return {};
+  try {
+    const names = readdirSync(directory).filter((name) =>
+      name.includes("restart"),
+    );
+    return Object.fromEntries(
+      names
+        .slice(0, 4)
+        .map((name) => [name, boundedDiagnosticFile(join(directory, name))]),
+    );
+  } catch (error) {
+    return { error: String(error) };
+  }
+}
+
+function deadlineSnapshot(state: RestartDeadlineDiagnostics): string {
+  return JSON.stringify({
+    phase: state.phase,
+    host: state.host.slice(-3000),
+    files: diagnosticFiles(state.directory),
+  }).slice(0, 8000);
+}
+
+export function restartDeadlineDiagnostics(
+  signal: AbortSignal,
+): RestartDeadlineDiagnostics {
+  const state: RestartDeadlineDiagnostics = {
+    phase: "setup",
+    host: "",
+    directory: undefined,
+    close: () => {
+      signal.removeEventListener("abort", capture);
+    },
+  };
+  const capture = (): void => {
+    let snapshot: string;
+    try {
+      snapshot = deadlineSnapshot(state);
+    } catch (error) {
+      snapshot = JSON.stringify({ phase: state.phase, error: String(error) });
+    }
+    const message = `Restart deadline diagnostics: ${snapshot}`;
+    const reason: unknown = signal.reason;
+    if (reason instanceof Error)
+      Object.defineProperty(reason, "message", {
+        value: `${reason.message}\n${message}`,
+        configurable: true,
+      });
+    writeSync(process.stderr.fd, `${message}\n`);
+  };
+  signal.addEventListener("abort", capture, { once: true });
+  if (signal.aborted) capture();
+  return state;
 }
 
 export function restartPhases(output: string) {
@@ -111,6 +202,19 @@ export async function restartCli(
     runtime: fixture.runtimeDirectory,
     entryPoint,
     ...(options.signal === undefined ? {} : { signal: options.signal }),
+    observe: (output) => {
+      writeFileSync(
+        file,
+        JSON.stringify({
+          started,
+          options: options.arguments,
+          entryPoint,
+          phase: "cli-pending",
+          stdout: output.stdout.slice(-1000),
+          stderr: output.stderr.slice(-1000),
+        }),
+      );
+    },
   });
   await writeFile(
     file,

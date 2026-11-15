@@ -33,7 +33,9 @@ import {
   candidateCache,
   restoredCandidate,
   rememberedCandidate,
+  restoredCandidateFacts,
 } from "./workflow-candidate-cache.ts";
+import type { CandidateFacts } from "./workflow-candidate-facts.ts";
 
 export type WorkflowCandidateAdmission =
   | { readonly kind: "admitted"; readonly artifactDigest: string }
@@ -59,15 +61,10 @@ export async function admitWorkflowCandidate(
   try {
     const packageRoot = resolve(installed.packageRoot ?? candidatePackageRoot);
     const helpers = input.helpers ?? {};
-    const facts = analyzeWorkflowCandidate(source, { packageRoot, helpers });
-    const codes = checkWorkflowCandidate({
-      declaration,
-      ...facts,
-      ...(input.limits === undefined ? {} : { limits: input.limits }),
-    });
-    if (codes.length > 0) return { kind: "refused", codes };
     return await compiledCandidate({
       source,
+      declaration,
+      limits: input.limits,
       helpers,
       packageRoot,
       cacheDirectory: installed.cacheDirectory,
@@ -83,8 +80,31 @@ function declaredWorkflowCount(declaration: unknown): number {
   return queueFeed(declaration.workflow) === undefined ? 1 : 2;
 }
 
+function analyzedCandidate(
+  input: {
+    readonly source: string;
+    readonly packageRoot: string;
+    readonly helpers: Readonly<Record<string, string>>;
+  },
+  reused: CandidateFacts | undefined,
+): CandidateFacts {
+  if (reused !== undefined) {
+    restartTrace("analysis-cache-hit");
+    return reused;
+  }
+  restartTrace("analysis-start");
+  const facts = analyzeWorkflowCandidate(input.source, {
+    packageRoot: input.packageRoot,
+    helpers: input.helpers,
+  });
+  restartTrace("analysis-end");
+  return facts;
+}
+
 async function compiledCandidate(input: {
   readonly source: string;
+  readonly declaration: unknown;
+  readonly limits: WorkflowLimits | undefined;
   readonly helpers: Readonly<Record<string, string>>;
   readonly packageRoot: string;
   readonly workflowCount: number;
@@ -97,6 +117,14 @@ async function compiledCandidate(input: {
     await prepareCandidateProject(directory, input);
     const cache = await candidateCache({ ...input, project: directory });
     const restored = await restoredCandidate(cache);
+    const reused = await restoredCandidateFacts(cache, restored);
+    const facts = analyzedCandidate(input, reused);
+    const codes = checkWorkflowCandidate({
+      declaration: input.declaration,
+      ...facts,
+      ...(input.limits === undefined ? {} : { limits: input.limits }),
+    });
+    if (codes.length > 0) return { kind: "refused", codes };
     restartTrace(
       restored === undefined ? "candidate-cache-miss" : "candidate-cache-hit",
     );
@@ -106,7 +134,7 @@ async function compiledCandidate(input: {
     const artifactDigest = await compiledDigest(artifactDirectory, input);
     if (artifactDigest === undefined)
       return { kind: "refused", codes: ["compile-failed"] };
-    if (restored === undefined) await rememberedCandidate(cache);
+    if (restored === undefined) await rememberedCandidate(cache, facts);
     return { kind: "admitted", artifactDigest };
   } finally {
     await rm(directory, { recursive: true, force: true });

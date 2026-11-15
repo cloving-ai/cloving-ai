@@ -1,7 +1,7 @@
 import { stopChildGroup } from "./stop-child.ts";
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import { mkdtempSync, realpathSync, rmSync } from "node:fs";
-import { writeFile } from "node:fs/promises";
+import { readFile, readdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
@@ -40,6 +40,17 @@ export function git(
   });
 }
 
+interface StartOptions {
+  readonly arguments: readonly string[];
+  readonly observe?: (output: string) => void;
+}
+
+function startOptions(options: readonly string[] | StartOptions) {
+  return "arguments" in options
+    ? { argumentsList: options.arguments, observe: options.observe }
+    : { argumentsList: options };
+}
+
 export interface Scene {
   readonly entryPoint: string;
   readonly root: string;
@@ -49,7 +60,7 @@ export interface Scene {
   readonly runtimeDirectory: string;
   readonly start: (
     environment?: Readonly<NodeJS.ProcessEnv>,
-    argumentsList?: readonly string[],
+    options?: readonly string[] | StartOptions,
   ) => Promise<ChildProcess>;
   readonly startUntil: (
     expected: string,
@@ -62,6 +73,18 @@ export interface Scene {
 }
 
 const children: ChildProcess[] = [];
+
+export async function stopRecordedTurns(root: string): Promise<void> {
+  const names = (await readdir(root)).filter((name) => name.endsWith(".pid"));
+  for (const name of names) {
+    const processId = Number(await readFile(join(root, name), "utf8"));
+    try {
+      process.kill(processId, "SIGKILL");
+    } catch {
+      continue;
+    }
+  }
+}
 
 function withOrigin(root: string, repository: string): string {
   const origin = join(root, "origin.git");
@@ -140,10 +163,14 @@ export async function scene(
     repository,
     origin,
     runtimeDirectory: join(directory, "run"),
-    start: async (environment = {}, argumentsList = []) =>
+    start: async (environment = {}, options = []) =>
       (
         await launched(
-          { ...settings, environment, argumentsList },
+          {
+            ...settings,
+            environment,
+            ...startOptions(options),
+          },
           "Cloving runs",
         )
       ).child,
@@ -186,6 +213,7 @@ async function launched(
     readonly bound?: string;
     readonly environment?: Readonly<NodeJS.ProcessEnv>;
     readonly argumentsList?: readonly string[];
+    readonly observe?: ((output: string) => void) | undefined;
   },
   expected: string,
 ): Promise<Launch> {
@@ -226,6 +254,7 @@ async function launched(
   for (const stream of [child.stdout, child.stderr])
     stream.on("data", (chunk: Buffer) => {
       output.text += chunk.toString();
+      settings.observe?.(output.text);
     });
   for (let waited = 0; waited < testMilliseconds(30_000) / 20; waited += 1) {
     if (output.text.includes(expected)) return { child, output };

@@ -1,11 +1,21 @@
-import { readFile, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { readFile, readdir, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { basename, dirname, join, resolve } from "node:path";
+import ts from "typescript";
+import { record } from "../src/protocol.ts";
+import {
+  isCandidateFacts,
+  type CandidateFacts,
+} from "./workflow-candidate-facts.ts";
 import metadata from "#package" with { type: "json" };
 import {
   workflowBuildKey,
   rememberWorkflowBuild,
 } from "./self-host-build-cache.ts";
-import { workflowBundleDependencies } from "./workflow-bundle-dependencies.ts";
+import {
+  workflowBundleDependencies,
+  workflowPackageRoot,
+} from "./workflow-bundle-dependencies.ts";
 import {
   readRetainedWorkflowBundle,
   retainWorkflowBundle,
@@ -20,6 +30,37 @@ interface CandidateCache {
   readonly dependencies: string;
 }
 
+async function analysisContext(): Promise<string> {
+  const analyzer = await workflowPackageRoot(
+    resolve(import.meta.dirname, ".."),
+  );
+  const hash = createHash("sha256");
+  hash.update(
+    JSON.stringify([2, process.version, process.platform, process.arch]),
+  );
+  const analyzerMetadata = await readFile(join(analyzer, "package.json"));
+  hash.update(JSON.stringify([metadata, analyzerMetadata.length]));
+  hash.update(analyzerMetadata);
+  hash.update(
+    await workflowBuildKey({
+      product: analyzer,
+      project: analyzer,
+      recordedProject: "analyzer-epoch",
+      dependencies: "",
+    }),
+  );
+  const library = dirname(ts.sys.getExecutingFilePath());
+  for (const name of (await readdir(library)).sort()) {
+    if (!name.endsWith(".js") && !name.endsWith(".d.ts")) continue;
+    const bytes = await readFile(join(library, name));
+    hash.update(JSON.stringify([name, bytes.length]));
+    hash.update(bytes);
+  }
+  return hash.digest("hex");
+}
+
+const executingContext = await analysisContext().catch(() => undefined);
+
 export async function candidateCache(input: {
   readonly packageRoot: string;
   readonly project: string;
@@ -30,12 +71,17 @@ export async function candidateCache(input: {
     product: input.packageRoot,
     packages: Object.keys(metadata.dependencies),
   });
-  const key = await workflowBuildKey({
+  const build = await workflowBuildKey({
     product: input.packageRoot,
     project: input.project,
     recordedProject: "candidate",
     dependencies,
   });
+  const context = await analysisContext();
+  if (context !== executingContext) return undefined;
+  const key = createHash("sha256")
+    .update(JSON.stringify([build, context]))
+    .digest("hex");
   return {
     key,
     dependencies,
@@ -44,6 +90,46 @@ export async function candidateCache(input: {
     directory: join(input.cacheDirectory, "bundles"),
     index: join(input.cacheDirectory, key),
   };
+}
+
+async function verifiedFactBytes(
+  directory: string,
+): Promise<string | undefined> {
+  const bytes = await readFile(join(directory, "analysis.json"), "utf8");
+  const bundle = await readFile(join(directory, "bundle.json"), "utf8");
+  if (createHash("sha256").update(bundle).digest("hex") !== basename(directory))
+    return undefined;
+  const files = record(record(JSON.parse(bundle))?.["files"]);
+  if (
+    files?.["analysis.json"] !==
+    createHash("sha256").update(bytes).digest("hex")
+  )
+    return undefined;
+  return bytes;
+}
+
+export async function restoredCandidateFacts(
+  cache: CandidateCache | undefined,
+  directory: string | undefined,
+): Promise<CandidateFacts | undefined> {
+  if (cache === undefined || directory === undefined) return undefined;
+  try {
+    const bytes = await verifiedFactBytes(directory);
+    if (bytes === undefined) return undefined;
+    const proof = record(JSON.parse(bytes));
+    if (proof?.["schemaVersion"] !== 1 || proof["key"] !== cache.key)
+      return undefined;
+    if (
+      Object.keys(proof).some(
+        (name) => !["schemaVersion", "key", "facts"].includes(name),
+      )
+    )
+      return undefined;
+    const facts = proof["facts"];
+    return isCandidateFacts(facts) ? facts : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 export async function restoredCandidate(
@@ -66,6 +152,7 @@ export async function restoredCandidate(
 
 export async function rememberedCandidate(
   cache: CandidateCache | undefined,
+  facts: CandidateFacts,
 ): Promise<void> {
   if (cache === undefined) return;
   try {
@@ -73,6 +160,10 @@ export async function rememberedCandidate(
       ["declarations.json", "[]"],
       ["dependencies.json", cache.dependencies],
       ["build-inputs.json", JSON.stringify(cache.key)],
+      [
+        "analysis.json",
+        JSON.stringify({ schemaVersion: 1, key: cache.key, facts }),
+      ],
     ])
       await writeFile(join(cache.project, String(name)), String(text));
     const bundleDigest = await retainWorkflowBundle(cache);

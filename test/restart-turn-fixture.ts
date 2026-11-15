@@ -1,6 +1,7 @@
 import {
   diagnosedRestartScene,
   restartCli,
+  type RestartDeadlineDiagnostics,
 } from "./restart-diagnostics-fixture.ts";
 import assert from "node:assert/strict";
 import type { ChildProcess } from "node:child_process";
@@ -25,6 +26,7 @@ import {
   field,
   items,
   scene,
+  stopRecordedTurns,
   withoutChildren,
   type Scene,
 } from "./self-host-fixture.ts";
@@ -74,79 +76,96 @@ export interface TurnHost {
   readonly ending: AbortSignal;
 }
 
-function captured(child: ChildProcess): () => string {
-  const output = { text: "" };
-  for (const stream of [child.stdout, child.stderr])
-    stream?.on("data", (chunk: Buffer) => {
-      output.text += chunk.toString();
-    });
-  return () => output.text;
+interface TurnHostOptions {
+  readonly script: string;
+  readonly prepare?: (product: string) => Promise<void>;
+  readonly signal?: AbortSignal;
+  readonly diagnostics?: RestartDeadlineDiagnostics;
 }
 
-async function stopTurns(root: string): Promise<void> {
-  const names = (await readdir(root)).filter((name) => name.endsWith(".pid"));
-  for (const name of names) {
-    const processId = Number(await readFile(join(root, name), "utf8"));
-    try {
-      process.kill(processId, "SIGKILL");
-    } catch {
-      continue;
-    }
+async function turnFixture(product: string, script: string): Promise<Scene> {
+  const fixture = await scene(script, join(product, "dist/src/cli.js"));
+  const workflows = join(fixture.repository, ".cloving/workflows");
+  await mkdir(workflows, { recursive: true });
+  await writeFile(join(workflows, "long-turn.ts"), workflowSource);
+  await writeFile(
+    join(workflows, "long-turn.declaration.json"),
+    JSON.stringify(declaration),
+  );
+  return fixture;
+}
+
+async function hostedTurn(
+  input: { readonly product: string; readonly options: TurnHostOptions },
+  body: (scene: TurnHost) => Promise<void>,
+): Promise<void> {
+  const { product, options } = input;
+  const fixture = await turnFixture(product, options.script);
+  const ending = new AbortController();
+  const diagnostics = options.diagnostics;
+  const output = { text: "" };
+  if (diagnostics) {
+    diagnostics.directory = fixture.directory;
+    diagnostics.phase = "service-start";
+  }
+  try {
+    const host = await fixture.start(
+      {
+        CLOVING_PHONE_RELAY: "off",
+        CLOVING_RESTART_TRACE: "1",
+        NODE_V8_COVERAGE: undefined,
+      },
+      {
+        arguments: [],
+        observe: (text) => {
+          output.text = text;
+          if (diagnostics) diagnostics.host = text;
+        },
+      },
+    );
+    if (diagnostics) diagnostics.phase = "turn-in-progress";
+    await diagnosedRestartScene(
+      {
+        fixture,
+        product,
+        host,
+        output: () => output.text,
+        ending:
+          options.signal === undefined
+            ? ending.signal
+            : AbortSignal.any([ending.signal, options.signal]),
+      },
+      body,
+    );
+  } finally {
+    if (diagnostics) diagnostics.phase = "turn-cleanup";
+    ending.abort();
+    await stopRecordedTurns(fixture.root);
   }
 }
 
 export async function withTurnHost(
-  options: {
-    readonly script: string;
-    readonly prepare?: (product: string) => Promise<void>;
-    readonly signal?: AbortSignal;
-  },
+  options: TurnHostOptions,
   body: (scene: TurnHost) => Promise<void>,
 ): Promise<void> {
   const productRoot = await mkdtemp(join(tmpdir(), "cloving-turn-product-"));
+  const progress = (phase: string): void => {
+    if (options.diagnostics) options.diagnostics.phase = phase;
+  };
   try {
+    progress("product-copy-and-build");
     const product = await productCopy(productRoot);
+    progress("prepare-update-origin");
     await options.prepare?.(product);
+    progress("record-build-inputs");
     await rememberedBuild(product);
+    progress("prepare-turn-scene");
     await withoutChildren(async () => {
-      const fixture = await scene(
-        options.script,
-        join(product, "dist/src/cli.js"),
-      );
-      const workflows = join(fixture.repository, ".cloving/workflows");
-      await mkdir(workflows, { recursive: true });
-      await writeFile(join(workflows, "long-turn.ts"), workflowSource);
-      await writeFile(
-        join(workflows, "long-turn.declaration.json"),
-        JSON.stringify(declaration),
-      );
-      const ending = new AbortController();
-      try {
-        const host = await fixture.start({
-          CLOVING_PHONE_RELAY: "off",
-          CLOVING_RESTART_TRACE: "1",
-          NODE_V8_COVERAGE: undefined,
-        });
-        const output = captured(host);
-        await diagnosedRestartScene(
-          {
-            fixture,
-            product,
-            host,
-            output,
-            ending:
-              options.signal === undefined
-                ? ending.signal
-                : AbortSignal.any([ending.signal, options.signal]),
-          },
-          body,
-        );
-      } finally {
-        ending.abort();
-        await stopTurns(fixture.root);
-      }
+      await hostedTurn({ product, options }, body);
+      progress("service-cleanup");
     });
   } finally {
+    progress("product-cleanup");
     await rm(productRoot, { recursive: true, force: true });
   }
 }

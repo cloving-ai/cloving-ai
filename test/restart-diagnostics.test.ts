@@ -8,8 +8,12 @@ import { testMilliseconds } from "./test-timing.ts";
 import {
   diagnosedRestartScene,
   replacementPhases,
+  restartDeadlineDiagnostics,
+  restartCli,
 } from "./restart-diagnostics-fixture.ts";
 import { withFiles } from "./quality/files-fixture.ts";
+import { scene, withoutChildren } from "./self-host-fixture.ts";
+import { mkdir } from "node:fs/promises";
 
 await test("CLV-347 failed restart scenes retain host phases, raw CLI timing/output and restart claim before cleanup", () =>
   withFiles(
@@ -40,6 +44,49 @@ await test("CLV-347 failed restart scenes retain host phases, raw CLI timing/out
           return true;
         },
       );
+    },
+  ));
+
+await test("CLV-347 deadline diagnostics retain the host when cleanup has removed the runtime directory", () =>
+  withFiles({}, (directory) => {
+    const controller = new AbortController();
+    const diagnostics = restartDeadlineDiagnostics(controller.signal);
+    diagnostics.phase = "cleanup";
+    diagnostics.host = "LAST_HOST_PHASE";
+    diagnostics.directory = join(directory, "removed");
+    const reason = new Error("ORIGINAL_DEADLINE");
+    controller.abort(reason);
+    assert.match(reason.message, /LAST_HOST_PHASE/);
+    assert.match(reason.message, /cleanup/);
+    assert.match(reason.message, /ORIGINAL_DEADLINE/);
+  }));
+
+await test("CLV-347 a pending restart retains live CLI output before cancellation", () =>
+  withFiles(
+    {
+      "client.mjs":
+        'process.stdout.write("LIVE_RESTART_OUTPUT\\n"); process.on("SIGTERM", () => process.exit(23)); setInterval(() => {}, 1000);',
+    },
+    async (directory) => {
+      const fixture = await scene("", join(directory, "client.mjs"));
+      await mkdir(fixture.directory, { recursive: true });
+      const controller = new AbortController();
+      const pending = restartCli(fixture, {
+        arguments: ["--update"],
+        signal: controller.signal,
+      });
+      try {
+        await eventually(async () => {
+          const text = await readFile(
+            join(fixture.directory, "restart-cli.json"),
+            "utf8",
+          );
+          return text.includes("LIVE_RESTART_OUTPUT") ? true : undefined;
+        });
+      } finally {
+        controller.abort();
+        assert.equal((await pending).status, 23);
+      }
     },
   ));
 
@@ -165,3 +212,76 @@ await test("CLV-347 a case-owned CLI stops when its case signal ends", async () 
     }
   });
 });
+
+await test("CLV-347 the existing deadline reports the live phase and host and CLI evidence before Node cancels the test", () =>
+  withFiles(
+    {
+      "restart-cli.json": '{"started":123,"options":["--update"]}',
+      "claimed-restart": "CLAIM_AT_DEADLINE",
+    },
+    async (directory) => {
+      const driver = join(directory, "deadline.test.mjs");
+      await writeFile(
+        driver,
+        `import { test } from "node:test";
+import { restartDeadlineDiagnostics } from ${JSON.stringify(new URL("./restart-diagnostics-fixture.ts", import.meta.url).href)};
+const signal = AbortSignal.timeout(500);
+const diagnostics = restartDeadlineDiagnostics(signal);
+diagnostics.phase = "replacement-awaits-reply";
+diagnostics.host = 'HOST_PHASE_AT_DEADLINE';
+diagnostics.directory = import.meta.dirname;
+await test("deadline scene", { signal }, async () => {
+  await new Promise((resolve) => {
+    const timer = setTimeout(resolve, 2000);
+    signal.addEventListener("abort", () => {
+      diagnostics.phase = "cleanup-erases-state";
+      diagnostics.host = "";
+      clearTimeout(timer);
+      resolve();
+    });
+  });
+});`,
+      );
+      const result = spawnSync(
+        process.execPath,
+        ["--test", "--test-concurrency=1", "--test-reporter=tap", driver],
+        {
+          encoding: "utf8",
+          timeout: testMilliseconds(5_000),
+          env: { ...process.env, NODE_TEST_CONTEXT: undefined },
+        },
+      );
+      assert.equal(result.status, 1, result.stdout + result.stderr);
+      for (const text of [
+        "deadline scene",
+        "replacement-awaits-reply",
+        "HOST_PHASE_AT_DEADLINE",
+        "CLAIM_AT_DEADLINE",
+        "started",
+      ])
+        assert.ok(result.stdout.includes(text), result.stdout + result.stderr);
+    },
+  ));
+
+await test("CLV-347 the host observer receives initialization output before the start reply", () =>
+  withFiles(
+    {
+      "host.mjs":
+        'process.stdout.write("INITIAL_HOST_PHASE\\nCloving runs\\n"); setInterval(() => {}, 1000);',
+    },
+    (directory) =>
+      withoutChildren(async () => {
+        const fixture = await scene("", join(directory, "host.mjs"));
+        const live = { output: "" };
+        await fixture.start(
+          {},
+          {
+            arguments: [],
+            observe: (output) => {
+              live.output = output;
+            },
+          },
+        );
+        assert.match(live.output, /INITIAL_HOST_PHASE/);
+      }),
+  ));
