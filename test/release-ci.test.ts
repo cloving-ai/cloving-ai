@@ -143,7 +143,7 @@ await test("CLV-097 quality qualifies the exact toolchain and completes the deve
     CLOVING_CHECK_TIME_FACTOR: "3",
     CLOVING_TEST_CONCURRENCY: "4",
     CLOVING_TEST_SHARD:
-      "${{ format('{0}/{1}', matrix.shard, github.event_name == 'pull_request' && '6' || '3') }}",
+      "${{ format('{0}/{1}', matrix.shard, github.event_name == 'pull_request' && '6' || '4') }}",
     CLOVING_CI_ARCHITECTURE: "x64",
     NODE_OPTIONS: "--max-old-space-size=4096",
   });
@@ -154,7 +154,7 @@ await test("CLV-097 quality qualifies the exact toolchain and completes the deve
     CLOVING_TEST_SET:
       "${{ matrix.shard == 'platform' && 'platform' || 'all' }}",
     CLOVING_TEST_SHARD:
-      "${{ matrix.shard == 'platform' && '1/1' || format('{0}/3', matrix.shard) }}",
+      "${{ matrix.shard == 'platform' && '1/1' || format('{0}/4', matrix.shard) }}",
     CLOVING_CI_MACOS_VERSION: "15.*",
     NODE_OPTIONS: "--max-old-space-size=4096",
   });
@@ -202,7 +202,7 @@ await test("CLV-266 Linux shards qualify the selected toolchain before the gate"
   assert.deepEqual(linuxCommands.slice(4), commands.slice(3));
 });
 
-await test("CLV-097 Linux CI qualifies the lowest Node version of each engine range on main and tags, and a pull request runs the newest of them in six shards", async () => {
+await test("#829 Linux CI qualifies the lowest Node version of each engine range in four shards on main and tags, and a pull request runs the newest of them in six shards", async () => {
   const workflow = await releaseWorkflow();
   const { manifest } = await metadata();
   const lowest = (manifest.devEngines.runtime["version"] ?? "")
@@ -215,7 +215,7 @@ await test("CLV-097 Linux CI qualifies the lowest Node version of each engine ra
     "fail-fast": false,
     matrix: {
       node: `\${{ fromJSON(github.event_name == 'pull_request' && '${JSON.stringify([newest])}' || '${JSON.stringify(lowest)}') }}`,
-      shard: `\${{ fromJSON(github.event_name == 'pull_request' && '${JSON.stringify(["1", "2", "3", "4", "5", "6"])}' || '${JSON.stringify(["1", "2", "3"])}') }}`,
+      shard: `\${{ fromJSON(github.event_name == 'pull_request' && '${JSON.stringify(["1", "2", "3", "4", "5", "6"])}' || '${JSON.stringify(["1", "2", "3", "4"])}') }}`,
     },
   });
   assert.equal(job(workflow, "publish").strategy, undefined);
