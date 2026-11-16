@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
-import { access, readFile, realpath } from "node:fs/promises";
+import { readFileSync, realpathSync } from "node:fs";
+import { access, readFile } from "node:fs/promises";
 import nodeModule from "node:module";
 import { basename, dirname, join, resolve } from "node:path";
 import { record } from "../src/protocol.ts";
@@ -70,13 +71,13 @@ function references(
     }));
 }
 
-async function manifestFile(
+function manifestFile(
   from: string,
   reference: PackageReference,
-): Promise<string | undefined> {
+): string | undefined {
   try {
     const file = nodeModule.findPackageJSON(reference.name, from);
-    if (file !== undefined) return await realpath(file);
+    if (file !== undefined) return realpathSync(file);
   } catch (error) {
     if (!(
       error instanceof Error &&
@@ -93,11 +94,11 @@ async function capturePackage(
   capture: Capture,
   input: PackageReference & { readonly from: string },
 ): Promise<number | null> {
-  const file = await manifestFile(input.from, input);
+  const file = manifestFile(input.from, input);
   if (file === undefined) return null;
   const previous = capture.seen.get(file);
   if (previous !== undefined) return previous;
-  const manifest = await readFile(file, "utf8");
+  const manifest = readFileSync(file, "utf8");
   const parsed: unknown = JSON.parse(manifest);
   const fields = record(parsed);
   if (

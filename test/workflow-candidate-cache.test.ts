@@ -4,10 +4,12 @@ import filesystem from "node:fs/promises";
 import ts from "typescript";
 import { cp, readFile, readdir, writeFile } from "node:fs/promises";
 import { syncBuiltinESMExports } from "node:module";
-import { basename, dirname, join } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { test } from "node:test";
 import { admitWorkflowCandidate } from "../tools/admit-workflow.ts";
+import { candidateCache } from "../tools/workflow-candidate-cache.ts";
 import { candidatePackageRoot } from "./candidate-package-fixture.ts";
+import { observedReads } from "./file-read-fixture.ts";
 import { withFiles } from "./quality/files-fixture.ts";
 import {
   candidateDeclaration,
@@ -258,4 +260,22 @@ await test("CLV-347 exact compiler library bytes invalidate semantic and SDK reu
         ts.sys.getExecutingFilePath = original;
       }
     });
+  }));
+
+await test("CLV-347 a candidate cache key keeps 16 TypeScript library reads in flight, so a busy machine does not wait for each library file in turn", () =>
+  withFiles({ "project/workflows/turn.ts": "export {};" }, async (root) => {
+    const library = dirname(ts.sys.getExecutingFilePath());
+    const input = {
+      packageRoot: resolve(import.meta.dirname, ".."),
+      project: join(root, "project"),
+      cacheDirectory: join(root, "cache"),
+    };
+    const serial = await candidateCache(input);
+    const { value: cache, peak } = await observedReads(
+      () => candidateCache(input),
+      { within: library },
+    );
+    assert.notEqual(cache, undefined);
+    assert.equal(cache?.key, serial?.key);
+    assert.equal(peak, 16, `outstanding library reads: ${String(peak)}`);
   }));

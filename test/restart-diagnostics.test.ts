@@ -47,6 +47,71 @@ await test("CLV-347 failed restart scenes retain host phases, raw CLI timing/out
     },
   ));
 
+await test("CLV-347 a failed restart scene ends its message with short phase lines in milliseconds after the restart request", () =>
+  withFiles(
+    { "restart-cli.json": '{"started":10000,"options":[]}' },
+    async (directory) => {
+      const phases = [
+        { phase: "listener-ready", at: 9000, processId: 41 },
+        { phase: "request-marked", at: 10115, processId: 41 },
+        ...Array.from({ length: 60 }, (_, index) => ({
+          phase: `hash-start-${String(index)}`,
+          at: 10200 + index,
+          processId: 52,
+        })),
+        { phase: "listener-ready", at: 16322, processId: 63 },
+      ];
+      const scene = {
+        fixture: { directory },
+        output: () =>
+          [
+            "Cloving runs",
+            ...phases.map((entry) => JSON.stringify(entry)),
+          ].join("\n"),
+      };
+      await assert.rejects(
+        diagnosedRestartScene(scene, () => {
+          throw new Error("The new service started 6322 ms after the request.");
+        }),
+        (error: unknown) => {
+          assert.ok(error instanceof Error);
+          const lines = error.message.split("\n").filter((line) => line !== "");
+          const timeline = lines.slice(
+            lines.findIndex((line) => line.startsWith("Restart phase times")),
+          );
+          assert.ok(timeline.length > 1 && timeline.length <= 9, error.message);
+          assert.deepEqual(lines.slice(-timeline.length), timeline);
+          assert.ok(timeline.every((line) => line.length <= 500));
+          const text = timeline.join("\n");
+          assert.match(text, /\b115 request-marked 41\b/);
+          assert.match(text, /\b259 hash-start-59 52\b/);
+          assert.match(text, /\b6322 listener-ready 63\b/);
+          assert.doesNotMatch(text, /-1000 listener-ready/);
+          return true;
+        },
+      );
+    },
+  ));
+
+await test("CLV-347 a failed restart scene keeps its own failure when the restart notes hold a partial write", () =>
+  withFiles({ "restart-cli.json": '{"started":100' }, async (directory) => {
+    const scene = {
+      fixture: { directory },
+      output: () => JSON.stringify({ phase: "x", at: 200, processId: 1 }),
+    };
+    await assert.rejects(
+      diagnosedRestartScene(scene, () => {
+        throw new Error("ORIGINAL_FAILURE");
+      }),
+      (error: unknown) => {
+        assert.ok(error instanceof Error);
+        assert.match(error.message, /^ORIGINAL_FAILURE\n/);
+        assert.doesNotMatch(error.message, /Restart phase times/);
+        return true;
+      },
+    );
+  }));
+
 await test("CLV-347 deadline diagnostics retain the host when cleanup has removed the runtime directory", () =>
   withFiles({}, (directory) => {
     const controller = new AbortController();

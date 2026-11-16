@@ -23,13 +23,31 @@ async function inputFiles(root: string, name: string): Promise<string[]> {
   return files.sort();
 }
 
-async function inputDigests(root: string, names: readonly string[]) {
-  const digests: string[][] = [];
-  for (const name of names) {
-    const bytes = await readFile(join(root, name));
-    digests.push([name, createHash("sha256").update(bytes).digest("hex")]);
+const readLimit = 16;
+const reads: { active: number; readonly waiting: Array<() => void> } = {
+  active: 0,
+  waiting: [],
+};
+
+export async function boundedRead(path: string) {
+  while (reads.active >= readLimit)
+    await new Promise<void>((resolve) => reads.waiting.push(resolve));
+  reads.active += 1;
+  try {
+    return await readFile(path);
+  } finally {
+    reads.active -= 1;
+    reads.waiting.shift()?.();
   }
-  return digests;
+}
+
+async function inputDigests(root: string, names: readonly string[]) {
+  return await Promise.all(
+    names.map(async (name) => {
+      const bytes = await boundedRead(join(root, name));
+      return [name, createHash("sha256").update(bytes).digest("hex")];
+    }),
+  );
 }
 
 export async function workflowBuildKey(input: {

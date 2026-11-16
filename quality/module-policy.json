@@ -1452,6 +1452,7 @@
     "test/fallback-prices.test.ts": "test",
     "test/fallback-worker-fixture.ts": "test",
     "test/fallback-worker.test.ts": "test",
+    "test/file-read-fixture.ts": "test",
     "test/first-run-recipe.test.ts": "test",
     "test/fixtures/hpke-cfrg-p256-sha256-aes256gcm.json": "test",
     "test/fixtures/phone-envelopes.json": "test",

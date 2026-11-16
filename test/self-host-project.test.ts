@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import filesystem from "node:fs/promises";
 import {
   copyFile,
   lstat,
@@ -15,6 +14,7 @@ import { test } from "node:test";
 import { workflowBuildKey } from "../tools/self-host-build-cache.ts";
 import { preparedProject } from "../tools/self-host-project.ts";
 import { withFiles } from "./quality/files-fixture.ts";
+import { observedReads } from "./file-read-fixture.ts";
 import { candidatePackageRoot } from "./candidate-package-fixture.ts";
 import {
   candidateDeclaration,
@@ -252,62 +252,58 @@ await test("CLV-347 compiled workflow keys include staged sources, helper bytes,
     },
   ));
 
-await test("CLV-347 compiled workflow keys bound file reads across large built checkouts", () =>
-  withFiles(
-    Object.fromEntries(
-      [
-        "product/src",
-        "product/tools",
-        "product/dist",
-        "project/workflows",
-      ].flatMap((directory) =>
-        Array.from({ length: 384 }, (_, index) => [
-          `${directory}/${String(index).padStart(3, "0")}.ts`,
-          `${directory}:${String(index)}`,
-        ]),
-      ),
+function largeCheckout(): Record<string, string> {
+  return Object.fromEntries(
+    [
+      "product/src",
+      "product/tools",
+      "product/dist",
+      "project/workflows",
+    ].flatMap((directory) =>
+      Array.from({ length: 384 }, (_, index) => [
+        `${directory}/${String(index).padStart(3, "0")}.ts`,
+        `${directory}:${String(index)}`,
+      ]),
     ),
-    async (root) => {
-      const input = {
-        product: join(root, "product"),
-        project: join(root, "project"),
-        dependencies: "closure",
-      };
-      const read = filesystem.readFile;
-      const files = new Set<string>();
-      let active = 0;
-      let peak = 0;
-      Object.defineProperty(filesystem, "readFile", {
-        value: async (...arguments_: readonly unknown[]): Promise<unknown> => {
-          active += 1;
-          peak = Math.max(peak, active);
-          try {
-            const bytes: unknown = await Reflect.apply(
-              read,
-              filesystem,
-              arguments_,
-            );
-            files.add(String(arguments_[0]));
-            return bytes;
-          } finally {
-            active -= 1;
-          }
-        },
-      });
-      syncBuiltinESMExports();
-      try {
-        const keys = await Promise.all(
-          Array.from({ length: 4 }, () => workflowBuildKey(input)),
-        );
-        assert.ok(peak <= 16, `outstanding file reads: ${String(peak)}`);
-        assert.equal(files.size, 1536);
-        assert.deepEqual(
-          keys,
-          Array.from({ length: 4 }, () => keys[0]),
-        );
-      } finally {
-        filesystem.readFile = read;
-        syncBuiltinESMExports();
-      }
-    },
-  ));
+  );
+}
+
+function checkoutInput(root: string) {
+  return {
+    product: join(root, "product"),
+    project: join(root, "project"),
+    dependencies: "closure",
+  };
+}
+
+await test("CLV-347 compiled workflow keys bound file reads across large built checkouts", () =>
+  withFiles(largeCheckout(), async (root) => {
+    const input = checkoutInput(root);
+    const {
+      value: keys,
+      peak,
+      files,
+    } = await observedReads(() =>
+      Promise.all(Array.from({ length: 4 }, () => workflowBuildKey(input))),
+    );
+    assert.ok(peak <= 16, `outstanding file reads: ${String(peak)}`);
+    assert.equal(files, 1536);
+    assert.deepEqual(
+      keys,
+      Array.from({ length: 4 }, () => keys[0]),
+    );
+  }));
+
+await test("CLV-347 one compiled workflow key keeps 16 file reads in flight, so a busy machine does not wait for each read in turn", () =>
+  withFiles(largeCheckout(), async (root) => {
+    const input = checkoutInput(root);
+    const serial = await workflowBuildKey(input);
+    const {
+      value: key,
+      peak,
+      files,
+    } = await observedReads(() => workflowBuildKey(input));
+    assert.equal(peak, 16, `outstanding file reads: ${String(peak)}`);
+    assert.equal(files, 1536);
+    assert.equal(key, serial);
+  }));

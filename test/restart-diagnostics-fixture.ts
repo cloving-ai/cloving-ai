@@ -153,6 +153,37 @@ export async function replacementPhases(input: {
   });
 }
 
+function requestTime(invocation: string | undefined): unknown {
+  try {
+    return record(JSON.parse(invocation ?? "{}"))?.["started"];
+  } catch {
+    return undefined;
+  }
+}
+
+function phaseTimeline(
+  output: string,
+  invocation: string | undefined,
+): readonly string[] {
+  const started = requestTime(invocation);
+  if (typeof started !== "number") return [];
+  const entries = restartPhases(output)
+    .filter((entry) => entry.at >= started)
+    .map(
+      (entry) =>
+        `${String(entry.at - started)} ${entry.phase} ${String(entry.processId)}`,
+    );
+  const lines = [
+    "Restart phase times: milliseconds after the request, phase, process",
+  ];
+  for (const entry of entries) {
+    const last = lines.length > 1 ? (lines.at(-1) ?? "") : "";
+    if (last === "" || last.length + entry.length > 450) lines.push(entry);
+    else lines[lines.length - 1] = `${last}, ${entry}`;
+  }
+  return lines.slice(0, 9);
+}
+
 export async function diagnosedRestartScene<Value extends DiagnosticScene>(
   scene: Value,
   body: (scene: Value) => Promise<void>,
@@ -176,8 +207,17 @@ export async function diagnosedRestartScene<Value extends DiagnosticScene>(
       ),
     );
     const message = error instanceof Error ? error.message : String(error);
+    const notesByName = Object.fromEntries(files);
+    const timeline = phaseTimeline(
+      scene.output(),
+      notesByName["restart-cli.json"],
+    );
     throw new Error(
-      `${message}\nRestart diagnostics before cleanup: ${JSON.stringify({ host: scene.output(), files: Object.fromEntries(files) })}`,
+      [
+        message,
+        `Restart diagnostics before cleanup: ${JSON.stringify({ host: scene.output(), files: notesByName })}`,
+        ...timeline,
+      ].join("\n"),
       { cause: error },
     );
   }

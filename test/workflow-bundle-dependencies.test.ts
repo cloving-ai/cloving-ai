@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { chmod, readFile, writeFile } from "node:fs/promises";
+import filesystem, { chmod, readFile, writeFile } from "node:fs/promises";
+import { syncBuiltinESMExports } from "node:module";
 import { join } from "node:path";
 import { test } from "node:test";
 import {
@@ -175,3 +176,56 @@ await test("CLV-347 malformed selected package metadata still refuses discovery"
       );
     },
   ));
+
+function packageChain(length: number): Record<string, string> {
+  return Object.fromEntries(
+    Array.from({ length }, (_, index) => [
+      `node_modules/link-${String(index)}/package.json`,
+      JSON.stringify({
+        name: `link-${String(index)}`,
+        version: "1",
+        ...(index + 1 < length
+          ? { dependencies: { [`link-${String(index + 1)}`]: "1" } }
+          : {}),
+      }),
+    ]),
+  );
+}
+
+async function asynchronousFileCalls(
+  body: () => Promise<unknown>,
+): Promise<number> {
+  const originals = {
+    readFile: filesystem.readFile,
+    realpath: filesystem.realpath,
+  };
+  const calls = { count: 0 };
+  for (const name of ["readFile", "realpath"] as const)
+    Object.defineProperty(filesystem, name, {
+      value: (...arguments_: readonly unknown[]): unknown => {
+        calls.count += 1;
+        return Reflect.apply(originals[name], filesystem, arguments_);
+      },
+    });
+  syncBuiltinESMExports();
+  try {
+    await body();
+    return calls.count;
+  } finally {
+    filesystem.readFile = originals.readFile;
+    filesystem.realpath = originals.realpath;
+    syncBuiltinESMExports();
+  }
+}
+
+await test("CLV-347 dependency identity makes the same number of asynchronous file calls for one package and for a chain of 40, so a busy machine does not wait once for each manifest", () =>
+  withFiles({ "package.json": product, ...packageChain(40) }, async (root) => {
+    const capture = (packages: readonly string[]) => () =>
+      workflowBundleDependencies({ product: root, packages });
+    const single = await asynchronousFileCalls(capture(["link-39"]));
+    const chain = await asynchronousFileCalls(capture(["link-0"]));
+    const parsed: unknown = JSON.parse(await capture(["link-0"])());
+    const packages: unknown = Reflect.get(Object(parsed), "packages");
+    assert.ok(Array.isArray(packages) && packages.length === 40);
+    assert.equal(chain, single);
+  }));
