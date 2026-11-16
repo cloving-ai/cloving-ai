@@ -14,21 +14,20 @@ export async function observedReads<Value>(
   const read = filesystem.readFile;
   const files = new Set<string>();
   const reads = { active: 0, peak: 0 };
-  const counted = (path: unknown): boolean =>
-    options.within === undefined || String(path).startsWith(options.within);
+  const counted = (path: Parameters<typeof read>[0]): path is string =>
+    typeof path === "string" &&
+    (options.within === undefined || path.startsWith(options.within));
   Object.defineProperty(filesystem, "readFile", {
-    value: async (...arguments_: readonly unknown[]): Promise<unknown> => {
-      if (!counted(arguments_[0]))
-        return await Reflect.apply(read, filesystem, arguments_);
+    value: async (
+      ...arguments_: Parameters<typeof read>
+    ): Promise<Buffer | string> => {
+      const [path] = arguments_;
+      if (!counted(path)) return await read(...arguments_);
       reads.active += 1;
       reads.peak = Math.max(reads.peak, reads.active);
       try {
-        const bytes: unknown = await Reflect.apply(
-          read,
-          filesystem,
-          arguments_,
-        );
-        files.add(String(arguments_[0]));
+        const bytes = await read(...arguments_);
+        files.add(path);
         return bytes;
       } finally {
         reads.active -= 1;

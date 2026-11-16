@@ -1,9 +1,9 @@
 import { createHash } from "node:crypto";
-import { readFileSync, realpathSync } from "node:fs";
-import { access, readFile } from "node:fs/promises";
+import { access, readFile, realpath } from "node:fs/promises";
 import nodeModule from "node:module";
 import { basename, dirname, join, resolve } from "node:path";
 import { record } from "../src/protocol.ts";
+import { boundedRead } from "./self-host-build-cache.ts";
 
 interface PackageReference {
   readonly name: string;
@@ -15,7 +15,15 @@ interface CapturedPackage {
   readonly dependencies: Record<string, number | null>;
 }
 
+type Lookup = PackageReference & { readonly from: string };
+
+interface Reads {
+  readonly files: Map<string, Promise<string | undefined>>;
+  readonly manifests: Map<string, Promise<string>>;
+}
+
 interface Capture {
+  readonly reads: Reads;
   readonly seen: Map<string, number>;
   readonly packages: CapturedPackage[];
 }
@@ -71,13 +79,13 @@ function references(
     }));
 }
 
-function manifestFile(
+async function manifestFile(
   from: string,
   reference: PackageReference,
-): string | undefined {
+): Promise<string | undefined> {
   try {
     const file = nodeModule.findPackageJSON(reference.name, from);
-    if (file !== undefined) return realpathSync(file);
+    if (file !== undefined) return await realpath(file);
   } catch (error) {
     if (!(
       error instanceof Error &&
@@ -90,15 +98,46 @@ function manifestFile(
   throw new Error("workflow-dependency-unavailable");
 }
 
+function locatedManifest(
+  reads: Reads,
+  input: Lookup,
+): Promise<string | undefined> {
+  const key = JSON.stringify([input.from, input.name, input.optional]);
+  const known = reads.files.get(key);
+  if (known !== undefined) return known;
+  const file = manifestFile(input.from, input);
+  reads.files.set(key, file);
+  return file;
+}
+
+function manifestText(reads: Reads, file: string): Promise<string> {
+  const known = reads.manifests.get(file);
+  if (known !== undefined) return known;
+  const text = boundedRead(file).then((bytes) => bytes.toString("utf8"));
+  reads.manifests.set(file, text);
+  return text;
+}
+
+async function prefetch(reads: Reads, input: Lookup): Promise<void> {
+  const file = await locatedManifest(reads, input);
+  if (file === undefined || reads.manifests.has(file)) return;
+  const fields = record(JSON.parse(await manifestText(reads, file)));
+  await Promise.allSettled(
+    references(fields ?? {}).map((reference) =>
+      prefetch(reads, { ...reference, from: file }),
+    ),
+  );
+}
+
 async function capturePackage(
   capture: Capture,
-  input: PackageReference & { readonly from: string },
+  input: Lookup,
 ): Promise<number | null> {
-  const file = manifestFile(input.from, input);
+  const file = await locatedManifest(capture.reads, input);
   if (file === undefined) return null;
   const previous = capture.seen.get(file);
   if (previous !== undefined) return previous;
-  const manifest = readFileSync(file, "utf8");
+  const manifest = await manifestText(capture.reads, file);
   const parsed: unknown = JSON.parse(manifest);
   const fields = record(parsed);
   if (
@@ -122,18 +161,24 @@ export async function workflowBundleDependencies(input: {
   readonly product: string;
   readonly packages: readonly string[];
 }): Promise<string> {
-  const capture: Capture = { seen: new Map(), packages: [] };
-  const roots: Record<string, number | null> = {};
+  const capture: Capture = {
+    reads: { files: new Map(), manifests: new Map() },
+    seen: new Map(),
+    packages: [],
+  };
   const manifest = join(
     await workflowPackageRoot(input.product),
     "package.json",
   );
-  for (const name of [...input.packages].sort())
-    roots[name] = await capturePackage(capture, {
-      name,
-      from: manifest,
-      optional: false,
-    });
+  const lookups = [...input.packages]
+    .sort()
+    .map((name) => ({ name, from: manifest, optional: false }));
+  await Promise.allSettled(
+    lookups.map((lookup) => prefetch(capture.reads, lookup)),
+  );
+  const roots: Record<string, number | null> = {};
+  for (const lookup of lookups)
+    roots[lookup.name] = await capturePackage(capture, lookup);
   return JSON.stringify({
     node: process.version,
     product: createHash("sha256")

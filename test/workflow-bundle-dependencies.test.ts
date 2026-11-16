@@ -1,13 +1,13 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import filesystem, { chmod, readFile, writeFile } from "node:fs/promises";
-import { syncBuiltinESMExports } from "node:module";
+import { chmod, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { test } from "node:test";
 import {
   workflowBundleDependencies,
   workflowPackageRoot,
 } from "../tools/workflow-bundle-dependencies.ts";
+import { observedReads } from "./file-read-fixture.ts";
 import { withFiles } from "./quality/files-fixture.ts";
 
 const product = '{"name":"synthetic-product","version":"1"}';
@@ -192,40 +192,67 @@ function packageChain(length: number): Record<string, string> {
   );
 }
 
-async function asynchronousFileCalls(
-  body: () => Promise<unknown>,
-): Promise<number> {
-  const originals = {
-    readFile: filesystem.readFile,
-    realpath: filesystem.realpath,
+function packageHub(width: number): Record<string, string> {
+  const leaves = Array.from(
+    { length: width },
+    (_, index) => `leaf-${String(index)}`,
+  );
+  const files: Record<string, string> = {
+    "node_modules/hub/package.json": JSON.stringify({
+      name: "hub",
+      version: "1",
+      dependencies: Object.fromEntries(
+        leaves.map((name): [string, string] => [name, "1"]),
+      ),
+    }),
   };
-  const calls = { count: 0 };
-  for (const name of ["readFile", "realpath"] as const)
-    Object.defineProperty(filesystem, name, {
-      value: (...arguments_: readonly unknown[]): unknown => {
-        calls.count += 1;
-        return Reflect.apply(originals[name], filesystem, arguments_);
-      },
+  for (const name of leaves)
+    files[`node_modules/${name}/package.json`] = JSON.stringify({
+      name,
+      version: "1",
     });
-  syncBuiltinESMExports();
+  return files;
+}
+
+async function loopTurns(body: () => Promise<string>): Promise<number> {
+  const turns = { count: 0, done: false };
+  const tick = (): void => {
+    if (turns.done) return;
+    turns.count += 1;
+    setImmediate(tick);
+  };
+  setImmediate(tick);
   try {
     await body();
-    return calls.count;
+    return turns.count;
   } finally {
-    filesystem.readFile = originals.readFile;
-    filesystem.realpath = originals.realpath;
-    syncBuiltinESMExports();
+    turns.done = true;
   }
 }
 
-await test("CLV-347 dependency identity makes the same number of asynchronous file calls for one package and for a chain of 40, so a busy machine does not wait once for each manifest", () =>
+await test("CLV-347 dependency identity lets the service run other callbacks between the manifest reads of a chain of 40 packages, so a slow disk does not pause it", () =>
   withFiles({ "package.json": product, ...packageChain(40) }, async (root) => {
-    const capture = (packages: readonly string[]) => () =>
-      workflowBundleDependencies({ product: root, packages });
-    const single = await asynchronousFileCalls(capture(["link-39"]));
-    const chain = await asynchronousFileCalls(capture(["link-0"]));
-    const parsed: unknown = JSON.parse(await capture(["link-0"])());
+    const capture = () =>
+      workflowBundleDependencies({ product: root, packages: ["link-0"] });
+    const turns = await loopTurns(capture);
+    const parsed: unknown = JSON.parse(await capture());
     const packages: unknown = Reflect.get(Object(parsed), "packages");
     assert.ok(Array.isArray(packages) && packages.length === 40);
-    assert.equal(chain, single);
+    assert.ok(
+      turns >= 40,
+      `event loop turns during the walk: ${String(turns)}`,
+    );
+  }));
+
+await test("CLV-347 dependency identity keeps 16 manifest reads in flight for a package with 40 dependencies, so a busy machine does not wait for each manifest in turn", () =>
+  withFiles({ "package.json": product, ...packageHub(40) }, async (root) => {
+    const { value, peak, files } = await observedReads(
+      () => workflowBundleDependencies({ product: root, packages: ["hub"] }),
+      { within: join(root, "node_modules") },
+    );
+    const parsed: unknown = JSON.parse(value);
+    const packages: unknown = Reflect.get(Object(parsed), "packages");
+    assert.ok(Array.isArray(packages) && packages.length === 41);
+    assert.equal(files, 41);
+    assert.equal(peak, 16, `outstanding manifest reads: ${String(peak)}`);
   }));
