@@ -2,6 +2,7 @@ import { hasTicketField, type SubmissionContract } from "./submission.ts";
 import { parseQueuesSetting } from "./queue-settings.ts";
 import {
   declaresQueue,
+  queueFeed,
   type WorkflowDeclaration,
 } from "./workflow-declaration.ts";
 
@@ -102,16 +103,50 @@ export interface DoctorWorkflow extends Pick<WorkflowDeclaration, "queue"> {
   readonly input?: SubmissionContract;
 }
 
-function needsNextCommand(
+function queueActive(
   workflow: DoctorWorkflow,
   queues: string | undefined,
 ): boolean {
-  if (!declaresQueue(workflow.queue)) return false;
   try {
     return parseQueuesSetting(queues)[workflow.workflowId]?.state !== "off";
   } catch {
     return true;
   }
+}
+
+function needsNextCommand(
+  workflow: DoctorWorkflow,
+  queues: string | undefined,
+): boolean {
+  if (!declaresQueue(workflow.queue)) return false;
+  if (queueFeed(workflow) !== undefined) return false;
+  return queueActive(workflow, queues);
+}
+
+function activeFeed(
+  workflow: DoctorWorkflow,
+  queues: string | undefined,
+): readonly string[] {
+  const feed = queueFeed(workflow);
+  if (feed === undefined || !declaresQueue(workflow.queue)) return [];
+  if (!queueActive(workflow, queues)) return [];
+  return [`${workflow.workflowId} (${feed})`];
+}
+
+export function feedTicketsObservation(
+  workflows: readonly DoctorWorkflow[],
+  queues?: string,
+): DoctorObservation | undefined {
+  if (workflows.some((workflow) => needsNextCommand(workflow, queues)))
+    return undefined;
+  const feeds = [
+    ...new Set(workflows.flatMap((workflow) => activeFeed(workflow, queues))),
+  ].sort();
+  if (feeds.length === 0) return undefined;
+  return {
+    result: "ok",
+    detail: `The feed of the queue selects the tickets: ${feeds.join(", ")}`,
+  };
 }
 
 export function requiredDoctorCodes(
