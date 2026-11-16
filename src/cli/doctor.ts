@@ -4,6 +4,7 @@ import {
   doctorCodes,
   doctorExitCode,
   doctorFixes,
+  feedTicketsObservation,
   requiredDoctorCodes,
   type DoctorCheck,
   type DoctorCode,
@@ -229,6 +230,37 @@ async function workflowRequirements(
   }
 }
 
+async function commandObservations(
+  environment: Readonly<NodeJS.ProcessEnv>,
+  location: {
+    readonly repository: string;
+    readonly project: string | undefined;
+    readonly serviceEnvironment: Readonly<NodeJS.ProcessEnv>;
+    readonly workflows: readonly DoctorWorkflow[];
+  },
+): Promise<Observations> {
+  const observations: Observations = {};
+  for (const [code, variable, directory] of [
+    ["ticket-command", "CLOVING_TICKET_COMMAND", location.project],
+    ["next-command", "CLOVING_NEXT_COMMAND", location.project],
+    ["check-command", "CLOVING_CHECK_COMMAND", location.repository],
+  ] as const)
+    observations[code] =
+      directory === undefined
+        ? { result: "skip", detail: "Runtime project prerequisite unavailable" }
+        : await commandObservation(environment[variable], {
+            directory,
+            environment: location.serviceEnvironment,
+          });
+  const fed = feedTicketsObservation(
+    location.workflows,
+    environment["CLOVING_QUEUES"],
+  );
+  if (fed !== undefined && environment["CLOVING_NEXT_COMMAND"] === undefined)
+    observations["next-command"] = fed;
+  return observations;
+}
+
 async function configuredObservations(
   options: DoctorOptions & { readonly repository: string },
   location: {
@@ -258,18 +290,10 @@ async function configuredObservations(
       };
     return observations;
   }
-  for (const [code, variable, directory] of [
-    ["ticket-command", "CLOVING_TICKET_COMMAND", location.project],
-    ["next-command", "CLOVING_NEXT_COMMAND", location.project],
-    ["check-command", "CLOVING_CHECK_COMMAND", repository],
-  ] as const)
-    observations[code] =
-      directory === undefined
-        ? { result: "skip", detail: "Runtime project prerequisite unavailable" }
-        : await commandObservation(environment[variable], {
-            directory,
-            environment: location.serviceEnvironment,
-          });
+  Object.assign(
+    observations,
+    await commandObservations(environment, { ...location, repository }),
+  );
   const github = await githubObservations(repository, { environment, probe });
   Object.assign(observations, github.observations);
   const login = observations["gh-login"];

@@ -6,6 +6,7 @@ import { doctorWorkflows } from "../src/cli/doctor-workflows.ts";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  feedTicketsObservation,
   requiredDoctorCodes,
   type DoctorWorkflow,
 } from "../src/doctor-report.ts";
@@ -95,6 +96,69 @@ for (const queue of [false, true]) {
     });
   });
 }
+
+await test("#831 a queue with a feed does not make the next command required", () => {
+  const develop = {
+    ...issue,
+    workflowId: "develop",
+    queue: { everySeconds: 120, lanes: 1, feed: "developFeed" },
+  };
+  const fed = requiredDoctorCodes([develop]);
+  assert.ok(!fed.includes("next-command"));
+  assert.ok(fed.includes("queue-interval"));
+  for (const queue of [true, {}, { lanes: 2 }]) {
+    const codes = requiredDoctorCodes([develop, { ...issue, queue }]);
+    assert.ok(codes.includes("next-command"), JSON.stringify(queue));
+  }
+  const off = requiredDoctorCodes(
+    [develop, { ...issue, queue: true }],
+    '{"develop-issue":{"state":"off"}}',
+  );
+  assert.ok(!off.includes("next-command"));
+  assert.ok(off.includes("queue-interval"));
+});
+
+await test("#831 the next-command check names each feed that selects the tickets", () => {
+  const triage = {
+    ...issue,
+    workflowId: "triage",
+    queue: { feed: "triageFeed" },
+  };
+  const develop = {
+    ...issue,
+    workflowId: "develop",
+    queue: { feed: "developFeed" },
+  };
+  assert.deepEqual(
+    feedTicketsObservation([triage, develop, { ...develop, scope: "user" }]),
+    {
+      result: "ok",
+      detail:
+        "The feed of the queue selects the tickets: develop (developFeed), triage (triageFeed)",
+    },
+  );
+  assert.equal(
+    feedTicketsObservation([develop, { ...issue, queue: {} }]),
+    undefined,
+  );
+  assert.equal(feedTicketsObservation([issue]), undefined);
+});
+
+await test("#831 a feed queue that is off does not select the tickets", () => {
+  const develop = {
+    ...issue,
+    workflowId: "develop",
+    queue: { feed: "developFeed" },
+  };
+  assert.equal(
+    feedTicketsObservation([develop], '{"develop":{"state":"off"}}'),
+    undefined,
+  );
+  assert.equal(
+    feedTicketsObservation([develop], '{"develop":{"state":"on"}}')?.result,
+    "ok",
+  );
+});
 
 await test("CLV-207 a user workflow with github makes both GitHub checks required", () => {
   const codes = requiredDoctorCodes([

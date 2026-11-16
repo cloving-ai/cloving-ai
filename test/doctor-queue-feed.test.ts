@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
-import { mkdir, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { spawnSync } from "node:child_process";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { join, resolve } from "node:path";
 import { test } from "node:test";
 import type { WorkflowDeclaration } from "../src/workflow-declaration.ts";
 import { check, withDoctor } from "./doctor-fixture.ts";
@@ -103,3 +104,67 @@ await test("CLV-362 doctor still recommends a feed for a disabled legacy queue",
     assert.equal(check(output, "next-command")["required"], false);
     assert.equal(output.status, 0);
   }));
+
+await test("#831 doctor does not require a next command for a copied develop template", () =>
+  withDoctor(async (scene) => {
+    const copied = spawnSync(
+      process.execPath,
+      [resolve("src/cli.ts"), "templates", "copy", "develop"],
+      { cwd: scene.repository, env: scene.environment, encoding: "utf8" },
+    );
+    assert.equal(copied.status, 0, copied.stdout + copied.stderr);
+    const configured = await scene.report({ CLOVING_QUEUE_SECONDS: undefined });
+    assert.equal(check(configured, "next-command")["result"], "ok");
+    assert.match(
+      String(check(configured, "next-command")["detail"]),
+      /^\[".+"\] from /,
+    );
+    const unset = {
+      CLOVING_NEXT_COMMAND: undefined,
+      CLOVING_QUEUE_SECONDS: undefined,
+    };
+    const output = await scene.report(unset);
+    assert.deepEqual(check(output, "next-command"), {
+      code: "next-command",
+      result: "ok",
+      required: false,
+      detail:
+        "The feed of the queue selects the tickets: develop (developFeed)",
+      fix: "Set tickets.nextCommand to an executable list: ${EDITOR:-vi} .cloving/config.json",
+    });
+    assert.equal(check(output, "queue-interval")["required"], true);
+    assert.equal(output.status, 0);
+    await writeWorkflow({
+      folder: join(scene.repository, ".cloving/workflows"),
+      name: "legacy",
+      queue: true,
+    });
+    const legacy = await scene.report(unset);
+    assert.equal(check(legacy, "next-command")["result"], "fail");
+    assert.equal(check(legacy, "next-command")["required"], true);
+    assert.equal(legacy.status, 1);
+    const off = await scene.report({
+      ...unset,
+      CLOVING_QUEUES: '{"legacy":{"state":"off"}}',
+    });
+    assert.equal(check(off, "next-command")["result"], "ok");
+    assert.equal(check(off, "next-command")["required"], false);
+    assert.equal(off.status, 0);
+  }));
+
+await test("#831 the README states when the next-command check names a feed", async () => {
+  const readme = await readFile("README.md", "utf8");
+  assert.match(
+    readme,
+    /For each declared queue, `cloving doctor` requires `queue-interval`\. It requires `next-command` only for a queue without a feed whose state in the `queues` setting is not `off`\./,
+  );
+  assert.match(
+    readme,
+    /When no queue requires `next-command` and `tickets\.nextCommand` is not set, the `next-command` check reports one of these results:\n\n- `ok` when at least one queue with a feed is not `off`\. The check names each feed that selects the tickets, for example `The feed of the queue selects the tickets: develop \(developFeed\)`\.\n- `fail` in all other cases\. This failure is not required, so it does not change the exit status\.\n/,
+  );
+  assert.match(
+    readme,
+    /`cloving doctor` does not require `next-command` for this queue\./,
+  );
+  assert.doesNotMatch(readme, /requires `next-command` and `queue-interval`/);
+});
