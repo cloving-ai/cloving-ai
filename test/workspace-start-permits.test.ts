@@ -24,18 +24,26 @@ async function served(host: WorkspaceHost, busy: number) {
 
 await test("CLV-312 the supervisor gives each repository the permit socket, counts the active runs of all repositories against the workspace lanes and removes the socket at the end", async () => {
   const asked = Promise.withResolvers<Permit>();
+  const alphaListening = Promise.withResolvers<undefined>();
   const result = await started({
     workspace: { ...pair, lanes: 1 },
     environment: { CLOVING_WATCH_PORT: "off" },
     hosted: async (host) => {
-      const listener = await served(host, host.repository === alpha ? 1 : 0);
+      const listener = await served(
+        host,
+        host.repository === alpha ? 1 : 0,
+      ).finally(() => {
+        if (host.repository === alpha) alphaListening.resolve(undefined);
+      });
       try {
-        if (host.repository !== alpha)
+        if (host.repository !== alpha) {
+          await alphaListening.promise;
           asked.resolve(
             await workspacePermits(
               String(host.overrides["CLOVING_WORKSPACE_PERMITS"]),
             )(),
           );
+        }
         await asked.promise;
         return 0;
       } finally {

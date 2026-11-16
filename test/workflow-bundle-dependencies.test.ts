@@ -7,6 +7,7 @@ import {
   workflowBundleDependencies,
   workflowPackageRoot,
 } from "../tools/workflow-bundle-dependencies.ts";
+import { observedReads } from "./file-read-fixture.ts";
 import { withFiles } from "./quality/files-fixture.ts";
 
 const product = '{"name":"synthetic-product","version":"1"}';
@@ -175,3 +176,83 @@ await test("CLV-347 malformed selected package metadata still refuses discovery"
       );
     },
   ));
+
+function packageChain(length: number): Record<string, string> {
+  return Object.fromEntries(
+    Array.from({ length }, (_, index) => [
+      `node_modules/link-${String(index)}/package.json`,
+      JSON.stringify({
+        name: `link-${String(index)}`,
+        version: "1",
+        ...(index + 1 < length
+          ? { dependencies: { [`link-${String(index + 1)}`]: "1" } }
+          : {}),
+      }),
+    ]),
+  );
+}
+
+function packageHub(width: number): Record<string, string> {
+  const leaves = Array.from(
+    { length: width },
+    (_, index) => `leaf-${String(index)}`,
+  );
+  const files: Record<string, string> = {
+    "node_modules/hub/package.json": JSON.stringify({
+      name: "hub",
+      version: "1",
+      dependencies: Object.fromEntries(
+        leaves.map((name): [string, string] => [name, "1"]),
+      ),
+    }),
+  };
+  for (const name of leaves)
+    files[`node_modules/${name}/package.json`] = JSON.stringify({
+      name,
+      version: "1",
+    });
+  return files;
+}
+
+async function loopTurns(body: () => Promise<string>): Promise<number> {
+  const turns = { count: 0, done: false };
+  const tick = (): void => {
+    if (turns.done) return;
+    turns.count += 1;
+    setImmediate(tick);
+  };
+  setImmediate(tick);
+  try {
+    await body();
+    return turns.count;
+  } finally {
+    turns.done = true;
+  }
+}
+
+await test("CLV-347 dependency identity lets the service run other callbacks between the manifest reads of a chain of 40 packages, so a slow disk does not pause it", () =>
+  withFiles({ "package.json": product, ...packageChain(40) }, async (root) => {
+    const capture = () =>
+      workflowBundleDependencies({ product: root, packages: ["link-0"] });
+    const turns = await loopTurns(capture);
+    const parsed: unknown = JSON.parse(await capture());
+    const packages: unknown = Reflect.get(Object(parsed), "packages");
+    assert.ok(Array.isArray(packages) && packages.length === 40);
+    assert.ok(
+      turns >= 40,
+      `event loop turns during the walk: ${String(turns)}`,
+    );
+  }));
+
+await test("CLV-347 dependency identity keeps 16 manifest reads in flight for a package with 40 dependencies, so a busy machine does not wait for each manifest in turn", () =>
+  withFiles({ "package.json": product, ...packageHub(40) }, async (root) => {
+    const { value, peak, files } = await observedReads(
+      () => workflowBundleDependencies({ product: root, packages: ["hub"] }),
+      { within: join(root, "node_modules") },
+    );
+    const parsed: unknown = JSON.parse(value);
+    const packages: unknown = Reflect.get(Object(parsed), "packages");
+    assert.ok(Array.isArray(packages) && packages.length === 41);
+    assert.equal(files, 41);
+    assert.equal(peak, 16, `outstanding manifest reads: ${String(peak)}`);
+  }));

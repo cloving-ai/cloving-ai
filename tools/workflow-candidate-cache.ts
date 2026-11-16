@@ -9,6 +9,7 @@ import {
 } from "./workflow-candidate-facts.ts";
 import metadata from "#package" with { type: "json" };
 import {
+  boundedRead,
   workflowBuildKey,
   rememberWorkflowBuild,
 } from "./self-host-build-cache.ts";
@@ -50,10 +51,14 @@ async function analysisContext(): Promise<string> {
     }),
   );
   const library = dirname(ts.sys.getExecutingFilePath());
-  for (const name of (await readdir(library)).sort()) {
-    if (!name.endsWith(".js") && !name.endsWith(".d.ts")) continue;
-    const bytes = await readFile(join(library, name));
-    hash.update(JSON.stringify([name, bytes.length]));
+  const names = (await readdir(library))
+    .sort()
+    .filter((name) => name.endsWith(".js") || name.endsWith(".d.ts"));
+  const contents = await Promise.all(
+    names.map((name) => boundedRead(join(library, name))),
+  );
+  for (const [index, bytes] of contents.entries()) {
+    hash.update(JSON.stringify([names[index], bytes.length]));
     hash.update(bytes);
   }
   return hash.digest("hex");
