@@ -17,6 +17,7 @@ await test("CLV-209 picker lists usable entries, current default first, and Othe
     await scene.program("grok", 'console.log("Error: unavailable")');
     const questions: string[] = [];
     const selected = await chooseHarness({
+      purpose: "factory-setup",
       environment: scene.environment,
       probe,
       current: { name: "codex", kind: "file", path: scene.root + "/bin/codex" },
@@ -41,6 +42,7 @@ await test("CLV-209 Other probes a custom harness name before selecting it", () 
     const answers = ["3", "custom"];
     const questions: string[] = [];
     const selected = await chooseHarness({
+      purpose: "factory-setup",
       environment: scene.environment,
       probe,
       current: undefined,
@@ -63,6 +65,7 @@ await test("CLV-209 Other refuses an unusable path", () =>
     const answers = ["3", file];
     await assert.rejects(
       chooseHarness({
+        purpose: "factory-setup",
         environment: scene.environment,
         probe,
         current: undefined,
@@ -76,6 +79,7 @@ await test("CLV-209 picker refuses invalid choices", () =>
   withDoctor(async (scene) => {
     await assert.rejects(
       chooseHarness({
+        purpose: "factory-setup",
         environment: scene.environment,
         probe,
         current: undefined,
@@ -88,6 +92,7 @@ await test("CLV-209 picker refuses invalid choices", () =>
 await test("CLV-209 picker accepts a saved default with only its name configured", () =>
   withDoctor(async (scene) => {
     const entry = await chooseHarness({
+      purpose: "factory-setup",
       environment: scene.environment,
       probe,
       current: { name: "codex" },
@@ -103,6 +108,7 @@ await test("CLV-209 picker rediscovers a custom shell default outside the known 
       'custom() { printf "1.0.0\\n"; }\n',
     );
     const entry = await chooseHarness({
+      purpose: "factory-setup",
       environment: {
         ...scene.environment,
         SHELL: "/bin/zsh",
@@ -119,6 +125,7 @@ await test("CLV-209 picker rediscovers a custom shell default outside the known 
 await test("CLV-209 picker omits an unavailable saved default", () =>
   withDoctor(async (scene) => {
     const entry = await chooseHarness({
+      purpose: "factory-setup",
       environment: scene.environment,
       probe,
       current: { name: "missing" },
@@ -134,6 +141,7 @@ await test("CLV-209 picker keeps a saved default whose name differs from its exe
       'console.log("1.0.0")',
     );
     const selected = await chooseHarness({
+      purpose: "factory-setup",
       environment: scene.environment,
       probe,
       current: { name: "claude", kind: "file", path: wrapper },

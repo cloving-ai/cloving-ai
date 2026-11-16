@@ -4,7 +4,7 @@ import {
   type HarnessStartRequest,
 } from "../harness-start.ts";
 import { isTurnCommand, nativeHarness } from "../harness-defaults.ts";
-import type { HarnessEntry } from "./harness-probes.ts";
+import type { HarnessEntry, HarnessPurpose } from "./harness-probes.ts";
 import type { ProbeRunner } from "./probe-command.ts";
 import { changeConfigFile } from "./config-file.ts";
 import { chooseHarness, selectedHarness } from "./init-selection.ts";
@@ -39,14 +39,10 @@ export async function initCommand(context: {
   }
   try {
     const path = context.path ?? (await promptedPath());
-    const entry =
-      context.harness === undefined
-        ? await promptHarness({ ...context, repository: context.repository })
-        : await selectedHarness(context.harness, {
-            ...context,
-            current: projectSettings(context.environment, context.repository)
-              .harness,
-          });
+    const entry = await setupHarness(
+      { ...context, repository: context.repository },
+      path,
+    );
     const turn =
       path === "local" ? await localTurn(entry, context.askTurn) : undefined;
     await changeConfigFile(
@@ -140,10 +136,31 @@ async function promptedPath(): Promise<"local" | "factory"> {
   }
 }
 
+function setupHarness(
+  context: {
+    readonly repository: string;
+    readonly environment: Readonly<NodeJS.ProcessEnv>;
+    readonly probe: ProbeRunner;
+    readonly harness: string | undefined;
+  },
+  path: "local" | "factory",
+): Promise<HarnessEntry> {
+  const purpose: HarnessPurpose =
+    path === "factory" ? "factory-setup" : "local-worker";
+  if (context.harness === undefined)
+    return promptHarness({ ...context, purpose });
+  return selectedHarness(context.harness, {
+    ...context,
+    current: projectSettings(context.environment, context.repository).harness,
+    purpose,
+  });
+}
+
 async function promptHarness(context: {
   readonly repository: string;
   readonly environment: Readonly<NodeJS.ProcessEnv>;
   readonly probe: ProbeRunner;
+  readonly purpose: HarnessPurpose;
 }): Promise<HarnessEntry> {
   if (!process.stdin.isTTY || !process.stdout.isTTY)
     throw new Error("harness-not-selected");

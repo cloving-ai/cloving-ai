@@ -150,6 +150,7 @@ for (const selection of ["file", "shell"]) {
     withDoctor(async (scene) => {
       const legacy = await legacyPi(scene, selection);
       const selected = await chooseHarness({
+        purpose: "factory-setup",
         environment: legacy.environment,
         current: legacy.harness,
         probe,

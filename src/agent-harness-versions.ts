@@ -46,6 +46,14 @@ export const knownHarnesses: readonly KnownHarness[] = [
   { name: "amp", versionOption: "--version", versionPattern: fallbackVersion },
 ];
 
+const setupHarnesses: readonly KnownHarness[] = [
+  {
+    name: "pi",
+    versionOption: "--version",
+    versionPattern: `^${semanticVersion}$`,
+  },
+];
+
 export function harnessDefinition(name: string): KnownHarness {
   return (
     knownHarnesses.find((entry) => entry.name === name) ?? {
@@ -53,6 +61,13 @@ export function harnessDefinition(name: string): KnownHarness {
       versionOption: "--version",
       versionPattern: fallbackVersion,
     }
+  );
+}
+
+export function setupHarnessDefinition(name: string): KnownHarness {
+  return (
+    setupHarnesses.find((entry) => entry.name === name) ??
+    harnessDefinition(name)
   );
 }
 
