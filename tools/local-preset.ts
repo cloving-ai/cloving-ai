@@ -7,7 +7,8 @@ export async function applyLocalPreset(input: {
   readonly id: string;
 }): Promise<void> {
   const root = join(input.folder, input.id);
-  await writeChanged(root + ".ts", localWorkflow);
+  const feed = declaredFeed(await readFile(root + ".declaration.json", "utf8"));
+  await writeChanged(root + ".ts", (text) => localWorkflow({ text, feed }));
   await writeChanged(root + ".declaration.json", localDeclaration);
   await writeChanged(join(root, "accept.ts"), localAccept);
   await writeChanged(join(root, "recovery.ts"), localRecovery);
@@ -33,17 +34,57 @@ function swap(input: {
   return input.text.replace(input.from, input.to);
 }
 
-function localWorkflow(text: string): string {
+function declaredFeed(text: string): string {
+  const parsed: unknown = JSON.parse(text);
+  const workflow = record(record(parsed)?.["workflow"]);
+  const feed = record(workflow?.["queue"])?.["feed"];
+  if (typeof feed !== "string") throw new Error("local-preset-mismatch");
+  return feed;
+}
+
+function localWorkflow(input: {
+  readonly text: string;
+  readonly feed: string;
+}): string {
   const next = workflowEdits.reduce(
     (current, [from, to]) => swap({ text: current, from, to }),
-    text,
+    withoutFeed(input),
   );
-  if (workflowMarkers.some((marker) => next.includes(marker)))
+  if ([input.feed, ...workflowMarkers].some((marker) => next.includes(marker)))
     throw new Error("local-preset-mismatch");
   return next;
 }
 
+const functionEnd = "\n}\n";
+
+function withoutFeed(input: {
+  readonly text: string;
+  readonly feed: string;
+}): string {
+  const { text, feed } = input;
+  const start = text.indexOf(`\nexport async function ${feed}() {\n`);
+  const end = text.indexOf(functionEnd, start);
+  if (start === -1 || end === -1) throw new Error("local-preset-mismatch");
+  return text.slice(0, start) + text.slice(end + functionEnd.length);
+}
+
 const workflowEdits: readonly (readonly [string, string])[] = [
+  [
+    'import {\n  issuePayload,\n  mergedReady,\n  continuedCursor,\n  completedFeedText,\n} from "./develop/feed-read.ts";\n',
+    "",
+  ],
+  [
+    'import { readyIssuePageOf, blockerStatesOf } from "./develop/feed-results.ts";\n',
+    "",
+  ],
+  [
+    'import { protectedEffect } from "cloving/workflows/steps/protected-effect";\n',
+    "",
+  ],
+  [
+    'import {\n  blockerNumbersOf,\n  selected,\n  type BlockerState,\n  type ReadyIssue,\n} from "./develop/feed-selection.ts";\n',
+    "",
+  ],
   [
     'import { preparePull, labelTicket, blockTicket } from "./develop/pull.ts";\nimport { developRound } from "./develop/round.ts";\n',
     'import { localRound as developRound } from "./develop/local.ts";\n',
@@ -65,6 +106,8 @@ const workflowEdits: readonly (readonly [string, string])[] = [
 ];
 
 const workflowMarkers = [
+  "protectedEffect",
+  "/feed-",
   "preparePull",
   "ticketInput",
   "blockTicket",

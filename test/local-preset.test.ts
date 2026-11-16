@@ -52,9 +52,29 @@ await test("the local preset rejects a workflow that still names a removed step"
     );
   }));
 
+await test("#820 the local preset rejects a workflow that has no develop feed to remove", () =>
+  withFiles({}, async (directory) => {
+    const folder = await copiedDevelop(directory);
+    const path = join(folder, "develop.ts");
+    const source = await readFile(path, "utf8");
+    await writeFile(
+      path,
+      source.slice(0, source.indexOf("\nexport async function developFeed")),
+    );
+    await assert.rejects(
+      applyLocalPreset({ folder, id: "develop" }),
+      /local-preset-mismatch/,
+    );
+  }));
+
 await test("the local preset rejects a declaration that has no workflow input", () =>
   withFiles({}, async (directory) => {
-    const texts = ["[]\n", "{}\n", '{"workflow":{}}\n'];
+    const texts = [
+      "[]\n",
+      "{}\n",
+      '{"workflow":{}}\n',
+      '{"workflow":{"queue":{"feed":"developFeed"}}}\n',
+    ];
     for (const [index, text] of texts.entries()) {
       const folder = await copiedDevelop(join(directory, String(index)));
       await writeFile(join(folder, "develop.declaration.json"), text);
@@ -150,7 +170,7 @@ async function assertWorkflow(folder: string) {
   assert.match(workflow, /promptInput\(request\)/);
   assert.doesNotMatch(
     workflow,
-    /preparePull|ticketInput|blockTicket|labelTicket/,
+    /preparePull|ticketInput|blockTicket|labelTicket|developFeed|protectedEffect|\/feed-/,
   );
 }
 
