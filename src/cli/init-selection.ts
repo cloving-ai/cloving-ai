@@ -3,6 +3,7 @@ import {
   discoverHarnesses,
   probeHarness,
   type HarnessEntry,
+  type HarnessPurpose,
 } from "./harness-probes.ts";
 import type { ProbeRunner } from "./probe-command.ts";
 
@@ -10,6 +11,7 @@ interface SelectionContext {
   readonly environment: Readonly<NodeJS.ProcessEnv>;
   readonly probe: ProbeRunner;
   readonly current?: HarnessSettings["harness"];
+  readonly purpose: HarnessPurpose;
 }
 
 export async function selectedHarness(
@@ -21,6 +23,7 @@ export async function selectedHarness(
     env: context.environment,
     probe: context.probe,
     harness: context.current,
+    purpose: context.purpose,
   });
   const entries = discovery.entries.filter(
     (entry) => entry.working && (!shell || entry.kind === "shell"),
@@ -72,6 +75,7 @@ async function availableHarnesses(
     env: context.environment,
     probe: context.probe,
     harness: context.current,
+    purpose: context.purpose,
   });
   const entries = found.entries.filter((entry) => entry.working).map(initEntry);
   const current = context.current;
@@ -89,6 +93,7 @@ async function availableHarnesses(
         env: context.environment,
         probe: context.probe,
         harness: current,
+        purpose: context.purpose,
       },
     );
     const name = current.name;
