@@ -5,14 +5,18 @@ import { test } from "node:test";
 
 const readme = readFileSync(join(import.meta.dirname, "../README.md"), "utf8");
 
-await test("the README documents the Linux shards of a pull request and of main", () => {
+await test("#829 the README documents the Linux and macOS shards of a pull request and of main", () => {
   assert.match(
     readme,
-    /A pull request runs six duration-balanced Linux shards on Node 26\.9\.0\. A push to `main` runs three shards on each supported Node version\./,
+    /A pull request runs six duration-balanced Linux shards on Node 26\.9\.0\. A push to `main` runs four shards on each supported Node version\./,
   );
   assert.match(
     readme,
     /On a push to `main`, CI also runs the Ubuntu checks with Node 24\.22\.1\./,
+  );
+  assert.match(
+    readme,
+    /A push to `main`, a merge group and a manual run start four full macOS shards\./,
   );
   assert.doesNotMatch(
     readme,

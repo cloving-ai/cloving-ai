@@ -36,7 +36,7 @@
         "CLOVING_CI_MACOS_VERSION": "15.*",
         "NODE_OPTIONS": "--max-old-space-size=4096",
         "CLOVING_TEST_SET": "${{ matrix.shard == 'platform' && 'platform' || 'all' }}",
-        "CLOVING_TEST_SHARD": "${{ matrix.shard == 'platform' && '1/1' || format('{0}/3', matrix.shard) }}"
+        "CLOVING_TEST_SHARD": "${{ matrix.shard == 'platform' && '1/1' || format('{0}/4', matrix.shard) }}"
       },
       "steps": [
         {
@@ -115,7 +115,7 @@
       "strategy": {
         "fail-fast": false,
         "matrix": {
-          "shard": "${{ fromJSON(github.event_name == 'pull_request' && '[\"platform\"]' || '[\"1\",\"2\",\"3\"]') }}"
+          "shard": "${{ fromJSON(github.event_name == 'pull_request' && '[\"platform\"]' || '[\"1\",\"2\",\"3\",\"4\"]') }}"
         }
       }
     },
@@ -127,7 +127,7 @@
         "fail-fast": false,
         "matrix": {
           "node": "${{ fromJSON(github.event_name == 'pull_request' && '[\"26.9.0\"]' || '[\"24.22.1\",\"26.9.0\"]') }}",
-          "shard": "${{ fromJSON(github.event_name == 'pull_request' && '[\"1\",\"2\",\"3\",\"4\",\"5\",\"6\"]' || '[\"1\",\"2\",\"3\"]') }}"
+          "shard": "${{ fromJSON(github.event_name == 'pull_request' && '[\"1\",\"2\",\"3\",\"4\",\"5\",\"6\"]' || '[\"1\",\"2\",\"3\",\"4\"]') }}"
         }
       },
       "env": {
@@ -135,7 +135,7 @@
         "CLOVING_TEST_CONCURRENCY": "4",
         "CLOVING_CI_ARCHITECTURE": "x64",
         "NODE_OPTIONS": "--max-old-space-size=4096",
-        "CLOVING_TEST_SHARD": "${{ format('{0}/{1}', matrix.shard, github.event_name == 'pull_request' && '6' || '3') }}"
+        "CLOVING_TEST_SHARD": "${{ format('{0}/{1}', matrix.shard, github.event_name == 'pull_request' && '6' || '4') }}"
       },
       "steps": [
         {
