@@ -215,7 +215,7 @@ for (const mismatch of ["turn", "name", "kind", "path"]) {
         }),
       );
       const result = initCli(scene, {
-        arguments: ["--harness", legacy.program],
+        arguments: ["--local", "--harness", legacy.program],
       });
       assert.equal(result.status, 2);
       assert.match(result.stderr, /harness-unusable/);
