@@ -87,7 +87,7 @@ await test("#837 the header shows no queue control without exactly one queue", (
     message: "",
     onCommand: () => undefined,
   };
-  const commands: unknown[] = [];
+  const commands: Parameters<QueueControls["onCommand"]>[] = [];
   const queue: QueueControls = {
     busy: [],
     messages: {},
