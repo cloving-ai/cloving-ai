@@ -14,6 +14,7 @@ import {
   Header,
   type BannerBackProps,
   RefusedWorkflows,
+  type RepositoryQueueControls,
 } from "./watch-header-view.ts";
 export { clove, Header } from "./watch-header-view.ts";
 import { Phases } from "./watch-run-parts.ts";
@@ -168,6 +169,7 @@ export interface PageProps {
   readonly columns?: ColumnControls;
   readonly phone?: PhoneControls | undefined;
   readonly queue?: QueueControls | undefined;
+  readonly repositoryQueue?: RepositoryQueueControls | undefined;
   readonly continuing?: ContinueControls | undefined;
   readonly deciding?: DecisionControls | undefined;
   readonly loops?: LoopControls | undefined;
@@ -199,7 +201,12 @@ export function Page(props: PageProps): Shown {
       repository: location.repository,
     };
     return [
-      component(Header, { model, stale, theme }),
+      component(Header, {
+        model,
+        stale,
+        repositoryQueue: props.repositoryQueue,
+        theme,
+      }),
       down,
       component(RefusedWorkflows, { model }),
       run === undefined
@@ -245,6 +252,7 @@ export function FloorPage(
         model,
         stale,
         phone: props.phone,
+        repositoryQueue: props.repositoryQueue,
         theme,
         now,
       }),
@@ -307,6 +315,7 @@ export function BoardPage(
         model,
         stale,
         phone: props.phone,
+        repositoryQueue: props.repositoryQueue,
         theme,
         now,
       }),

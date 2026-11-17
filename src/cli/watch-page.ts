@@ -169,6 +169,7 @@ import {
   HeaderCounts,
   HeaderStatus,
   RefusedWorkflows,
+  RepositoryQueueControl,
   Version,
 } from "./watch-header-view.ts";
 import { restartPendingText } from "./restart-render.ts";
@@ -208,6 +209,7 @@ const functions = [
   HeaderCounts,
   HeaderStatus,
   restartPendingText,
+  RepositoryQueueControl,
   HeaderActions,
   Version,
   cardReply,

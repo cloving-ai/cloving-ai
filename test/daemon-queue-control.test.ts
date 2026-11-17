@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
+import { join } from "node:path";
 import { test } from "node:test";
+import { pathToFileURL } from "node:url";
 import { queuePrelude, queueWorkflow } from "./daemon-queue-fixture.ts";
-import { withConsumer } from "./world-host-fixture.ts";
+import { productRoot, withConsumer } from "./world-host-fixture.ts";
+
+const fixture = (file: string): string =>
+  JSON.stringify(pathToFileURL(join(productRoot, file)).href);
 
 await test("CLV-373 a legacy drain waits for a retained unrelated run after the journal moves to queue storage", () =>
   withConsumer(queueWorkflow, async (consumer) => {
@@ -214,5 +219,41 @@ process.exit(0);
 `,
       { WORKFLOW_LOCAL_QUEUE_CONCURRENCY: "4" },
     );
+    assert.equal(result.status, 0, result.stderr);
+  }));
+
+await test("#837 the watch header drain of one queue waits for a repository gap", () =>
+  withConsumer(queueWorkflow, async (consumer) => {
+    const result = await consumer.run(`${queuePrelude}
+import { watching } from ${fixture("test/watch-fixture.ts")};
+import { actionHeaders, pageToken, postCard } from ${fixture("test/watch-action-fixture.ts")};
+settings.declarations.push({ ...settings.declarations[0], workflowId: "review-corpus", queue: false });
+const daemon = await launched();
+let watch;
+try {
+  const reply = await submitted("unrelated-run", { workflowId: "review-corpus", submission: { ticket: "CLV-901" } });
+  assert.equal(reply.kind, "run-admitted", JSON.stringify(reply));
+  await until(() => existsSync("input-CLV-901"));
+  assert.equal((await asked("status")).queues.length, 1);
+  watch = await watching(runtimeDirectory);
+  const headers = actionHeaders(watch, await pageToken(watch));
+  const posted = await postCard(watch, { path: "actions/queue", headers, body: '{"command":"drain"}' });
+  assert.equal(posted.status, 200, posted.body);
+  const draining = JSON.parse(posted.body).queue;
+  assert.equal(draining.state, "draining");
+  assert.equal(draining.drain.scope, undefined);
+  const first = (await asked("status")).queue.nextCheckAt;
+  await until(async () => (await asked("status")).queue.nextCheckAt !== first);
+  const waiting = (await asked("status")).queue;
+  assert.equal(waiting.busy, 0);
+  assert.equal(waiting.state, "draining");
+  writeFileSync("outcome-CLV-901", "handoff_requested");
+  await until(async () => (await asked("status")).queue.state === "drained");
+} finally {
+  await watch?.stop();
+  await daemon.close();
+}
+process.exit(0);
+`);
     assert.equal(result.status, 0, result.stderr);
   }));

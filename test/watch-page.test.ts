@@ -80,6 +80,7 @@ await test("CLV-016 the watch page document has the components, a script that ge
       '"actions/phone/" + action',
       '"actions/schedule"',
       '"actions/queue"',
+      '"actions/queue"',
       '"actions/queue-settings"',
       '"actions/" + command',
       "transcriptPath(item",
