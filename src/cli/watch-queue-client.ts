@@ -56,6 +56,28 @@ async function queuePost(workflowId, requested) {
   state.queueMessages = { ...state.queueMessages, [workflowId]: message };
   draw();
 }
+async function repositoryQueuePost(command) {
+  state.repositoryQueueBusy = true;
+  state.repositoryQueueMessage = "";
+  draw();
+  try {
+    const response = await fetch("actions/queue", {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-cloving-token": actionToken },
+      body: JSON.stringify({ command }),
+    });
+    const reply = response.ok ? await response.json() : { error: { detail: refusedRequest } };
+    state.repositoryQueueMessage = reply.error?.detail ?? "";
+  } catch {
+    state.repositoryQueueMessage = "The watch tool does not answer.";
+  }
+  state.repositoryQueueBusy = false;
+  await load();
+}
+function repositoryQueueControls() {
+  if (actionToken === null) return undefined;
+  return { busy: state.repositoryQueueBusy, message: state.repositoryQueueMessage, onCommand: repositoryQueuePost };
+}
 function queueControls() {
   if (actionToken === null) return undefined;
   state.queueCommands = Object.fromEntries(Object.entries(state.queueCommands).filter(([id, saved]) => saved.shown === queueSnapshot(id)));

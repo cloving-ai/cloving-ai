@@ -1,5 +1,5 @@
 export const watchClient = `
-const state = { model: null, receivedAt: 0, stale: false, copied: "", label: "", run: "", loading: false, again: false, columns: {}, cards: {}, hovered: null, focused: null, phonePairing: null, phoneBusy: false, phoneMessage: "", phone: null, phoneLoadedAt: 0, phoneAccepted: null, phoneSequence: 0, phoneApplied: 0, queueBusy: [], queueMessages: {}, queueCommands: {}, continueBusy: [], continueMessages: {}, continueOpen: null, continueNote: "", steerOpen: null, steerNote: "", steerNow: false, steerBusy: [], steerMessages: {}, renameOpen: null, renameDrafts: {}, renameBusy: [], renameMessages: {}, renameCommands: {}, themeChoice: null, loopBusy: [], loopMessages: {}, loopCommands: {}, runCommandBusy: [], runCommandMessages: {}, runCommandSent: {}, runCommandAsking: null };
+const state = { model: null, receivedAt: 0, stale: false, copied: "", label: "", run: "", loading: false, again: false, columns: {}, cards: {}, hovered: null, focused: null, phonePairing: null, phoneBusy: false, phoneMessage: "", phone: null, phoneLoadedAt: 0, phoneAccepted: null, phoneSequence: 0, phoneApplied: 0, queueBusy: [], queueMessages: {}, queueCommands: {}, repositoryQueueBusy: false, repositoryQueueMessage: "", continueBusy: [], continueMessages: {}, continueOpen: null, continueNote: "", steerOpen: null, steerNote: "", steerNow: false, steerBusy: [], steerMessages: {}, renameOpen: null, renameDrafts: {}, renameBusy: [], renameMessages: {}, renameCommands: {}, themeChoice: null, loopBusy: [], loopMessages: {}, loopCommands: {}, runCommandBusy: [], runCommandMessages: {}, runCommandSent: {}, runCommandAsking: null };
 function readPreference(key) {
   try { return JSON.parse(localStorage.getItem(key)); }
   catch { return null; }
@@ -255,6 +255,7 @@ function draw() {
   const cards = cardControls(model, model === null ? null : boardWorkflow(model, watchLocation(selected).workflowId));
   const phone = model === null ? undefined : phoneControls(now);
   const queue = queueControls();
+  const repositoryQueue = repositoryQueueControls();
   const continuing = continueControls();
   const steering = steerControls();
   const deciding = decisionControls();
@@ -263,7 +264,7 @@ function draw() {
   const theme = themeControls();
   const loops = loopControls();
   const transcripts = transcriptControls();
-  const page = component(Page, { model, selected, now, observationNow, stale, copying, columns, cards, phone, queue, continuing, deciding, steering, controlling, renaming, loops, theme, transcripts });
+  const page = component(Page, { model, selected, now, observationNow, stale, copying, columns, cards, phone, queue, repositoryQueue, continuing, deciding, steering, controlling, renaming, loops, theme, transcripts });
   render(page, document.getElementById("app"));
   if (model === null) return;
   transcriptsFollowed(selected);

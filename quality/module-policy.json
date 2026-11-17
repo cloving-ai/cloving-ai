@@ -2271,6 +2271,7 @@
     "test/watch-queue-card-browser.test.ts": "test",
     "test/watch-queue-card.test.ts": "test",
     "test/watch-queue-control.test.ts": "test",
+    "test/watch-queue-header.test.ts": "test",
     "test/watch-queue-scopes.test.ts": "test",
     "test/watch-queue-settings-client.test.ts": "test",
     "test/watch-read-errors.test.ts": "test",

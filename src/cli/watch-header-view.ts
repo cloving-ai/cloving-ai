@@ -13,10 +13,17 @@ import {
   wordText,
 } from "./watch-theme-view.ts";
 
+export interface RepositoryQueueControls {
+  readonly busy: boolean;
+  readonly message: string;
+  readonly onCommand: (command: "drain" | "resume") => void;
+}
+
 export interface HeaderProps {
   readonly model: WatchModel | null;
   readonly stale: boolean;
   readonly phone?: PhoneControls | undefined;
+  readonly repositoryQueue?: RepositoryQueueControls | undefined;
   readonly theme?: ThemeControls | undefined;
   readonly now?: string;
 }
@@ -96,13 +103,49 @@ export function HeaderStatus(props: HeaderProps): Shown {
   });
 }
 
+export function RepositoryQueueControl(props: {
+  readonly model: WatchModel | null;
+  readonly queue: RepositoryQueueControls;
+}): Shown {
+  const { queue } = props;
+  const queues = props.model?.queues ?? [];
+  const state = queues[0]?.["state"];
+  if (queues.length !== 1 || state === "off") return null;
+  const command = state === "running" ? "drain" : "resume";
+  return [
+    element("button", {
+      type: "button",
+      class: "queue-control",
+      ...(queue.busy ? { disabled: true } : {}),
+      onClick: () => {
+        queue.onCommand(command);
+      },
+      children: command === "drain" ? "Drain queue" : "Resume queue",
+    }),
+    queue.message === ""
+      ? null
+      : element("span", { class: "queue-message", children: queue.message }),
+  ];
+}
+
 export function HeaderActions(props: HeaderProps): Shown {
-  const { phone, theme } = props;
-  if (phone === undefined && theme === undefined) return null;
+  const { phone, repositoryQueue, theme } = props;
+  if (
+    phone === undefined &&
+    repositoryQueue === undefined &&
+    theme === undefined
+  )
+    return null;
   return element("div", {
     class: "header-actions",
     children: [
       theme === undefined ? null : component(ThemeMenu, { theme }),
+      repositoryQueue === undefined
+        ? null
+        : component(RepositoryQueueControl, {
+            model: props.model,
+            queue: repositoryQueue,
+          }),
       phone === undefined
         ? null
         : component(PhonePanel, {
