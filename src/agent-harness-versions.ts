@@ -47,11 +47,7 @@ export const knownHarnesses: readonly KnownHarness[] = [
 ];
 
 const setupHarnesses: readonly KnownHarness[] = [
-  {
-    name: "pi",
-    versionOption: "--version",
-    versionPattern: `^${semanticVersion}$`,
-  },
+  { name: "pi", versionOption: "--version", versionPattern: fallbackVersion },
 ];
 
 export function harnessDefinition(name: string): KnownHarness {
