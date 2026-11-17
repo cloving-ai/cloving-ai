@@ -22,6 +22,10 @@ const versionLines = [
   "pi version 1.5.3: error",
   "Error: Pi 1.5.3 is unavailable",
   "pi 1.5.3 not found",
+  "ERROR 1.5",
+  "pi 1.5.3 Unavailable",
+  "errors=0 1.5.3",
+  "terror 1.5",
   "pi version unknown",
   "pi\n1.5.3",
 ];
