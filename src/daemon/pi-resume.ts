@@ -9,6 +9,7 @@ import { readRecord, writeRecord } from "./operation-journal.ts";
 import { piSessionHeader, responseIdentity } from "./pi-records.ts";
 import {
   createPiSession,
+  nativePiTurn,
   ownedPiSession,
   type PiSession,
 } from "./pi-session.ts";
@@ -18,8 +19,7 @@ export async function piResumeSession(request: {
   readonly folder: string;
   readonly intent: { readonly operationId: string };
 }): Promise<PiSession | string | undefined> {
-  const started = record(request.started);
-  if (started?.["harness"] !== "pi") return undefined;
+  if (!nativePiTurn(request.started)) return undefined;
   const entry = await settledPiEntry(request);
   if (typeof entry === "string") return entry;
   const session = await ownedPiSession({

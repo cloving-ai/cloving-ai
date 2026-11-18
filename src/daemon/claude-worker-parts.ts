@@ -3,7 +3,7 @@ import type {
   DeliveryIntent,
 } from "../broker/actor/delivery-intents.ts";
 import type { SteerAnswer, SteerRequest } from "./turn-steering.ts";
-import { record } from "../protocol.ts";
+import { nativePiTurn } from "./pi-session.ts";
 import type { WorkerReconciliation } from "./worker-reconciliation.ts";
 import type { HarnessSettings, turnHarness } from "../harness-defaults.ts";
 import type { ProtectedIntent } from "../broker/actor/delivery-intents.ts";
@@ -39,7 +39,7 @@ export function nativePiOperation(
   started: unknown,
   active: Active | undefined,
 ): boolean {
-  if (active === undefined) return record(started)?.["piSession"] !== undefined;
+  if (active === undefined) return nativePiTurn(started);
   return active.worker === "pi" && active.output !== "text";
 }
 
