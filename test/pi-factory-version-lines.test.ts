@@ -6,6 +6,7 @@ import { chooseHarness, selectedHarness } from "../src/cli/init-selection.ts";
 import { check, withDoctor } from "./doctor-fixture.ts";
 import { initCli } from "./init-fixture.ts";
 import {
+  acceptedByVersion19,
   asked,
   piBody,
   probe,
@@ -34,12 +35,6 @@ const factoryRuns = [
   { case: "saved", flags: [] },
   { case: "explicit flag", flags: ["--factory"] },
 ] as const;
-
-function acceptedByVersion19(output: string): boolean {
-  const line = output.split(/\r?\n/, 1)[0] ?? "";
-  if (/\b(?:error|unavailable|not found)\b/i.test(line)) return false;
-  return /\d+\.\d+/.test(line);
-}
 
 for (const line of legacyLines) {
   await test(`#833 v1.9 fresh, saved, picker and explicit factory setup accept the Pi line ${line}`, () =>
@@ -91,7 +86,7 @@ await test("#833 the factory-setup decision matches the 1.9.0 rule for each Pi v
     }
   }));
 
-await test("#833 init --local and doctor still refuse Pi lines that only factory setup accepts", () =>
+await test("#833 init --local and native Pi doctor still refuse Pi lines that only factory setup accepts", () =>
   withDoctor(async (scene) => {
     for (const line of legacyLines.filter((value) => value !== "1.5.3")) {
       const pi = await setupPi(scene, { kind: "file", version: line });
@@ -101,7 +96,10 @@ await test("#833 init --local and doctor still refuse Pi lines that only factory
       });
       assert.equal(result.status, 2, line);
       assert.match(result.stderr, /harness-unusable: no-version/);
-      const report = await scene.report(pi.environment);
+      const report = await scene.report({
+        ...pi.environment,
+        CLOVING_WORKER: "pi",
+      });
       assert.match(
         String(check(report, "harnesses")["detail"]),
         /"name":"pi"[^}]*"working":false,"reason":"no-version"/,

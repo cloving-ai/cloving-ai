@@ -7,10 +7,23 @@ import { privateSettingsPath } from "../src/cli/project-settings.ts";
 import type { DoctorScene } from "./doctor-fixture.ts";
 
 export const setupMessage = ["run `cloving init-prompt`"];
+export const versionLines = [
+  "pi version 1.5.3",
+  "v1.5.3",
+  "1.5",
+  "1.5.3",
+  "1.5.2",
+] as const;
 export const probe = createProbeRunner({
   spawn: (input) => spawn(input.executable, input.arguments, input.options),
   kill: (identifier, signal) => process.kill(identifier, signal),
 });
+
+export function acceptedByVersion19(output: string): boolean {
+  const line = output.split(/\r?\n/, 1)[0] ?? "";
+  if (/\b(?:error|unavailable|not found)\b/i.test(line)) return false;
+  return /\d+\.\d+/.test(line);
+}
 
 export function piBody(version: string): string {
   return [

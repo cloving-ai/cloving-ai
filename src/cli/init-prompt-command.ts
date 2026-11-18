@@ -3,8 +3,12 @@ import { extname, join } from "node:path";
 import packageMetadata from "#package" with { type: "json" };
 import { nativeHarness, type HarnessSettings } from "../harness-defaults.ts";
 import { record } from "../protocol.ts";
-import { listedSetting } from "./doctor-local.ts";
+import { listedSetting, serviceCommandEnvironment } from "./doctor-local.ts";
 import { chatStores } from "./chat-stores.ts";
+import {
+  discoveryPurpose,
+  selectedHarnessObservation,
+} from "./doctor-harness.ts";
 import { discoverHarnesses } from "./harness-probes.ts";
 import { initPrompt, type InitPromptFacts } from "./init-prompt.ts";
 import type { ProbeRunner } from "./probe-command.ts";
@@ -93,15 +97,39 @@ async function inventory(
   };
 }
 
-function selectedWorker(
+const noWorker = "no worker; ask for harness.turn";
+
+interface WorkerContext {
+  readonly repository: string;
+  readonly environment: Readonly<NodeJS.ProcessEnv>;
+  readonly probe: ProbeRunner;
+  readonly harness: HarnessSettings["harness"];
+}
+
+async function selectedWorker(
   name: string,
-  harness: HarnessSettings["harness"],
-): string {
+  context: WorkerContext,
+): Promise<string> {
+  const harness = context.harness;
   if (nativeHarness(name, harness?.name === name ? harness.turn : undefined))
-    return `native ${name}`;
+    return nativeWorker(name, context);
   if (harness?.name === name && harness.turn !== undefined)
     return `one-shot ${name}`;
-  return "no worker; ask for harness.turn";
+  return noWorker;
+}
+
+async function nativeWorker(
+  name: string,
+  context: WorkerContext,
+): Promise<string> {
+  if (name !== "pi") return `native ${name}`;
+  const selected = await selectedHarnessObservation(context.environment, {
+    directory: context.repository,
+    probe: context.probe,
+    commandEnvironment: serviceCommandEnvironment(context.environment),
+    harness: context.harness,
+  });
+  return selected.result === "ok" ? "native pi" : noWorker;
 }
 
 async function githubFacts(
@@ -142,17 +170,29 @@ export async function initPromptFacts(
     throw new Error(
       "repository-unknown: Change to a git repository or use --repository <directory>.",
     );
-  const { environment, harness } = projectSettings(
+  const { environment, harness, profiles } = projectSettings(
     context.environment,
     repository,
   );
-  const [github, discovery, current, stores] = await Promise.all([
+  const purpose = await discoveryPurpose(environment, { harness, profiles });
+  const name = environment["CLOVING_WORKER"] ?? harness?.name ?? "claude";
+  const [github, discovery, current, stores, worker] = await Promise.all([
     githubFacts({ ...context, repository, environment }),
-    discoverHarnesses({ env: environment, probe: context.probe, harness }),
+    discoverHarnesses({
+      env: environment,
+      probe: context.probe,
+      harness,
+      purpose,
+    }),
     inventory({ ...context, repository, environment }),
     chatStores(environment["HOME"]),
+    selectedWorker(name, {
+      repository,
+      environment,
+      probe: context.probe,
+      harness,
+    }),
   ]);
-  const name = environment["CLOVING_WORKER"] ?? harness?.name ?? "claude";
   return {
     version: packageMetadata.version,
     client: clientProgram(),
@@ -165,7 +205,7 @@ export async function initPromptFacts(
       working,
     })),
     defaultHarness: name,
-    worker: selectedWorker(name, harness),
+    worker,
     runtime: runtimeDirectory(environment, repository) ?? "unavailable",
     chatStores: stores,
     ...current,
