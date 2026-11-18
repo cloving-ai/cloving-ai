@@ -49,10 +49,7 @@ const selections = [
   },
 ] as const;
 
-async function piFacts(
-  scene: DoctorScene,
-  environment: NodeJS.ProcessEnv,
-): Promise<readonly unknown[]> {
+async function piFacts(scene: DoctorScene, environment: NodeJS.ProcessEnv) {
   const facts = await initPromptFacts({
     repository: scene.repository,
     environment,
