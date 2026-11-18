@@ -208,6 +208,20 @@ export function turnHarness(
   };
 }
 
+export function nativePiSelected(
+  settings: HarnessSettings,
+  profiles: Readonly<Record<string, { readonly harness?: string }>>,
+): boolean {
+  const names = [
+    settings.worker ?? settings.harness?.name ?? "claude",
+    ...Object.values(profiles).map((profile) => profile.harness),
+  ];
+  return (
+    names.includes("pi") &&
+    nativeHarness("pi", matchingHarness(settings, "pi").turn)
+  );
+}
+
 export function nativeHarness(
   name: string,
   turn?: unknown,

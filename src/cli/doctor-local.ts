@@ -1,5 +1,5 @@
 import { access, constants, stat } from "node:fs/promises";
-import { basename, delimiter, isAbsolute, resolve } from "node:path";
+import { basename, delimiter, dirname, isAbsolute, resolve } from "node:path";
 import { parseCommands } from "../command-settings.ts";
 import type { DoctorObservation, DoctorWorkflow } from "../doctor-report.ts";
 import {
@@ -243,5 +243,14 @@ export function commandLoginObservation(
   return {
     result: "warn",
     detail: `These commands run gh, but a command gets no GitHub login: ${names.join(", ")}`,
+  };
+}
+
+export function serviceCommandEnvironment(
+  environment: Readonly<NodeJS.ProcessEnv>,
+): Readonly<NodeJS.ProcessEnv> {
+  return {
+    ...environment,
+    PATH: [dirname(process.execPath), environment["PATH"]].join(delimiter),
   };
 }

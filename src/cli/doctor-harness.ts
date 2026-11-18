@@ -10,17 +10,20 @@ import type { DoctorObservation } from "../doctor-report.ts";
 import {
   harnessDefaults,
   nativeHarness,
+  nativePiSelected,
   turnHarness,
   type HarnessSettings,
   type NativeHarness,
 } from "../harness-defaults.ts";
+import type { TurnProfiles } from "../turn-profile.ts";
 import {
   accessibleFile,
   commandObservation,
   executableProgram,
   listedSetting,
 } from "./doctor-local.ts";
-import { discoverHarnesses } from "./harness-probes.ts";
+import { configuredProfiles } from "./doctor-runners.ts";
+import { discoverHarnesses, type HarnessPurpose } from "./harness-probes.ts";
 import type { ProbeRunner } from "./probe-command.ts";
 
 export async function harnessObservations(
@@ -31,6 +34,7 @@ export async function harnessObservations(
     readonly probe: ProbeRunner;
     readonly commandEnvironment: Readonly<NodeJS.ProcessEnv>;
     readonly harness?: HarnessSettings["harness"];
+    readonly profiles?: TurnProfiles;
   },
 ): Promise<{
   readonly harnesses: DoctorObservation;
@@ -40,6 +44,7 @@ export async function harnessObservations(
     env: environment,
     probe: location.probe,
     harness: location.harness,
+    purpose: await discoveryPurpose(environment, location),
   });
   const harnesses: DoctorObservation = {
     result: discovery.entries.some((entry) => entry.working) ? "ok" : "fail",
@@ -54,6 +59,27 @@ export async function harnessObservations(
     harnesses,
     selected: await selectedHarnessObservation(environment, location),
   };
+}
+
+export async function discoveryPurpose(
+  environment: Readonly<NodeJS.ProcessEnv>,
+  selection: {
+    readonly harness?: HarnessSettings["harness"];
+    readonly profiles?: TurnProfiles;
+  },
+): Promise<HarnessPurpose> {
+  const worker = environment["CLOVING_WORKER"];
+  const profiles = await configuredProfiles(
+    environment,
+    selection.profiles ?? {},
+  );
+  const settings = {
+    ...(worker === undefined ? {} : { worker }),
+    ...(selection.harness === undefined ? {} : { harness: selection.harness }),
+  };
+  return nativePiSelected(settings, profiles ?? {})
+    ? "local-worker"
+    : "factory-setup";
 }
 
 interface HarnessCommandLocation {
@@ -242,7 +268,7 @@ function probeName(
   selected: { readonly worker: string; readonly output?: "text" },
   fallback: string,
 ): string {
-  if (selected.worker !== "pi") return fallback;
+  if (selected.worker !== "pi") return fallback === "pi" ? "" : fallback;
   return selected.output === "text" ? "" : "pi";
 }
 
@@ -339,7 +365,7 @@ function configuredHarnessName(
   return environment["CLOVING_WORKER"] ?? harness?.name;
 }
 
-async function selectedHarnessObservation(
+export async function selectedHarnessObservation(
   environment: Readonly<NodeJS.ProcessEnv>,
   location: HarnessCommandLocation & {
     readonly harness?: HarnessSettings["harness"];

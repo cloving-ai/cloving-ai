@@ -1,5 +1,5 @@
 import { clientProgram, shellArgument } from "./runtime-directory.ts";
-import { dirname, delimiter, join } from "node:path";
+import { dirname, join } from "node:path";
 import {
   doctorCodes,
   doctorExitCode,
@@ -39,6 +39,7 @@ import {
   nodeObservation,
   privateTextsObservation,
   queueObservation,
+  serviceCommandEnvironment,
 } from "./doctor-local.ts";
 
 interface DoctorOptions {
@@ -146,16 +147,14 @@ async function repositoryObservations(
       ? { result: "skip", detail: "Runtime prerequisite unavailable" }
       : await retentionObservation(dirname(location.runtime), environment);
   const project = location.project;
-  const serviceEnvironment = {
-    ...environment,
-    PATH: [dirname(process.execPath), environment["PATH"]].join(delimiter),
-  };
+  const serviceEnvironment = serviceCommandEnvironment(environment);
   const harnesses = await harnessObservations(environment, {
     directory: repository,
     settingsValid,
     probe,
     commandEnvironment: serviceEnvironment,
     harness: "harness" in configured ? configured.harness : undefined,
+    ...("profiles" in configured ? { profiles: configured.profiles } : {}),
   });
   observations["harnesses"] = harnesses.harnesses;
   observations["default-harness"] = harnesses.selected;
