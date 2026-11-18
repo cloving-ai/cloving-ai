@@ -229,12 +229,17 @@ export async function piOperationRecord(
     : { harness: active.worker, ...active.intent };
 }
 
+export function nativePiTurn(started: unknown): boolean {
+  const fields = record(started);
+  return fields?.["harness"] === "pi" && fields["piSession"] !== undefined;
+}
+
 export async function piAttemptRefusal(
   folder: string,
   started: unknown,
 ): Promise<string | undefined> {
   const fields = record(started);
-  if (fields?.["harness"] !== "pi" || fields["phase"] !== "running")
+  if (!nativePiTurn(started) || fields?.["phase"] !== "running")
     return undefined;
   const attempt = attemptNumber(started);
   if (attempt === undefined) return "pi-attempt-ownership-conflict";

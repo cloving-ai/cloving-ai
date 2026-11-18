@@ -2,6 +2,7 @@ import { WorkerReconciliation } from "./worker-reconciliation.ts";
 import { consumePiShutdown, piResumeState } from "./pi-resume.ts";
 import { turnHarness } from "../harness-defaults.ts";
 import {
+  nativePiTurn,
   piAttemptRefusal,
   piOperationRecord,
   piOperationRefusal,
@@ -133,10 +134,7 @@ async function launchedOrResumed(
   const { launch, ...rest } = request;
   if (launch === "stopped")
     return interruptedReply(rest, "claude-turn-interrupted");
-  if (
-    (launch === "gone" || launch === undefined) &&
-    recordedField(rest.started, "harness") === "pi"
-  )
+  if ((launch === "gone" || launch === undefined) && nativePiTurn(rest.started))
     return {
       kind: "unknown",
       evidence: `pi-prior-result-uncertain:${rest.key}`,

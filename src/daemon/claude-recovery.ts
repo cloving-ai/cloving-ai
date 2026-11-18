@@ -16,7 +16,7 @@ import type { WorkTree } from "./work-tree.ts";
 import { turnHarness } from "../harness-defaults.ts";
 import { selectedProfile, type WorkerProfiles } from "./worker-profile.ts";
 import { recordedProcessDirectory } from "./worktree-processes.ts";
-import { piRpcCommand } from "./pi-session.ts";
+import { nativePiTurn, piRpcCommand } from "./pi-session.ts";
 import { reservedPiRpcNotes } from "./pi-rpc-channel.ts";
 import { piResumeSession } from "./pi-resume.ts";
 import type { PiSession } from "./pi-session.ts";
@@ -118,7 +118,7 @@ export function stopRecoveryPlan(request: {
     !resumableHarness(harness) &&
     recordedLaunch(recordedField(started, "launch")) === undefined
   )
-    return harness === "pi"
+    return nativePiTurn(started)
       ? { kind: "unknown", evidence: `pi-prior-result-uncertain:${key}` }
       : "reconcile";
   return processAlive(recordedField(started, "processId"))
