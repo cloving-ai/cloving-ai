@@ -1,5 +1,4 @@
 import { getWorld } from "workflow/runtime";
-import { releaseStepClaims } from "./step-claims.ts";
 
 export type WorkflowHandler = (request: Request) => Promise<Response>;
 
@@ -10,7 +9,6 @@ export interface HostSettings {
 }
 
 export interface WorkflowHost {
-  readonly released: readonly string[];
   readonly close: () => Promise<void>;
 }
 
@@ -71,7 +69,6 @@ export async function startHost(settings: HostSettings): Promise<HostOpening> {
   const world = await getWorld();
   if (!direct(world))
     return refused("host-world", "the World takes no handler in its process");
-  const released = await releaseStepClaims(settings.dataDirectory, world);
   world.registerHandler(workflowQueue, settings.handler);
   try {
     await world.start?.();
@@ -85,7 +82,6 @@ export async function startHost(settings: HostSettings): Promise<HostOpening> {
   return {
     kind: "started",
     host: {
-      released,
       close: async () => {
         await world.close?.();
       },

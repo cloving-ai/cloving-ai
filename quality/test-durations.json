@@ -931,7 +931,6 @@
   "test/stalled-git-readiness.test.ts": 0.065875708,
   "test/status-turn-details.test.ts": 2.425856458,
   "test/step-bridge.test.ts": 0.13846841699999998,
-  "test/step-claims.test.ts": 0.010390458,
   "test/step-gate.test.ts": 0.13067199999999998,
   "test/stop-child.test.ts": 4.8711532879999995,
   "test/stop-opening-batch.test.ts": 4.835891042,

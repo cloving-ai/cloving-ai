@@ -21,35 +21,19 @@ function field(value: unknown, name: string): unknown {
   return Reflect.get(Object(value), name);
 }
 
-function items(value: unknown): readonly unknown[] {
-  return Array.isArray(value) ? value.map((item: unknown) => item) : [];
-}
-
 function stoppedAt(window: string): string {
   return `
-import { promises as files } from "node:fs";
 const window = ${JSON.stringify(window)};
-const link = files.link.bind(files);
-const rename = files.rename.bind(files);
-const seen = [];
-const stop = (target) => {
-  print({ boundary: window, target: String(target).split("/").at(-1) });
+const world = await getWorld();
+const create = world.events.create.bind(world.events);
+const stop = () => {
+  print({ boundary: window });
   process.kill(process.pid, "SIGKILL");
 };
-files.link = async (from, to) => {
-  const result = await link(from, to);
-  const name = String(to);
-  if (!name.includes("/.locks/steps/")) return result;
-  const kind = name.split(".").at(-1);
-  seen.push(kind);
-  if (window === "claim-" + kind) stop(to);
-  return result;
-};
-files.rename = async (from, to) => {
-  const result = await rename(from, to);
-  const name = String(to);
-  if (name.includes("/.locks/") || !name.includes("/steps/")) return result;
-  if (window === "entity-" + seen.at(-1)) stop(to);
+world.events.create = async (runId, data, ...rest) => {
+  if (window === "before-" + data?.eventType) stop();
+  const result = await create(runId, data, ...rest);
+  if (window === "after-" + data?.eventType) stop();
   return result;
 };
 const service = await hosted();
@@ -69,9 +53,10 @@ let listed = await list();
 for (let pass = 0; pass < 100 && listed.data.at(-1)?.eventType !== "run_completed"; pass += 1) { await delay(20); listed = await list(); }
 print({
   state: await stateOf(runs[0].run),
-  released: globalThis.released,
-  events: listed.data.map((event) => event.eventType),
-  claims: readdirSync(dataDirectory + "/.locks/steps").filter((name) => !name.includes(".tmp.")).map((name) => name.split(".").at(-1)),
+  starts: stepStarts(),
+  events: listed.data.map((event) => event.eventType).filter((type) => type.startsWith("step_")),
+  last: listed.data.at(-1)?.eventType,
+  files: readdirSync(dataDirectory).filter((name) => [".locks", "steps", "events", "runs"].includes(name)),
 });
 await service.close();
 process.exit(0);
@@ -84,49 +69,51 @@ async function recovered(window: string): Promise<readonly unknown[]> {
     });
     const second = await consumer.run(servicePrelude + restarted);
     const [line] = second.lines;
-    const stopped = String(field(first.lines[0], "target"));
     return [
       field(first.lines[0], "boundary"),
       field(line, "state"),
-      items(field(line, "released")).map((name) =>
-        String(name).replace(stopped.replace(/\.[a-z]+$/, ""), "step"),
-      ),
-      items(field(line, "events")).at(-1),
-      field(line, "claims"),
+      field(line, "starts"),
+      field(line, "events"),
+      field(line, "last"),
+      field(line, "files"),
     ];
   });
 }
 
-await test("CLV-056 after a process stop between the claim of a step start and its World events, the next host releases the claim and the run completes", async () => {
-  assert.deepEqual(await recovered("claim-created"), [
-    "claim-created",
+await test("#852 after a process stop between the start record of a step and the run of its body, the next host on the SQLite World runs the step and the run completes", async () => {
+  assert.deepEqual(await recovered("before-step_started"), [
+    "before-step_started",
     "completed",
-    ["step.created"],
+    1,
+    ["step_created", "step_started", "step_completed"],
     "run_completed",
-    ["created", "terminal"],
+    [],
   ]);
-  assert.deepEqual(await recovered("entity-created"), [
-    "entity-created",
+  assert.deepEqual(await recovered("after-step_started"), [
+    "after-step_started",
     "completed",
-    ["step.created"],
+    1,
+    ["step_created", "step_started", "step_retrying", "step_started", "step_completed"],
     "run_completed",
-    ["created", "terminal"],
+    [],
   ]);
 });
 
-await test("CLV-056 after a process stop between the claim of a step end and its World event, the next host releases the claim and the run completes", async () => {
-  assert.deepEqual(await recovered("claim-terminal"), [
-    "claim-terminal",
+await test("#852 after a process stop between the end of a step body and its end record, or after the end record, the next host on the SQLite World completes the run", async () => {
+  assert.deepEqual(await recovered("before-step_completed"), [
+    "before-step_completed",
     "completed",
-    ["step.terminal"],
+    2,
+    ["step_created", "step_started", "step_retrying", "step_started", "step_completed"],
     "run_completed",
-    ["created", "terminal"],
+    [],
   ]);
-  assert.deepEqual(await recovered("entity-terminal"), [
-    "entity-terminal",
+  assert.deepEqual(await recovered("after-step_completed"), [
+    "after-step_completed",
     "completed",
-    ["step.terminal"],
+    1,
+    ["step_created", "step_started", "step_completed"],
     "run_completed",
-    ["created", "terminal"],
+    [],
   ]);
 });

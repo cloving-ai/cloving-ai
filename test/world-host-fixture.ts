@@ -129,7 +129,6 @@ const hosted = async (overrides = {}) => {
       ports = given;
       const host = await startHost({ dataDirectory, concurrency: 1, handler: POST });
       if (host.kind !== "started") throw new Error(host.reason);
-      globalThis.released = host.host.released;
       const loop = worldLoop({ ...given, runs: taggedRuns, outcome: workflowOutcome, intervalMilliseconds: testMilliseconds(20), ...overrides.loop });
       const requestEffect = async (request) => {
         const reply = await given.requestEffect(request);
@@ -283,7 +282,7 @@ async function linkedPackages(directory: string): Promise<void> {
       name: "cloving",
       version,
       type: "module",
-      dependencies: { workflow: "5.1.0" },
+      dependencies: { workflow: dependencies?.["workflow"] },
       exports: {
         "./workflows": "./src/workflows.ts",
         "./workflows/steps/load-cycle": "./src/steps/load-cycle.ts",

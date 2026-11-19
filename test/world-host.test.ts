@@ -86,11 +86,18 @@ await test("CLV-055 the product host starts the real Local World, runs one compi
     const result = await consumer.run(`${counting}${opened}
 const run = await start(workflows.develop, [{ value: 2 }]);
 const result = await getRun(run.runId).returnValue;
+const runs = (await (await getWorld()).runs.list({ resolveData: "none" })).data.length;
 await opening.host.close();
-print({ kind: opening.kind, result, runs: readdirSync(dataDirectory + "/runs").length, world: worlds() > 0 });
+print({ kind: opening.kind, result, runs, database: existsSync(dataDirectory + "/world.db"), world: worlds() > 0 });
 `);
     assert.deepEqual(result.lines, [
-      { kind: "started", result: { doubled: 4 }, runs: 1, world: true },
+      {
+        kind: "started",
+        result: { doubled: 4 },
+        runs: 1,
+        database: true,
+        world: true,
+      },
     ]);
     assert.equal(result.status, 0, result.stderr);
   }));
@@ -229,10 +236,10 @@ const directory = process.cwd();
 const run = await start(workflows.held, [{ directory }]);
 while (!existsSync(directory + "/step-started")) await delay(10);
 await opening.host.close();
-const stopped = () => ["cancelled", "failed", "completed"].includes(JSON.parse(readFileSync(dataDirectory + "/runs/" + run.runId + ".json", "utf8")).status);
-const atClose = { ended: existsSync(directory + "/step-ended"), stopped: stopped() };
+const stopped = async () => ["cancelled", "failed", "completed"].includes((await (await getWorld()).runs.get(run.runId, { resolveData: "none" })).status);
+const atClose = { ended: existsSync(directory + "/step-ended"), stopped: await stopped() };
 await delay(200);
-const later = { ended: existsSync(directory + "/step-ended"), stopped: stopped() };
+const later = { ended: existsSync(directory + "/step-ended"), stopped: await stopped() };
 writeFileSync(directory + "/release", "");
 while (!existsSync(directory + "/step-ended")) await delay(10);
 print({ atClose, later, endedAfterRelease: true });

@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { BaseBuilder } from "@workflow/builders";
 import { serializeManifest } from "./workflow-manifest.ts";
@@ -11,6 +11,9 @@ if (!sourceDirectory || !outputDirectory) {
 }
 
 const output = resolve(outputDirectory);
+
+const requireShim =
+  'import { createRequire as __clovingRequire } from "node:module";\nvar require = __clovingRequire(import.meta.url);\n';
 
 class WorkflowBuilder extends BaseBuilder {
   override async getInputFiles(): Promise<string[]> {
@@ -31,6 +34,8 @@ class WorkflowBuilder extends BaseBuilder {
       serializeManifest(result.manifest),
     );
     await this.createClientLibrary();
+    const client = resolve(output, "client.mjs");
+    await writeFile(client, requireShim + (await readFile(client, "utf8")));
   }
 }
 
