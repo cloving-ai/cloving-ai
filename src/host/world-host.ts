@@ -1,4 +1,5 @@
 import { getWorld } from "workflow/runtime";
+import { legacyWorldRefusal } from "./legacy-world.ts";
 
 export type WorkflowHandler = (request: Request) => Promise<Response>;
 
@@ -64,7 +65,8 @@ function unsuitable(settings: HostSettings): HostRefusal | undefined {
 }
 
 export async function startHost(settings: HostSettings): Promise<HostOpening> {
-  const refusal = unsuitable(settings);
+  const refusal =
+    unsuitable(settings) ?? (await legacyWorldRefusal(settings.dataDirectory));
   if (refusal) return refusal;
   const world = await getWorld();
   if (!direct(world))

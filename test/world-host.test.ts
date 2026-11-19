@@ -253,3 +253,48 @@ process.exit(0);
       },
     ]);
   }));
+
+const legacyData = `
+import { mkdirSync } from "node:fs";
+mkdirSync(dataDirectory + "/runs", { recursive: true });
+mkdirSync(dataDirectory + "/events", { recursive: true });
+writeFileSync(dataDirectory + "/runs/wrun_1.json", JSON.stringify({ runId: "wrun_1", status: process.env.LEGACY_STATUS, attributes: { "cloving.run": "run-a" } }));
+writeFileSync(dataDirectory + "/events/wrun_1-evnt_1.json", "{}");
+`;
+
+await test("#852 the product host refuses to start the SQLite World on a data folder with an unfinished JSON run of an earlier SDK, and it starts on a folder with only finished JSON runs and keeps their files", () =>
+  withConsumer(workflows, async (consumer) => {
+    const refused = await consumer.run(
+      `${counting}${legacyData}
+const opening = await startHost({ dataDirectory, concurrency: 1, handler: counted });
+print({ kind: opening.kind, reason: opening.reason, named: opening.detail?.includes("run-a (World run wrun_1, running)"), database: existsSync(dataDirectory + "/world.db"), worlds: worlds() });
+`,
+      { LEGACY_STATUS: "running" },
+    );
+    assert.deepEqual(refused.lines, [
+      {
+        kind: "refused",
+        reason: "legacy-world-runs",
+        named: true,
+        database: false,
+        worlds: 0,
+      },
+    ]);
+    const started = await consumer.run(
+      `${counting}${legacyData}${opened}
+const run = await start(workflows.develop, [{ value: 2 }]);
+const result = await getRun(run.runId).returnValue;
+await opening.host.close();
+print({ kind: opening.kind, result, kept: [...readdirSync(dataDirectory + "/runs"), ...readdirSync(dataDirectory + "/events")], database: existsSync(dataDirectory + "/world.db") });
+`,
+      { LEGACY_STATUS: "completed" },
+    );
+    assert.deepEqual(started.lines, [
+      {
+        kind: "started",
+        result: { doubled: 4 },
+        kept: ["wrun_1.json", "wrun_1-evnt_1.json"],
+        database: true,
+      },
+    ]);
+  }));
