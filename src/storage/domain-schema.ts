@@ -190,6 +190,24 @@ export async function inspectFile(file: {
   }
 }
 
+export function openingTurn(file: {
+  readonly path: string;
+  readonly timeoutMilliseconds: number;
+}): () => void {
+  const turn = new DatabaseSync(file.path, {
+    timeout: file.timeoutMilliseconds,
+  });
+  try {
+    turn.exec("BEGIN EXCLUSIVE");
+  } catch (error) {
+    turn.close();
+    throw error;
+  }
+  return () => {
+    turn.close();
+  };
+}
+
 export async function inspectSchema(
   connection: SchemaReader,
 ): Promise<SchemaState> {

@@ -1,5 +1,4 @@
 import type { LeaseLimits } from "../../authority/leases.ts";
-import { realpath } from "node:fs/promises";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import {
@@ -23,6 +22,7 @@ import {
 import {
   contentionMilliseconds,
   fileRefusal,
+  inOpeningTurn,
   lockExclusively,
   observeSettings,
   requiredSettingsViolation,
@@ -91,26 +91,26 @@ export interface Owned {
   readonly schema: Exclude<SchemaState, Refusal>;
 }
 
-export async function ownedDatabase(
-  directory: string,
-): Promise<Owned | Refusal> {
-  let database: Database;
-  try {
-    const path = join(await realpath(directory), "authority.sqlite");
-    const checked = await fileRefusal(path);
-    if (checked !== undefined) return checked;
-    database = sqlite({
-      path,
-      timeoutMilliseconds: contentionMilliseconds,
-      lockRetryAttempts: 1,
-    });
-  } catch (error) {
-    return refused("storage-failure", error);
-  }
-  const owned = await ownership(database);
-  if (owned.kind === "owned") return owned;
-  await database.close();
-  return owned;
+export function ownedDatabase(directory: string): Promise<Owned | Refusal> {
+  return inOpeningTurn(directory, async (folder) => {
+    let database: Database;
+    try {
+      const path = join(folder, "authority.sqlite");
+      const checked = await fileRefusal(path);
+      if (checked !== undefined) return checked;
+      database = sqlite({
+        path,
+        timeoutMilliseconds: contentionMilliseconds,
+        lockRetryAttempts: 1,
+      });
+    } catch (error) {
+      return refused("storage-failure", error);
+    }
+    const owned = await ownership(database);
+    if (owned.kind === "owned") return owned;
+    await database.close();
+    return owned;
+  });
 }
 
 async function ownership(database: Database): Promise<Owned | Refusal> {
