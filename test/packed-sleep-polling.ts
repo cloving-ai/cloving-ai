@@ -11,7 +11,7 @@ import {
 import { call } from "./service-fixture.ts";
 import { field, items, reached } from "./self-host-fixture.ts";
 import { stopChildGroup } from "./stop-child.ts";
-import { worldRows } from "./world-database-fixture.ts";
+import { worldDocument, worldRows } from "./world-database-fixture.ts";
 import { startPackedHost, ready, boundedExit } from "./packed-host-fixture.ts";
 
 export async function packedPollingFiles(root: string): Promise<void> {
@@ -65,7 +65,7 @@ function records(world: string, table: "runs" | "events"): readonly unknown[] {
       : "run_id AS runId, event_type AS eventType, doc";
   return worldRows(world, `SELECT ${columns} FROM ${table}`).map(
     ({ doc, ...stored }): unknown => ({
-      ...Object(JSON.parse(String(doc))),
+      ...Object(worldDocument(doc)),
       ...stored,
     }),
   );

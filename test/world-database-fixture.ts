@@ -18,3 +18,11 @@ export function worldRows(
     database.close();
   }
 }
+
+export function worldDocument(doc: unknown): unknown {
+  return JSON.parse(String(doc), (_key, value: unknown): unknown =>
+    Reflect.get(Object(value), "__type") === "Date"
+      ? Reflect.get(Object(value), "value")
+      : value,
+  );
+}

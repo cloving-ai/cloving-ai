@@ -3,7 +3,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { record } from "../src/protocol.ts";
 import { call } from "./service-fixture.ts";
-import { worldRows } from "./world-database-fixture.ts";
+import { worldDocument, worldRows } from "./world-database-fixture.ts";
 import { field, items, reached } from "./self-host-fixture.ts";
 import { candidateDeclaration } from "./workflow-candidate-fixtures.ts";
 
@@ -115,7 +115,7 @@ export async function settledOperatorSegments(fixture: OperatorRestart) {
   const world = join(dirname(fixture.runtimeDirectory), "world");
   return await reached(() => {
     const runs = worldRows(world, "SELECT doc FROM runs").map(({ doc }) => {
-      const run = record(JSON.parse(String(doc)));
+      const run = record(worldDocument(doc));
       assert.ok(run, "Operator run must be a JSON object.");
       return run;
     });
