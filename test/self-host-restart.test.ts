@@ -298,18 +298,20 @@ await test("CLV-320 a claim names its start program only with a whole positive p
 
 await test("CLV-347 a new restart request wakes the host before its fallback poll", async () => {
   const directory = await mkdtemp(join(tmpdir(), "cloving-restart-wake-"));
+  const fallbackMilliseconds = 60_000;
   const stopping = new AbortController();
-  const stopped = Promise.withResolvers<undefined>();
+  const stopped = Promise.withResolvers<number>();
+  const started = performance.now();
   const watching = restartWatch({
     directory,
     runtime: join(directory, "run"),
     checkout: directory,
     environment: process.env,
-    milliseconds: 60_000,
+    milliseconds: fallbackMilliseconds,
     stopping: stopping.signal,
     exclusive: checkoutLock(stopping),
     stop: () => {
-      stopped.resolve(undefined);
+      stopped.resolve(performance.now() - started);
       return Promise.resolve();
     },
     stopChildren: () => Promise.resolve([]),
@@ -319,22 +321,10 @@ await test("CLV-347 a new restart request wakes the host before its fallback pol
     const temporary = join(directory, "restart.tmp");
     await writeFile(temporary, mark("now"));
     await rename(temporary, join(directory, "pending-restart-one"));
-    const deadline = AbortSignal.timeout(1000);
-    const completed = await Promise.race([
-      stopped.promise.then(() => true),
-      new Promise<false>((resolve) => {
-        deadline.addEventListener(
-          "abort",
-          () => {
-            resolve(false);
-          },
-          {
-            once: true,
-          },
-        );
-      }),
-    ]);
-    assert.equal(completed, true, "The request waited for the fallback poll.");
+    assert.ok(
+      (await stopped.promise) < fallbackMilliseconds,
+      "The request waited for the fallback poll.",
+    );
     assert.equal(await watching, 75);
     assert.equal(existsSync(join(directory, "pending-restart-one")), false);
   } finally {
