@@ -22,10 +22,10 @@ function displayed(
   const type = part["type"];
   const value = type === "thinking" ? part["thinking"] : part["text"];
   const replaceId = `pi:message:${String(state.message)}:${String(index)}`;
-  if (text(value).trim() === "") {
-    if (!state.shown.delete(index)) return [];
-    return [JSON.stringify({ type: "transcript_remove", replaceId })];
-  }
+  if (text(value).trim() === "")
+    return state.shown.delete(index)
+      ? [JSON.stringify({ type: "transcript_remove", replaceId })]
+      : [];
   state.shown.add(index);
   return [
     JSON.stringify({

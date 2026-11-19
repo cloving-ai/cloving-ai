@@ -143,6 +143,11 @@ async function request(
   }
 }
 
+function checkRecordedSkip(receipt: { readonly kind: string }): void {
+  if (receipt.kind !== "accepted" && receipt.kind !== "duplicate")
+    throw new Error("schedule-skip-not-recorded");
+}
+
 async function pending(
   settings: ScheduleContext,
   entry: { readonly workflowId: string; readonly progress: ScheduleProgress },
@@ -154,15 +159,15 @@ async function pending(
   if (progress.state !== "active") throw new Error("invalid-schedule-state");
   const identity = commandId(workflowId, progress.lastSlot);
   if (planned.kind === "skip") {
-    const receipt = await settings.submit({
-      kind: "record-schedule-skip",
-      commandId: `skip:${identity}`,
-      runId: planned.runId,
-      workflowId,
-      slot: progress.lastSlot,
-    });
-    if (receipt.kind !== "accepted" && receipt.kind !== "duplicate")
-      throw new Error("schedule-skip-not-recorded");
+    checkRecordedSkip(
+      await settings.submit({
+        kind: "record-schedule-skip",
+        commandId: `skip:${identity}`,
+        runId: planned.runId,
+        workflowId,
+        slot: progress.lastSlot,
+      }),
+    );
     return rest;
   }
   const reply = await request(settings, {
@@ -229,12 +234,13 @@ async function advance(
   if (schedule === undefined) return;
   let progress = settings.journal.entries.get(workflowId);
   if (progress === undefined) throw new Error("missing-schedule-state");
-  if (progress.pending !== undefined) {
+  const resumed = progress.pending !== undefined;
+  if (resumed) {
     progress = await pending(settings, { workflowId, progress });
     settings.journal.entries.set(workflowId, progress);
     await settings.journal.save();
-    if (settings.now < progress.nextAt) return;
   }
+  if (resumed && settings.now < progress.nextAt) return;
   const observed = await active(settings, progress);
   if (observed !== progress) {
     progress = observed;
@@ -242,14 +248,10 @@ async function advance(
     await settings.journal.save();
   }
   if (progress.state !== "active" || settings.now < progress.nextAt) return;
-  const runId =
-    progress.activeCommandId === undefined
-      ? undefined
-      : runIdentity(progress.activeCommandId);
   const planned: PendingSlot =
-    runId === undefined
+    progress.activeCommandId === undefined
       ? { kind: "run", input: schedule.input }
-      : { kind: "skip", runId };
+      : { kind: "skip", runId: runIdentity(progress.activeCommandId) };
   progress = {
     ...progress,
     ...dueSlot(schedule, { ...progress, now: settings.now }),

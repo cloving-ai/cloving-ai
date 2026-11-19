@@ -58,11 +58,10 @@ function cleanChunk(text: string, initial: Control) {
       control = commandControl(control, code);
       continue;
     }
-    if (control !== "text") {
-      const next = sequenceControl(control, code);
-      control = next ?? "text";
-      if (next !== undefined) continue;
-    }
+    const next =
+      control === "text" ? undefined : sequenceControl(control, code);
+    control = next ?? "text";
+    if (next !== undefined) continue;
     if (code === 27) control = "escape";
     else if (printable(code)) kept.push(character);
   }

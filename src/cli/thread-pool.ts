@@ -109,3 +109,14 @@ export async function stalledExit(host: StallExitHost): Promise<void> {
     host.exit(threadPoolStallExitCode);
   }
 }
+
+export async function stalledWatchExit(
+  host: StallExitHost & {
+    readonly exitCode: number | string | null | undefined;
+  },
+  command: { readonly kind: string },
+): Promise<void> {
+  if (command.kind !== "watch" || host.exitCode !== threadPoolStallExitCode)
+    return;
+  await stalledExit(host);
+}

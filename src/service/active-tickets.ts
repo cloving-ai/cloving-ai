@@ -241,10 +241,10 @@ export async function continuationLanesRefusal(
   context: ServiceContext,
   request: { readonly runId: string; readonly commandId: string },
 ): Promise<Reply | undefined> {
-  if (await queueRun(context, request.runId)) {
-    const refused = await repositoryQueueRefusal(context, request);
-    if (refused !== undefined) return refused;
-  }
+  const refused = (await queueRun(context, request.runId))
+    ? await repositoryQueueRefusal(context, request)
+    : undefined;
+  if (refused !== undefined) return refused;
   const workflowId = (
     await context.authority.queries.workflowIds([request.runId])
   )[request.runId];

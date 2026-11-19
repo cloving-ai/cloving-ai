@@ -90,16 +90,18 @@ async function candidate(
   return { branch, head, target };
 }
 
+async function recentlyPending(directory: string): Promise<boolean> {
+  const timestamp = Number(
+    await readFile(join(directory, "pending-self-update"), "utf8"),
+  );
+  return timestamp > 0 && Date.now() - timestamp < 30 * 60 * 1000;
+}
+
 async function markPending(
   directory: string,
   publication: "initial" | "renew" = "initial",
 ): Promise<void> {
-  if (publication === "renew") {
-    const timestamp = Number(
-      await readFile(join(directory, "pending-self-update"), "utf8"),
-    );
-    if (timestamp > 0 && Date.now() - timestamp < 30 * 60 * 1000) return;
-  }
+  if (publication === "renew" && (await recentlyPending(directory))) return;
   await mkdir(directory, { recursive: true });
   const temporary = join(directory, `pending-self-update-${randomUUID()}.tmp`);
   try {

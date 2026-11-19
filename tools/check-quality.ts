@@ -64,6 +64,40 @@ async function shardSources(): Promise<string[]> {
   return report;
 }
 
+async function checkQualityShard(test: {
+  readonly shard: string;
+  readonly index: number;
+}): Promise<void> {
+  const sources = test.index === 1 ? await shardSources() : [];
+  const generated = await inspectGenerated(process.cwd());
+  const result = await checkProjectTestShard(process.cwd(), {
+    timeFactor,
+    shard: test.shard,
+    testSet,
+    ...changed,
+    coverage,
+    ...(coverage === "off"
+      ? {}
+      : {
+          coverageDirectory:
+            process.env["CLOVING_COVERAGE_DIRECTORY"] ?? "coverage/shard",
+        }),
+    commandOptions,
+    generated: generated.outputs,
+    architecture: proposedModulePolicy(process.cwd()),
+    stepExports: {},
+  });
+  const completed = [...sources, ...result.completed];
+  if (test.index === 1) assertCheckCoverage(completed);
+  const report = {
+    ...result,
+    completed,
+    timings,
+    warnings: checkTimeWarnings(timings),
+  };
+  writeProjectReport(report);
+}
+
 async function checkQuality(): Promise<void> {
   if (!selected || selected.index === 1)
     await checkNpmInputs(process.cwd(), commandOptions);
@@ -78,34 +112,7 @@ async function checkQuality(): Promise<void> {
     commandOptions,
   );
   if (selected && shard) {
-    const sources = selected.index === 1 ? await shardSources() : [];
-    const generated = await inspectGenerated(process.cwd());
-    const result = await checkProjectTestShard(process.cwd(), {
-      timeFactor,
-      shard,
-      testSet,
-      ...changed,
-      coverage,
-      ...(coverage === "off"
-        ? {}
-        : {
-            coverageDirectory:
-              process.env["CLOVING_COVERAGE_DIRECTORY"] ?? "coverage/shard",
-          }),
-      commandOptions,
-      generated: generated.outputs,
-      architecture: proposedModulePolicy(process.cwd()),
-      stepExports: {},
-    });
-    const completed = [...sources, ...result.completed];
-    if (selected.index === 1) assertCheckCoverage(completed);
-    const report = {
-      ...result,
-      completed,
-      timings,
-      warnings: checkTimeWarnings(timings),
-    };
-    writeProjectReport(report);
+    await checkQualityShard({ shard, index: selected.index });
     return;
   }
   const generated = await inspectGenerated(process.cwd());

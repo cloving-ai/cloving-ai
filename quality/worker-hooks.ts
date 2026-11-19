@@ -5,49 +5,27 @@ import { checkLint } from "./source-checks.ts";
 import { inspectStructure } from "./structure.ts";
 import { checkSuppressions } from "./suppression-approval.ts";
 import { readWorkerHookEvent } from "./worker-hook-input.ts";
-import type { WorkerHookPolicy } from "./worker-hook-input.ts";
+import type { WorkerHookEvent, WorkerHookPolicy } from "./worker-hook-input.ts";
 import { proposedWorkerText, workerEditFile } from "./worker-edit.ts";
 import { traceWorkerHook } from "./worker-hook-trace.ts";
+
+const sourceExtensions = [
+  ".ts",
+  ".mts",
+  ".cts",
+  ".tsx",
+  ".js",
+  ".mjs",
+  ".cjs",
+  ".jsx",
+];
 
 export async function evaluateWorkerHook(
   input: unknown,
   policy: WorkerHookPolicy,
 ): Promise<{ exit: number; diagnostic: string }> {
   try {
-    const event = readWorkerHookEvent(input);
-    if (event.event === "Stop" && event.active)
-      return { exit: 0, diagnostic: "" };
-    if (event.event !== "Stop") {
-      const file = await workerEditFile(event.file, policy);
-      if (
-        ![
-          ".ts",
-          ".mts",
-          ".cts",
-          ".tsx",
-          ".js",
-          ".mjs",
-          ".cjs",
-          ".jsx",
-        ].includes(extname(file))
-      )
-        return { exit: 0, diagnostic: "" };
-      if (event.event === "PreToolUse") {
-        checkSuppressions(
-          [
-            ts.createSourceFile(
-              file,
-              await proposedWorkerText(event, file),
-              ts.ScriptTarget.Latest,
-              true,
-            ),
-          ],
-          [],
-        );
-        return { exit: 0, diagnostic: "" };
-      }
-    }
-    await checkWorkerSources(policy);
+    await checkWorkerEvent(readWorkerHookEvent(input), policy);
     return { exit: 0, diagnostic: "" };
   } catch (error) {
     return {
@@ -55,6 +33,28 @@ export async function evaluateWorkerHook(
       diagnostic: error instanceof Error ? error.message : "worker-hook-failed",
     };
   }
+}
+
+async function checkWorkerEvent(
+  event: WorkerHookEvent,
+  policy: WorkerHookPolicy,
+): Promise<void> {
+  if (event.event === "Stop" && event.active) return;
+  if (event.event === "Stop") return checkWorkerSources(policy);
+  const file = await workerEditFile(event.file, policy);
+  if (!sourceExtensions.includes(extname(file))) return;
+  if (event.event === "PostToolUse") return checkWorkerSources(policy);
+  checkSuppressions(
+    [
+      ts.createSourceFile(
+        file,
+        await proposedWorkerText(event, file),
+        ts.ScriptTarget.Latest,
+        true,
+      ),
+    ],
+    [],
+  );
 }
 
 async function checkWorkerSources(policy: WorkerHookPolicy): Promise<void> {

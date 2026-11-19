@@ -21,7 +21,7 @@ await test("QG-04 classic cyclomatic complexity is limited to ten", () => {
 
 await test("QG-04 cognitive complexity 15 passes and both excessive diagnostics survive", () => {
   const nested =
-    "if (value > 0) { if (value > 1) { if (value > 2) { value--; } } }\n";
+    "if (value > 0) { while (value > 1) { if (value > 2) { value--; } } }\n";
   const branch = "if (value > 0) value--;\n";
   const source = `export function example(value: number) {\n${nested.repeat(2)}${branch.repeat(3)}return value;\n}`;
   assert.deepEqual(lintFixture(source), []);
@@ -56,21 +56,25 @@ const controls = [
   { name: "try", open: "try {", close: "} catch { throw new Error(); }" },
 ];
 
+const loop = { open: "while (value > 0) {", close: "}" };
+
+function nest(levels: readonly { open: string; close: string }[]): string {
+  const opens = levels.map((level) => level.open).join("");
+  const closes = levels
+    .map((level) => level.close)
+    .reverse()
+    .join("");
+  return `export function example(value: number) { ${opens}value--;${closes} }`;
+}
+
 for (const control of controls) {
   await test(`QG-05 depth three/four for ${control.name}`, () => {
-    const source = `export function example(value: number) { ${control.open.repeat(3)}value--;${control.close.repeat(3)} }`;
-    assert.equal(
-      lintFixture(source).some((message) => message.ruleId === "max-depth"),
-      false,
-    );
-    const exceeded = source.replace(
-      "value--;",
-      `${control.open}value--;${control.close}`,
-    );
-    assert.equal(
-      lintFixture(exceeded).filter((message) => message.ruleId === "max-depth")
-        .length,
-      1,
+    assert.deepEqual(lintFixture(nest([loop, loop, control])), []);
+    assert.deepEqual(
+      lintFixture(nest([control, loop, loop, control])).map(
+        (message) => message.ruleId,
+      ),
+      ["max-depth"],
     );
   });
 }
@@ -100,3 +104,34 @@ for (const scenario of [
     );
   });
 }
+
+for (const shape of [
+  {
+    block: "then",
+    source:
+      "export function example(value: number) { if (value > 0) { if (value > 1) { value--; } } return value; }",
+  },
+  {
+    block: "else",
+    source:
+      "export function example(value: number) { if (value > 0) { value++; } else { value--; if (value < -1) { value++; } } return value; }",
+  },
+]) {
+  await test(`#835 an if statement directly in the ${shape.block} block of another if statement is rejected with a guard clause hint`, () => {
+    const findings = lintFixture(shape.source);
+    assert.deepEqual(
+      findings.map((finding) => finding.ruleId),
+      ["no-restricted-syntax"],
+    );
+    assert.match(findings[0]?.message ?? "", /guard clause/);
+  });
+}
+
+await test("#835 a guard clause before the second if statement is accepted", () => {
+  assert.deepEqual(
+    lintFixture(
+      "export function example(value: number) { if (value <= 0) return value; if (value > 1) { value--; } return value; }",
+    ),
+    [],
+  );
+});

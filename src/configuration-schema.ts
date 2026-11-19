@@ -208,10 +208,10 @@ function matches(value: unknown, schema: Schema): boolean {
 
 function validate(value: unknown, checked: Checked): void {
   const { schema, field } = checked;
-  if (schema.anyOf !== undefined) {
-    if (!schema.anyOf.some((option) => matches(value, option))) invalid(field);
-    return;
-  }
+  const { anyOf } = schema;
+  if (anyOf !== undefined && !anyOf.some((option) => matches(value, option)))
+    invalid(field);
+  if (anyOf !== undefined) return;
   scalar(value, checked);
   if (schema.type === "object") validateObject(value, checked);
   if (schema.type === "array") validateArray(value, checked);
