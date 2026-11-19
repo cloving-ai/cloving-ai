@@ -3,7 +3,7 @@ import { rm, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { test } from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
-import type { Fields, ServiceRequest } from "../src/protocol.ts";
+import type { Fields, Reply, ServiceRequest } from "../src/protocol.ts";
 import type { Handle } from "../src/service/transport.ts";
 import { eventually } from "./service-fixture.ts";
 import {
@@ -90,20 +90,22 @@ function heldScan(
   };
 }
 
+function questionsOnce(counts: { questions: number }): Promise<Reply> {
+  counts.questions += 1;
+  if (counts.questions === 1)
+    return Promise.resolve({
+      kind: "error",
+      error: { code: "unavailable", detail: "unavailable" },
+    });
+  return notifyReply({ decisions: [] });
+}
+
 function unavailableQuestions(counts: {
   statuses: number;
   questions: number;
 }): Handle {
   return (request) => {
-    if (request.operation === "questions") {
-      counts.questions += 1;
-      if (counts.questions === 1)
-        return Promise.resolve({
-          kind: "error",
-          error: { code: "unavailable", detail: "unavailable" },
-        });
-      return notifyReply({ decisions: [] });
-    }
+    if (request.operation === "questions") return questionsOnce(counts);
     if (request.parameters["runId"] !== undefined) {
       counts.statuses += 1;
       return notifyReply({ run: blockedRun });

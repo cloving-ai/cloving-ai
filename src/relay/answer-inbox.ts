@@ -171,6 +171,20 @@ async function receiptWork(
   };
 }
 
+async function envelopePosted(
+  link: Registration["link"],
+  work: InboxWork,
+): Promise<boolean> {
+  if (work.envelope === null) return true;
+  const posted = await relayRequest(link.origin, {
+    method: "POST",
+    path: "/api/v1/relay/envelopes",
+    token: link.token,
+    body: envelopesBody(work.deviceId, [work.envelope]),
+  });
+  return posted.status === 201;
+}
+
 async function handled(
   context: CheckContext,
   answering: Answering,
@@ -180,15 +194,7 @@ async function handled(
   const work =
     (await context.store.inbox.work(item.answerId)) ??
     (await context.store.inbox.record(await receiptWork(context, answering)));
-  if (work.envelope !== null) {
-    const posted = await relayRequest(link.origin, {
-      method: "POST",
-      path: "/api/v1/relay/envelopes",
-      token: link.token,
-      body: envelopesBody(work.deviceId, [work.envelope]),
-    });
-    if (posted.status !== 201) return false;
-  }
+  if (!(await envelopePosted(link, work))) return false;
   const acknowledged = await relayRequest(link.origin, {
     method: "POST",
     path: "/api/v1/relay/inbox/acks",

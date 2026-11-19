@@ -36,8 +36,7 @@ import {
   clearedSettingsNote,
   restartEnvironment,
 } from "./cli/start-environment.ts";
-import { stalledExit } from "./cli/thread-pool.ts";
-import { threadPoolStallExitCode } from "./thread-pool-check.ts";
+import { stalledWatchExit } from "./cli/thread-pool.ts";
 
 const [command, ...options] = process.argv.slice(2);
 const refusal = nodeRefusal(process.argv.slice(2), process.version);
@@ -392,9 +391,5 @@ else if (integration?.kind === "refused") {
       execute: watchCommand,
     },
   });
-  if (
-    invocation.kind === "watch" &&
-    process.exitCode === threadPoolStallExitCode
-  )
-    await stalledExit(process);
+  await stalledWatchExit(process, invocation);
 }

@@ -27,15 +27,11 @@ export async function recordedNotifications(
   if (text === undefined) return undefined;
   const value: unknown = JSON.parse(text);
   const journal = record(value);
-  if (journal?.["version"] === 1 && Array.isArray(journal["entries"])) {
-    const entries = journal["entries"].map(deliveryEntry);
-    const found = new Map(entries.map((entry) => [entry.key, entry]));
-    if (found.size !== entries.length) throw new Error("invalid-notify-record");
+  if (journal?.["version"] === 1 && Array.isArray(journal["entries"]))
     return {
-      entries: found,
+      entries: deliveryEntries(journal["entries"]),
       retiredKeys: recordedKeys(journal["retiredKeys"] ?? []),
     };
-  }
   const keys = recordedKeys(value);
   return {
     retiredKeys: new Set(),
@@ -95,6 +91,15 @@ function attemptTime(value: unknown): value is number | null {
     value === null ||
     (typeof value === "number" && Number.isSafeInteger(value) && value >= 0)
   );
+}
+
+function deliveryEntries(
+  values: readonly unknown[],
+): Map<string, DeliveryEntry> {
+  const entries = values.map(deliveryEntry);
+  const found = new Map(entries.map((entry) => [entry.key, entry]));
+  if (found.size !== entries.length) throw new Error("invalid-notify-record");
+  return found;
 }
 
 function deliveryEntry(value: unknown): DeliveryEntry {

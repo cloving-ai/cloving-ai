@@ -92,32 +92,28 @@ function ticketMetadataReply(
   runs: readonly Fields[],
 ): Reply | undefined {
   if (
-    request.operation === "status" &&
-    request.parameters["metadata"] === "tickets"
-  ) {
-    const after = request.parameters["after"];
-    if (typeof after !== "string") throw new Error("invalid-fixture-cursor");
-    const remaining = runs
-      .filter((run) => String(run["runId"]) > after)
-      .sort((left, right) =>
-        String(left["runId"]) < String(right["runId"]) ? -1 : 1,
-      );
-    const shown = remaining.slice(
-      0,
-      Number(request.parameters["limit"] ?? 500),
+    request.operation !== "status" ||
+    request.parameters["metadata"] !== "tickets"
+  )
+    return undefined;
+  const after = request.parameters["after"];
+  if (typeof after !== "string") throw new Error("invalid-fixture-cursor");
+  const remaining = runs
+    .filter((run) => String(run["runId"]) > after)
+    .sort((left, right) =>
+      String(left["runId"]) < String(right["runId"]) ? -1 : 1,
     );
-    return {
-      kind: "result",
-      result: {
-        runs: shown.map((run) => ({
-          runId: run["runId"],
-          ticketId: run["ticketId"],
-        })),
-        next: remaining.length > shown.length ? shown.at(-1)?.["runId"] : null,
-      },
-    };
-  }
-  return undefined;
+  const shown = remaining.slice(0, Number(request.parameters["limit"] ?? 500));
+  return {
+    kind: "result",
+    result: {
+      runs: shown.map((run) => ({
+        runId: run["runId"],
+        ticketId: run["ticketId"],
+      })),
+      next: remaining.length > shown.length ? shown.at(-1)?.["runId"] : null,
+    },
+  };
 }
 
 function workflowMetadataReply(
@@ -125,23 +121,22 @@ function workflowMetadataReply(
   runs: readonly Fields[],
 ): Reply | undefined {
   if (
-    request.operation === "status" &&
-    request.parameters["metadata"] === "workflows"
-  ) {
-    const runIds = request.parameters["runIds"];
-    if (!Array.isArray(runIds)) throw new Error("invalid-fixture-run-ids");
-    return {
-      kind: "result",
-      result: {
-        runs: runIds.map((runId: unknown) => ({
-          runId,
-          workflowId:
-            runs.find((run) => run["runId"] === runId)?.["workflowId"] ?? null,
-        })),
-      },
-    };
-  }
-  return undefined;
+    request.operation !== "status" ||
+    request.parameters["metadata"] !== "workflows"
+  )
+    return undefined;
+  const runIds = request.parameters["runIds"];
+  if (!Array.isArray(runIds)) throw new Error("invalid-fixture-run-ids");
+  return {
+    kind: "result",
+    result: {
+      runs: runIds.map((runId: unknown) => ({
+        runId,
+        workflowId:
+          runs.find((run) => run["runId"] === runId)?.["workflowId"] ?? null,
+      })),
+    },
+  };
 }
 
 export function endedEvent(

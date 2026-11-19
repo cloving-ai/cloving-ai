@@ -56,8 +56,8 @@ async function discover(directory: string, prefix = ""): Promise<string[]> {
     const path = join(prefix, entry.name);
     if (entry.isSymbolicLink()) throw new Error(`inventory-symlink: ${path}`);
     if (path === ".git") continue;
+    if (entry.isDirectory() && path === "node_modules") continue;
     if (entry.isDirectory()) {
-      if (path === "node_modules") continue;
       files.push(...(await discover(join(directory, entry.name), path)));
       continue;
     }
@@ -66,6 +66,17 @@ async function discover(directory: string, prefix = ""): Promise<string[]> {
     files.push(path);
   }
   return files.sort();
+}
+
+async function checkGeneratedDigest(
+  directory: string,
+  output: { readonly file: string; readonly expected: string },
+): Promise<void> {
+  const digest = createHash("sha256")
+    .update(await readFile(join(directory, output.file)))
+    .digest("hex");
+  if (digest !== output.expected)
+    throw new Error(`generated-digest-mismatch: ${output.file}`);
 }
 
 export async function inspectInventory(
@@ -78,11 +89,7 @@ export async function inspectInventory(
   for (const file of await discover(directory)) {
     const expected = generated[file];
     if (expected !== undefined) {
-      const digest = createHash("sha256")
-        .update(await readFile(join(directory, file)))
-        .digest("hex");
-      if (digest !== expected)
-        throw new Error(`generated-digest-mismatch: ${file}`);
+      await checkGeneratedDigest(directory, { file, expected });
       outputs.push(file);
       continue;
     }

@@ -136,16 +136,9 @@ export async function queueFeed(
     await save();
   };
   const next = async (attempt: Attempt) => {
-    if (progress.commandId === undefined) {
-      if (
-        !(await attempt.available()) ||
-        (settings.clock ?? Date.now)() < progress.notBefore
-      )
-        return;
-      progress.commandId = randomUUID();
-      await save();
-    }
-    const status = await readFeed(settings, progress.commandId);
+    const commandId = await feedCommand(settings, { progress, attempt, save });
+    if (commandId === undefined) return;
+    const status = await readFeed(settings, commandId);
     if (status === "refused") return finish();
     if (typeof status === "string") {
       await finish();
@@ -165,6 +158,34 @@ export async function queueFeed(
   return { next, reset };
 }
 
+async function feedCommand(
+  settings: Settings,
+  feed: {
+    readonly progress: Progress;
+    readonly attempt: Attempt;
+    readonly save: () => Promise<void>;
+  },
+): Promise<string | undefined> {
+  const { progress, attempt, save } = feed;
+  if (progress.commandId !== undefined) return progress.commandId;
+  if (
+    !(await attempt.available()) ||
+    (settings.clock ?? Date.now)() < progress.notBefore
+  )
+    return undefined;
+  progress.commandId = randomUUID();
+  await save();
+  return progress.commandId;
+}
+
+const refusedFeedCodes = [
+  "feed-active",
+  "workflow-active",
+  "queue-spend-limit",
+  "queue-repository-full",
+  "queue-global-working-full",
+];
+
 async function readFeed(settings: Settings, commandId: string) {
   const reply = await send(settings.runtimeDirectory, {
     operation: "queue-feed",
@@ -173,27 +194,16 @@ async function readFeed(settings: Settings, commandId: string) {
       commandId: commandId,
     },
   });
-  if (reply.kind === "error") {
-    if (
-      [
-        "feed-active",
-        "workflow-active",
-        "queue-spend-limit",
-        "queue-repository-full",
-        "queue-global-working-full",
-      ].includes(reply.error.code)
-    )
-      return "refused";
-    throw new Error(reply.error.code);
-  }
+  if (reply.kind === "error" && refusedFeedCodes.includes(reply.error.code))
+    return "refused";
+  if (reply.kind === "error") throw new Error(reply.error.code);
   const status = await send(settings.runtimeDirectory, {
     operation: "queue-feed",
     parameters: { action: "status", runId: runIdentity(commandId) },
   });
-  if (status.kind === "error") {
-    if (status.error.code === "invalid-feed-result") return status.error.code;
-    throw new Error(status.error.code);
-  }
+  if (status.kind === "error" && status.error.code === "invalid-feed-result")
+    return status.error.code;
+  if (status.kind === "error") throw new Error(status.error.code);
   if (["failed", "cancelled"].includes(String(status.result["state"])))
     return "queue-feed-failed";
   return status.result["state"] === "completed" ? status.result : undefined;
