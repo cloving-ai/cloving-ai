@@ -1119,6 +1119,7 @@
     "test/claude-worker-capacity.test.ts": "test",
     "test/claude-worker-crash.test.ts": "test",
     "test/claude-worker-detached.test.ts": "test",
+    "test/claude-worker-early-steer.test.ts": "test",
     "test/claude-worker-fixture.ts": "test",
     "test/claude-worker-marker.test.ts": "test",
     "test/claude-worker-notes.test.ts": "test",

@@ -20,10 +20,19 @@ import {
 import { nativeHarness } from "../harness-defaults.ts";
 import { sumPiAccounting } from "../pi-usage.ts";
 import { profileCommand } from "../turn-profile.ts";
-import type { TurnResume } from "./claude-recovery.ts";
+import {
+  resumedCommand,
+  resumePrompt,
+  type TurnResume,
+} from "./claude-recovery.ts";
 import type { TurnLaunch } from "../turn-launch.ts";
 import type { ResumeReason } from "../worker-usage.ts";
-import { steeredMetadata, type Steering } from "./turn-steering.ts";
+import {
+  pendingPrompt,
+  steeredMetadata,
+  type SteerPending,
+  type Steering,
+} from "./turn-steering.ts";
 
 export interface RetrySettings {
   readonly tokenPrices?: TokenPrices;
@@ -39,6 +48,7 @@ export type AttemptEntry = Readonly<Record<string, unknown>> & {
   readonly attempt: number;
   readonly startedAt: string;
   readonly resumedAfter?: ResumeReason;
+  readonly newSession?: true;
 };
 
 export interface TurnAttach {
@@ -205,6 +215,46 @@ export function attemptCommand(attempts: Attempts, attempt: number) {
       ? { fallbackReason: "fallback-model-unavailable" }
       : {}),
   };
+}
+
+export interface Launch {
+  readonly entry: Pick<AttemptEntry, "resumedAfter" | "newSession">;
+  readonly selected: { readonly command: readonly string[] };
+  readonly steered: SteerPending | undefined;
+}
+
+function freshLaunch(entry: Launch["entry"]): boolean {
+  return entry.resumedAfter === undefined || entry.newSession === true;
+}
+
+export function freshPrompt(
+  attempts: Attempts,
+  launch: Pick<Launch, "entry"> & { readonly prompt: string | undefined },
+): { readonly freshPrompt?: string } {
+  const { entry, prompt } = launch;
+  if ((attempts.start.worker ?? "claude") !== "claude" || prompt === undefined)
+    return {};
+  return freshLaunch(entry) ? { freshPrompt: prompt } : {};
+}
+
+export function launchCommand(
+  attempts: Attempts,
+  launch: Launch,
+): readonly string[] {
+  const { selected, steered } = launch;
+  if (freshLaunch(launch.entry)) return selected.command;
+  return (
+    resumedCommand({
+      worker: attempts.start.worker,
+      command: selected.command,
+      sessionId: steered?.sessionId ?? attempts.options.resume?.sessionId ?? "",
+    }) ?? selected.command
+  );
+}
+
+export function launchPrompt(launch: Launch, prompt: string): string {
+  if (launch.steered !== undefined) return pendingPrompt(launch.steered);
+  return launch.entry.resumedAfter === undefined ? prompt : resumePrompt;
 }
 
 export function attemptUsage(

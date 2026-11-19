@@ -284,6 +284,7 @@ await test(
         await ended;
         assert.deepEqual(await readRecord(folder, "attempt-1.json"), {
           sessionId: "session-7",
+          conversation: false,
         });
         assert.equal(processExists(launch.processId), true);
         assert.equal(existsSync(launch.configuration), true);
