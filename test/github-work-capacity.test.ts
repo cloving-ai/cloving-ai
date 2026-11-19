@@ -189,12 +189,11 @@ await test("CLV-377 a transient refused work release cannot resume remote CI unt
       },
       signal: new AbortController().signal,
       work: async (stage) => {
-        if (stage.action === "leave") {
-          leaveIds.push(stage.commandId);
-          if (leaveIds.length === 1) seen.resolve(undefined);
-          else await release.promise;
-        }
-        return stage.action === "leave" && leaveIds.length === 1
+        if (stage.action === "leave") leaveIds.push(stage.commandId);
+        const busy = stage.action === "leave" && leaveIds.length === 1;
+        if (busy) seen.resolve(undefined);
+        if (stage.action === "leave" && !busy) await release.promise;
+        return busy
           ? { kind: "rejected", reason: "service-busy" }
           : { kind: "accepted", sequence: 1, intents: [] };
       },

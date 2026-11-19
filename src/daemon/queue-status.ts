@@ -98,17 +98,22 @@ export async function runStatus(
   return run;
 }
 
+async function trackedRun(
+  runtimeDirectory: string,
+  commandId: string,
+): Promise<{ readonly commandId: string; readonly run: Fields }> {
+  const run = await runStatus(runtimeDirectory, commandId);
+  if (run === undefined) throw new Error("queue-run-missing");
+  return { commandId, run };
+}
+
 export async function trackedRuns(
   runtimeDirectory: string,
   commands: readonly string[],
 ): Promise<readonly { readonly commandId: string; readonly run: Fields }[]> {
   if (commands.length === 0) return [];
-  if (commands.length === 1) {
-    const commandId = String(commands[0]);
-    const run = await runStatus(runtimeDirectory, commandId);
-    if (run === undefined) throw new Error("queue-run-missing");
-    return [{ commandId, run }];
-  }
+  if (commands.length === 1)
+    return [await trackedRun(runtimeDirectory, String(commands[0]))];
   const reply = await send(runtimeDirectory, {
     operation: "status",
     parameters: { runIds: commands.map(runIdentity) },

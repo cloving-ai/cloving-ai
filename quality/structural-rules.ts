@@ -18,4 +18,12 @@ export const structuralRules: Linter.RulesRecord = {
   "no-else-return": ["error", { allowElseIf: false }],
   "no-lonely-if": "error",
   "no-nested-ternary": "error",
+  "no-restricted-syntax": [
+    "error",
+    {
+      selector: "IfStatement > BlockStatement > IfStatement",
+      message:
+        "Do not put an if statement directly in the block of another if statement. Use a guard clause.",
+    },
+  ],
 };

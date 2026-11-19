@@ -13,6 +13,8 @@ export interface DevelopSelection {
 }
 
 const prefix = "repo/.cloving/workflows/";
+const feedImports =
+  /import \{[^}]+\} from "(?:cloving\/workflows\/steps\/protected-effect|\.\/develop\/feed-(?:selection|results|read)\.ts)";\n/g;
 export const automatic = {
   input: "ticket",
   select: "queue",
@@ -96,23 +98,22 @@ export async function configuredDevelopFiles(
   files[prefix + "develop.declaration.json"] = declaration(selected);
   if (selected.demo === "record")
     for (const change of demoEdits) edit(files, change);
-  if (selected.select !== "queue") {
-    const source = files[prefix + "develop.ts"];
-    if (source === undefined) throw new Error("Missing develop source");
-    files[prefix + "develop.ts"] = source
-      .slice(0, source.indexOf("export async function developFeed"))
-      .replace(
-        /import \{[^}]+\} from "(?:cloving\/workflows\/steps\/protected-effect|\.\/develop\/feed-(?:selection|results|read)\.ts)";\n/g,
-        "",
-      );
-    for (const from of [
-      'import { feedTests } from "./develop/feed-tests.ts";\n',
-      "for (const scenario of feedTests) await test(scenario.name, scenario.run);\n",
-    ])
-      edit(files, { file: "develop.test.ts", from, to: "" });
-  }
+  if (selected.select !== "queue") feedlessFiles(files);
   scenarioFiles(files, selected);
   return files;
+}
+
+function feedlessFiles(files: Record<string, string>): void {
+  const source = files[prefix + "develop.ts"];
+  if (source === undefined) throw new Error("Missing develop source");
+  files[prefix + "develop.ts"] = source
+    .slice(0, source.indexOf("export async function developFeed"))
+    .replace(feedImports, "");
+  for (const from of [
+    'import { feedTests } from "./develop/feed-tests.ts";\n',
+    "for (const scenario of feedTests) await test(scenario.name, scenario.run);\n",
+  ])
+    edit(files, { file: "develop.test.ts", from, to: "" });
 }
 
 function verificationFiles(files: Record<string, string>): void {
