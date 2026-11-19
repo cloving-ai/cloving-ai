@@ -48,6 +48,7 @@ export type AttemptEntry = Readonly<Record<string, unknown>> & {
   readonly attempt: number;
   readonly startedAt: string;
   readonly resumedAfter?: ResumeReason;
+  readonly newSession?: true;
 };
 
 export interface TurnAttach {
@@ -217,23 +218,23 @@ export function attemptCommand(attempts: Attempts, attempt: number) {
 }
 
 export interface Launch {
-  readonly entry: { readonly resumedAfter?: string };
+  readonly entry: Pick<AttemptEntry, "resumedAfter" | "newSession">;
   readonly selected: { readonly command: readonly string[] };
   readonly steered: SteerPending | undefined;
 }
 
-function freshLaunch(launch: Launch): boolean {
-  const { entry, steered } = launch;
-  return entry.resumedAfter === undefined || steered?.freshPrompt !== undefined;
+function freshLaunch(entry: Launch["entry"]): boolean {
+  return entry.resumedAfter === undefined || entry.newSession === true;
 }
 
 export function freshPrompt(
   attempts: Attempts,
-  launch: Launch & { readonly prompt: string },
+  launch: Pick<Launch, "entry"> & { readonly prompt: string | undefined },
 ): { readonly freshPrompt?: string } {
-  if ((attempts.start.worker ?? "claude") !== "claude" || !freshLaunch(launch))
+  const { entry, prompt } = launch;
+  if ((attempts.start.worker ?? "claude") !== "claude" || prompt === undefined)
     return {};
-  return { freshPrompt: launch.prompt };
+  return freshLaunch(entry) ? { freshPrompt: prompt } : {};
 }
 
 export function launchCommand(
@@ -241,7 +242,7 @@ export function launchCommand(
   launch: Launch,
 ): readonly string[] {
   const { selected, steered } = launch;
-  if (freshLaunch(launch)) return selected.command;
+  if (freshLaunch(launch.entry)) return selected.command;
   return (
     resumedCommand({
       worker: attempts.start.worker,

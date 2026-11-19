@@ -66,6 +66,14 @@ async function promptsOf(folder: string): Promise<TranscriptPrompt[]> {
   return text.split("\n").slice(0, -1).flatMap(promptOf);
 }
 
+export async function attemptPrompt(
+  folder: string,
+  attempt: number,
+): Promise<string | undefined> {
+  const prompts = await promptsOf(folder);
+  return prompts.findLast((prompt) => prompt.attempt === attempt)?.prompt;
+}
+
 async function streamFrom(
   file: string,
   from: number,

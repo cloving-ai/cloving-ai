@@ -77,6 +77,13 @@ export function progressed(steering: Steering, progress: TurnProgress): void {
   if (progress.conversation) delete child.freshPrompt;
 }
 
+export function endedChild(steering: Steering): void {
+  const { child, pending } = steering;
+  delete steering.child;
+  if (pending === undefined || child?.freshPrompt === undefined) return;
+  steering.pending = { ...pending, freshPrompt: child.freshPrompt };
+}
+
 export function steeredPrompt(prompt: string, steering: Steering): string {
   if (steering.delivered.length === 0) return prompt;
   return `${prompt}\n\n${steerPrompt(steering.delivered)}`;
@@ -108,9 +115,6 @@ export function steer(
   steering.accepted.push(request.note);
   const pending = steering.pending ?? {
     sessionId: child.sessionId,
-    ...(child.freshPrompt === undefined
-      ? {}
-      : { freshPrompt: child.freshPrompt }),
     notes: [],
   };
   pending.notes.push(request.note);

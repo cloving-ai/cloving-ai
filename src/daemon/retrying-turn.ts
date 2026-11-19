@@ -4,6 +4,7 @@ import { turnHead, retryEvidence, indexFailure } from "./retry-worktree.ts";
 import { readRecord, writeRecord } from "./operation-journal.ts";
 import { resumeWorktree } from "./resume-worktree.ts";
 import { controlledTurn } from "./controlled-turn.ts";
+import { attemptPrompt } from "./transcript-files.ts";
 import { readResume, resumedCommand } from "./claude-recovery.ts";
 import {
   attemptCommand,
@@ -21,6 +22,7 @@ import {
   type WaitResume,
 } from "./turn-attempts.ts";
 import {
+  endedChild,
   progressed,
   queued,
   steer,
@@ -86,7 +88,7 @@ async function launched(
   return watchedAttempt(attempts, {
     entry,
     steered,
-    fresh: freshPrompt(attempts, { ...launch, prompt: launchedPrompt }),
+    fresh: freshPrompt(attempts, { entry, prompt: launchedPrompt }),
     start: {
       ...start,
       ...(entry.piSession === undefined ? {} : { piSession: entry.piSession }),
@@ -178,7 +180,7 @@ async function finished(
 ): Promise<TurnEnd> {
   const end = await turn.ended;
   await attempts.steering.delivery;
-  delete attempts.steering.child;
+  endedChild(attempts.steering);
   attempts.ends.push(end);
   await recordedEnd(attempts, { processId: turn.processId, end });
   if (!cancelled(attempts) && attempts.steering.pending !== undefined)
@@ -295,12 +297,15 @@ function resumable(start: TurnStart): boolean {
   );
 }
 
-function attachedAttempt(
+async function attachedAttempt(
   attempts: Attempts,
   attach: TurnAttach,
 ): Promise<RunningTurn> {
+  const { entry } = attach;
+  const prompt = await attemptPrompt(attempts.start.folder, entry.attempt);
   return watchedAttempt(attempts, {
-    entry: attach.entry,
+    entry,
+    fresh: freshPrompt(attempts, { entry, prompt }),
     start: { ...attempts.start, attach: attach.launch },
   });
 }

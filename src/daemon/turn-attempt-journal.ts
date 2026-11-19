@@ -51,9 +51,12 @@ function attemptEntry(
 function resumedAfter(
   attempts: Attempts,
   attempt: number,
-): { readonly resumedAfter?: ResumeReason } {
+): { readonly resumedAfter?: ResumeReason; readonly newSession?: true } {
   const resume = attempts.options.resume;
-  if (attempts.steering.pending !== undefined) return { resumedAfter: "steer" };
+  const { pending } = attempts.steering;
+  if (pending?.freshPrompt !== undefined)
+    return { resumedAfter: "steer", newSession: true };
+  if (pending !== undefined) return { resumedAfter: "steer" };
   if (resume === undefined || attempt !== resume.ends.length + 1) return {};
   return { resumedAfter: "daemon-restart" };
 }
