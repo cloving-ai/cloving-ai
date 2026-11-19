@@ -4,9 +4,12 @@ import { turnHead, retryEvidence, indexFailure } from "./retry-worktree.ts";
 import { readRecord, writeRecord } from "./operation-journal.ts";
 import { resumeWorktree } from "./resume-worktree.ts";
 import { controlledTurn } from "./controlled-turn.ts";
-import { readResume, resumedCommand, resumePrompt } from "./claude-recovery.ts";
+import { readResume, resumedCommand } from "./claude-recovery.ts";
 import {
   attemptCommand,
+  freshPrompt,
+  launchCommand,
+  launchPrompt,
   recordedTurn,
   combined,
   kindOf,
@@ -18,13 +21,14 @@ import {
   type WaitResume,
 } from "./turn-attempts.ts";
 import {
+  progressed,
   queued,
   steer,
   steeredPrompt,
   steeringOf,
-  steerPrompt,
   type SteerNote,
   type SteerOutcome,
+  type SteerPending,
 } from "./turn-steering.ts";
 import {
   prepareAttempt,
@@ -65,29 +69,6 @@ async function promptOf(attempts: Attempts): Promise<string> {
   return `${networkContinuation}\n\nCommits since the start of this turn:\n${evidence}\n\n${prompt}`;
 }
 
-interface Launch {
-  readonly entry: { readonly resumedAfter?: string };
-  readonly selected: { readonly command: readonly string[] };
-  readonly steered: Attempts["steering"]["pending"];
-}
-
-function launchCommand(attempts: Attempts, launch: Launch): readonly string[] {
-  const { entry, selected, steered } = launch;
-  if (entry.resumedAfter === undefined) return selected.command;
-  return (
-    resumedCommand({
-      worker: attempts.start.worker,
-      command: selected.command,
-      sessionId: steered?.sessionId ?? attempts.options.resume?.sessionId ?? "",
-    }) ?? selected.command
-  );
-}
-
-function launchPrompt(launch: Launch, prompt: string): string {
-  if (launch.steered !== undefined) return steerPrompt(launch.steered.notes);
-  return launch.entry.resumedAfter === undefined ? prompt : resumePrompt;
-}
-
 async function launched(
   attempts: Attempts,
   prompt = attempts.start.prompt,
@@ -101,9 +82,11 @@ async function launched(
   const { start } = attempts;
   const { entry, folder } = prepared;
   const launch = { ...prepared, steered };
+  const launchedPrompt = launchPrompt(launch, prompt);
   return watchedAttempt(attempts, {
     entry,
     steered,
+    fresh: freshPrompt(attempts, { ...launch, prompt: launchedPrompt }),
     start: {
       ...start,
       ...(entry.piSession === undefined ? {} : { piSession: entry.piSession }),
@@ -117,7 +100,7 @@ async function launched(
       ...(entry.attempt === 1
         ? {}
         : { laterAttempt: { folder: start.folder, attempt: entry.attempt } }),
-      prompt: launchPrompt(launch, prompt),
+      prompt: launchedPrompt,
     },
   });
 }
@@ -126,7 +109,8 @@ async function watchedAttempt(
   attempts: Attempts,
   attempt: {
     readonly entry: AttemptEntry;
-    readonly steered?: Launch["steered"];
+    readonly steered?: SteerPending | undefined;
+    readonly fresh?: { readonly freshPrompt?: string };
     readonly start: TurnStart;
   },
 ): Promise<RunningTurn> {
@@ -137,14 +121,13 @@ async function watchedAttempt(
     start: {
       ...attempt.start,
       progress: (progress) => {
-        if (steering.child !== undefined)
-          steering.child.sessionId = progress.sessionId;
+        progressed(steering, progress);
         return journal.progress(progress);
       },
     },
     since: attemptSince(attempt),
   });
-  steering.child = { turn, sessionId: null };
+  steering.child = { turn, sessionId: null, ...attempt.fresh };
   if (steered !== undefined && turn.processId !== null)
     steering.delivered.push(...steered.notes);
   try {

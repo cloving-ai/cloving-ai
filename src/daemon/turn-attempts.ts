@@ -20,10 +20,19 @@ import {
 import { nativeHarness } from "../harness-defaults.ts";
 import { sumPiAccounting } from "../pi-usage.ts";
 import { profileCommand } from "../turn-profile.ts";
-import type { TurnResume } from "./claude-recovery.ts";
+import {
+  resumedCommand,
+  resumePrompt,
+  type TurnResume,
+} from "./claude-recovery.ts";
 import type { TurnLaunch } from "../turn-launch.ts";
 import type { ResumeReason } from "../worker-usage.ts";
-import { steeredMetadata, type Steering } from "./turn-steering.ts";
+import {
+  pendingPrompt,
+  steeredMetadata,
+  type SteerPending,
+  type Steering,
+} from "./turn-steering.ts";
 
 export interface RetrySettings {
   readonly tokenPrices?: TokenPrices;
@@ -205,6 +214,46 @@ export function attemptCommand(attempts: Attempts, attempt: number) {
       ? { fallbackReason: "fallback-model-unavailable" }
       : {}),
   };
+}
+
+export interface Launch {
+  readonly entry: { readonly resumedAfter?: string };
+  readonly selected: { readonly command: readonly string[] };
+  readonly steered: SteerPending | undefined;
+}
+
+function freshLaunch(launch: Launch): boolean {
+  const { entry, steered } = launch;
+  return entry.resumedAfter === undefined || steered?.freshPrompt !== undefined;
+}
+
+export function freshPrompt(
+  attempts: Attempts,
+  launch: Launch & { readonly prompt: string },
+): { readonly freshPrompt?: string } {
+  if ((attempts.start.worker ?? "claude") !== "claude" || !freshLaunch(launch))
+    return {};
+  return { freshPrompt: launch.prompt };
+}
+
+export function launchCommand(
+  attempts: Attempts,
+  launch: Launch,
+): readonly string[] {
+  const { selected, steered } = launch;
+  if (freshLaunch(launch)) return selected.command;
+  return (
+    resumedCommand({
+      worker: attempts.start.worker,
+      command: selected.command,
+      sessionId: steered?.sessionId ?? attempts.options.resume?.sessionId ?? "",
+    }) ?? selected.command
+  );
+}
+
+export function launchPrompt(launch: Launch, prompt: string): string {
+  if (launch.steered !== undefined) return pendingPrompt(launch.steered);
+  return launch.entry.resumedAfter === undefined ? prompt : resumePrompt;
 }
 
 export function attemptUsage(

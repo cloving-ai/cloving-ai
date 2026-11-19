@@ -9,6 +9,7 @@ import { commandModel } from "../token-prices.ts";
 
 export interface TurnProgress {
   readonly sessionId: string | null;
+  readonly conversation: boolean;
   readonly result: StreamResult | undefined;
 }
 
@@ -21,6 +22,7 @@ export interface StreamInput {
 export interface Stream {
   failure: { readonly error: unknown } | undefined;
   sessionId: string | null;
+  conversation: boolean;
   saved: Promise<void>;
   errorType: string | null;
   model: string | null;
@@ -32,6 +34,7 @@ export function streamState(): Stream {
   return {
     failure: undefined,
     sessionId: null,
+    conversation: false,
     saved: Promise.resolve(),
     pending: "",
     result: undefined,
@@ -40,22 +43,37 @@ export function streamState(): Stream {
   };
 }
 
+function sessionDiscovered(stream: Stream, sessionId: string | null): boolean {
+  if (stream.sessionId !== null || sessionId === null) return false;
+  stream.sessionId = sessionId;
+  return true;
+}
+
+function conversationStarted(stream: Stream, type: unknown): boolean {
+  if (stream.conversation || (type !== "assistant" && type !== "user"))
+    return false;
+  stream.conversation = true;
+  return true;
+}
+
 function streamMetadata(stream: Stream, event: unknown): boolean {
   if (typeof event !== "object" || event === null) return false;
   const field = (name: string): unknown => Reflect.get(event, name);
   const type = field("type");
-  const sessionId = textOf(field("session_id"));
-  const discovered = stream.sessionId === null && sessionId !== null;
-  if (discovered) stream.sessionId = sessionId;
+  const discovered = sessionDiscovered(stream, textOf(field("session_id")));
   if (type === "assistant" && field("parent_tool_use_id") == null)
     stream.errorType = textOf(field("error"));
   if (type === "system" || type === "result")
     stream.model = textOf(field("model")) ?? stream.model;
-  return discovered;
+  return conversationStarted(stream, type) || discovered;
 }
 
 function saveProgress(stream: Stream, input: StreamInput): void {
-  const progress = { sessionId: stream.sessionId, result: stream.result };
+  const progress = {
+    sessionId: stream.sessionId,
+    conversation: stream.conversation,
+    result: stream.result,
+  };
   stream.saved = stream.saved
     .then(() => {
       if (stream.failure === undefined) return input.progress?.(progress);
@@ -71,6 +89,7 @@ export function receivedLines(
   stream: Stream,
   input: StreamInput & { readonly lines: readonly string[] },
 ): void {
+  let changed = false;
   for (const line of input.lines) {
     const discovered = streamMetadata(stream, parsed(line));
     const result = streamResult(line, input.worker);
@@ -82,8 +101,9 @@ export function receivedLines(
         ...(errorType === null ? {} : { errorType }),
       };
     }
-    if (discovered || result !== undefined) saveProgress(stream, input);
+    changed = changed || discovered || result !== undefined;
   }
+  if (changed) saveProgress(stream, input);
 }
 
 export function receivedText(

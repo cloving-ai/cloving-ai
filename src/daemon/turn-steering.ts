@@ -1,4 +1,4 @@
-import type { RunningTurn } from "./claude-turn.ts";
+import type { RunningTurn, TurnProgress } from "./claude-turn.ts";
 import { recordedNotes } from "./turn-notes.ts";
 
 export const steerLimit = 3;
@@ -20,10 +20,22 @@ export type SteerAnswer =
   | { readonly delivery: "now"; readonly operationId: string }
   | { readonly delivery: "queued"; readonly reason: string };
 
+export interface SteerPending {
+  readonly sessionId: string;
+  readonly freshPrompt?: string;
+  readonly notes: SteerNote[];
+}
+
+export interface SteeredChild {
+  readonly turn: RunningTurn;
+  sessionId: string | null;
+  freshPrompt?: string;
+}
+
 export interface Steering {
-  child?: { readonly turn: RunningTurn; sessionId: string | null };
+  child?: SteeredChild;
   delivery: Promise<void>;
-  pending?: { readonly sessionId: string; readonly notes: SteerNote[] };
+  pending?: SteerPending;
   readonly accepted: SteerNote[];
   readonly delivered: SteerNote[];
   readonly earlier: readonly string[];
@@ -50,6 +62,19 @@ export function queued(reason: string): {
 export function steerPrompt(notes: readonly SteerNote[]): string {
   const texts = notes.map((note) => note.text).join("\n\n");
   return `A person sent this note while you worked:\n\n${texts}`;
+}
+
+export function pendingPrompt(pending: SteerPending): string {
+  const note = steerPrompt(pending.notes);
+  if (pending.freshPrompt === undefined) return note;
+  return `${pending.freshPrompt}\n\n${note}`;
+}
+
+export function progressed(steering: Steering, progress: TurnProgress): void {
+  const { child } = steering;
+  if (child === undefined) return;
+  child.sessionId = progress.sessionId;
+  if (progress.conversation) delete child.freshPrompt;
 }
 
 export function steeredPrompt(prompt: string, steering: Steering): string {
@@ -83,6 +108,9 @@ export function steer(
   steering.accepted.push(request.note);
   const pending = steering.pending ?? {
     sessionId: child.sessionId,
+    ...(child.freshPrompt === undefined
+      ? {}
+      : { freshPrompt: child.freshPrompt }),
     notes: [],
   };
   pending.notes.push(request.note);

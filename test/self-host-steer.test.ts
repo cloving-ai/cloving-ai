@@ -15,7 +15,7 @@ import { call, parsed, runCli } from "./service-fixture.ts";
 
 const note = "Change only src/cli.ts.";
 
-const steeredClaude = `
+const promptLog = `
 import { execFileSync } from "node:child_process";
 import { appendFileSync, writeFileSync } from "node:fs";
 let prompt = "";
@@ -23,14 +23,30 @@ for await (const chunk of process.stdin) prompt += chunk;
 const resumed = process.argv.indexOf("--resume");
 const session = resumed < 0 ? null : process.argv[resumed + 1];
 appendFileSync(new URL("./prompts.log", import.meta.url), JSON.stringify({ prompt, session }) + "\\n");
-const line = (value) => process.stdout.write(JSON.stringify(value) + "\\n");
-line({ type: "system", subtype: "init", session_id: "session-1" });
-if (session === null) setInterval(() => undefined, 1000);
-else {
+const lines = (...values) => process.stdout.write(values.map((value) => JSON.stringify(value) + "\\n").join(""));
+const held = () => setInterval(() => undefined, 1000);
+const work = (sessionId) => {
   writeFileSync("steer-work.txt", "work\\n");
   execFileSync("git", ["add", "steer-work.txt"]);
   execFileSync("git", ["-c", "user.name=Worker", "-c", "user.email=worker@example.invalid", "commit", "-q", "-m", "Add the work"]);
-  line({ type: "result", subtype: "success", is_error: false, result: "I changed only src/cli.ts.\\nTicket status: complete", total_cost_usd: 0.01, session_id: "session-1", num_turns: 1 });
+  lines({ type: "result", subtype: "success", is_error: false, result: "I changed only src/cli.ts.\\nTicket status: complete", total_cost_usd: 0.01, session_id: sessionId, num_turns: 1 });
+};
+`;
+
+const steeredClaude = `${promptLog}
+lines({ type: "system", subtype: "init", session_id: "session-1" }, { type: "assistant", message: { content: [{ type: "text", text: "I read the task." }] } });
+if (session === null) held();
+else work(session);
+`;
+
+const earlyClaude = `${promptLog}
+if (session !== null) lines({ type: "result", subtype: "error_during_execution", is_error: true, result: "", num_turns: 0, session_id: session });
+else if (!prompt.includes("A person sent this note")) {
+  lines(...["hook_started", "hook_response", "init"].map((subtype) => ({ type: "system", subtype, session_id: "session-1" })));
+  held();
+} else {
+  lines({ type: "system", subtype: "init", session_id: "session-2" }, { type: "assistant", message: { content: [{ type: "text", text: "I read the task and the note." }] } });
+  work("session-2");
 }
 `;
 
@@ -121,6 +137,57 @@ await test("CLV-327 cloving steer --now stops a Claude turn that records a sessi
         text.stdout,
         /\nNote at [0-9T:.-]+Z from steer, got by implement\/claude-turn\/1: Change only src\/cli\.ts\.\n/,
       );
+    } finally {
+      assert.equal(await ended(daemon), 0);
+    }
+  }));
+
+await test("#845 cloving steer --now before the first conversation message starts the Claude turn again with the task and the note, and the run reaches its review", () =>
+  withoutChildren(async () => {
+    const fixture = await scene(earlyClaude);
+    await writeLocalWorkflow(fixture.repository);
+    const daemon = await fixture.start();
+    const environment = {
+      directory: fixture.repository,
+      runtime: fixture.runtimeDirectory,
+    };
+    const asked = async (
+      operation: string,
+      parameters: Record<string, unknown>,
+    ): Promise<Record<string, unknown>> =>
+      call(fixture, { operation, parameters });
+    try {
+      const admitted = await asked("run", {
+        workflowId: "develop",
+        source: "ticket",
+        submission: { ticket: "CLV-900" },
+        commandId: "early-steer",
+      });
+      const runId = String(admitted["runId"]);
+      await reached(() => sessionRecorded(join(fixture.directory, "journal")));
+      const reply = parsed(
+        await runCli(
+          ["steer", runId, "--text", note, "--now", "--json"],
+          environment,
+        ),
+      );
+      assert.equal(reply["delivery"], "now", JSON.stringify(reply));
+      const decision = await reached(
+        async () =>
+          items((await asked("questions", { runId }))["decisions"])[0],
+      );
+      assert.equal(field(decision, "type"), "approval");
+      const run = (await asked("status", { runId }))["run"];
+      assert.notEqual(field(run, "state"), "failed");
+      const [shown] = items(field(run, "notes"));
+      assert.equal(field(shown, "receivedBy"), reply["operationId"]);
+      const [first, second, ...others] = await logged(fixture.root);
+      assert.ok(first && second);
+      assert.deepEqual(others, []);
+      assert.deepEqual(second, {
+        prompt: `${first.prompt}\n\nA person sent this note while you worked:\n\n${note}`,
+        session: null,
+      });
     } finally {
       assert.equal(await ended(daemon), 0);
     }
