@@ -37,7 +37,12 @@ await test("CLV-377 the compact queue card retains row-end alignment and a visib
     const loop = document.querySelector(".line-loop");
     if (!queue || !loop) return { missing: true };
     const box = (node) => { const rect = node.getBoundingClientRect(); return { left: rect.left, width: rect.width, height: rect.height }; };
+    const probe = document.body.appendChild(document.createElement("div"));
+    probe.style.alignItems = "flex-end";
+    const endAlignment = getComputedStyle(probe).alignItems;
+    probe.remove();
     return {
+      endAlignment,
       fontsReady: document.fonts.check('400 14px "Space Grotesk"') && document.fonts.check('700 14px "Space Grotesk"'),
       fonts: [...document.fonts].map(face => ({ family: face.family, weight: face.weight, status: face.status })),
       rows: [...queue.querySelectorAll(':scope > .queue-row')].map(box),
@@ -53,13 +58,19 @@ await test("CLV-377 the compact queue card retains row-end alignment and a visib
   assert.equal(result["atEnd"], true);
   assert.equal(result["fontsReady"], true, JSON.stringify(result));
   assertAlignedBoxes(result);
-  assert.deepEqual(result["shape"], [
-    ["flex", "column", "flex-end"],
-    ["flex", "column", "flex-end"],
-  ]);
+  assertEndColumns(result);
   assert.equal(result["lanes"], 6);
   assert.equal(result["on"], "Drain");
 });
+
+function assertEndColumns(result: Readonly<Record<string, unknown>>) {
+  const endAlignment = String(result["endAlignment"]);
+  assert.match(endAlignment, /end$/);
+  assert.deepEqual(result["shape"], [
+    ["flex", "column", endAlignment],
+    ["flex", "column", endAlignment],
+  ]);
+}
 
 function assertAlignedBoxes(result: Readonly<Record<string, unknown>>) {
   const queue = result["queue"];
