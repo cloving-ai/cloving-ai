@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
-import { mkdir, rename, symlink } from "node:fs/promises";
+import { mkdir, readdir, rename, symlink } from "node:fs/promises";
 import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { after, test } from "node:test";
 import { openAuthority } from "../src/broker/actor/authority.ts";
 import { testMilliseconds } from "./test-timing.ts";
@@ -77,6 +78,37 @@ await test("CLV-042 concurrent first openings of a new state directory admit exa
       ]);
     },
   );
+});
+
+async function openingOutcome(directory: string): Promise<unknown> {
+  const opening = await openAuthority(directory);
+  if (opening.kind === "refused") return opening;
+  await opening.authority.close();
+  return { kind: opening.kind };
+}
+
+await test("CLV-042 an opening waits for the opening turn of another process and leaves the state directory unchanged when the turn stays held", async () => {
+  const directory = await temporaryDirectory();
+  const turn = new DatabaseSync(join(directory, "authority.lock"));
+  turn.exec("BEGIN EXCLUSIVE");
+  const started = performance.now();
+  const outcome = await openingOutcome(directory);
+  const waited = performance.now() - started;
+  turn.close();
+  assert.deepEqual(outcome, {
+    kind: "refused",
+    reason: "authority-held",
+    detail: "database is locked",
+  });
+  assert.ok(
+    waited >= contentionMilliseconds && waited < testMilliseconds(1500),
+    String(waited),
+  );
+  assert.deepEqual(await readdir(directory), ["authority.lock"]);
+  const authority = await openedAuthority(directory, {
+    timing: quickCleanupTiming,
+  });
+  await authority.close();
 });
 
 await test("CLV-042 the adapter connection runs with WAL, full synchronization, foreign keys, an exclusive lock and the contention bound", async () => {
