@@ -80,7 +80,7 @@ await test("CLV-042 concurrent first openings of a new state directory admit exa
   );
 });
 
-async function openingOutcome(directory: string): Promise<unknown> {
+async function openingOutcome(directory: string) {
   const opening = await openAuthority(directory);
   if (opening.kind === "refused") return opening;
   await opening.authority.close();

@@ -149,6 +149,7 @@ await test("CLV-347 a pending restart retains live CLI output before cancellatio
         });
       } finally {
         controller.abort();
+        await pending;
       }
       assert.equal((await pending).status, 23);
     },
