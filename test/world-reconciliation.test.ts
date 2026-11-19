@@ -359,3 +359,28 @@ await test("CLV-057 the reconciliation loop reports a conflict of two World runs
     { kind: "world-run-conflict", runId: "run-1" },
   ]);
 });
+
+await test("#852 the World loop reads the World runs one time while every run of the authority has ended, and it reads them again when a run has not ended", async () => {
+  const ended = advanced(running, {
+    kind: "fail-run",
+    runId: "run-1",
+    expectedRevision: 2,
+  });
+  const scene = { state: ended };
+  const read = ports({ state: ended, world: [], receipts: [] });
+  const loop = worldLoop({
+    ...read,
+    state: () => Promise.resolve(scene.state),
+    intervalMilliseconds: 1,
+  });
+  await delay(100);
+  const idle = read.reads.length;
+  scene.state = running;
+  for (let waited = 0; waited < 2_000 && read.reads.length <= idle; waited += 1)
+    await delay(1);
+  await loop.stop();
+  assert.deepEqual(
+    [ended.runs["run-1"]?.status, idle, read.reads.length > idle],
+    ["failed", 1, true],
+  );
+});

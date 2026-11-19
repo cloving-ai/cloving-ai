@@ -1,3 +1,5 @@
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import { internalFeedPrefix } from "../queue-feed.ts";
 import type {
   CommandWaits,
@@ -10,6 +12,7 @@ import type { SubmissionContract } from "../submission.ts";
 import type { ExecutionManifest } from "../workflow-admission.ts";
 import type { AvailableManifest } from "../broker/actor/delivery-intents.ts";
 import { readRetainedWorkflowBundle } from "../../tools/workflow-bundles.ts";
+import { recordsJsonWorld } from "../world-storage.ts";
 import {
   workflowRefusals,
   type WorkflowRefusal,
@@ -180,7 +183,12 @@ export function workflowRegistry(
       ...options.workflowBundles,
       id: pinned.bundleDigest,
     });
-    return retained.kind === "available" ? retained.directory : undefined;
+    if (retained.kind !== "available") return undefined;
+    const dependencies = await readFile(
+      join(retained.directory, "dependencies.json"),
+      "utf8",
+    );
+    return recordsJsonWorld(dependencies) ? undefined : retained.directory;
   };
   return {
     workflowIds: current.map((workflow) => workflow.workflowId),

@@ -1,4 +1,4 @@
-import { getWorld } from "workflow/runtime";
+import { getWorld, setWorld } from "workflow/runtime";
 import { legacyWorldRefusal } from "./legacy-world.ts";
 
 export type WorkflowHandler = (request: Request) => Promise<Response>;
@@ -85,7 +85,13 @@ export async function startHost(settings: HostSettings): Promise<HostOpening> {
     kind: "started",
     host: {
       close: async () => {
-        await world.close?.();
+        const held = setInterval(() => undefined, 60_000);
+        try {
+          await world.close?.();
+        } finally {
+          clearInterval(held);
+          setWorld(undefined);
+        }
       },
     },
   };

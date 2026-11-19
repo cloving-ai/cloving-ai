@@ -87,8 +87,9 @@ await test("CLV-055 the product host starts the real Local World, runs one compi
 const run = await start(workflows.develop, [{ value: 2 }]);
 const result = await getRun(run.runId).returnValue;
 const runs = (await (await getWorld()).runs.list({ resolveData: "none" })).data.length;
+const world = worlds() > 0;
 await opening.host.close();
-print({ kind: opening.kind, result, runs, database: existsSync(dataDirectory + "/world.db"), world: worlds() > 0 });
+print({ kind: opening.kind, result, runs, database: existsSync(dataDirectory + "/world.db"), world, cleared: worlds() === 0 });
 `);
     assert.deepEqual(result.lines, [
       {
@@ -97,6 +98,7 @@ print({ kind: opening.kind, result, runs, database: existsSync(dataDirectory + "
         runs: 1,
         database: true,
         world: true,
+        cleared: true,
       },
     ]);
     assert.equal(result.status, 0, result.stderr);
@@ -297,4 +299,30 @@ print({ kind: opening.kind, result, kept: [...readdirSync(dataDirectory + "/runs
         database: true,
       },
     ]);
+  }));
+
+await test("#852 a close of the host settles and the process goes on when a workflow message has not reached the workflow code", () =>
+  withConsumer(workflows, async (consumer) => {
+    const closed = await consumer.run(`
+const opening = await startHost({ dataDirectory, concurrency: 1, handler: () => new Promise(() => undefined) });
+await start(workflows.develop, [{ value: 2 }]);
+await delay(200);
+await opening.host.close();
+print({ closed: true });
+`);
+    assert.deepEqual([closed.status, closed.lines], [0, [{ closed: true }]]);
+  }));
+
+await test("#852 after a close of the host, a new host in the same process starts a new World and runs a workflow to its end", () =>
+  withConsumer(workflows, async (consumer) => {
+    const reopened = await consumer.run(`
+const first = await startHost({ dataDirectory, concurrency: 1, handler: POST });
+await getRun((await start(workflows.develop, [{ value: 1 }])).runId).returnValue;
+await first.host.close();
+const second = await startHost({ dataDirectory, concurrency: 1, handler: POST });
+const result = await Promise.race([getRun((await start(workflows.develop, [{ value: 3 }])).runId).returnValue, delay(10000).then(() => "hung")]);
+await second.host.close();
+print({ result });
+`);
+    assert.deepEqual(reopened.lines, [{ result: { doubled: 6 } }]);
   }));

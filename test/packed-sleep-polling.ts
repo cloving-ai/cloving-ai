@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { readdir, readFile, writeFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
@@ -11,6 +11,7 @@ import {
 import { call } from "./service-fixture.ts";
 import { field, items, reached } from "./self-host-fixture.ts";
 import { stopChildGroup } from "./stop-child.ts";
+import { worldRows } from "./world-database-fixture.ts";
 import { startPackedHost, ready, boundedExit } from "./packed-host-fixture.ts";
 
 export async function packedPollingFiles(root: string): Promise<void> {
@@ -57,35 +58,36 @@ interface Checkpoint {
   readonly resumeAt: string;
 }
 
-async function records(directory: string): Promise<readonly unknown[]> {
-  const files = (await readdir(directory)).filter((name) =>
-    name.endsWith(".json"),
-  );
-  return await Promise.all(
-    files.map(async (name) => {
-      const value: unknown = JSON.parse(
-        await readFile(join(directory, name), "utf8"),
-      );
-      return value;
+function records(world: string, table: "runs" | "events"): readonly unknown[] {
+  const columns =
+    table === "runs"
+      ? "run_id AS runId, status, doc"
+      : "run_id AS runId, event_type AS eventType, doc";
+  return worldRows(world, `SELECT ${columns} FROM ${table}`).map(
+    ({ doc, ...stored }): unknown => ({
+      ...Object(JSON.parse(String(doc))),
+      ...stored,
     }),
   );
 }
 
-async function sdkRun(root: string, runId: string): Promise<string> {
-  return await reached(async () => {
-    const runs = (await records(join(root, "host/world/runs"))).filter(
-      (run) => field(field(run, "attributes"), "cloving.run") === runId,
-    );
-    assert.ok(runs.length <= 1);
-    if (runs.length === 0) return undefined;
-    const sdkId = field(runs[0], "runId");
-    if (typeof sdkId !== "string") throw new Error("Invalid SDK run ID");
-    return sdkId;
-  });
+function storedSdkRun(root: string, runId: string): string | undefined {
+  const runs = records(join(root, "host/world"), "runs").filter(
+    (run) => field(field(run, "attributes"), "cloving.run") === runId,
+  );
+  assert.ok(runs.length <= 1);
+  if (runs.length === 0) return undefined;
+  const sdkId = field(runs[0], "runId");
+  if (typeof sdkId !== "string") throw new Error("Invalid SDK run ID");
+  return sdkId;
 }
 
-async function waits(root: string, sdkId: string): Promise<readonly unknown[]> {
-  return (await records(join(root, "host/world/events"))).filter(
+async function sdkRun(root: string, runId: string): Promise<string> {
+  return await reached(() => Promise.resolve(storedSdkRun(root, runId)));
+}
+
+function waits(root: string, sdkId: string): readonly unknown[] {
+  return records(join(root, "host/world"), "events").filter(
     (event) =>
       field(event, "runId") === sdkId &&
       field(event, "eventType") === "wait_created",
@@ -110,7 +112,7 @@ export async function startPackedPolling(root: string): Promise<Checkpoint> {
   const runId = admitted["runId"];
   if (typeof runId !== "string") throw new Error("Invalid admitted run ID");
   const sdkId = await sdkRun(root, runId);
-  const wait = await reached(async () => (await waits(root, sdkId))[0]);
+  const wait = await reached(() => Promise.resolve(waits(root, sdkId)[0]));
   const status = field(
     await call(
       { runtimeDirectory },
@@ -165,7 +167,7 @@ async function verifiedPackedPolling(
     ["completed", "completed"],
   );
   assert.equal(await sdkRun(root, checkpoint.runId), checkpoint.sdkId);
-  const retained = await waits(root, checkpoint.sdkId);
+  const retained = waits(root, checkpoint.sdkId);
   assert.equal(retained.length, 1);
   assert.equal(field(retained[0], "eventId"), checkpoint.waitId);
   assert.equal(

@@ -93,7 +93,13 @@ await test("#852 after a process stop between the start record of a step and the
     "after-step_started",
     "completed",
     1,
-    ["step_created", "step_started", "step_retrying", "step_started", "step_completed"],
+    [
+      "step_created",
+      "step_started",
+      "step_retrying",
+      "step_started",
+      "step_completed",
+    ],
     "run_completed",
     [],
   ]);
@@ -104,7 +110,13 @@ await test("#852 after a process stop between the end of a step body and its end
     "before-step_completed",
     "completed",
     2,
-    ["step_created", "step_started", "step_retrying", "step_started", "step_completed"],
+    [
+      "step_created",
+      "step_started",
+      "step_retrying",
+      "step_started",
+      "step_completed",
+    ],
     "run_completed",
     [],
   ]);

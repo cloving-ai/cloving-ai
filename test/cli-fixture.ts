@@ -27,13 +27,13 @@ export const projectFiles: Readonly<Record<string, string>> = {
     workflows: { "workflows/develop.ts": { develop: { workflowId } } },
   }),
   "project with spaces/node_modules/workflow/package.json":
-    '{"name":"workflow","version":"5.1.0"}',
+    '{"name":"workflow","version":"5.6.1"}',
   "project with spaces/node_modules/@workflow/world-local/package.json":
-    '{"name":"@workflow/world-local","version":"5.0.2"}',
+    '{"name":"@workflow/world-local","version":"5.4.1"}',
   "project with spaces/node_modules/@workflow/core/package.json":
-    '{"name":"@workflow/core","version":"5.1.0","dependencies":{"@workflow/world-local":"5.0.2"}}',
+    '{"name":"@workflow/core","version":"5.6.1","dependencies":{"@workflow/world-local":"5.4.1"}}',
   "project with spaces/node_modules/@workflow/builders/package.json":
-    '{"name":"@workflow/builders","version":"5.0.2"}',
+    '{"name":"@workflow/builders","version":"5.1.2"}',
   "project with spaces/package-lock.json": "{}",
   "project with spaces/prompts/implement.md": "Implement the change.\n",
   "project with spaces/cloving.workflow.json": JSON.stringify({

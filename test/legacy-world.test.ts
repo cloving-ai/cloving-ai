@@ -4,12 +4,16 @@ import { test } from "node:test";
 import { legacyWorldRefusal } from "../src/host/legacy-world.ts";
 import { withFiles } from "./quality/files-fixture.ts";
 
-function run(worldRunId: string, status: string, runId?: string): string {
+function run(
+  worldRunId: string,
+  stored: { readonly status: string; readonly runId?: string },
+): string {
   return JSON.stringify({
     runId: worldRunId,
-    status,
+    status: stored.status,
     workflowName: "workflow//./workflows/develop//develop",
-    attributes: runId === undefined ? {} : { "cloving.run": runId },
+    attributes:
+      stored.runId === undefined ? {} : { "cloving.run": stored.runId },
   });
 }
 
@@ -17,14 +21,23 @@ await test("#852 the check of earlier Local World data allows a data folder with
   withFiles(
     {
       "empty/world.db": "",
-      "finished/runs/wrun_1.json": run("wrun_1", "completed", "run-a"),
-      "finished/runs/wrun_2.json": run("wrun_2", "failed", "run-b"),
-      "finished/runs/wrun_3.json": run("wrun_3", "cancelled"),
+      "finished/runs/wrun_1.json": run("wrun_1", {
+        status: "completed",
+        runId: "run-a",
+      }),
+      "finished/runs/wrun_2.json": run("wrun_2", {
+        status: "failed",
+        runId: "run-b",
+      }),
+      "finished/runs/wrun_3.json": run("wrun_3", { status: "cancelled" }),
       "finished/runs/wrun_4.json.tmp.01ABC": "{",
       "finished/runs/notes.txt": "",
     },
     async (directory) => {
-      assert.equal(await legacyWorldRefusal(join(directory, "empty")), undefined);
+      assert.equal(
+        await legacyWorldRefusal(join(directory, "empty")),
+        undefined,
+      );
       assert.equal(
         await legacyWorldRefusal(join(directory, "absent")),
         undefined,
@@ -39,9 +52,15 @@ await test("#852 the check of earlier Local World data allows a data folder with
 await test("#852 the check of earlier Local World data refuses a folder with an unfinished JSON run, and it names each such run and the steps to drain it", () =>
   withFiles(
     {
-      "world/runs/wrun_1.json": run("wrun_1", "completed", "run-a"),
-      "world/runs/wrun_2.json": run("wrun_2", "running", "run-b"),
-      "world/runs/wrun_3.json": run("wrun_3", "pending"),
+      "world/runs/wrun_1.json": run("wrun_1", {
+        status: "completed",
+        runId: "run-a",
+      }),
+      "world/runs/wrun_2.json": run("wrun_2", {
+        status: "running",
+        runId: "run-b",
+      }),
+      "world/runs/wrun_3.json": run("wrun_3", { status: "pending" }),
       "world/runs/wrun_4.json": "{",
     },
     async (directory) => {
