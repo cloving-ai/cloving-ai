@@ -15,6 +15,8 @@ import { attachedProcess } from "../src/daemon/detached-process.ts";
 import {
   submitPiRpcNote,
   piRpcNoteReceipt,
+  rpcNoteRequest,
+  rpcRecord,
 } from "../src/daemon/pi-rpc-channel.ts";
 import { alive, until, withScene } from "./claude-worker-fixture.ts";
 import { startRpcFixture } from "./pi-rpc-fixture.ts";
@@ -272,15 +274,18 @@ await test("CLV-365 a committed RPC request without its receipt stays uncertain 
         sequence: 1,
       };
       await submitPiRpcNote(owner, note);
-      await until(() =>
-        fake.requests().some((request) => request["type"] === "steer"),
+      const receipt = join(
+        owner.piRpc,
+        "receipts",
+        `${rpcNoteRequest(owner, note).id}.json`,
       );
-      await delay(100);
-      const receipt = readdirSync(join(owner.piRpc, "receipts")).find((name) =>
-        name.startsWith("note-"),
-      );
-      assert.ok(receipt);
-      unlinkSync(join(owner.piRpc, "receipts", receipt));
+      await until(() => {
+        const recorded = rpcRecord(receipt);
+        return ["written", "acknowledged", "observed"].every(
+          (key) => recorded?.[key] === true,
+        );
+      });
+      unlinkSync(receipt);
       writeFileSync(fake.gate, "settle");
       await ending;
       assert.equal((await submitPiRpcNote(owner, note)).status, "uncertain");

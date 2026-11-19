@@ -165,19 +165,18 @@ async function response(
   if (parameters === undefined)
     return error(id, { code: -32602, message: "Invalid parameters." });
   const method = request["method"];
-  let result: Fields;
+  let result: Fields | undefined;
   if (method === "initialize") result = initialize(parameters, context.options);
   else if (method === "ping") result = {};
   else if (method === "tools/list") result = { tools: target.tools };
-  else if (method === "tools/call") {
-    const called = await target.call(parameters, signal);
-    if (called === undefined)
-      return error(id, {
-        code: -32602,
-        message: "Unknown tool or invalid arguments.",
-      });
-    result = called;
-  } else return error(id, { code: -32601, message: "Method not found." });
+  else if (method === "tools/call")
+    result = await target.call(parameters, signal);
+  else return error(id, { code: -32601, message: "Method not found." });
+  if (result === undefined)
+    return error(id, {
+      code: -32602,
+      message: "Unknown tool or invalid arguments.",
+    });
   return { jsonrpc: "2.0", id, result };
 }
 

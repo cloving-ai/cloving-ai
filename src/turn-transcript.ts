@@ -234,6 +234,17 @@ function parsedState(state: Appending, bytes: number): ParsedTranscript {
   };
 }
 
+function replaced(state: Appending, key: string): string {
+  const replaceId =
+    state.replacements.get(key) ?? `block:${String(state.replacements.size)}`;
+  state.replacements.set(key, replaceId);
+  const previous = state.entries.findIndex(
+    (entry) => entry.attempt === state.attempt && entry.replaceId === replaceId,
+  );
+  if (previous >= 0) state.entries.splice(previous, 1);
+  return replaceId;
+}
+
 function appendDraft(state: Appending, draft: TranscriptDraft): void {
   const key = JSON.stringify([state.attempt, draft.replaceId]);
   const display =
@@ -245,18 +256,8 @@ function appendDraft(state: Appending, draft: TranscriptDraft): void {
       : undefined;
   if (display !== undefined) state.partials.set(key, display);
   else state.partials.delete(key);
-  let replacement: Pick<TranscriptDraft, "replaceId"> = {};
-  if (draft.replaceId !== undefined) {
-    const replaceId =
-      state.replacements.get(key) ?? `block:${String(state.replacements.size)}`;
-    state.replacements.set(key, replaceId);
-    replacement = { replaceId };
-    const previous = state.entries.findIndex(
-      (entry) =>
-        entry.attempt === state.attempt && entry.replaceId === replaceId,
-    );
-    if (previous >= 0) state.entries.splice(previous, 1);
-  }
+  const replacement: Pick<TranscriptDraft, "replaceId"> =
+    draft.replaceId === undefined ? {} : { replaceId: replaced(state, key) };
   state.entries.push(
     entryOf(
       { ...draft, ...replacement },

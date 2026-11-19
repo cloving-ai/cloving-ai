@@ -34,11 +34,7 @@ export async function proposedWorkerText(
   event: Exclude<WorkerHookEvent, { event: "Stop" }>,
   file: string,
 ): Promise<string> {
-  if (event.tool === "Write") {
-    const content = event.input["content"];
-    if (typeof content !== "string") throw new Error("invalid-worker-write");
-    return content;
-  }
+  if (event.tool === "Write") return writtenWorkerText(event.input);
   let source = await readFile(file, "utf8");
   const edits =
     event.tool === "MultiEdit" ? event.input["edits"] : [event.input];
@@ -46,6 +42,12 @@ export async function proposedWorkerText(
     throw new Error("invalid-worker-edits");
   for (const edit of edits) source = applyWorkerEdit(source, edit);
   return source;
+}
+
+function writtenWorkerText(input: Record<string, unknown>): string {
+  const content = input["content"];
+  if (typeof content !== "string") throw new Error("invalid-worker-write");
+  return content;
 }
 
 function applyWorkerEdit(source: string, value: unknown): string {

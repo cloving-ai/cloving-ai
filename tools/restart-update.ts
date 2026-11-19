@@ -151,12 +151,10 @@ async function built(
   commands: CheckoutCommands,
   plan: UpdatePlan,
 ): Promise<Stepped<string>> {
-  if (plan.install) {
-    const installed = await stepped("install", () =>
-      commands.npm(["ci", "--ignore-scripts"]),
-    );
-    if (installed.kind === "failed") return installed;
-  }
+  const installed = plan.install
+    ? await stepped("install", () => commands.npm(["ci", "--ignore-scripts"]))
+    : undefined;
+  if (installed?.kind === "failed") return installed;
   return stepped("build", () => commands.npm(["run", "build"]));
 }
 

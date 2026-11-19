@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
-import { stalledExit, threadPoolWatch } from "../src/cli/thread-pool.ts";
+import {
+  stalledExit,
+  stalledWatchExit,
+  threadPoolWatch,
+} from "../src/cli/thread-pool.ts";
 import {
   stalledLine,
   threadPoolStallExitCode,
@@ -238,3 +242,31 @@ await test("CLV-298 the stall exit calls exit with the stall exit code when the 
   await assert.rejects(stalledExit(host), /exit 70/);
   assert.deepEqual(calls, ['write ""', "exit 70"]);
 });
+
+await test("#835 a watch command that ended with the stall exit code takes the stall exit", async () => {
+  const { calls, host } = exitHost({ execve: "absent" });
+  await assert.rejects(
+    stalledWatchExit(
+      { ...host, exitCode: threadPoolStallExitCode },
+      {
+        kind: "watch",
+      },
+    ),
+    /exit 70/,
+  );
+  assert.deepEqual(calls, ['write ""', "exit 70"]);
+});
+
+for (const ended of [
+  { kind: "status", exitCode: threadPoolStallExitCode },
+  { kind: "watch", exitCode: 1 },
+  { kind: "watch", exitCode: undefined },
+])
+  await test(`#835 a ${ended.kind} command that ended with exit code ${String(ended.exitCode)} keeps its exit`, async () => {
+    const { calls, host } = exitHost({ execve: "absent" });
+    await stalledWatchExit(
+      { ...host, exitCode: ended.exitCode },
+      { kind: ended.kind },
+    );
+    assert.deepEqual(calls, []);
+  });

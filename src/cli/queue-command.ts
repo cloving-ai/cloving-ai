@@ -1,4 +1,4 @@
-import { record } from "../protocol.ts";
+import { record, type Reply } from "../protocol.ts";
 import { mutate, send } from "./client.ts";
 import {
   identified,
@@ -24,31 +24,38 @@ export async function queueCommand(
       reply: await send(runtimeDirectory, queueServiceRequest(invocation, "")),
     });
   const format = identified(environment, invocation);
-  let selected = invocation;
-  if (invocation.action === "lanes") {
-    const status = await send(runtimeDirectory, {
-      operation: "queue",
-      parameters: { workflowId: invocation.workflowId },
-    });
-    if (status.kind === "error")
-      return presented(environment, { format, reply: status });
-    const expectedLanes = record(status.result["queue"])?.["lanes"];
-    if (typeof expectedLanes !== "number")
-      return presented(environment, {
-        format,
-        reply: {
-          kind: "error",
-          error: {
-            code: "queue-unavailable",
-            detail: "The service gave no queue lane count.",
-          },
-        },
-      });
-    selected = { ...invocation, expectedLanes };
-  }
+  const selected = await selectedInvocation(runtimeDirectory, invocation);
+  if ("refusal" in selected)
+    return presented(environment, { format, reply: selected.refusal });
   const reply = await mutate(runtimeDirectory, {
-    request: queueServiceRequest(selected, format.commandId),
+    request: queueServiceRequest(selected.invocation, format.commandId),
     signal: environment.interrupted(),
   });
   return presented(environment, { format, reply });
+}
+
+async function selectedInvocation(
+  runtimeDirectory: string,
+  invocation: QueueInvocation,
+): Promise<
+  { readonly invocation: QueueInvocation } | { readonly refusal: Reply }
+> {
+  if (invocation.action !== "lanes") return { invocation };
+  const status = await send(runtimeDirectory, {
+    operation: "queue",
+    parameters: { workflowId: invocation.workflowId },
+  });
+  if (status.kind === "error") return { refusal: status };
+  const expectedLanes = record(status.result["queue"])?.["lanes"];
+  if (typeof expectedLanes !== "number")
+    return {
+      refusal: {
+        kind: "error",
+        error: {
+          code: "queue-unavailable",
+          detail: "The service gave no queue lane count.",
+        },
+      },
+    };
+  return { invocation: { ...invocation, expectedLanes } };
 }

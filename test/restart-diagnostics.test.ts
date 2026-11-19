@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { existsSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -130,7 +131,7 @@ await test("CLV-347 a pending restart retains live CLI output before cancellatio
   withFiles(
     {
       "client.mjs":
-        'process.stdout.write("LIVE_RESTART_OUTPUT\\n"); process.on("SIGTERM", () => process.exit(23)); setInterval(() => {}, 1000);',
+        'process.on("SIGTERM", () => process.exit(23)); process.stdout.write("LIVE_RESTART_OUTPUT\\n"); setInterval(() => {}, 1000);',
     },
     async (directory) => {
       const fixture = await scene("", join(directory, "client.mjs"));
@@ -140,18 +141,17 @@ await test("CLV-347 a pending restart retains live CLI output before cancellatio
         arguments: ["--update"],
         signal: controller.signal,
       });
+      const record = join(fixture.directory, "restart-cli.json");
       try {
         await eventually(async () => {
-          const text = await readFile(
-            join(fixture.directory, "restart-cli.json"),
-            "utf8",
-          );
+          const text = existsSync(record) ? await readFile(record, "utf8") : "";
           return text.includes("LIVE_RESTART_OUTPUT") ? true : undefined;
         });
       } finally {
         controller.abort();
-        assert.equal((await pending).status, 23);
+        await pending;
       }
+      assert.equal((await pending).status, 23);
     },
   ));
 

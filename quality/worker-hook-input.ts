@@ -56,14 +56,16 @@ export function readWorkerHookPolicy(value: unknown): WorkerHookPolicy {
 export function readWorkerHookEvent(value: unknown): WorkerHookEvent {
   if (!hookRecord(value)) throw new Error("invalid-worker-hook-event");
   const event = value["hook_event_name"];
-  if (event === "Stop") {
-    if (typeof value["stop_hook_active"] !== "boolean")
-      throw new Error("invalid-stop-hook-event");
-    return { event, active: value["stop_hook_active"] };
-  }
+  if (event === "Stop") return readStopEvent(value);
   if (event !== "PreToolUse" && event !== "PostToolUse")
     throw new Error("invalid-worker-hook-event");
   return { event, ...readEditInput(value) };
+}
+
+function readStopEvent(value: Record<string, unknown>): WorkerHookEvent {
+  const active = value["stop_hook_active"];
+  if (typeof active !== "boolean") throw new Error("invalid-stop-hook-event");
+  return { event: "Stop", active };
 }
 
 function readEditInput(value: Record<string, unknown>): {

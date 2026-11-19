@@ -221,10 +221,8 @@ async function watchRuns(
     hosting.programs.splice(hosting.programs.indexOf(watch), 1);
     if (hosting.stopped()) return;
     const held = hosting.held();
-    if (held !== undefined) {
-      if (await held) continue;
-      return;
-    }
+    if (held !== undefined && (await held)) continue;
+    if (held !== undefined) return;
     const wait = restartDelay(restarts, {
       code,
       lifetime: performance.now() - startedAt,

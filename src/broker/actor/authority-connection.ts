@@ -1,6 +1,8 @@
+import { realpath } from "node:fs/promises";
+import { join } from "node:path";
 import type { Database } from "solid-objects";
 import { integer, text } from "../../storage/domain-rows.ts";
-import { inspectFile } from "../../storage/domain-schema.ts";
+import { inspectFile, openingTurn } from "../../storage/domain-schema.ts";
 
 export const contentionMilliseconds = 250;
 
@@ -93,6 +95,28 @@ export async function fileRefusal(path: string): Promise<Refusal | undefined> {
     return schema.kind === "refused" ? schema : undefined;
   } catch (error) {
     return storageRefusal(error);
+  }
+}
+
+export async function inOpeningTurn<T>(
+  directory: string,
+  work: (folder: string) => Promise<T | Refusal>,
+): Promise<T | Refusal> {
+  let folder: string;
+  let endTurn: () => void;
+  try {
+    folder = await realpath(directory);
+    endTurn = openingTurn({
+      path: join(folder, "authority.lock"),
+      timeoutMilliseconds: contentionMilliseconds,
+    });
+  } catch (error) {
+    return storageRefusal(error);
+  }
+  try {
+    return await work(folder);
+  } finally {
+    endTurn();
   }
 }
 
