@@ -4,6 +4,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
+import { record } from "../src/protocol.ts";
 import {
   pollingDeclaration,
   pollingWorkflow,
@@ -65,7 +66,7 @@ function records(world: string, table: "runs" | "events"): readonly unknown[] {
       : "run_id AS runId, event_type AS eventType, doc";
   return worldRows(world, `SELECT ${columns} FROM ${table}`).map(
     ({ doc, ...stored }): unknown => ({
-      ...Object(worldDocument(doc)),
+      ...record(worldDocument(doc)),
       ...stored,
     }),
   );

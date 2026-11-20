@@ -62,13 +62,19 @@ await test("#852 the check of earlier Local World data refuses a folder with an 
       }),
       "world/runs/wrun_3.json": run("wrun_3", { status: "pending" }),
       "world/runs/wrun_4.json": "{",
+      "world/runs/wrun_5.json": "null",
+      "world/runs/wrun_6.json": JSON.stringify("completed"),
+      "world/runs/wrun_7.json": JSON.stringify({
+        status: "running",
+        attributes: "run-c",
+      }),
     },
     async (directory) => {
       const world = join(directory, "world");
       assert.deepEqual(await legacyWorldRefusal(world), {
         kind: "refused",
         reason: "legacy-world-runs",
-        detail: `The Local World folder ${world} holds runs of an earlier Workflow SDK that are not finished: run-b (World run wrun_2, running), World run wrun_3 (pending), World run wrun_4 (unreadable). This release keeps World data in world.db and does not read these runs. To drain them, start the earlier Cloving release with the same state, let each run finish or drop it with "cloving drop <run-id>", stop that service, then start this release again. The finished runs stay in the folder.`,
+        detail: `The Local World folder ${world} holds runs of an earlier Workflow SDK that are not finished: run-b (World run wrun_2, running), World run wrun_3 (pending), World run wrun_4 (unreadable), World run wrun_5 (unreadable), World run wrun_6 (unreadable), World run wrun_7 (running). This release keeps World data in world.db and does not read these runs. To drain them, start the earlier Cloving release with the same state, let each run finish or drop it with "cloving drop <run-id>", stop that service, then start this release again. The finished runs stay in the folder.`,
       });
     },
   ));

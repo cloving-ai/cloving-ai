@@ -15,9 +15,14 @@ interface LegacyRun {
 
 const finishedStatuses = ["completed", "failed", "cancelled"];
 
+function field(value: unknown, name: string): unknown {
+  if (typeof value !== "object" || value === null) return undefined;
+  return Reflect.get(value, name);
+}
+
 function text(value: unknown, name: string): string | undefined {
-  const field: unknown = Reflect.get(Object(value), name);
-  return typeof field === "string" ? field : undefined;
+  const stored = field(value, name);
+  return typeof stored === "string" ? stored : undefined;
 }
 
 function parsed(source: string): unknown {
@@ -34,7 +39,8 @@ async function runNames(folder: string): Promise<readonly string[]> {
       .filter((name) => name.endsWith(".json"))
       .toSorted();
   } catch (error) {
-    if (Reflect.get(Object(error), "code") === "ENOENT") return [];
+    if (error instanceof Error && "code" in error && error.code === "ENOENT")
+      return [];
     throw error;
   }
 }
@@ -43,7 +49,7 @@ async function legacyRun(folder: string, name: string): Promise<LegacyRun> {
   const stored = parsed(await readFile(join(folder, name), "utf8"));
   return {
     worldRunId: name.slice(0, -".json".length),
-    runId: text(Reflect.get(Object(stored), "attributes"), "cloving.run"),
+    runId: text(field(stored, "attributes"), "cloving.run"),
     status: text(stored, "status") ?? "unreadable",
   };
 }

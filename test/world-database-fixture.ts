@@ -19,10 +19,13 @@ export function worldRows(
   }
 }
 
+function field(value: unknown, name: string): unknown {
+  if (typeof value !== "object" || value === null) return undefined;
+  return Reflect.get(value, name);
+}
+
 export function worldDocument(doc: unknown): unknown {
   return JSON.parse(String(doc), (_key, value: unknown): unknown =>
-    Reflect.get(Object(value), "__type") === "Date"
-      ? Reflect.get(Object(value), "value")
-      : value,
+    field(value, "__type") === "Date" ? field(value, "value") : value,
   );
 }

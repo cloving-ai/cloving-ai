@@ -8,13 +8,19 @@ function parsed(source: string): unknown {
   }
 }
 
+function field(value: unknown, name: string): unknown {
+  if (typeof value !== "object" || value === null) return undefined;
+  return Reflect.get(value, name);
+}
+
 function jsonWorldManifest(entry: unknown): boolean {
-  const manifest = parsed(String(Reflect.get(Object(entry), "manifest")));
-  if (Reflect.get(Object(manifest), "name") !== "@workflow/world-local")
-    return false;
-  const version = /^(\d+)\.(\d+)\./.exec(
-    String(Reflect.get(Object(manifest), "version")),
-  );
+  const source = field(entry, "manifest");
+  if (typeof source !== "string") return false;
+  const manifest = parsed(source);
+  if (field(manifest, "name") !== "@workflow/world-local") return false;
+  const release = field(manifest, "version");
+  if (typeof release !== "string") return false;
+  const version = /^(\d+)\.(\d+)\./.exec(release);
   if (version === null) return false;
   const major = Number(version[1]);
   const minor = Number(version[2]);
@@ -25,9 +31,6 @@ function jsonWorldManifest(entry: unknown): boolean {
 }
 
 export function recordsJsonWorld(dependencies: string): boolean {
-  const packages: unknown = Reflect.get(
-    Object(parsed(dependencies)),
-    "packages",
-  );
+  const packages = field(parsed(dependencies), "packages");
   return Array.isArray(packages) && packages.some(jsonWorldManifest);
 }

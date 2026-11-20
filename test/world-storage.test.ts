@@ -23,7 +23,11 @@ await test("#852 a bundle dependency record names the JSON Local World only for 
     [
       "{}",
       "not json",
+      "null",
       JSON.stringify({ packages: "none" }),
+      JSON.stringify({ packages: [null, "manifest", 5, { manifest: 5 }] }),
+      recorded(JSON.stringify("@workflow/world-local")),
+      recorded(JSON.stringify({ name: "@workflow/world-local", version: 5 })),
       recorded(
         "not json",
         JSON.stringify({ name: "workflow", version: "5.1.0" }),
@@ -33,6 +37,6 @@ await test("#852 a bundle dependency record names the JSON Local World only for 
         world("5.0.2"),
       ),
     ].map((dependencies) => recordsJsonWorld(dependencies)),
-    [false, false, false, false, true],
+    [false, false, false, false, false, false, false, false, true],
   );
 });
