@@ -10,6 +10,7 @@ import { check, withDoctor, type DoctorScene } from "./doctor-fixture.ts";
 import { initCli } from "./init-fixture.ts";
 import { turnHarness } from "../src/harness-defaults.ts";
 import { parseConfiguration } from "../src/project-settings.ts";
+import { testMilliseconds } from "./test-timing.ts";
 
 const selections = ["file", "path", "shell", "profile"] as const;
 const probe = createProbeRunner({
@@ -172,7 +173,7 @@ for (const selection of ["file", "shell"]) {
           cwd: scene.repository,
           env: legacy.environment,
           encoding: "utf8",
-          timeout: 15000,
+          timeout: testMilliseconds(15000),
         },
       );
       assert.equal(result.status, 0, result.stderr);
