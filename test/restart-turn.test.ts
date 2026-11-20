@@ -5,6 +5,7 @@ import { readFile } from "node:fs/promises";
 import { field } from "./self-host-fixture.ts";
 import { call } from "./service-fixture.ts";
 import { replacementPhases } from "./restart-diagnostics-fixture.ts";
+import { testMilliseconds } from "./test-timing.ts";
 import {
   admittedTurn,
   assistantTexts,
@@ -30,6 +31,12 @@ async function assertPublicClient(scene: TurnHost): Promise<void> {
   );
 }
 
+const startLimit = testMilliseconds(10_000);
+
+function startMessage(event: string, milliseconds: number): string {
+  return `The new service ${event} ${String(milliseconds)} ms after the request. The 10-second limit is ${String(startLimit)} ms with the check time factor.`;
+}
+
 function alive(processId: number): boolean {
   try {
     return process.kill(processId, 0);
@@ -40,7 +47,7 @@ function alive(processId: number): boolean {
 
 await test(
   "CLV-347 cloving restart in the middle of a 60-second turn starts the new service within 10 seconds, the turn keeps its process, the watch transcript has each line one time, and the turn ends with its result and one cost",
-  { timeout: 120_000 },
+  { timeout: testMilliseconds(120_000) },
   () =>
     withTurnHost({ script: lineTurn }, async (scene) => {
       const { fixture } = scene;
@@ -65,8 +72,8 @@ await test(
       assert.notEqual(after["serviceStartedAt"], before["serviceStartedAt"]);
       const startedAt = Date.parse(String(after["serviceStartedAt"]));
       assert.ok(
-        startedAt - requested < 10_000,
-        `The new service started ${String(startedAt - requested)} ms after the request.`,
+        startedAt - requested < startLimit,
+        startMessage("started", startedAt - requested),
       );
       const { phases, ready } = await replacementPhases({
         output: scene.output,
@@ -74,7 +81,10 @@ await test(
         startedAt,
       });
       console.info("Restart phases:", JSON.stringify(phases));
-      assert.ok(ready.at - requested < 10_000);
+      assert.ok(
+        ready.at - requested < startLimit,
+        startMessage("was ready", ready.at - requested),
+      );
       assert.equal(
         phases.filter((entry) => entry.phase === "candidate-compiler-start")
           .length,

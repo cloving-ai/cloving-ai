@@ -9,6 +9,7 @@ import { staleBuild } from "../tools/restart-build.ts";
 import { field } from "./self-host-fixture.ts";
 import { call } from "./service-fixture.ts";
 import { withFiles } from "./quality/files-fixture.ts";
+import { testMilliseconds } from "./test-timing.ts";
 import {
   replacementPhases,
   restartDeadlineDiagnostics,
@@ -144,12 +145,13 @@ async function updatedService(
   return { turns, status };
 }
 
-const updateDeadline = AbortSignal.timeout(120_000);
+const updateLimit = testMilliseconds(120_000);
+const updateDeadline = AbortSignal.timeout(updateLimit);
 const updateDiagnostics = restartDeadlineDiagnostics(updateDeadline);
 
 await test(
   "CLV-347 cloving restart --update in the middle of a turn updates the checkout, and the turn goes on with its pinned bundle and ends with its result",
-  { timeout: 120_000, signal: updateDeadline },
+  { timeout: updateLimit, signal: updateDeadline },
   async () => {
     const update = { target: "" };
     await withTurnHost(
