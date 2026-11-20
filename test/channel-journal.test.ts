@@ -49,9 +49,7 @@ await test("CLV-338 two processes that write the channel journal at the same tim
       ),
     );
     assert.deepEqual(
-      writers.flatMap((result): unknown[] =>
-        result.status === "rejected" ? [result.reason] : [],
-      ),
+      writers.filter((result) => result.status === "rejected"),
       [],
     );
     assert.deepEqual(
