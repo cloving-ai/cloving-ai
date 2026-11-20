@@ -4,6 +4,7 @@ import { syncBuiltinESMExports } from "node:module";
 import { mock, test } from "node:test";
 import timers from "node:timers/promises";
 import { until } from "./claude-worker-fixture.ts";
+import { reached } from "./self-host-fixture.ts";
 import { testMilliseconds } from "./test-timing.ts";
 import { withConsumer } from "./world-host-fixture.ts";
 
@@ -20,53 +21,78 @@ function recorded<
   };
 }
 
-await test("CLV-196 worker report waits honor the scaled deadline", async () => {
+async function withSleepClock(
+  body: (clock: { elapsed: number }) => Promise<void>,
+): Promise<void> {
   const previous = process.env["CLOVING_CHECK_TIME_FACTOR"];
-  const clock = Object.getOwnPropertyDescriptor(performance, "now");
+  const now = Object.getOwnPropertyDescriptor(performance, "now");
   const timeout = timers.setTimeout;
-  let elapsed = 0;
+  const clock = { elapsed: 0 };
   Object.defineProperty(performance, "now", {
     configurable: true,
-    value: () => elapsed,
+    value: () => clock.elapsed,
   });
   Object.defineProperty(timers, "setTimeout", {
     configurable: true,
     value: (milliseconds: number) => {
-      elapsed += milliseconds;
+      clock.elapsed += milliseconds;
       return Promise.resolve();
     },
   });
   syncBuiltinESMExports();
   try {
-    process.env["CLOVING_CHECK_TIME_FACTOR"] = "1";
-    await assert.rejects(
-      until(() => elapsed >= 15_000),
-      {
-        message: "The scene did not reach its state.",
-      },
-    );
-    assert.equal(elapsed, 10_000);
-    elapsed = 0;
-    process.env["CLOVING_CHECK_TIME_FACTOR"] = "3";
-    await until(() => elapsed >= 15_000);
-    assert.equal(elapsed, 15_000);
-    elapsed = 0;
-    await assert.rejects(
-      until(() => false),
-      {
-        message: "The scene did not reach its state.",
-      },
-    );
-    assert.equal(elapsed, 30_000);
+    await body(clock);
   } finally {
-    if (clock) Object.defineProperty(performance, "now", clock);
+    if (now) Object.defineProperty(performance, "now", now);
     else Reflect.deleteProperty(performance, "now");
     timers.setTimeout = timeout;
     syncBuiltinESMExports();
     if (previous === undefined) delete process.env["CLOVING_CHECK_TIME_FACTOR"];
     else process.env["CLOVING_CHECK_TIME_FACTOR"] = previous;
   }
-});
+}
+
+const unreached = { message: "The scene did not reach its state." };
+
+await test("CLV-196 worker report waits honor the scaled deadline", () =>
+  withSleepClock(async (clock) => {
+    process.env["CLOVING_CHECK_TIME_FACTOR"] = "1";
+    await assert.rejects(
+      until(() => clock.elapsed >= 15_000),
+      unreached,
+    );
+    assert.equal(clock.elapsed, 10_000);
+    clock.elapsed = 0;
+    process.env["CLOVING_CHECK_TIME_FACTOR"] = "3";
+    await until(() => clock.elapsed >= 15_000);
+    assert.equal(clock.elapsed, 15_000);
+    clock.elapsed = 0;
+    await assert.rejects(
+      until(() => false),
+      unreached,
+    );
+    assert.equal(clock.elapsed, 30_000);
+  }));
+
+await test("CLV-147 self-host scene waits follow the check time factor", () =>
+  withSleepClock(async (clock) => {
+    const after = (milliseconds: number) => () =>
+      Promise.resolve(
+        clock.elapsed >= milliseconds ? clock.elapsed : undefined,
+      );
+    process.env["CLOVING_CHECK_TIME_FACTOR"] = "1";
+    await assert.rejects(reached(after(60_000)), unreached);
+    assert.equal(clock.elapsed, 30_000);
+    clock.elapsed = 0;
+    process.env["CLOVING_CHECK_TIME_FACTOR"] = "3";
+    assert.equal(await reached(after(60_000)), 60_000);
+    clock.elapsed = 0;
+    await assert.rejects(
+      reached(() => Promise.resolve(undefined)),
+      unreached,
+    );
+    assert.equal(clock.elapsed, 90_000);
+  }));
 
 await test("CLV-147 test durations follow the check time factor and reject invalid factors", () => {
   const previous = process.env["CLOVING_CHECK_TIME_FACTOR"];
