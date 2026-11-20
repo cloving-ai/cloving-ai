@@ -1,4 +1,5 @@
 import { stopChildGroup } from "./stop-child.ts";
+import assert from "node:assert/strict";
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { readFile, readdir, writeFile } from "node:fs/promises";
@@ -40,9 +41,11 @@ export function git(
   });
 }
 
+type Observer = (output: string, child: ChildProcess) => void;
+
 interface StartOptions {
   readonly arguments: readonly string[];
-  readonly observe?: (output: string) => void;
+  readonly observe?: Observer;
 }
 
 function startOptions(options: readonly string[] | StartOptions) {
@@ -73,6 +76,8 @@ export interface Scene {
 }
 
 const children: ChildProcess[] = [];
+const printed = new WeakMap<ChildProcess, { readonly text: string }>();
+const closings = new WeakMap<ChildProcess, Promise<number | null>>();
 
 export async function stopRecordedTurns(root: string): Promise<void> {
   const names = (await readdir(root)).filter((name) => name.endsWith(".pid"));
@@ -202,6 +207,19 @@ async function refused(
   return output.text;
 }
 
+function recorded(child: ChildProcess): { text: string } {
+  children.push(child);
+  const output = { text: "" };
+  printed.set(child, output);
+  closings.set(
+    child,
+    new Promise((settle) => {
+      child.once("close", settle);
+    }),
+  );
+  return output;
+}
+
 async function launched(
   settings: {
     readonly entryPoint: string;
@@ -213,7 +231,7 @@ async function launched(
     readonly bound?: string;
     readonly environment?: Readonly<NodeJS.ProcessEnv>;
     readonly argumentsList?: readonly string[];
-    readonly observe?: ((output: string) => void) | undefined;
+    readonly observe?: Observer | undefined;
   },
   expected: string,
 ): Promise<Launch> {
@@ -249,12 +267,11 @@ async function launched(
       detached: true,
     },
   );
-  children.push(child);
-  const output = { text: "" };
+  const output = recorded(child);
   for (const stream of [child.stdout, child.stderr])
     stream.on("data", (chunk: Buffer) => {
       output.text += chunk.toString();
-      settings.observe?.(output.text);
+      settings.observe?.(output.text, child);
     });
   for (let waited = 0; waited < testMilliseconds(30_000) / 20; waited += 1) {
     if (output.text.includes(expected)) return { child, output };
@@ -270,6 +287,22 @@ export function ended(child: ChildProcess): Promise<number | null> {
     child.once("close", settle);
     child.kill("SIGTERM");
   });
+}
+
+function exitedWithZero(child: ChildProcess, status: number | null): void {
+  assert.equal(
+    status,
+    0,
+    `exit status ${String(status)} !== 0 after this output:\n${printed.get(child)?.text ?? ""}`,
+  );
+}
+
+export async function endedCleanly(child: ChildProcess): Promise<void> {
+  exitedWithZero(child, await ended(child));
+}
+
+export async function exitedCleanly(child: ChildProcess): Promise<void> {
+  exitedWithZero(child, (await closings.get(child)) ?? null);
 }
 
 export async function reached<Value>(

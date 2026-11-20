@@ -8,6 +8,7 @@
   "include": [
     "src/**/*.ts",
     "tools/self-host.ts",
+    "tools/daemon-stop.ts",
     "tools/self-host-reload.ts",
     "tools/restart-settings.ts",
     "tools/compile-workflows.ts",

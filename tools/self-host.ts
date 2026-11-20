@@ -189,10 +189,13 @@ async function launchers(
   await writeFile(
     join(project, "start.mjs"),
     `import { restartTrace } from ${source("tools/restart-trace.ts")};
+import { stopLatch } from ${source("tools/daemon-stop.ts")};
 restartTrace("daemon-entry");
+const latch = stopLatch(${JSON.stringify(turnKeepingSignal)});
 const { hostEnvironment } = await import(${source("src/daemon/host-environment.ts")});
 Object.assign(process.env, hostEnvironment(${JSON.stringify({ directory, concurrency, leaseSeconds })}));
-await import("./main.mjs");
+const { opening } = await import("./main.mjs");
+latch.closeWith((options) => opening.daemon.close(options));
 `,
   );
   await writeFile(
@@ -207,7 +210,7 @@ const restartEnvironment = { ...process.env };
 let validation;
 const validateRestart = async (mark) => (await (validation ??= import(${source("tools/restart-settings.ts")}).then(({ restartSettings }) => restartSettings({ ...${JSON.stringify({ repository, directory, fileVariables: Object.keys(environment).filter((name) => process.env[name] === undefined) })}, environment: restartEnvironment }))))(mark);
 restartTrace("daemon-call");
-const opening = await startDaemon({ ...JSON.parse(${JSON.stringify(JSON.stringify(settings))}), workflows, handler: POST, loadBundle: loadWorkflowBundle, validateRestart });
+export const opening = await startDaemon({ ...JSON.parse(${JSON.stringify(JSON.stringify(settings))}), workflows, handler: POST, loadBundle: loadWorkflowBundle, validateRestart });
 if (opening.kind !== "started") {
   process.stderr.write("The daemon did not start: " + opening.reason + ": " + opening.detail + "\\n");
   process.exit(1);
@@ -215,11 +218,6 @@ if (opening.kind !== "started") {
 process.stdout.write(${JSON.stringify(guide(workflows))});
 process.send?.("started");
 process.channel?.unref();
-let closing;
-const stop = () => { closing ??= opening.daemon.close().then(() => process.exit(0)); };
-process.on("SIGINT", stop);
-process.on("SIGTERM", stop);
-process.on(${JSON.stringify(turnKeepingSignal)}, () => { closing ??= opening.daemon.close({ turns: "keep" }).then(() => process.exit(0)); });
 `,
   );
   restartTrace("launchers-end");
