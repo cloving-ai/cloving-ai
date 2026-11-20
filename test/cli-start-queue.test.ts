@@ -5,6 +5,7 @@ import { test } from "node:test";
 import { refusedStart as refused } from "./cli-start-fixture.ts";
 import {
   ended,
+  endedCleanly,
   field,
   reached,
   scene,
@@ -154,7 +155,7 @@ await test("CLV-131 start resets the queue journal only with the explicit reset 
     };
     const ordinary = await fixture.start(environment);
     assert.equal(await readFile(file, "utf8"), prior);
-    assert.equal(await ended(ordinary), 0);
+    await endedCleanly(ordinary);
     const reset = await fixture.start(environment, ["--reset-queue"]);
     try {
       await reached(async () =>
@@ -167,7 +168,7 @@ await test("CLV-131 start resets the queue journal only with the explicit reset 
         '{"commands":[],"failures":[]}\n',
       );
     } finally {
-      assert.equal(await ended(reset), 0);
+      await endedCleanly(reset);
     }
   }));
 
