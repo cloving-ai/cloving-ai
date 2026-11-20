@@ -85,7 +85,7 @@ export async function startHost(settings: HostSettings): Promise<HostOpening> {
     kind: "started",
     host: {
       close: async () => {
-        const held = setInterval(() => undefined, 60_000);
+        const held = setInterval(() => undefined, 1_000);
         try {
           await world.close?.();
         } finally {
