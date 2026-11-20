@@ -275,7 +275,7 @@ export function ended(child: ChildProcess): Promise<number | null> {
 export async function reached<Value>(
   read: () => Promise<Value | undefined>,
 ): Promise<Value> {
-  for (let waited = 0; waited < 1_500; waited += 1) {
+  for (let waited = 0; waited < testMilliseconds(30_000) / 20; waited += 1) {
     const value = await read();
     if (value !== undefined) return value;
     await delay(20);
