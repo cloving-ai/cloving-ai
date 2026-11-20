@@ -96,3 +96,28 @@ await test("CLV-277 five compiles of the same sources give the same artifacts an
       assert.deepEqual(compiles, Array(5).fill(first));
     },
   ));
+
+await test("#852 a compiled client library loads in Node when a bundled CommonJS package of the SDK requires a built-in module", () =>
+  withFiles(
+    {
+      ...sources,
+      "package.json": '{"name":"fixture","private":true,"type":"module"}',
+    },
+    async (project) => {
+      await symlink(
+        join(product, "node_modules"),
+        join(project, "node_modules"),
+      );
+      compile(project);
+      const loaded = execFileSync(
+        process.execPath,
+        [
+          "--input-type=module",
+          "--eval",
+          'const client = await import("./artifacts/client.mjs"); process.stdout.write(String(typeof client.workflow0));',
+        ],
+        { cwd: project, stdio: "pipe", timeout: testMilliseconds(30_000) },
+      );
+      assert.equal(loaded.toString(), "function");
+    },
+  ));

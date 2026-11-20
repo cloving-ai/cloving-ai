@@ -86,11 +86,20 @@ await test("CLV-055 the product host starts the real Local World, runs one compi
     const result = await consumer.run(`${counting}${opened}
 const run = await start(workflows.develop, [{ value: 2 }]);
 const result = await getRun(run.runId).returnValue;
+const runs = (await (await getWorld()).runs.list({ resolveData: "none" })).data.length;
+const world = worlds() > 0;
 await opening.host.close();
-print({ kind: opening.kind, result, runs: readdirSync(dataDirectory + "/runs").length, world: worlds() > 0 });
+print({ kind: opening.kind, result, runs, database: existsSync(dataDirectory + "/world.db"), world, cleared: worlds() === 0 });
 `);
     assert.deepEqual(result.lines, [
-      { kind: "started", result: { doubled: 4 }, runs: 1, world: true },
+      {
+        kind: "started",
+        result: { doubled: 4 },
+        runs: 1,
+        database: true,
+        world: true,
+        cleared: true,
+      },
     ]);
     assert.equal(result.status, 0, result.stderr);
   }));
@@ -229,10 +238,10 @@ const directory = process.cwd();
 const run = await start(workflows.held, [{ directory }]);
 while (!existsSync(directory + "/step-started")) await delay(10);
 await opening.host.close();
-const stopped = () => ["cancelled", "failed", "completed"].includes(JSON.parse(readFileSync(dataDirectory + "/runs/" + run.runId + ".json", "utf8")).status);
-const atClose = { ended: existsSync(directory + "/step-ended"), stopped: stopped() };
+const stopped = async () => ["cancelled", "failed", "completed"].includes((await (await getWorld()).runs.get(run.runId, { resolveData: "none" })).status);
+const atClose = { ended: existsSync(directory + "/step-ended"), stopped: await stopped() };
 await delay(200);
-const later = { ended: existsSync(directory + "/step-ended"), stopped: stopped() };
+const later = { ended: existsSync(directory + "/step-ended"), stopped: await stopped() };
 writeFileSync(directory + "/release", "");
 while (!existsSync(directory + "/step-ended")) await delay(10);
 print({ atClose, later, endedAfterRelease: true });
@@ -245,4 +254,75 @@ process.exit(0);
         endedAfterRelease: true,
       },
     ]);
+  }));
+
+const legacyData = `
+import { mkdirSync } from "node:fs";
+mkdirSync(dataDirectory + "/runs", { recursive: true });
+mkdirSync(dataDirectory + "/events", { recursive: true });
+writeFileSync(dataDirectory + "/runs/wrun_1.json", JSON.stringify({ runId: "wrun_1", status: process.env.LEGACY_STATUS, attributes: { "cloving.run": "run-a" } }));
+writeFileSync(dataDirectory + "/events/wrun_1-evnt_1.json", "{}");
+`;
+
+await test("#852 the product host refuses to start the SQLite World on a data folder with an unfinished JSON run of an earlier SDK, and it starts on a folder with only finished JSON runs and keeps their files", () =>
+  withConsumer(workflows, async (consumer) => {
+    const refused = await consumer.run(
+      `${counting}${legacyData}
+const opening = await startHost({ dataDirectory, concurrency: 1, handler: counted });
+print({ kind: opening.kind, reason: opening.reason, named: opening.detail?.includes("run-a (World run wrun_1, running)"), database: existsSync(dataDirectory + "/world.db"), worlds: worlds() });
+`,
+      { LEGACY_STATUS: "running" },
+    );
+    assert.deepEqual(refused.lines, [
+      {
+        kind: "refused",
+        reason: "legacy-world-runs",
+        named: true,
+        database: false,
+        worlds: 0,
+      },
+    ]);
+    const started = await consumer.run(
+      `${counting}${legacyData}${opened}
+const run = await start(workflows.develop, [{ value: 2 }]);
+const result = await getRun(run.runId).returnValue;
+await opening.host.close();
+print({ kind: opening.kind, result, kept: [...readdirSync(dataDirectory + "/runs"), ...readdirSync(dataDirectory + "/events")], database: existsSync(dataDirectory + "/world.db") });
+`,
+      { LEGACY_STATUS: "completed" },
+    );
+    assert.deepEqual(started.lines, [
+      {
+        kind: "started",
+        result: { doubled: 4 },
+        kept: ["wrun_1.json", "wrun_1-evnt_1.json"],
+        database: true,
+      },
+    ]);
+  }));
+
+await test("#852 a close of the host settles and the process goes on when a workflow message has not reached the workflow code", () =>
+  withConsumer(workflows, async (consumer) => {
+    const closed = await consumer.run(`
+const opening = await startHost({ dataDirectory, concurrency: 1, handler: () => new Promise(() => undefined) });
+await start(workflows.develop, [{ value: 2 }]);
+await delay(200);
+await opening.host.close();
+print({ closed: true });
+`);
+    assert.deepEqual([closed.status, closed.lines], [0, [{ closed: true }]]);
+  }));
+
+await test("#852 after a close of the host, a new host in the same process starts a new World and runs a workflow to its end", () =>
+  withConsumer(workflows, async (consumer) => {
+    const reopened = await consumer.run(`
+const first = await startHost({ dataDirectory, concurrency: 1, handler: POST });
+await getRun((await start(workflows.develop, [{ value: 1 }])).runId).returnValue;
+await first.host.close();
+const second = await startHost({ dataDirectory, concurrency: 1, handler: POST });
+const result = await Promise.race([getRun((await start(workflows.develop, [{ value: 3 }])).runId).returnValue, delay(10000).then(() => "hung")]);
+await second.host.close();
+print({ result });
+`);
+    assert.deepEqual(reopened.lines, [{ result: { doubled: 6 } }]);
   }));

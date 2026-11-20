@@ -5,7 +5,7 @@ import {
   type WorldReport,
   type WorldRun,
 } from "../authority/reconciliation.ts";
-import type { AuthorityState } from "../authority/transitions.ts";
+import { terminal, type AuthorityState } from "../authority/transitions.ts";
 
 export type ReconciledState = Pick<
   AuthorityState,
@@ -131,15 +131,33 @@ function reported(pass: Pass): readonly LoopReport[] {
   ];
 }
 
+function ended(state: ReconciledState): boolean {
+  return Object.values(state.runs).every((run) =>
+    terminal.includes(run.status),
+  );
+}
+
+async function idle(
+  parts: ReconciliationPorts,
+  last: Pass | undefined,
+): Promise<boolean> {
+  if (last?.interrupted !== false) return false;
+  return ended(await parts.state());
+}
+
 export function worldLoop(
   parts: ReconciliationPorts & { readonly intervalMilliseconds: number },
 ): WorldLoop {
   const stopping = new AbortController();
   let reports: readonly LoopReport[] = [];
   let failures = 0;
+  let last: Pass | undefined;
   const cycle = async (): Promise<void> => {
     while (!stopping.signal.aborted) {
-      const pass = await reconcileWorld(parts).catch(() => undefined);
+      const pass = (await idle(parts, last).catch(() => false))
+        ? last
+        : await reconcileWorld(parts).catch(() => undefined);
+      last = pass;
       reports = pass === undefined ? reports : reported(pass);
       failures = pass?.interrupted === false ? 0 : failures + 1;
       await delay(parts.intervalMilliseconds, undefined, {

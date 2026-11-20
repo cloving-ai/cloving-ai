@@ -93,7 +93,7 @@ await test("CLV-055 the qualified toolchain reads the SDK version from the runti
 await test("CLV-096 the builder pin is a runtime dependency in manifest and lock", async () => {
   assert.equal(
     await field("package.json", ["dependencies", "@workflow/builders"]),
-    "5.0.2",
+    "5.1.2",
   );
   assert.equal(
     await field("package.json", ["devDependencies", "@workflow/builders"]),
@@ -106,7 +106,7 @@ await test("CLV-096 the builder pin is a runtime dependency in manifest and lock
       "dependencies",
       "@workflow/builders",
     ]),
-    "5.0.2",
+    "5.1.2",
   );
   assert.equal(
     await field("package-lock.json", [

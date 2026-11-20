@@ -89,12 +89,14 @@ const service = await hosted({ destination: scripted, registrations: [changed] }
 const retained = await continued({ runId });
 const current = await continued({ runId, bundle: "current", commandId: "c-continue-current" });
 const after = current.kind === "run-continued" ? await ended(current.runId) : { state: refusal(current) };
-print({ retained: refusal(retained), after: after.state, sent: lines("sent.log") });
+print({ retained: refusal(retained), detail: retained.error?.detail ?? retained.detail, after: after.state, sent: lines("sent.log") });
 await service.close();
 `);
     assert.equal(result.status, 0, result.stderr);
     assert.deepEqual(result.lines[0], {
       retained: ["error", "pinned-workflow-unavailable"],
+      detail:
+        "The workflow bundle of the run is not kept, or it was built for the JSON Local World of an earlier Workflow SDK. Use --bundle current to continue with the current workflow.",
       after: "completed",
       sent: ["claude-turn/1", "merge/1", "merge/1"],
     });

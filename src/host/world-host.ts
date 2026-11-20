@@ -1,5 +1,5 @@
-import { getWorld } from "workflow/runtime";
-import { releaseStepClaims } from "./step-claims.ts";
+import { getWorld, setWorld } from "workflow/runtime";
+import { legacyWorldRefusal } from "./legacy-world.ts";
 
 export type WorkflowHandler = (request: Request) => Promise<Response>;
 
@@ -10,7 +10,6 @@ export interface HostSettings {
 }
 
 export interface WorkflowHost {
-  readonly released: readonly string[];
   readonly close: () => Promise<void>;
 }
 
@@ -66,12 +65,12 @@ function unsuitable(settings: HostSettings): HostRefusal | undefined {
 }
 
 export async function startHost(settings: HostSettings): Promise<HostOpening> {
-  const refusal = unsuitable(settings);
+  const refusal =
+    unsuitable(settings) ?? (await legacyWorldRefusal(settings.dataDirectory));
   if (refusal) return refusal;
   const world = await getWorld();
   if (!direct(world))
     return refused("host-world", "the World takes no handler in its process");
-  const released = await releaseStepClaims(settings.dataDirectory, world);
   world.registerHandler(workflowQueue, settings.handler);
   try {
     await world.start?.();
@@ -85,9 +84,14 @@ export async function startHost(settings: HostSettings): Promise<HostOpening> {
   return {
     kind: "started",
     host: {
-      released,
       close: async () => {
-        await world.close?.();
+        const held = setInterval(() => undefined, 1_000);
+        try {
+          await world.close?.();
+        } finally {
+          clearInterval(held);
+          setWorld(undefined);
+        }
       },
     },
   };

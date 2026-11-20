@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
-import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { record } from "../src/protocol.ts";
 import { call } from "./service-fixture.ts";
+import { worldDocument, worldRows } from "./world-database-fixture.ts";
 import { field, items, reached } from "./self-host-fixture.ts";
 import { candidateDeclaration } from "./workflow-candidate-fixtures.ts";
 
@@ -111,23 +112,18 @@ export async function operatorQuestion(
 }
 
 export async function settledOperatorSegments(fixture: OperatorRestart) {
-  const folder = join(dirname(fixture.runtimeDirectory), "world/runs");
-  return await reached(async () => {
-    const files = (await readdir(folder)).filter((name) =>
-      name.endsWith(".json"),
+  const world = join(dirname(fixture.runtimeDirectory), "world");
+  return await reached(() => {
+    const runs = worldRows(world, "SELECT doc FROM runs").map(({ doc }) => {
+      const run = record(worldDocument(doc));
+      assert.ok(run, "Operator run must be a JSON object.");
+      return run;
+    });
+    return Promise.resolve(
+      runs.length > 0 && runs.every((run) => run["status"] === "completed")
+        ? runs
+        : undefined,
     );
-    const runs = await Promise.all(
-      files.map(async (file) => {
-        const run = record(
-          JSON.parse(await readFile(join(folder, file), "utf8")),
-        );
-        assert.ok(run, "Operator run must be a JSON object.");
-        return run;
-      }),
-    );
-    return runs.length > 0 && runs.every((run) => run["status"] === "completed")
-      ? runs
-      : undefined;
   });
 }
 

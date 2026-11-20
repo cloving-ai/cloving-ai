@@ -204,7 +204,7 @@ function unavailable(request: ContinueRequest): Reply {
   return failed("pinned-workflow-unavailable", {
     ...identity(request),
     detail:
-      "The workflow bundle of the run is not kept. Use --bundle current to continue with the current workflow.",
+      "The workflow bundle of the run is not kept, or it was built for the JSON Local World of an earlier Workflow SDK. Use --bundle current to continue with the current workflow.",
   });
 }
 

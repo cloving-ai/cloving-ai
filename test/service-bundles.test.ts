@@ -193,3 +193,62 @@ await test("CLV-161 a legacy run without a bundle digest retains its continuatio
     assert.equal(harness.sent.length, 2);
     await service.close();
   }));
+
+function worldRecord(version: string): string {
+  return JSON.stringify({
+    roots: { workflow: 0 },
+    packages: [
+      {
+        manifest: JSON.stringify({ name: "workflow", version: "5.1.0" }),
+        dependencies: { "@workflow/world-local": 1 },
+      },
+      {
+        manifest: JSON.stringify({ name: "@workflow/world-local", version }),
+        dependencies: {},
+      },
+    ],
+  });
+}
+
+async function submittedRun(harness: Parameters<typeof bundled>[0]) {
+  const result = await call(harness, {
+    operation: "run",
+    parameters: {
+      workflowId: "develop",
+      source: "prompt",
+      submission: { prompt: "Task" },
+      commandId: "pinned",
+    },
+  });
+  return text(result, "runId");
+}
+
+await test("#852 a run pinned to a retained bundle built for the JSON Local World of an earlier SDK is blocked with pinned-workflow-unavailable and sends nothing", () =>
+  withHarness(async (harness) => {
+    const settings = await bundled(harness, {
+      dependencies: worldRecord("5.0.2"),
+    });
+    const service = await harness.start(settings);
+    const runId = await submittedRun(harness);
+    await eventually(async () =>
+      harness.sent.length > 0 ||
+      (await reason(harness, runId)) === "pinned-workflow-unavailable"
+        ? true
+        : undefined,
+    );
+    assert.equal(harness.sent.length, 0);
+    assert.equal(await reason(harness, runId), "pinned-workflow-unavailable");
+    await service.close();
+  }));
+
+await test("#852 a run pinned to a retained bundle built for the SQLite Local World starts", () =>
+  withHarness(async (harness) => {
+    const settings = await bundled(harness, {
+      dependencies: worldRecord("5.4.1"),
+    });
+    const service = await harness.start(settings);
+    await submittedRun(harness);
+    await eventually(() => (harness.sent.length === 1 ? true : undefined));
+    assert.equal(harness.sent[0]?.kind, "start-run");
+    await service.close();
+  }));

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir } from "node:fs/promises";
+import { DatabaseSync } from "node:sqlite";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { scene, withoutChildren } from "./self-host-fixture.ts";
@@ -14,9 +15,12 @@ import { withHarness } from "./service-fixture.ts";
 
 await test("CLV-154 restart fixture rejects non-object run JSON", () =>
   withHarness(async (fixture) => {
-    const folder = join(dirname(fixture.runtimeDirectory), "world/runs");
-    await mkdir(folder, { recursive: true });
-    await writeFile(join(folder, "invalid.json"), "[]");
+    const world = join(dirname(fixture.runtimeDirectory), "world");
+    await mkdir(world, { recursive: true });
+    const database = new DatabaseSync(join(world, "world.db"));
+    database.exec("CREATE TABLE runs (run_id TEXT PRIMARY KEY, doc TEXT)");
+    database.prepare("INSERT INTO runs VALUES (?, ?)").run("wrun_1", "[]");
+    database.close();
     await assert.rejects(
       settledOperatorSegments({
         root: fixture.stateDirectory,

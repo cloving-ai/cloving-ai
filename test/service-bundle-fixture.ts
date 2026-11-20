@@ -3,12 +3,15 @@ import { dirname, join } from "node:path";
 import { retainWorkflowBundle } from "../tools/workflow-bundles.ts";
 import { call, field, type Harness } from "./service-fixture.ts";
 
-export async function bundled(harness: Harness) {
+export async function bundled(
+  harness: Harness,
+  options: { readonly dependencies?: string } = {},
+) {
   const project = harness.projectDirectory;
   const files = {
     "package.json": '{"type":"module"}',
     "declarations.json": "[]",
-    "dependencies.json": "{}",
+    "dependencies.json": options.dependencies ?? "{}",
     "workflows/develop.ts": "workflow source",
     "artifacts/client.mjs": "compiled client",
     "artifacts/flow.mjs": "compiled flow",
