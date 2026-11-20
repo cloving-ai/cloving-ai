@@ -77,6 +77,7 @@ export interface Scene {
 
 const children: ChildProcess[] = [];
 const printed = new WeakMap<ChildProcess, { readonly text: string }>();
+const closings = new WeakMap<ChildProcess, Promise<number | null>>();
 
 export async function stopRecordedTurns(root: string): Promise<void> {
   const names = (await readdir(root)).filter((name) => name.endsWith(".pid"));
@@ -210,6 +211,12 @@ function recorded(child: ChildProcess): { text: string } {
   children.push(child);
   const output = { text: "" };
   printed.set(child, output);
+  closings.set(
+    child,
+    new Promise((settle) => {
+      child.once("close", settle);
+    }),
+  );
   return output;
 }
 
@@ -282,13 +289,20 @@ export function ended(child: ChildProcess): Promise<number | null> {
   });
 }
 
-export async function endedCleanly(child: ChildProcess): Promise<void> {
-  const status = await ended(child);
+function exitedWithZero(child: ChildProcess, status: number | null): void {
   assert.equal(
     status,
     0,
     `exit status ${String(status)} !== 0 after this output:\n${printed.get(child)?.text ?? ""}`,
   );
+}
+
+export async function endedCleanly(child: ChildProcess): Promise<void> {
+  exitedWithZero(child, await ended(child));
+}
+
+export async function exitedCleanly(child: ChildProcess): Promise<void> {
+  exitedWithZero(child, (await closings.get(child)) ?? null);
 }
 
 export async function reached<Value>(
