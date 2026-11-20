@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { promisify } from "node:util";
 import { sentEntries } from "../src/cli/channel-journal.ts";
-import { withHarness } from "./service-fixture.ts";
+import { field, withHarness } from "./service-fixture.ts";
 
 const rounds = 25;
 
@@ -37,7 +37,7 @@ await test("CLV-338 two processes that write the channel journal at the same tim
       }),
     );
     const run = promisify(execFile);
-    await Promise.all(
+    const writers = await Promise.allSettled(
       ["a", "b"].map((prefix) =>
         run(process.execPath, [
           "--input-type=module",
@@ -47,6 +47,12 @@ await test("CLV-338 two processes that write the channel journal at the same tim
           prefix,
         ]),
       ),
+    );
+    assert.deepEqual(
+      writers.flatMap((result) =>
+        result.status === "rejected" ? [field(result.reason, "stderr")] : [],
+      ),
+      [],
     );
     assert.deepEqual(
       [...(await sentEntries(file)).keys()].toSorted(),
